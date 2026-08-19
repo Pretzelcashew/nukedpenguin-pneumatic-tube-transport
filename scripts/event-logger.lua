@@ -16,20 +16,20 @@ local function is_in_list(target_event)
 end
 
 for event_name, event_id in pairs(defines.events) do
-    local should_process = false
-    local in_list = is_in_list(event_name)
+    events.on_event(event_id, function(event)
+        local in_list = is_in_list(event_name)
+        local should_process = false
 
-    if exclusion then
-        -- Blacklist mode: process if NOT in the list
-        should_process = not in_list
-    else
-        -- Whitelist mode: process if IN the list
-        should_process = in_list
-    end
+        if exclusion then
+            -- Blacklist mode: process if NOT in the list
+            should_process = not in_list
+        else
+            -- Whitelist mode: process if IN the list
+            should_process = in_list
+        end
 
-    if should_process then
-        events.on_event(event_id, function(event)
+        if should_process then
             game.print("Event fired: " .. event_name)
-        end)
-    end
+        end
+    end)
 end

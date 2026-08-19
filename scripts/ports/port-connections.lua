@@ -22,7 +22,7 @@ local function positions_match(pos1, pos2)
 end
 
 local function handle_entity_placed(event)
-    local entity = event.entity or event.created_entity
+    local entity = event.entity
     if not (entity and entity.valid) then return end
 
     local ports = port_defs.get_ports(entity)

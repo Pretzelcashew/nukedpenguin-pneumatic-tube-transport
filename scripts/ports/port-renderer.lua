@@ -10,7 +10,7 @@ local build_events = {
 }
 
 local function handle_entity_created(event)
-    local entity = event.entity or event.created_entity
+    local entity = event.entity
     if not (entity and entity.valid) then return end
 
     local ports = port_defs.get_ports(entity)

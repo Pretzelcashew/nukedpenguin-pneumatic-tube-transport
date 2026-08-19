@@ -1,6 +1,7 @@
--- scripts/port-definitions.lua
-local port_definitions = {
+-- scripts/ports/port-definitions.lua
+local port_defs = {}
 
+local definitions = {
     -- FIXED HUBS
     ["capsule-hub-horizontal"] = {
         [defines.direction.north] = {
@@ -65,8 +66,18 @@ local port_definitions = {
     }
 }
 
-function port_definitions.get_ports(entity)
-    return port_definitions[entity.name][entity.direction]
+-- Export key names as a flat array for surface.find_entities_filtered
+port_defs.registered_names = {}
+for entity_name in pairs(definitions) do
+    table.insert(port_defs.registered_names, entity_name)
 end
 
-return port_definitions
+function port_defs.get_ports(entity)
+    local entity_ports = definitions[entity.name]
+    if not entity_ports then return nil end
+
+    local dir = entity.direction or defines.direction.north
+    return entity_ports[dir] or entity_ports[defines.direction.north]
+end
+
+return port_defs

@@ -1,5 +1,5 @@
 local events = require("scripts.events")
-local port_defs = require("scripts.port-definitions")
+local port_defs = require("scripts.ports.port-definitions")
 
 -- All entity build events in Factorio
 local build_events = {

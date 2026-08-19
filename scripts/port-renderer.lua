@@ -13,18 +13,15 @@ local function handle_entity_created(event)
     local entity = event.entity or event.created_entity
     if not (entity and entity.valid) then return end
 
-    -- Fetch the custom port data for this entity
-    local def = port_defs[entity.name]
-    if not def or not def.ports then return end
+    local ports = port_defs.get_ports(entity)
+    if not ports then return end
 
-    -- Render a small circle at each port offset attached directly to the entity
-    for _, port in ipairs(def.ports) do
+    for _, port in ipairs(ports) do
         rendering.draw_circle{
-            color = {r = 0, g = 1, b = 0.2, a = 0.8}, -- Bright cyan/green dot
+            color = {r = 0, g = 1, b = 0.2, a = 0.8},
             radius = 0.12,
             filled = true,
-            target = entity,
-            target_offset = port.offset,
+            target = { entity = entity, offset = port.offset },
             surface = entity.surface
         }
     end

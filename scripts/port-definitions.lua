@@ -1,29 +1,78 @@
 -- scripts/port-definitions.lua
 local port_definitions = {
-    
+
+    -- FIXED HUBS
     ["capsule-hub-horizontal"] = {
-        -- 6 Ports using your specific offsets
         ports = {
-            { id = "top_left",     offset = {x = -0.5, y = -1.0}, direction = defines.direction.north },
-            { id = "top_right",    offset = {x =  0.5, y = -1.0}, direction = defines.direction.north },
-            { id = "bottom_left",  offset = {x = -0.5, y =  1.0}, direction = defines.direction.south },
-            { id = "bottom_right", offset = {x =  0.5, y =  1.0}, direction = defines.direction.south },
-            { id = "far_left",     offset = {x = -2.0, y =  0.0}, direction = defines.direction.west },
-            { id = "far_right",    offset = {x =  2.0, y =  0.0}, direction = defines.direction.east }
+            { offset = {x = -0.5, y = -0.5} },
+            { offset = {x =  0.5, y = -0.5} },
+            { offset = {x = -0.5, y =  0.5} },
+            { offset = {x =  0.5, y =  0.5} },
+            { offset = {x = -1.0, y =  0.0} },
+            { offset = {x =  1.0, y =  0.0} }
         }
     },
 
     ["capsule-hub-vertical"] = {
-        -- 6 Ports using the flipped offsets for the vertical orientation
         ports = {
-            { id = "far_top",      offset = {x =  0.0, y = -2.0}, direction = defines.direction.north },
-            { id = "far_bottom",   offset = {x =  0.0, y =  2.0}, direction = defines.direction.south },
-            { id = "left_top",     offset = {x = -1.0, y = -0.5}, direction = defines.direction.west },
-            { id = "left_bottom",  offset = {x = -1.0, y =  0.5}, direction = defines.direction.west },
-            { id = "right_top",    offset = {x =  1.0, y = -0.5}, direction = defines.direction.east },
-            { id = "right_bottom", offset = {x =  1.0, y =  0.5}, direction = defines.direction.east }
+            { offset = {x =  0.0, y = -1.0} },
+            { offset = {x =  0.0, y =  1.0} },
+            { offset = {x = -0.5, y = -0.5} },
+            { offset = {x = -0.5, y =  0.5} },
+            { offset = {x =  0.5, y = -0.5} },
+            { offset = {x =  0.5, y =  0.5} }
+        }
+    },
+
+    -- ROTATABLE TUBES (Bi-directional ports)
+    ["pneumatic-tube"] = {
+        by_direction = {
+            [defines.direction.north] = {
+                { offset = {x = 0.0, y = -1.0} },
+                { offset = {x = 0.0, y =  1.0} }
+            },
+            [defines.direction.south] = {
+                { offset = {x = 0.0, y = -1.0} },
+                { offset = {x = 0.0, y =  1.0} }
+            },
+            [defines.direction.east] = {
+                { offset = {x = -1.0, y = 0.0} },
+                { offset = {x =  1.0, y = 0.0} }
+            },
+            [defines.direction.west] = {
+                { offset = {x = -1.0, y = 0.0} },
+                { offset = {x =  1.0, y = 0.0} }
+            }
+        }
+    },
+
+    -- ROTATABLE PUMPS (Input vs. Output flow)
+    ["pneumatic-pump"] = {
+        by_direction = {
+            [defines.direction.north] = {
+                { type = "input",  offset = {x = 0.0, y =  1.0} },
+                { type = "output", offset = {x = 0.0, y = -1.0} }
+            },
+            [defines.direction.east] = {
+                { type = "input",  offset = {x = -1.0, y = 0.0} },
+                { type = "output", offset = {x =  1.0, y = 0.0} }
+            },
+            [defines.direction.south] = {
+                { type = "input",  offset = {x = 0.0, y = -1.0} },
+                { type = "output", offset = {x = 0.0, y =  1.0} }
+            },
+            [defines.direction.west] = {
+                { type = "input",  offset = {x =  1.0, y = 0.0} },
+                { type = "output", offset = {x = -1.0, y = 0.0} }
+            }
         }
     }
 }
+
+function port_definitions.get_ports(entity)
+    local def = port_definitions[entity.name]
+    if not def then return nil end
+    return def.ports or (def.by_direction and def.by_direction[entity.direction])
+end
 
 return port_definitions

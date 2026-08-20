@@ -71,6 +71,24 @@ local definitions = {
             { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
             { group = 1, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
             { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.east] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.south] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.west] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
         }
     },
 }

@@ -2,8 +2,8 @@ local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
-require("scripts.ports.port-connection")
-require("scripts.networks.member-removed")
+require("scripts.networks.network-connect")
+require("scripts.networks.network-disconnect")
 
 
 local function setup_storage()

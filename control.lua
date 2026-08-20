@@ -1,14 +1,13 @@
--- control.lua
 local events = require("scripts.events")
---require("scripts.event-logger")
+local networks = require("scripts.networks.networks")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
 require("scripts.ports.port-connection")
 
-script.on_init(function()
+local function setup_storage()
     storage.port_connections = storage.port_connections or {}
-end)
+    networks.init()
+end
 
-script.on_configuration_changed(function()
-    storage.port_connections = storage.port_connections or {}
-end)
+script.on_init(setup_storage)
+script.on_configuration_changed(setup_storage)

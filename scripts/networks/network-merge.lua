@@ -1,11 +1,11 @@
 local networks = require("scripts.networks.networks")
-local network_join = {}
+local network_merge = {}
 
 local function get_port_key(unit_number, port_index)
     return unit_number .. ":" .. port_index
 end
 
-function network_join.execute(entity_a, port_a_index, entity_b, port_b_index)
+function network_merge.execute(entity_a, port_a_index, entity_b, port_b_index)
     networks.init()
     local port_to_net = storage.networks.port_to_network
 
@@ -24,9 +24,10 @@ function network_join.execute(entity_a, port_a_index, entity_b, port_b_index)
     elseif not net_a and net_b then
         networks.add_member(net_b, unit_a, port_a_index)
     elseif net_a ~= net_b then
-        -- Distinct networks touching at a JOIN boundary (e.g. Pump/Hub): Keep IDs separate
-        game.print(string.format("[NETWORK JOINED] Connected Network #%d <-> Network #%d (Keeping separate)", net_a, net_b))
+        -- Tube-to-tube MERGE boundary: Collapse Network B into Network A
+        networks.merge(net_a, net_b)
+        game.print(string.format("[NETWORK MERGED] Absorbed Network #%d into Network #%d", net_b, net_a))
     end
 end
 
-return network_join
+return network_merge

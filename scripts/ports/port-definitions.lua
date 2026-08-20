@@ -63,7 +63,16 @@ local definitions = {
             { group = 1, flow = "in",  connection = "join", offset = {x =  1.0, y = 0.0} },
             { group = 1, flow = "out", connection = "join", offset = {x = -1.0, y = 0.0} }
         }
-    }
+    },
+
+    ["junction"] = {
+        [defines.direction.north] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        }
+    },
 }
 
 -- Flat array for engine-level filtering in find_entities_filtered

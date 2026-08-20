@@ -47,5 +47,15 @@ data:extend({
     order = "b[pneumatic-pump]",
     stack_size = 20,
     place_result = "pneumatic-pump"
+  },
+  {
+    type = "item",
+    name = "junction",
+    icon = "__base__/graphics/icons/iron-chest.png",
+    icon_size = 64,
+    subgroup = "storage",
+    order = "z[junction]",
+    stack_size = 50,
+    place_result = "junction"
   }
 })

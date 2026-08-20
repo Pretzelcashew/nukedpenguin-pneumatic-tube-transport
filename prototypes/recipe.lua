@@ -56,5 +56,16 @@ data:extend({
     results = {
       {type = "item", name = "pneumatic-pump", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "junction",
+    enabled = true,
+    ingredients = {
+      {type = "item", name = "iron-plate", amount = 1}
+    },
+    results = {
+      {type = "item", name = "junction", amount = 1}
+    }
   }
 })

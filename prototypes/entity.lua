@@ -225,5 +225,27 @@ data:extend({
         scale = 0.5
       }
     }
+  },
+  {
+    type = "simple-entity-with-owner",
+    name = "junction",
+    icon = "__base__/graphics/icons/iron-chest.png",
+    icon_size = 64,
+    flags = {"placeable-neutral", "placeable-player", "player-creation"},
+    minable = {mining_time = 0.2, result = "junction"},
+    max_health = 100,
+    collision_box = {{-0.4, -0.4}, {0.4, 0.4}},
+    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
+    picture = {
+      layers = {
+        {
+          filename = "__base__/graphics/entity/iron-chest/iron-chest.png",
+          width = 64,
+          height = 64,
+          scale = 0.5,
+          shift = {0, 0}
+        }
+      }
+    }
   }
 })

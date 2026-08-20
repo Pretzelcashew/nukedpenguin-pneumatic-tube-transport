@@ -17,8 +17,8 @@ function networks.create()
     return id
 end
 
---- Records a physical or internal edge connection between two ports
-function networks.record_connection(unit_a, port_a_index, unit_b, port_b_index)
+--- Records a physical or internal edge connection between two ports along with its type
+function networks.record_connection(unit_a, port_a_index, unit_b, port_b_index, conn_type)
     networks.init()
     local key_a = unit_a .. ":" .. port_a_index
     local key_b = unit_b .. ":" .. port_b_index
@@ -26,8 +26,26 @@ function networks.record_connection(unit_a, port_a_index, unit_b, port_b_index)
     storage.port_connections[key_a] = storage.port_connections[key_a] or {}
     storage.port_connections[key_b] = storage.port_connections[key_b] or {}
 
-    storage.port_connections[key_a][key_b] = true
-    storage.port_connections[key_b][key_a] = true
+    storage.port_connections[key_a][key_b] = conn_type
+    storage.port_connections[key_b][key_a] = conn_type
+end
+
+--- Removes an edge connection between two port keys
+function networks.remove_connection(key_a, key_b)
+    networks.init()
+    if storage.port_connections[key_a] then
+        storage.port_connections[key_a][key_b] = nil
+        if next(storage.port_connections[key_a]) == nil then
+            storage.port_connections[key_a] = nil
+        end
+    end
+
+    if storage.port_connections[key_b] then
+        storage.port_connections[key_b][key_a] = nil
+        if next(storage.port_connections[key_b]) == nil then
+            storage.port_connections[key_b] = nil
+        end
+    end
 end
 
 --- Binds ALL ports sharing a specific group on an entity to a network
@@ -60,10 +78,10 @@ function networks.bind_group_to_network(entity, group_id, network_id)
         end
     end
 
-    -- Record internal edges between all ports belonging to this group
+    -- Internal entity ports within the same group are internally merged
     for i = 1, #group_ports do
         for j = i + 1, #group_ports do
-            networks.record_connection(entity.unit_number, group_ports[i], entity.unit_number, group_ports[j])
+            networks.record_connection(entity.unit_number, group_ports[i], entity.unit_number, group_ports[j], "merge")
         end
     end
 end

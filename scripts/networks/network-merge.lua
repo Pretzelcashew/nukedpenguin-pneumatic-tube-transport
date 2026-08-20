@@ -9,8 +9,8 @@ end
 function network_merge.execute(entity_a, port_a_index, entity_b, port_b_index)
     networks.init()
     
-    -- 1. Always record the physical connection edge
-    networks.record_connection(entity_a.unit_number, port_a_index, entity_b.unit_number, port_b_index)
+    -- Explicitly record connection type as "merge"
+    networks.record_connection(entity_a.unit_number, port_a_index, entity_b.unit_number, port_b_index, "merge")
 
     local ports_a = port_defs.get_ports(entity_a)
     local ports_b = port_defs.get_ports(entity_b)

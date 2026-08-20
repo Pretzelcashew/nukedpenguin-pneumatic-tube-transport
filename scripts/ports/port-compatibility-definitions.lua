@@ -1,7 +1,5 @@
--- scripts/ports/port-compatibility-definitions.lua
 local compatibility_defs = {}
 
--- Allowed flow pairings (symmetric - order does not matter)
 compatibility_defs.flows = {
     { "in",  "out" },
     { "in",  "any" },
@@ -9,11 +7,10 @@ compatibility_defs.flows = {
     { "any", "any" }
 }
 
--- Allowed connection combinations and their explicit outcome mapping
 compatibility_defs.connections = {
-    { pair = { "join", "join" },   outcome = "join" },
-    { pair = { "join", "merge" },  outcome = "join" },
-    { pair = { "merge", "merge" }, outcome = "merge" }
+    { pair = { "join", "join" },   outcome = "join",  unoutcome = "unjoin" },
+    { pair = { "join", "merge" },  outcome = "join",  unoutcome = "unjoin" },
+    { pair = { "merge", "merge" }, outcome = "merge", unoutcome = "unmerge" }
 }
 
 return compatibility_defs

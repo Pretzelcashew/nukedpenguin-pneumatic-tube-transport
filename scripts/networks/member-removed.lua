@@ -1,7 +1,6 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
-local port_walk = require("scripts.ports.port-walk")
-local networks = require("scripts.networks.networks")
+local connection_defs = require("scripts.ports.port-connection-definitions")
 
 local removal_events = {
     defines.events.on_player_mined_entity,
@@ -21,71 +20,35 @@ local function handle_entity_removed(event)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
-    networks.init()
-
     local unit_number = entity.unit_number
-    local external_neighbors_to_check = {}
-    local affected_old_net_ids = {}
 
-    -- 1. Gather neighbors and clear entity port entries
+    -- Iterate through entity's ports and process existing graph edges
     for p_idx, _ in ipairs(ports) do
         local port_key = get_port_key(unit_number, p_idx)
+        local neighbors = storage.port_connections and storage.port_connections[port_key]
 
-        local old_net_id = storage.networks.port_to_network[port_key]
-        if old_net_id then
-            affected_old_net_ids[old_net_id] = true
-        end
-
-        local neighbors = storage.port_connections[port_key]
         if neighbors then
-            for neighbor_key in pairs(neighbors) do
-                -- Only keep neighbors belonging to external entities
-                local neighbor_unit = tonumber(neighbor_key:match("^(%d+):"))
-                if neighbor_unit ~= unit_number then
-                    table.insert(external_neighbors_to_check, neighbor_key)
-                end
+            -- Copy neighbors map to safely iterate during mutation
+            local neighbor_edges = {}
+            for neighbor_key, conn_type in pairs(neighbors) do
+                table.insert(neighbor_edges, { key = neighbor_key, type = conn_type })
+            end
 
-                -- Disconnect neighbor's connection back to this port
-                if storage.port_connections[neighbor_key] then
-                    storage.port_connections[neighbor_key][port_key] = nil
-                    if next(storage.port_connections[neighbor_key]) == nil then
-                        storage.port_connections[neighbor_key] = nil
-                    end
+            for _, edge in ipairs(neighbor_edges) do
+                -- Map the stored edge connection type directly to its unoutcome counterpart
+                local unoutcome = "un" .. edge.type  -- "merge" -> "unmerge", "join" -> "unjoin"
+                local def = connection_defs.types[unoutcome]
+
+                if def and def.handler then
+                    -- Unoutcome handler does all graph cleanup and component splits
+                    def.handler(port_key, edge.key)
                 end
             end
         end
 
-        storage.port_connections[port_key] = nil
-        storage.networks.port_to_network[port_key] = nil
-    end
-
-    -- Clear stale old network IDs
-    for old_id in pairs(affected_old_net_ids) do
-        storage.networks.list[old_id] = nil
-    end
-
-    -- 2. Traverse severed subgraphs to build new isolated networks
-    local visited_all = {}
-
-    for _, start_key in ipairs(external_neighbors_to_check) do
-        if not visited_all[start_key] then
-            local visited_subgraph = port_walk.traverse(start_key)
-
-            local new_net_id = networks.create()
-            for node_key in pairs(visited_subgraph) do
-                visited_all[node_key] = true
-                storage.networks.port_to_network[node_key] = new_net_id
-
-                local u_num, p_idx = node_key:match("^(%d+):(%d+)$")
-                if u_num and p_idx then
-                    table.insert(storage.networks.list[new_net_id].members, {
-                        unit_number = tonumber(u_num),
-                        port_index = tonumber(p_idx)
-                    })
-                end
-            end
-
-            game.print(string.format("[REMOVAL SPLIT] Formed Network #%d starting from %s", new_net_id, start_key))
+        -- Clean up orphaned network mapping for this port
+        if storage.networks and storage.networks.port_to_network then
+            storage.networks.port_to_network[port_key] = nil
         end
     end
 end

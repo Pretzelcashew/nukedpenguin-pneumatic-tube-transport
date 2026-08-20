@@ -1,19 +1,13 @@
 local port_walk = {}
 
---- Traverses all connected ports starting from a given port key
+--- Traverses all connected ports (internal and external) starting from a port key
 -- @param start_port_key string Format "unit_number:port_index"
 -- @return table<string, boolean> Set of all visited port keys {[port_key] = true}
 function port_walk.traverse(start_port_key)
     local visited = {}
-    if not start_port_key then return visited end
+    if not (start_port_key and storage.port_connections) then return visited end
 
     visited[start_port_key] = true
-
-    -- If the port has no recorded connections, return just itself
-    if not (storage.port_connections and storage.port_connections[start_port_key]) then
-        return visited
-    end
-
     local queue = { start_port_key }
     local head = 1
 

@@ -17,7 +17,7 @@ function networks.create()
     return id
 end
 
---- Records a physical edge connection between two ports
+--- Records a physical or internal edge connection between two ports
 function networks.record_connection(unit_a, port_a_index, unit_b, port_b_index)
     networks.init()
     local key_a = unit_a .. ":" .. port_a_index
@@ -36,12 +36,14 @@ function networks.bind_group_to_network(entity, group_id, network_id)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
+    local group_ports = {}
+
     for p_idx, p_data in ipairs(ports) do
         if p_data.group == group_id then
+            table.insert(group_ports, p_idx)
             local key = entity.unit_number .. ":" .. p_idx
             storage.networks.port_to_network[key] = network_id
 
-            -- Ensure member isn't duplicated in list
             local net = storage.networks.list[network_id]
             if net then
                 local exists = false
@@ -55,6 +57,13 @@ function networks.bind_group_to_network(entity, group_id, network_id)
                     table.insert(net.members, { unit_number = entity.unit_number, port_index = p_idx })
                 end
             end
+        end
+    end
+
+    -- Record internal edges between all ports belonging to this group
+    for i = 1, #group_ports do
+        for j = i + 1, #group_ports do
+            networks.record_connection(entity.unit_number, group_ports[i], entity.unit_number, group_ports[j])
         end
     end
 end

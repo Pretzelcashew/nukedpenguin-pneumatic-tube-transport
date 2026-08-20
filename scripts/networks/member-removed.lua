@@ -24,18 +24,28 @@ local function handle_entity_removed(event)
     networks.init()
 
     local unit_number = entity.unit_number
-    local neighbor_keys_to_check = {}
+    local external_neighbors_to_check = {}
+    local affected_old_net_ids = {}
 
-    -- 1. Sever physical edges and unbind entity ports from storage
+    -- 1. Gather neighbors and clear entity port entries
     for p_idx, _ in ipairs(ports) do
         local port_key = get_port_key(unit_number, p_idx)
-        local neighbors = storage.port_connections[port_key]
 
+        local old_net_id = storage.networks.port_to_network[port_key]
+        if old_net_id then
+            affected_old_net_ids[old_net_id] = true
+        end
+
+        local neighbors = storage.port_connections[port_key]
         if neighbors then
             for neighbor_key in pairs(neighbors) do
-                table.insert(neighbor_keys_to_check, neighbor_key)
+                -- Only keep neighbors belonging to external entities
+                local neighbor_unit = tonumber(neighbor_key:match("^(%d+):"))
+                if neighbor_unit ~= unit_number then
+                    table.insert(external_neighbors_to_check, neighbor_key)
+                end
 
-                -- Disconnect neighbor's link back to this port
+                -- Disconnect neighbor's connection back to this port
                 if storage.port_connections[neighbor_key] then
                     storage.port_connections[neighbor_key][port_key] = nil
                     if next(storage.port_connections[neighbor_key]) == nil then
@@ -45,37 +55,25 @@ local function handle_entity_removed(event)
             end
         end
 
-        -- Clear entity port data from storage
         storage.port_connections[port_key] = nil
-        local old_net_id = storage.networks.port_to_network[port_key]
         storage.networks.port_to_network[port_key] = nil
-
-        -- Remove member entry from old network
-        if old_net_id and storage.networks.list[old_net_id] then
-            local members = storage.networks.list[old_net_id].members
-            for i = #members, 1, -1 do
-                if members[i].unit_number == unit_number and members[i].port_index == p_idx then
-                    table.remove(members, i)
-                end
-            end
-        end
     end
 
-    -- 2. Traverse severed neighbors using port_walk to rebuild network components
+    -- Clear stale old network IDs
+    for old_id in pairs(affected_old_net_ids) do
+        storage.networks.list[old_id] = nil
+    end
+
+    -- 2. Traverse severed subgraphs to build new isolated networks
     local visited_all = {}
 
-    for _, neighbor_key in ipairs(neighbor_keys_to_check) do
-        if not visited_all[neighbor_key] then
-            local visited_subgraph = port_walk.traverse(neighbor_key)
+    for _, start_key in ipairs(external_neighbors_to_check) do
+        if not visited_all[start_key] then
+            local visited_subgraph = port_walk.traverse(start_key)
 
-            -- Mark visited nodes so we don't re-process the same connected component
-            for node_key in pairs(visited_subgraph) do
-                visited_all[node_key] = true
-            end
-
-            -- Assign new Network ID to the remaining valid subgraph
             local new_net_id = networks.create()
             for node_key in pairs(visited_subgraph) do
+                visited_all[node_key] = true
                 storage.networks.port_to_network[node_key] = new_net_id
 
                 local u_num, p_idx = node_key:match("^(%d+):(%d+)$")
@@ -87,7 +85,7 @@ local function handle_entity_removed(event)
                 end
             end
 
-            game.print(string.format("[REMOVAL SPLIT] Formed Network #%d from severed edge starting at %s", new_net_id, neighbor_key))
+            game.print(string.format("[REMOVAL SPLIT] Formed Network #%d starting from %s", new_net_id, start_key))
         end
     end
 end

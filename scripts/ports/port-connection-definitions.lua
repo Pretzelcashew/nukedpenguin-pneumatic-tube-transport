@@ -12,4 +12,9 @@ connection_defs.types = {
     ["unmerge"] = { handler = network_unmerge.execute }
 }
 
+connection_defs.inverses = {
+    ["merge"] = "unmerge",
+    ["join"]  = "unjoin"
+}
+
 return connection_defs

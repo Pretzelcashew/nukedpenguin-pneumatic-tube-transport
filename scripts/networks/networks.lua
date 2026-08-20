@@ -101,4 +101,15 @@ function networks.merge(net_a_id, net_b_id)
     storage.networks.list[net_b_id] = nil
 end
 
+--- Purges network mappings and connections for a specific port key
+function networks.purge_port(port_key)
+    networks.init()
+    if storage.port_connections then
+        storage.port_connections[port_key] = nil
+    end
+    if storage.networks and storage.networks.port_to_network then
+        storage.networks.port_to_network[port_key] = nil
+    end
+end
+
 return networks

@@ -1,4 +1,5 @@
 local networks = require("scripts.networks.networks")
+local port_defs = require("scripts.ports.port-definitions")
 local network_join = {}
 
 local function get_port_key(unit_number, port_index)
@@ -7,26 +8,33 @@ end
 
 function network_join.execute(entity_a, port_a_index, entity_b, port_b_index)
     networks.init()
-    local port_to_net = storage.networks.port_to_network
 
-    local unit_a, unit_b = entity_a.unit_number, entity_b.unit_number
-    if not (unit_a and unit_b) then return end
+    -- 1. Always record the physical connection edge
+    networks.record_connection(entity_a.unit_number, port_a_index, entity_b.unit_number, port_b_index)
 
-    local key_a, key_b = get_port_key(unit_a, port_a_index), get_port_key(unit_b, port_b_index)
-    local net_a, net_b = port_to_net[key_a], port_to_net[key_b]
+    local ports_a = port_defs.get_ports(entity_a)
+    local ports_b = port_defs.get_ports(entity_b)
+    local group_a = ports_a[port_a_index].group
+    local group_b = ports_b[port_b_index].group
 
-    if not net_a and not net_b then
-        local new_net_id = networks.create()
-        networks.add_member(new_net_id, unit_a, port_a_index)
-        networks.add_member(new_net_id, unit_b, port_b_index)
-    elseif net_a and not net_b then
-        networks.add_member(net_a, unit_b, port_b_index)
-    elseif not net_a and net_b then
-        networks.add_member(net_b, unit_a, port_a_index)
-    elseif net_a ~= net_b then
-        -- Distinct networks touching at a JOIN boundary (e.g. Pump/Hub): Keep IDs separate
-        game.print(string.format("[NETWORK JOINED] Connected Network #%d <-> Network #%d (Keeping separate)", net_a, net_b))
+    local key_a = get_port_key(entity_a.unit_number, port_a_index)
+    local key_b = get_port_key(entity_b.unit_number, port_b_index)
+
+    local net_a = storage.networks.port_to_network[key_a]
+    local net_b = storage.networks.port_to_network[key_b]
+
+    -- Bind internal groups to ensure internal continuity on both sides
+    if not net_a then
+        net_a = networks.create()
+        networks.bind_group_to_network(entity_a, group_a, net_a)
     end
+
+    if not net_b then
+        net_b = networks.create()
+        networks.bind_group_to_network(entity_b, group_b, net_b)
+    end
+
+    game.print(string.format("[JOIN BOUNDARY] Edge created between Network #%d and Network #%d (Keeping IDs separate)", net_a, net_b))
 end
 
 return network_join

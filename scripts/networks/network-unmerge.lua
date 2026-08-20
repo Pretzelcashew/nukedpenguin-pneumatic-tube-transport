@@ -1,3 +1,5 @@
+-- FILE: scripts/networks/network-unmerge.lua
+
 local networks = require("scripts.networks.networks")
 local port_walk = require("scripts.ports.port-walk")
 local network_unmerge = {}
@@ -42,10 +44,16 @@ function network_unmerge.execute(severed_port_key, neighbor_key)
             end
         end
         old_net.members = new_members
-        game.print(string.format("[UNMERGE] Network #%d intact (%d members remain)", old_net_id, #new_members))
+        
+        -- Safety catch: if no members remain, recycle the ID
+        if #old_net.members == 0 then
+            networks.delete(old_net_id)
+            game.print(string.format("[UNMERGE] Network #%d emptied and recycled.", old_net_id))
+        else
+            game.print(string.format("[UNMERGE] Network #%d intact (%d members remain)", old_net_id, #new_members))
+        end
     else
-        -- SPLIT DETECTED! This subgraph is now isolated. 
-        -- Move these visited nodes into a NEW network, leaving the rest in the OLD network.
+        -- SPLIT DETECTED!
         local new_net_id = networks.create()
         local new_net = storage.networks.list[new_net_id]
         
@@ -54,19 +62,25 @@ function network_unmerge.execute(severed_port_key, neighbor_key)
         for _, m in ipairs(old_net.members) do
             local m_key = m.unit_number .. ":" .. m.port_index
             if visited_subgraph[m_key] then
-                -- Move to new network
                 table.insert(new_net.members, m)
                 storage.networks.port_to_network[m_key] = new_net_id
             elseif tostring(m.unit_number) ~= u_severed then
-                -- Keep in old network
                 table.insert(remaining_old_members, m)
             end
         end
         
         old_net.members = remaining_old_members
-        game.print(string.format("[UNMERGE SPLIT] Subgraph broke off into Network #%d (%d members). Network #%d retains %d members.", 
-            new_net_id, #new_net.members, old_net_id, #old_net.members))
+        
+        -- Safety catch for the old network chunk
+        if #old_net.members == 0 then
+            networks.delete(old_net_id)
+            game.print(string.format("[UNMERGE SPLIT] Subgraph broke off into Network #%d (%d members). Old network #%d was emptied and recycled.", 
+                new_net_id, #new_net.members, old_net_id))
+        else
+            game.print(string.format("[UNMERGE SPLIT] Subgraph broke off into Network #%d (%d members). Network #%d retains %d members.", 
+                new_net_id, #new_net.members, old_net_id, #old_net.members))
+        end
     end
-end
+end -- <-- This was the missing 'end' for the function!
 
 return network_unmerge

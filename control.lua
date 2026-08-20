@@ -4,6 +4,7 @@ require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
 require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
+require("scripts.networks.network-rotate")
 
 
 local function setup_storage()

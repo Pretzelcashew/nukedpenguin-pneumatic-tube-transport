@@ -66,18 +66,23 @@ local definitions = {
     }
 }
 
--- Export key names as a flat array for surface.find_entities_filtered
+-- Flat array for engine-level filtering in find_entities_filtered
 port_defs.registered_names = {}
 for entity_name in pairs(definitions) do
     table.insert(port_defs.registered_names, entity_name)
 end
 
+-- scripts/ports/port-definitions.lua
 function port_defs.get_ports(entity)
     local entity_ports = definitions[entity.name]
     if not entity_ports then return nil end
 
-    local dir = entity.direction or defines.direction.north
-    return entity_ports[dir] or entity_ports[defines.direction.north]
+    local ports = entity_ports[entity.direction]
+    if not ports then
+        error(string.format("[Port Definitions] Missing direction definition '%s' for entity '%s'", tostring(entity.direction), entity.name))
+    end
+
+    return ports
 end
 
 return port_defs

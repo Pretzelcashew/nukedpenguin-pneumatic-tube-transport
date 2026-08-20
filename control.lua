@@ -3,7 +3,7 @@ local events = require("scripts.events")
 --require("scripts.event-logger")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
-require("scripts.ports.port-logger")
+require("scripts.ports.port-connection")
 
 script.on_init(function()
     storage.port_connections = storage.port_connections or {}

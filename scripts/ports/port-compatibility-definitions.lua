@@ -9,11 +9,11 @@ compatibility_defs.flows = {
     { "any", "any" }
 }
 
--- Allowed connection type pairings (symmetric - order does not matter)
+-- Allowed connection combinations and their explicit outcome mapping
 compatibility_defs.connections = {
-    { "join",  "join" },
-    { "join",  "merge" },
-    { "merge", "merge" }
+    { pair = { "join", "join" },   outcome = "join" },
+    { pair = { "join", "merge" },  outcome = "join" },
+    { pair = { "merge", "merge" }, outcome = "merge" }
 }
 
 return compatibility_defs

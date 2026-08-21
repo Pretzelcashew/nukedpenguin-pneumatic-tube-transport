@@ -62,7 +62,11 @@ function hub_packing.evaluate_inventory(entity)
 
     -- 3. Filter and group inventory
     local allow_consolidation = (capsule_def.full_stacks or false) and (capsule_def.consolidate_stacks or false)
-    local allow_mixed_quality = capsule_def.mixed_quality or false
+    local mq_setting = capsule_def.mixed_quality
+    local allow_mixed_quality = (mq_setting == true or mq_setting == "any")
+    local is_strict_capsule = (mq_setting == "strict" or mq_setting == "capsule")
+    local is_vessel_lock = (mq_setting == "vessel")
+
     local grouped_inventory = {}
     local group_order = {}
 
@@ -77,9 +81,11 @@ function hub_packing.evaluate_inventory(entity)
 
             if is_primary_leftover then avail_count = avail_count - 1 end
 
-            if avail_count > 0 and quality_filter.is_quality_allowed(item_q_name, item_q_level, quality_level, capsule_def.quality_filter) then
+            local vessel_lock_pass = not is_vessel_lock or (item_q_level == quality_level)
+
+            if avail_count > 0 and vessel_lock_pass and quality_filter.is_quality_allowed(item_q_name, item_q_level, quality_level, capsule_def.quality_filter) then
                 local group_key = item_name
-                if not allow_mixed_quality or allow_consolidation then
+                if not allow_mixed_quality or allow_consolidation or is_strict_capsule then
                     group_key = item_name .. "@" .. item_q_name
                 end
 
@@ -100,6 +106,19 @@ function hub_packing.evaluate_inventory(entity)
                 })
             end
         end
+    end
+
+    -- Enforce 'strict' / 'capsule' single quality lock across different item types
+    if is_strict_capsule and #group_order > 0 then
+        local target_quality = grouped_inventory[group_order[1]].sources[1].quality_name
+        local filtered_order = {}
+
+        for _, key in ipairs(group_order) do
+            if key:find("@" .. target_quality .. "$") then
+                table.insert(filtered_order, key)
+            end
+        end
+        group_order = filtered_order
     end
 
     -- 4. Calculate transfer plan

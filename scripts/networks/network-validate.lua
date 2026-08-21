@@ -2,6 +2,7 @@
 local port_finder = require("scripts.ports.port-finder")
 local port_evaluator = require("scripts.ports.port-evaluator")
 local connection_defs = require("scripts.ports.port-connection-definitions")
+local network_form_internals = require("scripts.networks.network-form-internals")
 
 local network_validate = {}
 
@@ -9,10 +10,13 @@ local network_validate = {}
 function network_validate.execute(entity)
     if not (entity and entity.valid) then return end
 
-    -- 1. Find physical connections in space
+    -- 1. Initialize internal groups and standalone networks 
+    network_form_internals.execute(entity)
+
+    -- 2. Find physical connections in space
     local spatial_connections = port_finder.find_connections(entity)
 
-    -- 2. Evaluate compatibility and outcome
+    -- 3. Evaluate compatibility and outcome
     for _, conn in ipairs(spatial_connections) do
         local is_compatible, outcome = port_evaluator.are_compatible(
             entity, 

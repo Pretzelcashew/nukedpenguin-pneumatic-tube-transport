@@ -1,8 +1,8 @@
--- FILE: scripts/hubs/hub-tracker.lua
+-- FILE: scripts/hubs/hub-manager.lua
 local events = require("scripts.events")
 local hub_packing = require("scripts.hubs.hub-packing")
 
-local hub_tracker = {}
+local hub_manager = {}
 
 local valid_hubs = {
     ["capsule-hub-horizontal"] = true,
@@ -63,4 +63,4 @@ events.on_event(defines.events.script_raised_destroy, on_hub_removed)
 -- Hook the staggered tick loop
 events.on_event(defines.events.on_tick, on_tick)
 
-return hub_tracker
+return hub_manager

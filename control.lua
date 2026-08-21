@@ -8,8 +8,8 @@ require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
 
--- Require the new tracker so the events register
-require("scripts.hubs.hub-tracker")
+-- Require the new manager so the events register
+require("scripts.hubs.hub-manager")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}

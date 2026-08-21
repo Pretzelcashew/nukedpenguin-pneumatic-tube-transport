@@ -5,155 +5,10 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 
+local quality_filter = require("scripts.hubs.packing.quality-filter")
+local cargo_planner = require("scripts.hubs.packing.cargo-planner")
+
 local hub_packing = {}
-
-local QUALITY_LEVELS = {
-    ["normal"] = 0,
-    ["uncommon"] = 1,
-    ["rare"] = 2,
-    ["epic"] = 3,
-    ["legendary"] = 4
-}
-
--- Evaluates a single quality filter string rule against target item quality and vessel quality
-local function evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, rule_str)
-    rule_str = rule_str:lower():match("^%s*(.-)%s*$")
-    if rule_str == "" or rule_str == "any" or rule_str == "*" then
-        return true, false -- passed, is_blacklist=false
-    end
-
-    if rule_str == "ceil" then
-        return (item_q_level <= vessel_q_level), false
-    end
-
-    -- Match operators: >=, <=, >, <, !=, =, !
-    local op, target_str = rule_str:match("^(>=|<=|>|<|!=|=?%!?)(.+)$")
-    if not op or not target_str then
-        op = "="
-        target_str = rule_str
-    end
-
-    target_str = target_str:match("^%s*(.-)%s*$")
-    local target_level = QUALITY_LEVELS[target_str] or tonumber(target_str) or 0
-
-    if op == ">=" then
-        return (item_q_level >= target_level), false
-    elseif op == "<=" then
-        return (item_q_level <= target_level), false
-    elseif op == ">" then
-        return (item_q_level > target_level), false
-    elseif op == "<" then
-        return (item_q_level < target_level), false
-    elseif op == "!=" or op == "!" then
-        return (item_q_level == target_level or item_q_name == target_str), true -- returns true if blacklisted
-    elseif op == "=" or op == "" then
-        return (item_q_level == target_level or item_q_name == target_str), false
-    end
-
-    return true, false
-end
-
--- Checks if an item's quality passes the capsule's quality_filter rule
-local function is_quality_allowed(item_q_name, item_q_level, vessel_q_level, filter_config)
-    if not filter_config then return true end
-
-    if type(filter_config) == "string" then
-        local pass, is_blacklist = evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, filter_config)
-        return is_blacklist and not pass or (not is_blacklist and pass)
-    elseif type(filter_config) == "table" then
-        local has_whitelist = false
-        local whitelist_passed = false
-
-        for _, rule in ipairs(filter_config) do
-            local pass, is_blacklist = evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, tostring(rule))
-            if is_blacklist then
-                if pass then return false end -- Failed blacklist check immediately
-            else
-                has_whitelist = true
-                if pass then whitelist_passed = true end
-            end
-        end
-
-        if has_whitelist then
-            return whitelist_passed
-        end
-        return true
-    end
-
-    return true
-end
-
--- Helper to plan imaginary consolidation / full stack extractions for a single item/quality group
-local function plan_single_type_cargo(item_name, stack_size, sources, max_slots, require_full_stacks, allow_consolidation)
-    local plan = { extractions = {}, insertions = {} }
-
-    if allow_consolidation then
-        -- 1. Imaginary Consolidation: Calculate total items and how many full stacks they yield per quality
-        -- Consolidation groups must share the same quality level because a single stack cannot mix qualities.
-        local total_count = 0
-        local quality_name = sources[1] and sources[1].quality_name or "normal"
-        for _, src in ipairs(sources) do total_count = total_count + src.count end
-
-        local possible_full_stacks = math.floor(total_count / stack_size)
-        local stacks_to_take = math.min(possible_full_stacks, max_slots)
-
-        if stacks_to_take > 0 then
-            local items_needed = stacks_to_take * stack_size
-            
-            -- Plan physical extractions from hub slots
-            for _, src in ipairs(sources) do
-                if items_needed <= 0 then break end
-                local take_amount = math.min(src.count, items_needed)
-                table.insert(plan.extractions, {
-                    slot_index = src.slot_index,
-                    count = take_amount,
-                    is_primary_leftover = src.is_primary_leftover
-                })
-                items_needed = items_needed - take_amount
-            end
-
-            -- Plan holder insertions as consolidated full stacks preserving quality
-            for k = 1, stacks_to_take do
-                table.insert(plan.insertions, { name = item_name, count = stack_size, quality = quality_name })
-            end
-        end
-
-    elseif require_full_stacks then
-        -- 2. Strict Full Stacks: Only accept slots that are already individual full stacks
-        local full_sources = {}
-        for _, src in ipairs(sources) do
-            if src.count == stack_size then
-                table.insert(full_sources, src)
-            end
-        end
-
-        local stacks_to_take = math.min(#full_sources, max_slots)
-        for k = 1, stacks_to_take do
-            local src = full_sources[k]
-            table.insert(plan.extractions, {
-                slot_index = src.slot_index,
-                count = stack_size,
-                is_primary_leftover = src.is_primary_leftover
-            })
-            table.insert(plan.insertions, { name = item_name, count = stack_size, quality = src.quality_name })
-        end
-
-    else
-        -- 3. Standard: Take slots as they are, preserving individual slot quality
-        local slots_to_take = math.min(#sources, max_slots)
-        for k = 1, slots_to_take do
-            local src = sources[k]
-            table.insert(plan.extractions, {
-                slot_index = src.slot_index,
-                count = src.count,
-                is_primary_leftover = src.is_primary_leftover
-            })
-            table.insert(plan.insertions, { name = item_name, count = src.count, quality = src.quality_name })
-        end
-    end
-
-    return plan
-end
 
 function hub_packing.evaluate_inventory(entity)
     if not (entity and entity.valid) then return end
@@ -180,7 +35,7 @@ function hub_packing.evaluate_inventory(entity)
                 capsule_def = def
                 capsule_name = stack.name
                 if stack.quality then
-                    quality_level = stack.quality.level or QUALITY_LEVELS[stack.quality.name] or 0
+                    quality_level = stack.quality.level or quality_filter.QUALITY_LEVELS[stack.quality.name] or 0
                     quality_name = stack.quality.name or "normal"
                 end
                 break
@@ -190,14 +45,12 @@ function hub_packing.evaluate_inventory(entity)
 
     if not primary_slot then return end
 
-    -- 2. Calculate capacity (base + quality bonus)
+    -- 2. Calculate capacity & limits
     local quality_bonus = quality_level * (capsule_def.quality_affected_capacity or 0)
     local total_capacity = capsule_def.base_capacity + quality_bonus
-
     local self_slot_cost = capsule_def.include_self and 1 or 0
     local max_cargo_slots = total_capacity - self_slot_cost
 
-    -- Resolve polymorphic minimum_cargo
     local required_min_slots = 0
     if type(capsule_def.minimum_cargo) == "string" and capsule_def.minimum_cargo:lower() == "ceil" then
         required_min_slots = total_capacity
@@ -205,20 +58,11 @@ function hub_packing.evaluate_inventory(entity)
         required_min_slots = capsule_def.minimum_cargo
     end
 
-    game.print(string.format("[HUB DEBUG] Found '%s' (%s, Level %d) | Base Cap: %d | Quality Bonus: +%d | Total Cap: %d | Max Cargo Slots: %d | Min Req: %d", 
-        capsule_name, quality_name, quality_level, capsule_def.base_capacity, quality_bonus, total_capacity, max_cargo_slots, required_min_slots))
+    if max_cargo_slots < 0 then return end
 
-    if max_cargo_slots < 0 then
-        game.print("[HUB DEBUG] Aborted: max_cargo_slots is less than 0 (cannot fit self)")
-        return
-    end
-
-    -- 3. Group inventory by item type and quality for imaginary pre-checks
-    local require_full_stacks = capsule_def.full_stacks or false
-    local allow_consolidation = require_full_stacks and (capsule_def.consolidate_stacks or false)
+    -- 3. Filter and group inventory
+    local allow_consolidation = (capsule_def.full_stacks or false) and (capsule_def.consolidate_stacks or false)
     local allow_mixed_quality = capsule_def.mixed_quality or false
-    local quality_filter = capsule_def.quality_filter
-
     local grouped_inventory = {}
     local group_order = {}
 
@@ -226,21 +70,17 @@ function hub_packing.evaluate_inventory(entity)
         local stack = inventory[i]
         if stack and stack.valid_for_read then
             local item_name = stack.name
-            local item_quality_name = stack.quality and stack.quality.name or "normal"
-            local item_quality_level = (stack.quality and stack.quality.level) or QUALITY_LEVELS[item_quality_name] or 0
+            local item_q_name = stack.quality and stack.quality.name or "normal"
+            local item_q_level = (stack.quality and stack.quality.level) or quality_filter.QUALITY_LEVELS[item_q_name] or 0
             local avail_count = stack.count
             local is_primary_leftover = (i == primary_slot)
 
-            if is_primary_leftover then
-                avail_count = avail_count - 1
-            end
+            if is_primary_leftover then avail_count = avail_count - 1 end
 
-            -- Filter by item quality eligibility before grouping
-            if avail_count > 0 and is_quality_allowed(item_quality_name, item_quality_level, quality_level, quality_filter) then
-                -- Build composite group key based on mixed_quality and consolidation rules
+            if avail_count > 0 and quality_filter.is_quality_allowed(item_q_name, item_q_level, quality_level, capsule_def.quality_filter) then
                 local group_key = item_name
                 if not allow_mixed_quality or allow_consolidation then
-                    group_key = item_name .. "@" .. item_quality_name
+                    group_key = item_name .. "@" .. item_q_name
                 end
 
                 if not grouped_inventory[group_key] then
@@ -255,71 +95,32 @@ function hub_packing.evaluate_inventory(entity)
                 table.insert(grouped_inventory[group_key].sources, {
                     slot_index = i,
                     count = avail_count,
-                    quality_name = item_quality_name,
+                    quality_name = item_q_name,
                     is_primary_leftover = is_primary_leftover
                 })
             end
         end
     end
 
-    -- Build transfer plan (Extractions & Consolidated Insertions)
-    local packing_plan = { extractions = {}, insertions = {} }
+    -- 4. Calculate transfer plan
+    local packing_plan = cargo_planner.build_packing_plan(
+        grouped_inventory, group_order, max_cargo_slots, capsule_def, self_slot_cost, required_min_slots
+    )
 
-    if capsule_def.mixed_cargo then
-        -- Mixed Cargo: Fill cargo slots across multiple item types/qualities in inventory order
-        local remaining_slots = max_cargo_slots
-        for _, group_key in ipairs(group_order) do
-            if remaining_slots <= 0 then break end
-            local grp = grouped_inventory[group_key]
-            local plan = plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, remaining_slots, require_full_stacks, allow_consolidation)
-
-            for _, ext in ipairs(plan.extractions) do table.insert(packing_plan.extractions, ext) end
-            for _, ins in ipairs(plan.insertions) do table.insert(packing_plan.insertions, ins) end
-
-            remaining_slots = remaining_slots - #plan.insertions
-        end
-    else
-        -- Single Item Mode: Pick the single group offering the most valid slots
-        local best_plan = { extractions = {}, insertions = {} }
-        local max_found_slots = -1
-
-        for _, group_key in ipairs(group_order) do
-            local grp = grouped_inventory[group_key]
-            local plan = plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, max_cargo_slots, require_full_stacks, allow_consolidation)
-            local num_slots = #plan.insertions
-            local total_processed = num_slots + self_slot_cost
-
-            if total_processed >= required_min_slots and num_slots > max_found_slots then
-                max_found_slots = num_slots
-                best_plan = plan
-            end
-        end
-
-        packing_plan = best_plan
-    end
-
-    -- 4. Evaluate minimum cargo requirement
     local total_slots_processed = #packing_plan.insertions + self_slot_cost
+    if total_slots_processed < required_min_slots then return end
 
-    if total_slots_processed < required_min_slots then
-        game.print(string.format("[HUB DEBUG] Aborted: Could not find valid cargo configuration (Processed %d < Min Required %d)", 
-            total_slots_processed, required_min_slots))
-        return
-    end
-
-    -- 5. Create holder using dynamic holder_type
+    -- 5. Spawn holder
     local liminal_surface = liminal_surface_mgr.get()
     local holder_prototype = capsule_def.holder_type or "invisible-capsule-holder"
-    
     local holder = liminal_surface.create_entity{
         name = holder_prototype,
         position = {0, 0},
         force = entity.force
     }
-
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- 6. Execute physical extraction from Hub and insert consolidated stacks to Holder
+    -- 6. Execute extractions & insertions
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
@@ -335,16 +136,11 @@ function hub_packing.evaluate_inventory(entity)
         dest_inv.insert{name = ins.name, count = ins.count, quality = ins.quality}
     end
 
-    -- 7. Process primary capsule item lifecycle
+    -- 7. Handle primary capsule lifecycle
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
-            dest_inv.insert{
-                name = primary_stack.name,
-                count = 1,
-                quality = quality_name
-            }
-            game.print(string.format("[HUB DEBUG] Primary capsule '%s' inserted into holder", capsule_name))
+            dest_inv.insert{name = primary_stack.name, count = 1, quality = quality_name}
         end
 
         if capsule_def.include_self or capsule_def.destroy_self then
@@ -353,22 +149,16 @@ function hub_packing.evaluate_inventory(entity)
             else
                 primary_stack.clear()
             end
-            local action = capsule_def.destroy_self and "destroyed" or "consumed"
-            game.print(string.format("[HUB DEBUG] Primary capsule '%s' %s from hub chest", capsule_name, action))
         end
     end
 
-    -- 8. Validate destroy_holder_if_empty
+    -- 8. Final checks & registration
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() then
-        game.print(string.format("[HUB DEBUG] Aborted: Holder '%s' destroyed because inventory was empty", holder_prototype))
         holder.destroy()
         return
     end
 
-    -- 9. Register populated holder
-    local capsule_id = capsule_manager.register(holder, capsule_name)
-    game.print(string.format("[PACK SUCCESS] Capsule %s -> Holder %d (%s) | Packed %d cargo slots", 
-        capsule_name, capsule_id or holder.unit_number, holder_prototype, #packing_plan.insertions))
+    capsule_manager.register(holder, capsule_name)
 end
 
 return hub_packing

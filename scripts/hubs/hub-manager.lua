@@ -1,22 +1,18 @@
 -- FILE: scripts/hubs/hub-manager.lua
 local events = require("scripts.events")
 local hub_packing = require("scripts.hubs.hub-packing")
+local hub_defs = require("scripts.hubs.hub-definitions")
 
 local hub_manager = {}
-
-local valid_hubs = {
-    ["capsule-hub-horizontal"] = true,
-    ["capsule-hub-vertical"] = true
-}
 
 -- Add a new hub to the active registry
 local function on_hub_built(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
     
-    if valid_hubs[entity.name] then
+    local def = hub_defs.types[entity.name]
+    if def and def.type == "hub" then
         storage.active_hubs = storage.active_hubs or {}
-        -- Using unit_number as the key makes tracking and deletion O(1)
         storage.active_hubs[entity.unit_number] = entity
     end
 end
@@ -26,23 +22,21 @@ local function on_hub_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
     
-    if valid_hubs[entity.name] and storage.active_hubs then
+    local def = hub_defs.types[entity.name]
+    if def and storage.active_hubs then
         storage.active_hubs[entity.unit_number] = nil
     end
 end
 
 -- The staggered background scanner
 local function on_tick(event)
-    -- Only run every 10 ticks (6 times a second)
     if event.tick % 10 ~= 0 then return end
     if not storage.active_hubs then return end
 
     for unit_number, entity in pairs(storage.active_hubs) do
         if entity.valid then
-            -- Fire the scanner we built earlier
             hub_packing.evaluate_inventory(entity)
         else
-            -- Failsafe: clean up dead entities that somehow missed the removal event
             storage.active_hubs[unit_number] = nil
         end
     end

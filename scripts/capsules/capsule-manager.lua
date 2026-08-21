@@ -1,3 +1,5 @@
+local capsule_defs = require("scripts.capsules.capsule-definitions")
+
 local capsule_manager = {}
 
 function capsule_manager.init()
@@ -5,14 +7,20 @@ function capsule_manager.init()
 end
 
 --- Registers a newly created holder entity into the tracking system
-function capsule_manager.register(holder_entity)
+function capsule_manager.register(holder_entity, capsule_item_name)
     if not (holder_entity and holder_entity.valid) then return nil end
     
+    -- Lookup capsule configuration rules
+    local def = capsule_defs.types[capsule_item_name]
+    if not def then return nil end
+
     capsule_manager.init()
     local capsule_id = holder_entity.unit_number
     
     storage.active_capsules[capsule_id] = {
-        holder = holder_entity
+        holder = holder_entity,
+        type = def.type,
+        definition = def
     }
     
     return capsule_id

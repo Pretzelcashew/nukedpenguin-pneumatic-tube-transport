@@ -7,6 +7,7 @@ require("scripts.ports.port-finder")
 require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
+require("scripts.hubs.hub-manager")
 
 -- Require the new manager so the events register
 require("scripts.hubs.hub-manager")

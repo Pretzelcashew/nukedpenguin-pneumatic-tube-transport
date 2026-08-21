@@ -12,17 +12,18 @@ capsule_definitions.types = {
         minimum_cargo = "ceil",
         full_stacks = true,
         consolidate_stacks = true,
+        quality_filter = "ceil",
 
         -- Lifecycle Flags
         include_self = true,
         destroy_self = false,
         destroy_holder_if_empty = false,
-        destroy_holder_if_primary_expires = false, -- Destroys holder if primary item spoils or vanishes -- checked in on tick for the capsule manager -- not yet implemented
+        destroy_holder_if_primary_expires = false,
 
         -- Entities
         holder_type = "invisible-capsule-holder",
 
-        -- Spill Configuration -- not yet implemented
+        -- Spill Configuration
         spill_contents = {
             units = true,
             mode = "container",

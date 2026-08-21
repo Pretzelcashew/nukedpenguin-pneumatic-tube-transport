@@ -7,6 +7,82 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 
 local hub_packing = {}
 
+local QUALITY_LEVELS = {
+    ["normal"] = 0,
+    ["uncommon"] = 1,
+    ["rare"] = 2,
+    ["epic"] = 3,
+    ["legendary"] = 4
+}
+
+-- Evaluates a single quality filter string rule against target item quality and vessel quality
+local function evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, rule_str)
+    rule_str = rule_str:lower():match("^%s*(.-)%s*$")
+    if rule_str == "" or rule_str == "any" or rule_str == "*" then
+        return true, false -- passed, is_blacklist=false
+    end
+
+    if rule_str == "ceil" then
+        return (item_q_level <= vessel_q_level), false
+    end
+
+    -- Match operators: >=, <=, >, <, !=, =, !
+    local op, target_str = rule_str:match("^(>=|<=|>|<|!=|=?%!?)(.+)$")
+    if not op or not target_str then
+        op = "="
+        target_str = rule_str
+    end
+
+    target_str = target_str:match("^%s*(.-)%s*$")
+    local target_level = QUALITY_LEVELS[target_str] or tonumber(target_str) or 0
+
+    if op == ">=" then
+        return (item_q_level >= target_level), false
+    elseif op == "<=" then
+        return (item_q_level <= target_level), false
+    elseif op == ">" then
+        return (item_q_level > target_level), false
+    elseif op == "<" then
+        return (item_q_level < target_level), false
+    elseif op == "!=" or op == "!" then
+        return (item_q_level == target_level or item_q_name == target_str), true -- returns true if blacklisted
+    elseif op == "=" or op == "" then
+        return (item_q_level == target_level or item_q_name == target_str), false
+    end
+
+    return true, false
+end
+
+-- Checks if an item's quality passes the capsule's quality_filter rule
+local function is_quality_allowed(item_q_name, item_q_level, vessel_q_level, filter_config)
+    if not filter_config then return true end
+
+    if type(filter_config) == "string" then
+        local pass, is_blacklist = evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, filter_config)
+        return is_blacklist and not pass or (not is_blacklist and pass)
+    elseif type(filter_config) == "table" then
+        local has_whitelist = false
+        local whitelist_passed = false
+
+        for _, rule in ipairs(filter_config) do
+            local pass, is_blacklist = evaluate_single_rule(item_q_name, item_q_level, vessel_q_level, tostring(rule))
+            if is_blacklist then
+                if pass then return false end -- Failed blacklist check immediately
+            else
+                has_whitelist = true
+                if pass then whitelist_passed = true end
+            end
+        end
+
+        if has_whitelist then
+            return whitelist_passed
+        end
+        return true
+    end
+
+    return true
+end
+
 -- Helper to plan imaginary consolidation / full stack extractions for a single item/quality group
 local function plan_single_type_cargo(item_name, stack_size, sources, max_slots, require_full_stacks, allow_consolidation)
     local plan = { extractions = {}, insertions = {} }
@@ -104,7 +180,7 @@ function hub_packing.evaluate_inventory(entity)
                 capsule_def = def
                 capsule_name = stack.name
                 if stack.quality then
-                    quality_level = stack.quality.level or 0
+                    quality_level = stack.quality.level or QUALITY_LEVELS[stack.quality.name] or 0
                     quality_name = stack.quality.name or "normal"
                 end
                 break
@@ -141,6 +217,7 @@ function hub_packing.evaluate_inventory(entity)
     local require_full_stacks = capsule_def.full_stacks or false
     local allow_consolidation = require_full_stacks and (capsule_def.consolidate_stacks or false)
     local allow_mixed_quality = capsule_def.mixed_quality or false
+    local quality_filter = capsule_def.quality_filter
 
     local grouped_inventory = {}
     local group_order = {}
@@ -149,7 +226,8 @@ function hub_packing.evaluate_inventory(entity)
         local stack = inventory[i]
         if stack and stack.valid_for_read then
             local item_name = stack.name
-            local item_quality = stack.quality and stack.quality.name or "normal"
+            local item_quality_name = stack.quality and stack.quality.name or "normal"
+            local item_quality_level = (stack.quality and stack.quality.level) or QUALITY_LEVELS[item_quality_name] or 0
             local avail_count = stack.count
             local is_primary_leftover = (i == primary_slot)
 
@@ -157,11 +235,12 @@ function hub_packing.evaluate_inventory(entity)
                 avail_count = avail_count - 1
             end
 
-            if avail_count > 0 then
+            -- Filter by item quality eligibility before grouping
+            if avail_count > 0 and is_quality_allowed(item_quality_name, item_quality_level, quality_level, quality_filter) then
                 -- Build composite group key based on mixed_quality and consolidation rules
                 local group_key = item_name
                 if not allow_mixed_quality or allow_consolidation then
-                    group_key = item_name .. "@" .. item_quality
+                    group_key = item_name .. "@" .. item_quality_name
                 end
 
                 if not grouped_inventory[group_key] then
@@ -176,7 +255,7 @@ function hub_packing.evaluate_inventory(entity)
                 table.insert(grouped_inventory[group_key].sources, {
                     slot_index = i,
                     count = avail_count,
-                    quality_name = item_quality,
+                    quality_name = item_quality_name,
                     is_primary_leftover = is_primary_leftover
                 })
             end

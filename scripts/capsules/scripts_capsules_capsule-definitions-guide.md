@@ -21,6 +21,7 @@ capsule_definitions.types = {
         minimum_cargo = "ceil",
         full_stacks = true,
         consolidate_stacks = true,
+        quality_filter = "ceil",
 
         -- Lifecycle & Holder Flags
         include_self = true,
@@ -89,7 +90,18 @@ return capsule_definitions
 
 ---
 
-### 6. `minimum_cargo`
+### 6. `quality_filter`
+* **Data Type:** String or Table
+* **Allowed Values:**
+  * `"ceil"`: Caps cargo item quality at or below the primary vessel capsule's quality level (`cargo_quality <= vessel_quality`).
+  * `"any"` / `"*"` / `nil`: Accepts any item quality level.
+  * Comparators: `">=rare"`, `">uncommon"`, `"<=epic"`, `"=normal"`, `"!legendary"`.
+  * Array Table: Whitelist / Blacklist combination (e.g., `{"normal", "uncommon"}` or `{"!legendary", ">=uncommon"}`).
+* **Description:** Filters cargo items by quality eligibility before stack consolidation and grouping take place.
+
+---
+
+### 7. `minimum_cargo`
 * **Data Type:** Number or String
 * **Allowed Values:** 
   * `number` (e.g., `0`, `1`, `5`): Minimum slots (cargo + self slot if enabled) required to pack.
@@ -98,7 +110,7 @@ return capsule_definitions
 
 ---
 
-### 7. `full_stacks`
+### 8. `full_stacks`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `false`
 * **Description:** 
@@ -107,7 +119,7 @@ return capsule_definitions
 
 ---
 
-### 8. `consolidate_stacks`
+### 9. `consolidate_stacks`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `false`
 * **Prerequisite:** `full_stacks = true`
@@ -117,7 +129,7 @@ return capsule_definitions
 
 ---
 
-### 9. `include_self`
+### 10. `include_self`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `true`
 * **Description:**
@@ -126,7 +138,7 @@ return capsule_definitions
 
 ---
 
-### 10. `destroy_self`
+### 11. `destroy_self`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `false`
 * **Description:**
@@ -135,7 +147,7 @@ return capsule_definitions
 
 ---
 
-### 11. `destroy_holder_if_empty`
+### 12. `destroy_holder_if_empty`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `false`
 * **Description:**
@@ -144,7 +156,7 @@ return capsule_definitions
 
 ---
 
-### 12. `destroy_holder_if_primary_expires`
+### 13. `destroy_holder_if_primary_expires`
 * **Data Type:** Boolean (`true` or `false`)
 * **Default:** `false`
 * **Description:**
@@ -153,14 +165,14 @@ return capsule_definitions
 
 ---
 
-### 13. `holder_type`
+### 14. `holder_type`
 * **Data Type:** String
 * **Default:** `"invisible-capsule-holder"`
 * **Description:** Prototype name of the entity spawned on the liminal surface to store the cargo.
 
 ---
 
-### 14. `spill_contents`
+### 15. `spill_contents`
 * **Data Type:** Boolean, String, or Table
 * **Default:** `true`
 * **Allowed Values:**
@@ -187,6 +199,7 @@ return capsule_definitions
 | `quality_affected_capacity` | Number | `0` | Extra slots per quality level |
 | `mixed_cargo` | Boolean | `true` | Allow different item types in one capsule |
 | `mixed_quality` | Boolean | `false` | Allow different quality levels in one capsule |
+| `quality_filter` | String/Table | `nil` | Filter eligible cargo quality (`"ceil"`, comparators, whitelists) |
 | `minimum_cargo` | Number/String | `0` | Minimum slots required to trigger pack (`"ceil"` supported) |
 | `full_stacks` | Boolean | `false` | Require cargo items to be full stacks |
 | `consolidate_stacks` | Boolean | `false` | Combine partial stacks virtually into full stacks |

@@ -7,13 +7,15 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 
 local hub_packing = {}
 
--- Helper to plan imaginary consolidation / full stack extractions for a single item type
+-- Helper to plan imaginary consolidation / full stack extractions for a single item/quality group
 local function plan_single_type_cargo(item_name, stack_size, sources, max_slots, require_full_stacks, allow_consolidation)
     local plan = { extractions = {}, insertions = {} }
 
     if allow_consolidation then
-        -- 1. Imaginary Consolidation: Calculate total items and how many full stacks they yield
+        -- 1. Imaginary Consolidation: Calculate total items and how many full stacks they yield per quality
+        -- Consolidation groups must share the same quality level because a single stack cannot mix qualities.
         local total_count = 0
+        local quality_name = sources[1] and sources[1].quality_name or "normal"
         for _, src in ipairs(sources) do total_count = total_count + src.count end
 
         local possible_full_stacks = math.floor(total_count / stack_size)
@@ -22,7 +24,7 @@ local function plan_single_type_cargo(item_name, stack_size, sources, max_slots,
         if stacks_to_take > 0 then
             local items_needed = stacks_to_take * stack_size
             
-            -- Plan physical extractions from hub slots (drain until items_needed == 0)
+            -- Plan physical extractions from hub slots
             for _, src in ipairs(sources) do
                 if items_needed <= 0 then break end
                 local take_amount = math.min(src.count, items_needed)
@@ -34,9 +36,9 @@ local function plan_single_type_cargo(item_name, stack_size, sources, max_slots,
                 items_needed = items_needed - take_amount
             end
 
-            -- Plan holder insertions as consolidated full stacks
+            -- Plan holder insertions as consolidated full stacks preserving quality
             for k = 1, stacks_to_take do
-                table.insert(plan.insertions, { name = item_name, count = stack_size })
+                table.insert(plan.insertions, { name = item_name, count = stack_size, quality = quality_name })
             end
         end
 
@@ -57,11 +59,11 @@ local function plan_single_type_cargo(item_name, stack_size, sources, max_slots,
                 count = stack_size,
                 is_primary_leftover = src.is_primary_leftover
             })
-            table.insert(plan.insertions, { name = item_name, count = stack_size })
+            table.insert(plan.insertions, { name = item_name, count = stack_size, quality = src.quality_name })
         end
 
     else
-        -- 3. Standard: Take slots as they are
+        -- 3. Standard: Take slots as they are, preserving individual slot quality
         local slots_to_take = math.min(#sources, max_slots)
         for k = 1, slots_to_take do
             local src = sources[k]
@@ -70,7 +72,7 @@ local function plan_single_type_cargo(item_name, stack_size, sources, max_slots,
                 count = src.count,
                 is_primary_leftover = src.is_primary_leftover
             })
-            table.insert(plan.insertions, { name = item_name, count = src.count })
+            table.insert(plan.insertions, { name = item_name, count = src.count, quality = src.quality_name })
         end
     end
 
@@ -135,17 +137,19 @@ function hub_packing.evaluate_inventory(entity)
         return
     end
 
-    -- 3. Group inventory by item type for imaginary pre-checks
+    -- 3. Group inventory by item type and quality for imaginary pre-checks
     local require_full_stacks = capsule_def.full_stacks or false
     local allow_consolidation = require_full_stacks and (capsule_def.consolidate_stacks or false)
+    local allow_mixed_quality = capsule_def.mixed_quality or false
 
     local grouped_inventory = {}
-    local item_order = {}
+    local group_order = {}
 
     for i = 1, #inventory do
         local stack = inventory[i]
         if stack and stack.valid_for_read then
             local item_name = stack.name
+            local item_quality = stack.quality and stack.quality.name or "normal"
             local avail_count = stack.count
             local is_primary_leftover = (i == primary_slot)
 
@@ -154,16 +158,25 @@ function hub_packing.evaluate_inventory(entity)
             end
 
             if avail_count > 0 then
-                if not grouped_inventory[item_name] then
-                    grouped_inventory[item_name] = {
+                -- Build composite group key based on mixed_quality and consolidation rules
+                local group_key = item_name
+                if not allow_mixed_quality or allow_consolidation then
+                    group_key = item_name .. "@" .. item_quality
+                end
+
+                if not grouped_inventory[group_key] then
+                    grouped_inventory[group_key] = {
+                        item_name = item_name,
                         stack_size = stack.prototype.stack_size,
                         sources = {}
                     }
-                    table.insert(item_order, item_name)
+                    table.insert(group_order, group_key)
                 end
-                table.insert(grouped_inventory[item_name].sources, {
+
+                table.insert(grouped_inventory[group_key].sources, {
                     slot_index = i,
                     count = avail_count,
+                    quality_name = item_quality,
                     is_primary_leftover = is_primary_leftover
                 })
             end
@@ -174,12 +187,12 @@ function hub_packing.evaluate_inventory(entity)
     local packing_plan = { extractions = {}, insertions = {} }
 
     if capsule_def.mixed_cargo then
-        -- Mixed Cargo: Fill cargo slots across multiple item types in inventory order
+        -- Mixed Cargo: Fill cargo slots across multiple item types/qualities in inventory order
         local remaining_slots = max_cargo_slots
-        for _, item_name in ipairs(item_order) do
+        for _, group_key in ipairs(group_order) do
             if remaining_slots <= 0 then break end
-            local grp = grouped_inventory[item_name]
-            local plan = plan_single_type_cargo(item_name, grp.stack_size, grp.sources, remaining_slots, require_full_stacks, allow_consolidation)
+            local grp = grouped_inventory[group_key]
+            local plan = plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, remaining_slots, require_full_stacks, allow_consolidation)
 
             for _, ext in ipairs(plan.extractions) do table.insert(packing_plan.extractions, ext) end
             for _, ins in ipairs(plan.insertions) do table.insert(packing_plan.insertions, ins) end
@@ -187,13 +200,13 @@ function hub_packing.evaluate_inventory(entity)
             remaining_slots = remaining_slots - #plan.insertions
         end
     else
-        -- Single Item Type: Pick the single group offering the most valid slots
+        -- Single Item Mode: Pick the single group offering the most valid slots
         local best_plan = { extractions = {}, insertions = {} }
         local max_found_slots = -1
 
-        for _, item_name in ipairs(item_order) do
-            local grp = grouped_inventory[item_name]
-            local plan = plan_single_type_cargo(item_name, grp.stack_size, grp.sources, max_cargo_slots, require_full_stacks, allow_consolidation)
+        for _, group_key in ipairs(group_order) do
+            local grp = grouped_inventory[group_key]
+            local plan = plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, max_cargo_slots, require_full_stacks, allow_consolidation)
             local num_slots = #plan.insertions
             local total_processed = num_slots + self_slot_cost
 
@@ -240,7 +253,7 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     for _, ins in ipairs(packing_plan.insertions) do
-        dest_inv.insert{name = ins.name, count = ins.count}
+        dest_inv.insert{name = ins.name, count = ins.count, quality = ins.quality}
     end
 
     -- 7. Process primary capsule item lifecycle

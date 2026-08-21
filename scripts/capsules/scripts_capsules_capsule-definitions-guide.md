@@ -1,6 +1,6 @@
 # Capsule Definitions Reference (`capsule-definitions.lua`)
 
-This document provides a comprehensive specification of all configuration properties available in `capsule_definitions.types`. Each property controls how capsules interact with the hub packing pipeline (`hub-packing.lua`), quality scaling, stack validation, entity lifecycle, and spill management.
+This document provides a clear specification of all configuration properties available in `capsule_definitions.types`. Each property controls how capsules interact with the hub packing pipeline (`hub-packing.lua`), quality scaling, stack validation, entity lifecycle, and spill management.
 
 ---
 
@@ -17,6 +17,7 @@ capsule_definitions.types = {
         base_capacity = 2,
         quality_affected_capacity = 1,
         mixed_cargo = true,
+        mixed_quality = false,
         minimum_cargo = "ceil",
         full_stacks = true,
         consolidate_stacks = true,
@@ -44,151 +45,154 @@ return capsule_definitions
 
 ---
 
-## Detailed Property Breakdown
+## Property Details
 
 ### 1. `type`
-* **Data Type:** `string`
-* **Allowed Values:** Any organizational category string (e.g., `"capsule"`, `"cargo-pod"`, `"unit-capsule"`).
-* **Description:** Categorizes the capsule definition type within Lua scripts. This separates high-level mod logic from underlying Factorio item/entity prototype names.
+* **Data Type:** String
+* **Allowed Values:** Any custom category label (e.g., `"capsule"`, `"cargo-pod"`, `"unit-capsule"`).
+* **Description:** Internal organizational tag for your mod's script logic. It does not map to Factorio engine categories or item prototypes.
 
 ---
 
 ### 2. `base_capacity`
-* **Data Type:** `number` (integer $\ge 0$)
-* **Default / Fallback:** `1`
-* **Description:** The baseline number of inventory slots available inside the capsule holder at normal quality before quality bonuses are applied.
+* **Data Type:** Whole number (0 or higher)
+* **Default:** `1`
+* **Description:** Baseline number of cargo slots in the holder at normal quality.
 
 ---
 
 ### 3. `quality_affected_capacity`
-* **Data Type:** `number` (integer $\ge 0$)
-* **Default / Fallback:** `0`
-* **Description:** Additional inventory slots granted per quality level.
-* **Formula:** 
-  $$	ext{Total Capacity} = 	ext{base\_capacity} + (	ext{quality\_level} 	imes 	ext{quality\_affected\_capacity})$$
+* **Data Type:** Whole number (0 or higher)
+* **Default:** `0`
+* **Description:** Extra cargo slots granted per quality level.
+* **Calculation:** `base_capacity + (quality_level * quality_affected_capacity)`
 * **Quality Levels:** Normal = 0, Uncommon = 1, Rare = 2, Epic = 3, Legendary = 4.
 
 ---
 
 ### 4. `mixed_cargo`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `true`
 * **Description:** 
-  * `true`: Allows cargo slots to contain multiple distinct item prototypes within a single capsule. Items are selected sequentially in inventory order.
-  * `false`: Restricts the capsule to a single item prototype. The packer evaluates all item types present in the chest and selects the single item type group that yields the maximum valid cargo slots while satisfying `minimum_cargo`.
+  * `true`: Allows multiple different item prototypes in the same capsule.
+  * `false`: Restricts the capsule to a single item prototype. The packer selects whichever item group yields the most filled slots.
 
 ---
 
-### 5. `minimum_cargo`
-* **Data Type:** `number` | `string`
+### 5. `mixed_quality`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
+* **Description:**
+  * `true`: Allows cargo stacks of different quality tiers to be packed into the same capsule.
+  * `false`: Restricts cargo selection so that all packed stacks must share the exact same quality level.
+  * **Note:** If `consolidate_stacks = true`, single-quality grouping is automatically enforced per stack regardless of this setting, as Factorio inventory slots cannot hold mixed-quality items.
+
+---
+
+### 6. `minimum_cargo`
+* **Data Type:** Number or String
 * **Allowed Values:** 
-  * `number` (e.g., `0`, `1`, `5`): Minimum total slots (cargo slots + self cost if `include_self = true`) required to execute packing.
-  * `"ceil"`: Dynamically sets required minimum total slots equal to `total_capacity`.
-* **Description:** Defines the threshold of loaded slots required for the hub to successfully pack the capsule. If the chest contains fewer items than required, packing is aborted without modifying the hub chest.
+  * `number` (e.g., `0`, `1`, `5`): Minimum slots (cargo + self slot if enabled) required to pack.
+  * `"ceil"`: Automatically sets the required minimum slots equal to maximum capacity.
+* **Description:** Threshold required for the capsule to pack. If the chest doesn't have enough items, packing is aborted and items stay in the chest.
 
 ---
 
-### 6. `full_stacks`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 7. `full_stacks`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
 * **Description:** 
-  * `true`: Requires cargo items to form full stack quantities (`stack.count == stack.prototype.stack_size`) to be eligible for packing. Partial stacks are ignored unless `consolidate_stacks = true` is enabled.
-  * `false`: Allows partial stacks to be packed into cargo slots as-is.
+  * `true`: Only accepts stacks that are completely full. Partial stacks are ignored unless `consolidate_stacks` is enabled.
+  * `false`: Accepts partial stacks as-is.
 
 ---
 
-### 7. `consolidate_stacks`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 8. `consolidate_stacks`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
 * **Prerequisite:** `full_stacks = true`
 * **Description:**
-  * `true`: Enables virtual stack consolidation pre-checking. If multiple partial stacks of the same item exist in the hub chest, the packer calculates their total sum virtually. If the sum yields full stacks, the packer extracts the exact item quantities across slots and inserts consolidated full stacks into the holder. Leftover items remain untouched in the hub chest.
-  * `false`: Strictly checks individual inventory slots for pre-existing full stacks.
+  * `true`: Virtually combines partial stacks of the same item/quality in the hub. If the total adds up to full stacks, it extracts those items and places clean full stacks into the holder. Leftovers remain in the hub untouched.
+  * `false`: Strictly requires individual inventory slots to already be full stacks.
 
 ---
 
-### 8. `include_self`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 9. `include_self`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `true`
 * **Description:**
-  * `true`: The primary capsule item occupies 1 slot inside the destination holder. Cargo slot limit becomes $	ext{total\_capacity} - 1$.
-  * `false`: The primary capsule item does not occupy a slot inside the holder. Cargo slot limit equals $	ext{total\_capacity}$.
+  * `true`: The capsule item itself occupies 1 slot inside the destination holder (cargo limit becomes `total_capacity - 1`).
+  * `false`: The capsule item does not take up a slot in the holder.
 
 ---
 
-### 9. `destroy_self`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 10. `destroy_self`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
 * **Description:**
-  * `true`: The primary capsule item in the hub chest is consumed/destroyed during packing and is **not** placed into the destination holder (even if `include_self = true`).
-  * `false`: The primary capsule item is preserved and inserted into the destination holder if `include_self = true`.
+  * `true`: Consumes/destroys the capsule item from the hub during packing without saving it to the holder.
+  * `false`: Preserves the capsule item and puts it in the holder (if `include_self = true`).
 
 ---
 
-### 10. `destroy_holder_if_empty`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 11. `destroy_holder_if_empty`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
 * **Description:**
-  * `true`: If the holder inventory ends up completely empty after transfer and primary item processing, the holder entity is destroyed on the liminal surface and registration aborts.
-  * `false`: Empty holders persist on the liminal surface (ideal for empty containers, probes, or signal transmitters).
+  * `true`: Destroys the holder entity if 0 items end up inside after packing.
+  * `false`: Keeps empty holder entities alive on the liminal surface.
 
 ---
 
-### 11. `destroy_holder_if_primary_expires`
-* **Data Type:** `boolean`
-* **Allowed Values:** `true` | `false`
+### 12. `destroy_holder_if_primary_expires`
+* **Data Type:** Boolean (`true` or `false`)
+* **Default:** `false`
 * **Description:**
-  * `true`: Monitored by `capsule-manager.lua` on tick. If the primary capsule item inside the holder spoils, decays, or is removed, the liminal holder entity is destroyed.
-  * `false`: The liminal holder entity and remaining cargo persist even if the primary capsule item expires or vanishes.
+  * `true`: Destroys the liminal holder entity if the primary capsule item inside spoils, decays, or vanishes.
+  * `false`: Keeps the holder and its contents intact even if the main capsule item expires.
 
 ---
 
-### 12. `holder_type`
-* **Data Type:** `string`
-* **Default / Fallback:** `"invisible-capsule-holder"`
-* **Description:** Prototype name of the Factorio entity spawned on the liminal surface to act as the cargo container (e.g., `"invisible-capsule-holder"`, `"wooden-chest"`, `"rocket-silo-payload"`).
+### 13. `holder_type`
+* **Data Type:** String
+* **Default:** `"invisible-capsule-holder"`
+* **Description:** Prototype name of the entity spawned on the liminal surface to store the cargo.
 
 ---
 
-### 13. `spill_contents`
-* **Data Type:** `boolean` | `string` | `table` (Polymorphic)
-* **Allowed Configurations:**
-  * **Option A (Boolean):**
-    ```lua
-    spill_contents = true -- Default ground spill
-    ```
-  * **Option B (String):**
-    ```lua
-    spill_contents = "ground"  -- Eject items onto terrain
-    -- OR
-    spill_contents = "capsule" -- Spill contents wrapped in capsule item
-    ```
-  * **Option C (Table):**
+### 14. `spill_contents`
+* **Data Type:** Boolean, String, or Table
+* **Default:** `true`
+* **Allowed Values:**
+  * `true`: Spills contents onto the ground.
+  * `"ground"` or `"capsule"`: Specific spill target mode.
+  * Table configuration:
     ```lua
     spill_contents = {
-        units = true,                  -- Spill/eject living units inside
-        mode = "container",            -- "ground" or "container"
-        container = "wooden-chest"     -- Target container prototype name if mode == "container"
+        units = true,
+        mode = "container",
+        container = "wooden-chest"
     }
     ```
-* **Description:** Defines cargo dispersion behavior when a capsule vessel or holder is destroyed or expired.
+* **Description:** Defines what happens to the cargo when a capsule or holder is destroyed.
 
 ---
 
-## Configuration Matrix Summary
+## Configuration Summary Table
 
-| Property | Type | Default | Core Function |
+| Property | Type | Default | What It Does |
 | :--- | :--- | :--- | :--- |
-| `type` | `string` | `"capsule"` | Definition schema classification |
-| `base_capacity` | `number` | `1` | Base available inventory slots |
-| `quality_affected_capacity` | `number` | `0` | Bonus slots added per quality level |
-| `mixed_cargo` | `boolean` | `true` | Allow multi-item types vs single-item restriction |
-| `minimum_cargo` | `number\|string` | `0` | Minimum loaded slots needed to pack (`"ceil"` supported) |
-| `full_stacks` | `boolean` | `false` | Require cargo items to be full stacks |
-| `consolidate_stacks` | `boolean` | `false` | Enable imaginary partial stack consolidation |
-| `include_self` | `boolean` | `true` | Capsule item takes 1 slot in destination holder |
-| `destroy_self` | `boolean` | `false` | Consume primary capsule without saving into holder |
-| `destroy_holder_if_empty` | `boolean` | `false` | Clean up holder if 0 items packed |
-| `destroy_holder_if_primary_expires` | `boolean` | `false` | Destroy holder when primary capsule spoils/vanishes |
-| `holder_type` | `string` | `"invisible-capsule-holder"` | Liminal entity prototype created |
-| `spill_contents` | `bool\|str\|table` | `true` | Cargo release behavior upon destruction |
+| `type` | String | `"capsule"` | Custom organizational category label |
+| `base_capacity` | Number | `1` | Base cargo slots |
+| `quality_affected_capacity` | Number | `0` | Extra slots per quality level |
+| `mixed_cargo` | Boolean | `true` | Allow different item types in one capsule |
+| `mixed_quality` | Boolean | `false` | Allow different quality levels in one capsule |
+| `minimum_cargo` | Number/String | `0` | Minimum slots required to trigger pack (`"ceil"` supported) |
+| `full_stacks` | Boolean | `false` | Require cargo items to be full stacks |
+| `consolidate_stacks` | Boolean | `false` | Combine partial stacks virtually into full stacks |
+| `include_self` | Boolean | `true` | Primary capsule occupies 1 slot in holder |
+| `destroy_self` | Boolean | `false` | Delete primary capsule instead of saving to holder |
+| `destroy_holder_if_empty` | Boolean | `false` | Delete holder if no items were packed |
+| `destroy_holder_if_primary_expires` | Boolean | `false` | Delete holder if main capsule spoils or vanishes |
+| `holder_type` | String | `"invisible-capsule-holder"` | Prototype name of liminal entity |
+| `spill_contents` | Bool/String/Table | `true` | Spill behavior on entity destruction |

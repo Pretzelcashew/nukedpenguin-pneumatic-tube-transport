@@ -1,6 +1,8 @@
 -- FILE: scripts/hubs/hub-packing.lua
 local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
+local liminal_surface_mgr = require("scripts.surfaces.liminal-surface")
+local capsule_manager = require("scripts.capsules.capsule-manager")
 
 local hub_packing = {}
 
@@ -32,11 +34,8 @@ function hub_packing.evaluate_inventory(entity)
 
     -- Trigger if we have a capsule and at least one other item
     if capsule_found and total_items > 1 then
-        -- 1. Ensure the liminal surface exists
-        local liminal_surface = game.surfaces["liminal_surface"]
-        if not liminal_surface then
-            liminal_surface = game.create_surface("liminal_surface")
-        end
+        -- 1. Grab the optimized liminal surface
+        local liminal_surface = liminal_surface_mgr.get()
         
         -- 2. Create the holder on the liminal surface
         local holder = liminal_surface.create_entity{
@@ -56,6 +55,7 @@ function hub_packing.evaluate_inventory(entity)
             end
         end
         
+        capsule_manager.register(holder)
         game.print(string.format("[PACKED] Entire inventory moved to holder %d on liminal surface", holder.unit_number))
     end
 end

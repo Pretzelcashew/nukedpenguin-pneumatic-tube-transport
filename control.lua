@@ -1,3 +1,5 @@
+-- FILE: control.lua
+
 local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
 require("scripts.ports.port-renderer")
@@ -6,9 +8,12 @@ require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
 
+-- Require the new tracker so the events register
+require("scripts.hubs.hub-tracker")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}
+    storage.active_hubs = storage.active_hubs or {} -- Initialize our new table
     networks.init()
 end
 

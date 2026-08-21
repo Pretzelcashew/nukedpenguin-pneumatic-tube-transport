@@ -81,12 +81,14 @@ return capsule_definitions
 ---
 
 ### 5. `mixed_quality`
-* **Data Type:** Boolean (`true` or `false`)
-* **Default:** `false`
-* **Description:**
-  * `true`: Allows cargo stacks of different quality tiers to be packed into the same capsule.
-  * `false`: Restricts cargo selection so that all packed stacks must share the exact same quality level.
-  * **Note:** If `consolidate_stacks = true`, single-quality grouping is automatically enforced per stack regardless of this setting, as Factorio inventory slots cannot hold mixed-quality items.
+* **Data Type:** Boolean or String
+* **Default:** `false` (or `"item"`)
+* **Allowed Values:**
+  * `true` / `"any"`: Complete freedom. Allows cargo stacks of any quality tier to be packed freely in the same capsule.
+  * `false` / `"item"`: **Per-Item Lock**. Stacks of a single item type must share the same quality, but different item prototypes can have different quality levels (e.g., Normal Iron Plates + Uncommon Copper Wire).
+  * `"strict"` / `"capsule"`: **Capsule-Wide Lock**. Every item packed into the container must share the exact same quality tier across all item types.
+  * `"vessel"`: **Vessel Lock**. Every cargo item packed must match the primary capsule vessel's quality tier exactly.
+* **Note:** If `consolidate_stacks = true`, single-quality grouping is automatically enforced per stack regardless of this setting, as Factorio inventory slots cannot hold mixed-quality items[cite: 8].
 
 ---
 

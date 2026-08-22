@@ -89,6 +89,41 @@ data:extend({
     picture = util.empty_sprite()
   },
   {
+    type = "container",
+    name = "visible-capsule-holder",
+    icon = "__base__/graphics/icons/iron-chest.png",
+    icon_size = 64,
+    flags = {
+      "placeable-neutral",
+      "player-creation",
+      "no-automated-item-insertion",
+      "no-automated-item-removal"
+    },
+    minable = {mining_time = 0.2},
+    max_health = 150,
+    destructible = true,
+    operable = true,
+    collision_mask = {layers = {}},
+    collision_box = {{-0.2, -0.2}, {0.2, 0.2}},
+    selection_box = {{-0.3, -0.3}, {0.3, 0.3}},
+    inventory_size = 10,
+    inventory_type = "with_filters",
+    picture = {
+      layers = {
+        {
+          filename = "__base__/graphics/entity/iron-chest/iron-chest.png",
+          width = 64,
+          height = 64,
+          scale = 0.25,
+          shift = {0, 0}
+        }
+      }
+    },
+    circuit_wire_connection_point = circuit_connector_definitions["chest"].points,
+    circuit_connector_sprites = circuit_connector_definitions["chest"].sprites,
+    circuit_wire_max_distance = default_circuit_wire_max_distance
+  },
+  {
     type = "simple-entity-with-owner",
     name = "pneumatic-tube",
     icon = "__base__/graphics/icons/pipe.png",

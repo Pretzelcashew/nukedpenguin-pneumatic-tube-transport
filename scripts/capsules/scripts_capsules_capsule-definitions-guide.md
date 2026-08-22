@@ -185,10 +185,11 @@ return capsule_definitions
     spill_contents = {
         units = true,
         mode = "container",
-        container = "wooden-chest"
+        container = "wooden-chest",
+        mark_for_deconstruction = true
     }
     ```
-* **Description:** Defines what happens to the cargo when a capsule or holder is destroyed.
+* **Description:** Defines what happens to the cargo when a capsule or holder is destroyed. `mark_for_deconstruction` flags spawned containers for deconstruction and marks floor-spilled item stacks for robot pickup (`enable_looted`).
 
 ---
 

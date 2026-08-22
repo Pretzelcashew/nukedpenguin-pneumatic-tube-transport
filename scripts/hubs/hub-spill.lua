@@ -32,12 +32,16 @@ function hub_spill.handle_hub_destruction(entity)
             if raw_spill ~= false then
                 local mode = "ground"
                 local container_proto = nil
+                local mark_decon = false
 
                 if type(raw_spill) == "string" then
                     mode = raw_spill
                 elseif type(raw_spill) == "table" then
                     mode = raw_spill.mode or "ground"
                     container_proto = raw_spill.container
+                    if raw_spill.mark_for_deconstruction ~= nil then
+                        mark_decon = raw_spill.mark_for_deconstruction
+                    end
                 end
 
                 if holder and holder.valid then
@@ -53,6 +57,11 @@ function hub_spill.handle_hub_destruction(entity)
                         }
 
                         if container_entity and container_entity.valid then
+                            -- Apply deconstruction order to container if requested
+                            if mark_decon then
+                                container_entity.order_deconstruction(force)
+                            end
+
                             local container_inv = container_entity.get_inventory(defines.inventory.chest)
                             if container_inv then
                                 for i = 1, #holder_inv do
@@ -67,7 +76,7 @@ function hub_spill.handle_hub_destruction(entity)
                                             surface.spill_item_stack{
                                                 position = position,
                                                 stack = stack,
-                                                enable_looted = true,
+                                                enable_looted = mark_decon,
                                                 force = force
                                             }
                                             stack.clear()
@@ -77,7 +86,7 @@ function hub_spill.handle_hub_destruction(entity)
                             end
                         end
 
-                    -- Mode: "ground" or "capsule" -> Spills cargo directly onto the floor
+                    -- Mode: "ground" -> Spills cargo directly onto the floor
                     elseif holder_inv and not holder_inv.is_empty() then
                         for i = 1, #holder_inv do
                             local stack = holder_inv[i]
@@ -85,7 +94,7 @@ function hub_spill.handle_hub_destruction(entity)
                                 surface.spill_item_stack{
                                     position = position,
                                     stack = stack,
-                                    enable_looted = true,
+                                    enable_looted = mark_decon,
                                     force = force
                                 }
                                 stack.clear()

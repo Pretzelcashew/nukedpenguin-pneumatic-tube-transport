@@ -8,7 +8,7 @@ capsule_definitions.types = {
         base_capacity = 2,
         quality_affected_capacity = 1,
         mixed_cargo = false,
-        
+
         mixed_quality = "strict",
         quality_filter = "any",            
 
@@ -29,7 +29,8 @@ capsule_definitions.types = {
         spill_contents = {
             units = true,
             mode = "container",
-            container = "wooden-chest"
+            container = "visible-capsule-holder",
+            mark_for_deconstruction = true
         }
     }
 }

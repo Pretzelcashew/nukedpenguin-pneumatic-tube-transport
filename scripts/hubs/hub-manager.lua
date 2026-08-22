@@ -2,6 +2,7 @@
 local events = require("scripts.events")
 local hub_packing = require("scripts.hubs.hub-packing")
 local hub_defs = require("scripts.hubs.hub-definitions")
+local hub_spill = require("scripts.hubs.hub-spill")
 
 local hub_manager = {}
 
@@ -25,8 +26,12 @@ local function on_hub_removed(event)
     local unit_number = entity.unit_number
     local def = hub_defs.types[entity.name]
     if def then
-        if storage.active_hubs then storage.active_hubs[unit_number] = nil end
-        if storage.hub_compartments then storage.hub_compartments[unit_number] = nil end
+        -- Execute spill mechanics before clearing active registry entries
+        hub_spill.handle_hub_destruction(entity)
+
+        if storage.active_hubs then
+            storage.active_hubs[unit_number] = nil
+        end
     end
 end
 

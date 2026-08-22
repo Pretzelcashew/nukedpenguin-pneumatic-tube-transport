@@ -16,6 +16,18 @@ function hub_packing.evaluate_inventory(entity)
     local hub_def = hub_defs.types[entity.name]
     if not (hub_def and hub_def.type == "hub") then return end
 
+    -- 0. EARLY CAPACITY GUARD
+    -- Checks the hub's compartment array size before touching entity inventories
+    local unit_number = entity.unit_number
+    storage.hub_compartments = storage.hub_compartments or {}
+    storage.hub_compartments[unit_number] = storage.hub_compartments[unit_number] or {}
+    local compartment = storage.hub_compartments[unit_number]
+
+    local max_capacity = hub_def.capsule_capacity or 1
+    if #compartment >= max_capacity then
+        return
+    end
+
     local inventory = entity.get_inventory(defines.inventory.chest)
     if not inventory or inventory.is_empty() then return end
 
@@ -171,13 +183,16 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 8. Final checks & registration
+    -- 8. Final checks & compartment loading
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() then
         holder.destroy()
         return
     end
 
-    capsule_manager.register(holder, capsule_name)
+    local capsule_id = capsule_manager.register(holder, capsule_name)
+    if capsule_id then
+        table.insert(compartment, capsule_id)
+    end
 end
 
 return hub_packing

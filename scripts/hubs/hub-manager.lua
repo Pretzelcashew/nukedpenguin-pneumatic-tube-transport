@@ -17,19 +17,20 @@ local function on_hub_built(event)
     end
 end
 
--- Remove a hub from the active registry
+-- Remove a hub from active registry and clean up compartment memory
 local function on_hub_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
     
+    local unit_number = entity.unit_number
     local def = hub_defs.types[entity.name]
-    if def and storage.active_hubs then
-        storage.active_hubs[entity.unit_number] = nil
+    if def then
+        if storage.active_hubs then storage.active_hubs[unit_number] = nil end
+        if storage.hub_compartments then storage.hub_compartments[unit_number] = nil end
     end
 end
 
 -- The interleaved background scanner
--- Spreads inventory evaluations smoothly across 10 frames using unit_number offsets
 local function on_tick(event)
     if not storage.active_hubs then return end
 
@@ -40,6 +41,7 @@ local function on_tick(event)
                 hub_packing.evaluate_inventory(entity)
             else
                 storage.active_hubs[unit_number] = nil
+                if storage.hub_compartments then storage.hub_compartments[unit_number] = nil end
             end
         end
     end

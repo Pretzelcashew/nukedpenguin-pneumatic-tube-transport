@@ -47,27 +47,26 @@ function hub_spill.handle_hub_destruction(entity)
                                 for i = 1, #holder_inv do
                                     local stack = holder_inv[i]
                                     if stack and stack.valid_for_read then
+                                        local original_count = stack.count
                                         local inserted = container_inv.insert(stack)
-                                        -- Spill remainder if container reaches max slots
-                                        if inserted < stack.count then
-                                            local leftover = {
-                                                name = stack.name,
-                                                count = stack.count - inserted,
-                                                quality = stack.quality
-                                            }
+                                        if inserted >= original_count then
+                                            stack.clear()
+                                        else
+                                            stack.count = original_count - inserted
                                             surface.spill_item_stack{
                                                 position = position,
-                                                stack = leftover,
+                                                stack = stack,
                                                 enable_looted = true,
                                                 force = force
                                             }
+                                            stack.clear()
                                         end
                                     end
                                 end
                             end
                         end
                     else
-                        -- Fallback mode: Spill items directly onto ground
+                        -- Direct ground spill using live stack references
                         for i = 1, #holder_inv do
                             local stack = holder_inv[i]
                             if stack and stack.valid_for_read then
@@ -77,13 +76,14 @@ function hub_spill.handle_hub_destruction(entity)
                                     enable_looted = true,
                                     force = force
                                 }
+                                stack.clear()
                             end
                         end
                     end
                 end
             end
 
-            -- Destroys holder on liminal surface & unregisters capsule from memory
+            -- Destroys holder entity and unregisters from active_capsules
             capsule_manager.remove(capsule_id)
         end
     end

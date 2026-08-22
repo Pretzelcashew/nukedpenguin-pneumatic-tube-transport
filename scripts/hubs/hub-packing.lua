@@ -17,16 +17,13 @@ function hub_packing.evaluate_inventory(entity)
     if not (hub_def and hub_def.type == "hub") then return end
 
     -- 0. EARLY CAPACITY GUARD
-    -- Checks the hub's compartment array size before touching entity inventories
     local unit_number = entity.unit_number
     storage.hub_compartments = storage.hub_compartments or {}
     storage.hub_compartments[unit_number] = storage.hub_compartments[unit_number] or {}
     local compartment = storage.hub_compartments[unit_number]
 
     local max_capacity = hub_def.capsule_capacity or 1
-    if #compartment >= max_capacity then
-        return
-    end
+    if #compartment >= max_capacity then return end
 
     local inventory = entity.get_inventory(defines.inventory.chest)
     if not inventory or inventory.is_empty() then return end
@@ -120,7 +117,7 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- Enforce 'strict' / 'capsule' single quality lock across different item types
+    -- Enforce 'strict' / 'capsule' single quality lock
     if is_strict_capsule and #group_order > 0 then
         local target_quality = grouped_inventory[group_order[1]].sources[1].quality_name
         local filtered_order = {}
@@ -151,30 +148,47 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- 6. Execute extractions & insertions
+    -- 6. DIRECT STACK TRANSFERS (Deducts directly from source stack)
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
-            if stack.count > ext.count then
-                stack.count = stack.count - ext.count
+            local original_count = stack.count
+            local amount_to_transfer = math.min(ext.count, original_count)
+
+            if amount_to_transfer < original_count then
+                stack.count = amount_to_transfer
+                local inserted = dest_inv.insert(stack)
+                local remaining = (original_count - amount_to_transfer) + (amount_to_transfer - inserted)
+                if remaining > 0 then
+                    stack.count = remaining
+                else
+                    stack.clear()
+                end
             else
-                stack.clear()
+                local inserted = dest_inv.insert(stack)
+                if inserted >= original_count then
+                    stack.clear()
+                else
+                    stack.count = original_count - inserted
+                end
             end
         end
     end
 
-    for _, ins in ipairs(packing_plan.insertions) do
-        dest_inv.insert{name = ins.name, count = ins.count, quality = ins.quality}
-    end
-
-    -- 7. Handle primary capsule lifecycle
+    -- 7. Handle primary capsule lifecycle (Deducts source capsule)
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
-            dest_inv.insert{name = primary_stack.name, count = 1, quality = quality_name}
-        end
-
-        if capsule_def.include_self or capsule_def.destroy_self then
+            local original_count = primary_stack.count
+            primary_stack.count = 1
+            local inserted = dest_inv.insert(primary_stack)
+            local remaining = (original_count - 1) + (1 - inserted)
+            if remaining > 0 then
+                primary_stack.count = remaining
+            else
+                primary_stack.clear()
+            end
+        elseif capsule_def.include_self or capsule_def.destroy_self then
             if primary_stack.count > 1 then
                 primary_stack.count = primary_stack.count - 1
             else

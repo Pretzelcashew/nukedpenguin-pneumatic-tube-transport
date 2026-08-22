@@ -28,16 +28,19 @@ local function on_hub_removed(event)
     end
 end
 
--- The staggered background scanner
+-- The interleaved background scanner
+-- Spreads inventory evaluations smoothly across 10 frames using unit_number offsets
 local function on_tick(event)
-    if event.tick % 10 ~= 0 then return end
     if not storage.active_hubs then return end
 
+    local current_tick = event.tick
     for unit_number, entity in pairs(storage.active_hubs) do
-        if entity.valid then
-            hub_packing.evaluate_inventory(entity)
-        else
-            storage.active_hubs[unit_number] = nil
+        if (unit_number + current_tick) % 10 == 0 then
+            if entity.valid then
+                hub_packing.evaluate_inventory(entity)
+            else
+                storage.active_hubs[unit_number] = nil
+            end
         end
     end
 end
@@ -54,7 +57,7 @@ events.on_event(defines.events.on_robot_mined_entity, on_hub_removed)
 events.on_event(defines.events.on_entity_died, on_hub_removed)
 events.on_event(defines.events.script_raised_destroy, on_hub_removed)
 
--- Hook the staggered tick loop
+-- Hook the interleaved tick loop
 events.on_event(defines.events.on_tick, on_tick)
 
 return hub_manager

@@ -7,12 +7,10 @@ capsule_definitions.types = {
         type = "capsule",
         base_capacity = 2,
         quality_affected_capacity = 1,
-        mixed_cargo = true,
+        mixed_cargo = false,
         
-        -- Quality Controls
-        -- Options: true/"any" (free mix), false/"item" (per-item lock), "strict"/"capsule" (global capsule lock), "vessel" (matches capsule item quality)
         mixed_quality = "strict",
-        quality_filter = "ceil",            -- Cargo quality cannot exceed capsule quality
+        quality_filter = "any",            
 
         minimum_cargo = "ceil",
         full_stacks = true,

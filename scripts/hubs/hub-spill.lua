@@ -3,7 +3,7 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 
 local hub_spill = {}
 
---- Handles dumping or re-housing capsule contents when a holding hub is destroyed
+--- Spills or re-houses capsule contents when a hub entity is destroyed or removed
 --- @param entity LuaEntity The hub entity being removed
 function hub_spill.handle_hub_destruction(entity)
     if not (entity and entity.valid) then return end
@@ -26,16 +26,27 @@ function hub_spill.handle_hub_destruction(entity)
         if capsule_data then
             local holder = capsule_data.holder
             local capsule_def = capsule_data.definition or {}
-            local spill_config = capsule_def.spill_contents or {}
+            local raw_spill = capsule_def.spill_contents
 
-            if holder and holder.valid then
-                local holder_inv = holder.get_inventory(defines.inventory.chest)
+            -- Explicitly false suppresses spilling entirely
+            if raw_spill ~= false then
+                local mode = "ground"
+                local container_proto = nil
 
-                if holder_inv and not holder_inv.is_empty() then
-                    if spill_config.mode == "container" and spill_config.container then
-                        -- Spawn designated overflow container (e.g., wooden-chest)
+                if type(raw_spill) == "string" then
+                    mode = raw_spill
+                elseif type(raw_spill) == "table" then
+                    mode = raw_spill.mode or "ground"
+                    container_proto = raw_spill.container
+                end
+
+                if holder and holder.valid then
+                    local holder_inv = holder.get_inventory(defines.inventory.chest)
+
+                    -- Mode: "container" -> Unloads cargo into chest entity, spills overflow
+                    if mode == "container" and container_proto and holder_inv and not holder_inv.is_empty() then
                         local container_entity = surface.create_entity{
-                            name = spill_config.container,
+                            name = container_proto,
                             position = position,
                             force = force,
                             raise_built = true
@@ -65,8 +76,9 @@ function hub_spill.handle_hub_destruction(entity)
                                 end
                             end
                         end
-                    else
-                        -- Direct ground spill using live stack references
+
+                    -- Mode: "ground" or "capsule" -> Spills cargo directly onto the floor
+                    elseif holder_inv and not holder_inv.is_empty() then
                         for i = 1, #holder_inv do
                             local stack = holder_inv[i]
                             if stack and stack.valid_for_read then
@@ -83,7 +95,7 @@ function hub_spill.handle_hub_destruction(entity)
                 end
             end
 
-            -- Destroys holder entity and unregisters from active_capsules
+            -- Destroys liminal holder and unregisters capsule from active tracking
             capsule_manager.remove(capsule_id)
         end
     end

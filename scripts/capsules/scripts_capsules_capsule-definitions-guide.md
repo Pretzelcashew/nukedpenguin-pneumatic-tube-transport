@@ -179,7 +179,7 @@ return capsule_definitions
 * **Default:** `true`
 * **Allowed Values:**
   * `true`: Spills contents onto the ground.
-  * `"ground"` or `"capsule"`: Specific spill target mode.
+  * `"ground"` or `"container"`: Specific spill target mode.
   * Table configuration:
     ```lua
     spill_contents = {

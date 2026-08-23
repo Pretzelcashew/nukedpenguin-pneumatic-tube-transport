@@ -149,6 +149,15 @@ function networks_flow.build(network_id)
         local node_flow = { next_hops = {}, handoffs = {}, pressure = node_pressure }
         local current_unit = port_key:match("^(%d+):")
 
+        local current_pos = nil
+        if member.entity and member.entity.valid then
+            local ports = port_defs.get_ports(member.entity)
+            if ports and ports[member.port_index] then
+                local offset = ports[member.port_index].offset
+                current_pos = { x = member.entity.position.x + offset.x, y = member.entity.position.y + offset.y }
+            end
+        end
+
         local neighbors = storage.port_connections[port_key]
         if neighbors then
             for neighbor_key, conn_type in pairs(neighbors) do
@@ -157,17 +166,27 @@ function networks_flow.build(network_id)
                     local is_internal = (current_unit == neighbor_unit)
                     local neighbor_pressure = pressures[neighbor_key] or 0
 
+                    local neighbor_pos = get_port_position(neighbor_key)
+                    if neighbor_pos then neighbor_pos = neighbor_pos.pos end
+
+                    local is_straight_line = false
+                    if current_pos and neighbor_pos then
+                        if math.abs(current_pos.x - neighbor_pos.x) < 0.01 or math.abs(current_pos.y - neighbor_pos.y) < 0.01 then
+                            is_straight_line = true
+                        end
+                    end
+
                     if is_internal then
-                        -- Directional flow inside a active component (e.g. Pump Input -> Output)
                         if node_pressure < 0 and neighbor_pressure > 0 then
                             table.insert(node_flow.next_hops, neighbor_key)
                         elseif node_pressure > 0 and neighbor_pressure < 0 then
                             -- Prevent reverse internal backflow
-                        elseif neighbor_pressure < node_pressure then
+                        elseif neighbor_pressure <= node_pressure then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
                     else
-                        if neighbor_pressure < node_pressure then
+                        -- Pure logical rule: Follow downward pressure, OR maintain straight-line momentum if pressures are equal/flat
+                        if neighbor_pressure < node_pressure or (is_straight_line and neighbor_pressure <= node_pressure) then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
                     end

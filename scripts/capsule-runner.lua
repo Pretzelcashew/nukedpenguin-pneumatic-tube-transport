@@ -75,9 +75,8 @@ local function update_capsules()
 
             local next_key = pick_next_hop(cap.from_key)
             if not next_key then
-                -- Despawn at terminal dead end
-                if cap.render_obj and cap.render_obj.valid then cap.render_obj.destroy() end
-                storage.capsules[id] = nil
+                -- Clamp capsule at the destination port and stop moving
+                cap.distance = cap.segment_length
                 goto continue
             end
 

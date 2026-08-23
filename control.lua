@@ -8,6 +8,7 @@ require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
 require("scripts.hubs.hub-manager")
+require("scripts.capsule-runner")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}

@@ -1,3 +1,4 @@
+-- scripts/capsule-runner.lua
 local port_defs = require("scripts.ports.port-definitions")
 local events = require("scripts.events")
 
@@ -37,16 +38,14 @@ local function get_port_position(port_key)
     return nil
 end
 
---- Retrieves the flow_map node for a given port
+--- Retrieves the pre-built flow_map node for a given port key
 local function get_flow_node(port_key)
     if not (storage.networks and storage.networks.port_to_network) then return nil end
     local net_id = storage.networks.port_to_network[port_key]
     if not net_id then return nil end
 
     local net = storage.networks.list[net_id]
-    if not (net and net.metadata and net.metadata.flow_map) then return nil end
-
-    return net.metadata.flow_map[port_key]
+    return net and net.metadata and net.metadata.flow_map and net.metadata.flow_map[port_key]
 end
 
 --- Selects the next hop using a round-robin index across available next_hops or handoffs
@@ -76,7 +75,7 @@ local function update_capsules()
 
             local next_key = pick_next_hop(cap.from_key)
             if not next_key then
-                -- Despawn capsule at dead end
+                -- Despawn at terminal dead end
                 if cap.render_obj and cap.render_obj.valid then cap.render_obj.destroy() end
                 storage.capsules[id] = nil
                 goto continue
@@ -95,20 +94,24 @@ local function update_capsules()
             local dx = cap.to_pos.x - cap.from_pos.x
             local dy = cap.to_pos.y - cap.from_pos.y
             cap.segment_length = math.sqrt(dx * dx + dy * dy)
-            if cap.segment_length == 0 then cap.segment_length = 0.001 end
+            
+            -- Instant transfer across zero-distance network boundary handoffs
+            if cap.segment_length == 0 then
+                cap.segment_length = 0.0001
+            end
         end
 
-        -- Linear interpolation between start and end port positions
+        -- Linear position interpolation between start and end port positions
         local t = cap.distance / cap.segment_length
         local cur_x = cap.from_pos.x + (cap.to_pos.x - cap.from_pos.x) * t
         local cur_y = cap.from_pos.y + (cap.to_pos.y - cap.from_pos.y) * t
 
-        -- Update or render visual dot
+        -- Update or render visual indicator
         if cap.render_obj and cap.render_obj.valid then
             cap.render_obj.target = { cur_x, cur_y }
         else
             cap.render_obj = rendering.draw_circle{
-                color = { r = 1, g = 0.8, b = 0 }, -- Gold indicator
+                color = { r = 1, g = 0.8, b = 0 }, -- Gold indicator dot
                 radius = 0.25,
                 filled = true,
                 target = { cur_x, cur_y },
@@ -120,7 +123,7 @@ local function update_capsules()
     end
 end
 
--- Tick Registration
+-- Register tick loop with event manager
 events.on_event(defines.events.on_tick, function()
     update_capsules()
 end)
@@ -161,7 +164,7 @@ commands.add_command("spawn-capsule", "Spawns a test capsule at the selected ent
     local dx = next_pos.x - start_pos.x
     local dy = next_pos.y - start_pos.y
     local dist = math.sqrt(dx * dx + dy * dy)
-    if dist == 0 then dist = 0.001 end
+    if dist == 0 then dist = 0.0001 end
 
     storage.next_capsule_id = (storage.next_capsule_id or 0) + 1
     local id = storage.next_capsule_id

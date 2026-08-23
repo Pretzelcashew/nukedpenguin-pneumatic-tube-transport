@@ -53,97 +53,7 @@ local function get_port_position(port_key)
     return nil
 end
 
---- Visualizes the pressure gradient in-game using native time_to_live (600 ticks = 10 seconds)
-local function draw_debug_flow(network_id, flow_map, net)
-    storage.flow_renders = storage.flow_renders or {}
-    
-    -- Clear only this specific network's previous debug visuals immediately on rebuild
-    if storage.flow_renders[network_id] then
-        for _, render_obj in ipairs(storage.flow_renders[network_id]) do
-            if render_obj and render_obj.valid then
-                render_obj.destroy()
-            end
-        end
-    end
-    storage.flow_renders[network_id] = {}
-
-    local positions = {}
-    for _, member in ipairs(net.members) do
-        if member.entity and member.entity.valid then
-            local ports = port_defs.get_ports(member.entity)
-            if ports and ports[member.port_index] then
-                local offset = ports[member.port_index].offset
-                positions[member.unit_number .. ":" .. member.port_index] = {
-                    pos = { x = member.entity.position.x + offset.x, y = member.entity.position.y + offset.y },
-                    surface = member.entity.surface
-                }
-            end
-        end
-    end
-
-    for port_key, node in pairs(flow_map) do
-        local origin = positions[port_key]
-        if origin then
-            -- Draw the actual pressure value with a 10-second native TTL
-            if node.pressure ~= nil then
-                local t_obj = rendering.draw_text{
-                    text = tostring(node.pressure),
-                    surface = origin.surface,
-                    target = origin.pos,
-                    color = {r = 1, g = 1, b = 1},
-                    alignment = "center",
-                    scale = 0.8,
-                    time_to_live = 600
-                }
-                table.insert(storage.flow_renders[network_id], t_obj)
-            end
-
-            -- Draw internal flow lines (Green) pointing downhill along the pressure gradient
-            for _, next_hop in ipairs(node.next_hops) do
-                local dest = positions[next_hop]
-                if dest then
-                    local l_obj = rendering.draw_line{
-                        color = {r = 0, g = 1, b = 0},
-                        width = 2,
-                        from = origin.pos,
-                        to = dest.pos,
-                        surface = origin.surface,
-                        time_to_live = 600
-                    }
-                    table.insert(storage.flow_renders[network_id], l_obj)
-                end
-            end
-
-            -- Draw external handoffs (Blue circle + Green line across boundary)
-            for _, handoff_key in ipairs(node.handoffs) do
-                local dest = positions[handoff_key] or get_port_position(handoff_key)
-                if dest then
-                    local l_obj = rendering.draw_line{
-                        color = {r = 0, g = 1, b = 0},
-                        width = 2,
-                        from = origin.pos,
-                        to = dest.pos,
-                        surface = origin.surface,
-                        time_to_live = 600
-                    }
-                    table.insert(storage.flow_renders[network_id], l_obj)
-                end
-
-                local c_obj = rendering.draw_circle{
-                    color = {r = 0, g = 0.5, b = 1},
-                    radius = 0.25,
-                    filled = true,
-                    target = origin.pos,
-                    surface = origin.surface,
-                    time_to_live = 600
-                }
-                table.insert(storage.flow_renders[network_id], c_obj)
-            end
-        end
-    end
-end
-
---- Generates a directional flow map using a true pressure gradient
+--- Generates and stores the flow map data for a network
 function networks_flow.build(network_id)
     networks.init()
     local net = storage.networks.list[network_id]
@@ -153,7 +63,7 @@ function networks_flow.build(network_id)
     local queue = {}
     local terminators = {}
 
-    -- 1. Seed pressure anchors from member ports (internal and external join boundaries)
+    -- 1. Seed pressure anchors
     for _, member in ipairs(net.members) do
         local port_key = member.unit_number .. ":" .. member.port_index
         local explicit_pressure = 0
@@ -191,7 +101,7 @@ function networks_flow.build(network_id)
         end
     end
 
-    -- 2. Propagate pressure across merge connections (gentle decay of 5 per port step)
+    -- 2. Propagate pressure
     local decay_rate = 5
     local head = 1
     while head <= #queue do
@@ -231,7 +141,7 @@ function networks_flow.build(network_id)
         end
     end
 
-    -- 3. Construct flow map: items flow strictly downhill, with internal entity bridge handling
+    -- 3. Construct flow map
     local flow_map = {}
     for _, member in ipairs(net.members) do
         local port_key = member.unit_number .. ":" .. member.port_index
@@ -248,16 +158,15 @@ function networks_flow.build(network_id)
                     local neighbor_pressure = pressures[neighbor_key] or 0
 
                     if is_internal then
-                        -- For internal entity links: force positive pressure to flow toward negative pressure
-                        if node_pressure > 0 and neighbor_pressure < 0 then
+                        -- Directional flow inside a active component (e.g. Pump Input -> Output)
+                        if node_pressure < 0 and neighbor_pressure > 0 then
                             table.insert(node_flow.next_hops, neighbor_key)
-                        elseif node_pressure < 0 and neighbor_pressure > 0 then
-                            -- Prevent reversed flow from negative back to positive
+                        elseif node_pressure > 0 and neighbor_pressure < 0 then
+                            -- Prevent reverse internal backflow
                         elseif neighbor_pressure < node_pressure then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
                     else
-                        -- Standard external pipe flow: strictly downhill
                         if neighbor_pressure < node_pressure then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
@@ -275,24 +184,105 @@ function networks_flow.build(network_id)
     end
 
     networks.set_metadata(network_id, "flow_map", flow_map)
-    draw_debug_flow(network_id, flow_map, net)
-
     return flow_map
 end
 
+--- OPTIONAL: Purely visual debug renderer (reads from built flow map)
+function networks_flow.draw_debug(network_id)
+    local net = storage.networks.list[network_id]
+    if not (net and net.metadata and net.metadata.flow_map) then return end
 
---- Rebuilds flow maps and re-draws debug visuals for all active networks
-function networks_flow.refresh_all_debug()
-    if not storage.networks or not storage.networks.list then return end
-    for net_id, _ in pairs(storage.networks.list) do
-        networks_flow.build(net_id)
+    local flow_map = net.metadata.flow_map
+
+    storage.flow_renders = storage.flow_renders or {}
+    if storage.flow_renders[network_id] then
+        for _, render_obj in ipairs(storage.flow_renders[network_id]) do
+            if render_obj and render_obj.valid then render_obj.destroy() end
+        end
+    end
+    storage.flow_renders[network_id] = {}
+
+    local positions = {}
+    for _, member in ipairs(net.members) do
+        if member.entity and member.entity.valid then
+            local ports = port_defs.get_ports(member.entity)
+            if ports and ports[member.port_index] then
+                local offset = ports[member.port_index].offset
+                positions[member.unit_number .. ":" .. member.port_index] = {
+                    pos = { x = member.entity.position.x + offset.x, y = member.entity.position.y + offset.y },
+                    surface = member.entity.surface
+                }
+            end
+        end
+    end
+
+    for port_key, node in pairs(flow_map) do
+        local origin = positions[port_key]
+        if origin then
+            if node.pressure ~= nil then
+                local t_obj = rendering.draw_text{
+                    text = tostring(node.pressure),
+                    surface = origin.surface,
+                    target = origin.pos,
+                    color = {r = 1, g = 1, b = 1},
+                    alignment = "center",
+                    scale = 0.8,
+                    time_to_live = 600
+                }
+                table.insert(storage.flow_renders[network_id], t_obj)
+            end
+
+            for _, next_hop in ipairs(node.next_hops) do
+                local dest = positions[next_hop]
+                if dest then
+                    local l_obj = rendering.draw_line{
+                        color = {r = 0, g = 1, b = 0},
+                        width = 2,
+                        from = origin.pos,
+                        to = dest.pos,
+                        surface = origin.surface,
+                        time_to_live = 600
+                    }
+                    table.insert(storage.flow_renders[network_id], l_obj)
+                end
+            end
+
+            for _, handoff_key in ipairs(node.handoffs) do
+                local dest = positions[handoff_key] or get_port_position(handoff_key)
+                if dest then
+                    local l_obj = rendering.draw_line{
+                        color = {r = 0, g = 1, b = 0},
+                        width = 2,
+                        from = origin.pos,
+                        to = dest.pos,
+                        surface = origin.surface,
+                        time_to_live = 600
+                    }
+                    table.insert(storage.flow_renders[network_id], l_obj)
+                end
+
+                local c_obj = rendering.draw_circle{
+                    color = {r = 0, g = 0.5, b = 1},
+                    radius = 0.25,
+                    filled = true,
+                    target = origin.pos,
+                    surface = origin.surface,
+                    time_to_live = 600
+                }
+                table.insert(storage.flow_renders[network_id], c_obj)
+            end
+        end
     end
 end
 
--- Auto-register the 10-second (600 ticks) debug ping through your event manager
+-- Refresh debug visuals every 10s
 events.on_event(defines.events.on_tick, function(event)
     if event.tick % 600 == 0 then
-        networks_flow.refresh_all_debug()
+        if not storage.networks or not storage.networks.list then return end
+        for net_id, _ in pairs(storage.networks.list) do
+            networks_flow.build(net_id)
+            networks_flow.draw_debug(net_id)
+        end
     end
 end)
 

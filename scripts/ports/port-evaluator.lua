@@ -15,12 +15,6 @@ local function check_pair(allowed_list, value_a, value_b)
     return false, nil
 end
 
---- Evaluates compatibility between two entity ports by index
--- @param entity_a LuaEntity
--- @param port_a_index number
--- @param entity_b LuaEntity
--- @param port_b_index number
--- @return boolean, string|nil (is_compatible, resolved_outcome)
 function port_evaluator.are_compatible(entity_a, port_a_index, entity_b, port_b_index)
     local ports_a = port_defs.get_ports(entity_a)
     local ports_b = port_defs.get_ports(entity_b)
@@ -32,18 +26,15 @@ function port_evaluator.are_compatible(entity_a, port_a_index, entity_b, port_b_
 
     if not (port_a and port_b) then return false end
 
-    -- Group check
-    if port_a.group ~= port_b.group then
-        return false
-    end
+    -- REMOVED: Internal group check (group is only for internal entity routing, not external spatial links)
 
-    -- Flow check
+    -- Flow check ("in" <-> "out", "in" <-> "any", etc.)
     local flow_valid = check_pair(compat_defs.flows, port_a.flow, port_b.flow)
     if not flow_valid then
         return false
     end
 
-    -- Connection type check
+    -- Connection type check ("join" <-> "join", "merge" <-> "merge", etc.)
     local connection_valid, outcome = check_pair(compat_defs.connections, port_a.connection, port_b.connection)
     if not connection_valid then
         return false

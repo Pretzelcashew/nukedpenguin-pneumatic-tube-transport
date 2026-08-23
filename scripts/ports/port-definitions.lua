@@ -45,23 +45,23 @@ local definitions = {
         }
     },
 
-    -- ROTATABLE PUMPS
+    -- ROTATABLE PUMPS (Updated with optional pressure properties)
     ["pneumatic-pump"] = {
         [defines.direction.north] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x = 0.0, y =  1.0} },
-            { group = 1, flow = "out", connection = "join", offset = {x = 0.0, y = -1.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x = 0.0, y =  1.0}, pressure = -100 },
+            { group = 1, flow = "out", connection = "join", offset = {x = 0.0, y = -1.0}, pressure = 100 }
         },
         [defines.direction.east] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x = -1.0, y = 0.0} },
-            { group = 1, flow = "out", connection = "join", offset = {x =  1.0, y = 0.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x = -1.0, y = 0.0}, pressure = -100 },
+            { group = 1, flow = "out", connection = "join", offset = {x =  1.0, y = 0.0}, pressure = 100 }
         },
         [defines.direction.south] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x = 0.0, y = -1.0} },
-            { group = 1, flow = "out", connection = "join", offset = {x = 0.0, y =  1.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x = 0.0, y = -1.0}, pressure = -100 },
+            { group = 1, flow = "out", connection = "join", offset = {x = 0.0, y =  1.0}, pressure = 100 }
         },
         [defines.direction.west] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x =  1.0, y = 0.0} },
-            { group = 1, flow = "out", connection = "join", offset = {x = -1.0, y = 0.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x =  1.0, y = 0.0}, pressure = -100 },
+            { group = 1, flow = "out", connection = "join", offset = {x = -1.0, y = 0.0}, pressure = 100 }
         }
     },
 

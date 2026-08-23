@@ -3,6 +3,8 @@ local port_finder = require("scripts.ports.port-finder")
 local port_evaluator = require("scripts.ports.port-evaluator")
 local connection_defs = require("scripts.ports.port-connection-definitions")
 local network_form_internals = require("scripts.networks.network-form-internals")
+local networks_flow = require("scripts.networks.networks-flow")
+local port_defs = require("scripts.ports.port-definitions")
 
 local network_validate = {}
 
@@ -39,6 +41,30 @@ function network_validate.execute(entity)
             game.print(string.format("[INCOMPATIBLE] %s (Port %d) <-> %s (Port %d)", 
                 entity.name, conn.port_index, conn.neighbor.name, conn.neighbor_port_index))
         end
+    end
+
+    -- 4. Rebuild flow maps for all affected networks (this entity & its direct neighbors)
+    local affected_networks = {}
+    local ports = port_defs.get_ports(entity)
+    if ports then
+        for p_idx, _ in ipairs(ports) do
+            local port_key = entity.unit_number .. ":" .. p_idx
+            local net_id = storage.networks.port_to_network[port_key]
+            if net_id then affected_networks[net_id] = true end
+
+            -- Collect joined/merged neighbor network IDs as well
+            local neighbors = storage.port_connections and storage.port_connections[port_key]
+            if neighbors then
+                for neighbor_key, _ in pairs(neighbors) do
+                    local n_net_id = storage.networks.port_to_network[neighbor_key]
+                    if n_net_id then affected_networks[n_net_id] = true end
+                end
+            end
+        end
+    end
+
+    for net_id in pairs(affected_networks) do
+        networks_flow.build(net_id)
     end
 end
 

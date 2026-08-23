@@ -2,6 +2,7 @@
 local port_defs = require("scripts.ports.port-definitions")
 local connection_defs = require("scripts.ports.port-connection-definitions")
 local networks = require("scripts.networks.networks")
+local networks_flow = require("scripts.networks.networks-flow")
 
 local network_invalidate = {}
 
@@ -17,6 +18,22 @@ function network_invalidate.execute(entity)
     if not ports then return end
 
     local unit_number = entity.unit_number
+    local neighbor_keys = {}
+
+    -- Cache external neighbor port keys before unlinking connections
+    for p_idx, _ in ipairs(ports) do
+        local port_key = get_port_key(unit_number, p_idx)
+        local neighbors = storage.port_connections and storage.port_connections[port_key]
+
+        if neighbors then
+            for neighbor_key, _ in pairs(neighbors) do
+                local neighbor_unit = tonumber(neighbor_key:match("^(%d+):"))
+                if neighbor_unit ~= unit_number then
+                    table.insert(neighbor_keys, neighbor_key)
+                end
+            end
+        end
+    end
 
     -- 1. Process EXTERNAL connections only
     for p_idx, _ in ipairs(ports) do
@@ -47,6 +64,19 @@ function network_invalidate.execute(entity)
     for p_idx, _ in ipairs(ports) do
         local port_key = get_port_key(unit_number, p_idx)
         networks.purge_port(port_key)
+    end
+
+    -- 3. Rebuild flow maps for all surviving neighbor networks
+    local affected_networks = {}
+    for _, n_key in ipairs(neighbor_keys) do
+        local n_net_id = storage.networks.port_to_network[n_key]
+        if n_net_id then
+            affected_networks[n_net_id] = true
+        end
+    end
+
+    for net_id in pairs(affected_networks) do
+        networks_flow.build(net_id)
     end
 end
 

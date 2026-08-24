@@ -3,17 +3,16 @@ local networks = require("scripts.networks.networks")
 local port_defs = require("scripts.ports.port-definitions")
 local flow_renderer = require("scripts.networks.networks-flow-renderer")
 local flow_cull = require("scripts.networks.flow-cull")
+local networks_pressure = require("scripts.networks.networks-pressure")
 
 local networks_flow = {}
 
--- Toggle to enable or disable debug drawing overlays
 networks_flow.DEBUG_RENDER = true
 
 local function get_port_key(unit_number, port_index)
     return unit_number .. ":" .. port_index
 end
 
---- Look up an entity and port definition across any network in storage
 local function get_entity_and_port(port_key)
     local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
     if not net_id then return nil, nil end
@@ -36,8 +35,8 @@ local function get_entity_and_port(port_key)
     return nil, nil
 end
 
-function networks_flow.build(net_id)
-    networks.init()
+--- Rebuilds flow map, vector hops, culling, and renders for a single network ID
+local function build_single_network(net_id)
     local net = storage.networks.list[net_id]
     if not (net and net.members) then 
         if networks_flow.DEBUG_RENDER then
@@ -68,7 +67,7 @@ function networks_flow.build(net_id)
                         y = entity.position.y + port.offset.y, 
                         surface = entity.surface.name 
                     },
-                    pressure = port.pressure or 0,
+                    pressure = storage.port_pressures[key] or 0,
                     flow_dir = port.flow,
                     outbound_hops = {}
                 }
@@ -104,14 +103,14 @@ function networks_flow.build(net_id)
                     y = entity.position.y + port.offset.y, 
                     surface = entity.surface.name 
                 },
-                pressure = port.pressure or 0,
+                pressure = storage.port_pressures[b_key] or 0,
                 flow_dir = port.flow,
                 outbound_hops = {}
             }
         end
     end
 
-    -- 3. Build outbound vector hops
+    -- 3. Build outbound vector hops based on updated pressure gradients
     for key, node in pairs(flow_map) do
         local neighbors = storage.port_connections and storage.port_connections[key]
         if neighbors then
@@ -130,13 +129,26 @@ function networks_flow.build(net_id)
     -- 4. Cull dead-end internal paths
     flow_map = flow_cull.process(flow_map)
 
-    -- 5. Store flow map metadata; draw or clear render objects based on flag
+    -- 5. Store metadata and refresh render overlays
     networks.set_metadata(net_id, "flow_map", flow_map)
     
     if networks_flow.DEBUG_RENDER then
         flow_renderer.draw(net_id)
     else
         flow_renderer.clear(net_id)
+    end
+end
+
+--- Recalculates pressure and refreshes ONLY networks physically connected to net_ids
+function networks_flow.build(net_id)
+    networks.init()
+
+    -- 1. Calculate pressure only for connected networks and return their IDs
+    local affected_nets = networks_pressure.process(net_id)
+
+    -- 2. Rebuild flow maps and redraw debug overlays exclusively for affected networks
+    for id in pairs(affected_nets) do
+        build_single_network(id)
     end
 end
 

@@ -152,4 +152,18 @@ function networks_flow.build(net_id)
     end
 end
 
+commands.add_command("toggle-flow", "Toggle flow visualization overlay", function(command)
+    networks_flow.DEBUG_RENDER = not networks_flow.DEBUG_RENDER
+
+    if networks_flow.DEBUG_RENDER then
+        for net_id, _ in pairs(storage.networks and storage.networks.list or {}) do
+            flow_renderer.draw(net_id)
+        end
+    else
+        for net_id, _ in pairs(storage.flow_render_ids or {}) do
+            flow_renderer.clear(net_id)
+        end
+    end
+end)
+
 return networks_flow

@@ -56,7 +56,11 @@ function networks_graph.bind_group_to_network(entity, group_id, network_id)
                     end
                 end
                 if not exists then
-                    table.insert(net.members, { unit_number = entity.unit_number, port_index = p_idx })
+                    table.insert(net.members, { 
+                        unit_number = entity.unit_number, 
+                        port_index = p_idx,
+                        entity = entity
+                    })
                 end
             end
         end

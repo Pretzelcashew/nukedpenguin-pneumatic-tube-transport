@@ -1,7 +1,13 @@
 -- scripts/capsules/capsule-runner.lua
+local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
+local networks = require("scripts.networks.networks")
 
 local capsule_runner = {}
+
+-- Configurable movement speed (3 tiles / second -> divided by 60 ticks)
+local SPEED_TILES_PER_SEC = 3.0
+local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 
 local function init_storage()
     storage.capsules = storage.capsules or {}
@@ -11,44 +17,53 @@ local function init_storage()
     end
 end
 
-local function draw_capsule(capsule)
-    if not storage.show_capsules then return end
+--- Retrieves world coordinates and surface for a specific port key
+local function get_port_world_pos(port_key)
+    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
+    if not net_id then return nil, nil end
 
-    -- Clear existing drawing if present
-    if capsule.render_id and capsule.render_id.valid then
-        capsule.render_id.destroy()
+    local flow_map = networks.get_metadata(net_id, "flow_map")
+    if flow_map and flow_map[port_key] then
+        local node = flow_map[port_key]
+        if node.entity and node.entity.valid then
+            return {
+                x = node.entity.position.x + node.offset.x,
+                y = node.entity.position.y + node.offset.y
+            }, node.entity.surface
+        end
+    end
+    return nil, nil
+end
+
+--- Selects the next outbound hop with the steepest downhill pressure drop
+local function select_next_target(from_port_key)
+    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[from_port_key]
+    if not net_id then return nil end
+
+    local flow_map = networks.get_metadata(net_id, "flow_map")
+    if not (flow_map and flow_map[from_port_key]) then return nil end
+
+    local current_node = flow_map[from_port_key]
+    if not (current_node.outbound_hops and #current_node.outbound_hops > 0) then
+        return nil
     end
 
-    local unit_num, p_idx = capsule.current_port_key:match("^(%d+):(%d+)$")
-    unit_num = tonumber(unit_num)
-    p_idx = tonumber(p_idx)
+    local best_target = nil
+    local max_drop = -math.huge
 
-    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[capsule.current_port_key]
-    if not net_id then return end
-
-    local net = storage.networks.list and storage.networks.list[net_id]
-    if not (net and net.members) then return end
-
-    -- Find matching member entity to anchor position offset
-    for _, member in ipairs(net.members) do
-        if member.unit_number == unit_num and member.port_index == p_idx then
-            local entity = member.entity
-            if entity and entity.valid then
-                local ports = port_defs.get_ports(entity)
-                local port = ports and ports[p_idx]
-                local offset = port and port.offset or { x = 0, y = 0 }
-
-                capsule.render_id = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 }, -- Bright Gold / Yellow
-                    radius = 0.25,
-                    filled = true,
-                    target = { entity = entity, offset = offset },
-                    surface = entity.surface
-                }
-                break
+    -- Evaluate outbound hops for maximum pressure gradient
+    for _, hop_key in ipairs(current_node.outbound_hops) do
+        local target_node = flow_map[hop_key]
+        if target_node then
+            local drop = current_node.pressure - target_node.pressure
+            if drop > max_drop then
+                max_drop = drop
+                best_target = hop_key
             end
         end
     end
+
+    return best_target
 end
 
 local function clear_capsule_render(capsule)
@@ -56,6 +71,77 @@ local function clear_capsule_render(capsule)
         capsule.render_id.destroy()
     end
     capsule.render_id = nil
+end
+
+--- Main movement loop executed every game tick
+local function update_capsules()
+    if not storage.capsules then return end
+
+    for id, capsule in pairs(storage.capsules) do
+        -- 1. Acquire target if stationary
+        if not capsule.to_port_key then
+            capsule.to_port_key = select_next_target(capsule.from_port_key)
+            capsule.progress = 0.0
+        end
+
+        local from_pos, surface = get_port_world_pos(capsule.from_port_key)
+
+        -- Remove capsule if its origin pipe was destroyed
+        if not from_pos then
+            clear_capsule_render(capsule)
+            storage.capsules[id] = nil
+        else
+            local curr_pos = { x = from_pos.x, y = from_pos.y }
+
+            -- 2. Process movement toward active target
+            if capsule.to_port_key then
+                local to_pos = get_port_world_pos(capsule.to_port_key)
+                if not to_pos then
+                    -- Target port removed, clear target and retry search next tick
+                    capsule.to_port_key = nil
+                    capsule.progress = 0.0
+                else
+                    local dx = to_pos.x - from_pos.x
+                    local dy = to_pos.y - from_pos.y
+                    local distance = math.sqrt(dx * dx + dy * dy)
+
+                    if distance <= 0.001 then
+                        -- Co-located internal hop; step immediately
+                        capsule.from_port_key = capsule.to_port_key
+                        capsule.to_port_key = nil
+                        capsule.progress = 0.0
+                    else
+                        local step = TILES_PER_TICK / distance
+                        capsule.progress = capsule.progress + step
+
+                        if capsule.progress >= 1.0 then
+                            -- Arrival at destination port
+                            capsule.from_port_key = capsule.to_port_key
+                            capsule.to_port_key = nil
+                            capsule.progress = 0.0
+                            curr_pos = { x = to_pos.x, y = to_pos.y }
+                        else
+                            -- Interpolate position between ports
+                            curr_pos.x = from_pos.x + dx * capsule.progress
+                            curr_pos.y = from_pos.y + dy * capsule.progress
+                        end
+                    end
+                end
+            end
+
+            -- 3. Redraw visual render position
+            clear_capsule_render(capsule)
+            if storage.show_capsules then
+                capsule.render_id = rendering.draw_circle{
+                    color = { r = 1, g = 0.84, b = 0, a = 0.9 }, -- Bright Yellow
+                    radius = 0.25,
+                    filled = true,
+                    target = curr_pos,
+                    surface = surface
+                }
+            end
+        end
+    end
 end
 
 function capsule_runner.spawn(player, entity)
@@ -72,16 +158,13 @@ function capsule_runner.spawn(player, entity)
         return
     end
 
-    -- Locate first valid port on an active network
+    -- Find first port on an active network
     local target_port_key = nil
-    local target_net_id = nil
-
     for p_idx, _ in ipairs(ports) do
         local key = entity.unit_number .. ":" .. p_idx
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[key]
         if net_id then
             target_port_key = key
-            target_net_id = net_id
             break
         end
     end
@@ -91,22 +174,19 @@ function capsule_runner.spawn(player, entity)
         return
     end
 
-    -- Provision abstract capsule pointer
     local id = storage.next_capsule_id
     storage.next_capsule_id = id + 1
 
-    local capsule = {
+    storage.capsules[id] = {
         id = id,
-        current_port_key = target_port_key,
-        net_id = target_net_id,
+        from_port_key = target_port_key,
+        to_port_key = nil,
+        progress = 0.0,
         render_id = nil
     }
 
-    storage.capsules[id] = capsule
-    draw_capsule(capsule)
-
     if player then
-        player.print(string.format("[Capsule] Spawned Capsule #%d at Port %s (Network #%d)", id, target_port_key, target_net_id))
+        player.print(string.format("[Capsule] Spawned Capsule #%d at Port %s", id, target_port_key))
     end
 end
 
@@ -130,20 +210,23 @@ function capsule_runner.toggle_rendering(player)
     init_storage()
     storage.show_capsules = not storage.show_capsules
 
-    if storage.show_capsules then
-        for _, capsule in pairs(storage.capsules) do
-            draw_capsule(capsule)
-        end
-        if player then player.print("[Capsule] Visualization: ENABLED") end
-    else
+    if not storage.show_capsules then
         for _, capsule in pairs(storage.capsules) do
             clear_capsule_render(capsule)
         end
-        if player then player.print("[Capsule] Visualization: DISABLED") end
+    end
+
+    if player then
+        player.print(string.format("[Capsule] Visualization: %s", storage.show_capsules and "ENABLED" or "DISABLED"))
     end
 end
 
--- Command registrations
+-- Hook game tick event for smooth travel
+events.on_event(defines.events.on_tick, function(event)
+    update_capsules()
+end)
+
+-- Command Registrations
 commands.add_command("spawn-capsule", "Spawn an abstract capsule at the hovered network entity", function(command)
     local player = command.player_index and game.get_player(command.player_index)
     local selected = player and player.selected

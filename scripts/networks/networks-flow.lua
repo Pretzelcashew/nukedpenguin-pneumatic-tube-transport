@@ -133,7 +133,6 @@ function networks_flow.build(network_id)
         end
     end
 
-    -- Default unreached nodes to 0 pressure
     for _, member in ipairs(net.members) do
         local port_key = member.unit_number .. ":" .. member.port_index
         if pressures[port_key] == nil then
@@ -148,15 +147,9 @@ function networks_flow.build(network_id)
         local node_pressure = pressures[port_key]
         local node_flow = { next_hops = {}, handoffs = {}, pressure = node_pressure }
         local current_unit = port_key:match("^(%d+):")
-
-        local current_pos = nil
-        if member.entity and member.entity.valid then
-            local ports = port_defs.get_ports(member.entity)
-            if ports and ports[member.port_index] then
-                local offset = ports[member.port_index].offset
-                current_pos = { x = member.entity.position.x + offset.x, y = member.entity.position.y + offset.y }
-            end
-        end
+        
+        local current_port_idx = member.port_index
+        local ports = member.entity and member.entity.valid and port_defs.get_ports(member.entity)
 
         local neighbors = storage.port_connections[port_key]
         if neighbors then
@@ -166,27 +159,25 @@ function networks_flow.build(network_id)
                     local is_internal = (current_unit == neighbor_unit)
                     local neighbor_pressure = pressures[neighbor_key] or 0
 
-                    local neighbor_pos = get_port_position(neighbor_key)
-                    if neighbor_pos then neighbor_pos = neighbor_pos.pos end
-
-                    local is_straight_line = false
-                    if current_pos and neighbor_pos then
-                        if math.abs(current_pos.x - neighbor_pos.x) < 0.01 or math.abs(current_pos.y - neighbor_pos.y) < 0.01 then
-                            is_straight_line = true
-                        end
-                    end
-
                     if is_internal then
-                        if node_pressure < 0 and neighbor_pressure > 0 then
-                            table.insert(node_flow.next_hops, neighbor_key)
-                        elseif node_pressure > 0 and neighbor_pressure < 0 then
-                            -- Prevent reverse internal backflow
-                        elseif neighbor_pressure <= node_pressure then
-                            table.insert(node_flow.next_hops, neighbor_key)
+                        local neighbor_port_idx = tonumber(neighbor_key:match(":(%d+)$"))
+                        local c_port = ports and ports[current_port_idx]
+                        local n_port = ports and ports[neighbor_port_idx]
+
+                        -- Check if we are inside a directional entity (like a pump)
+                        if c_port and n_port and (c_port.flow ~= "any" or n_port.flow ~= "any") then
+                            if c_port.flow == "in" and n_port.flow == "out" then
+                                table.insert(node_flow.next_hops, neighbor_key)
+                            end
+                        else
+                            -- Standard omnidirectional routing (junctions, tubes)
+                            if neighbor_pressure < node_pressure then
+                                table.insert(node_flow.next_hops, neighbor_key)
+                            end
                         end
                     else
-                        -- Pure logical rule: Follow downward pressure, OR maintain straight-line momentum if pressures are equal/flat
-                        if neighbor_pressure < node_pressure or (is_straight_line and neighbor_pressure <= node_pressure) then
+                        -- External spatial routing
+                        if neighbor_pressure < node_pressure then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
                     end
@@ -200,6 +191,38 @@ function networks_flow.build(network_id)
             end
         end
         flow_map[port_key] = node_flow
+    end
+
+    -- 4. Prune dead-end internal routes only when a better path exists
+    local changed = true
+    while changed do
+        changed = false
+        for port_key, node in pairs(flow_map) do
+            if #node.next_hops > 1 then
+                local active_hops = {}
+                local dead_hops = {}
+                local current_unit = port_key:match("^(%d+):")
+
+                for _, hop_key in ipairs(node.next_hops) do
+                    local hop_unit = hop_key:match("^(%d+):")
+                    local hop_node = flow_map[hop_key]
+                    
+                    local is_internal = (current_unit == hop_unit)
+                    local is_dead_end = hop_node and (#hop_node.next_hops == 0 and #hop_node.handoffs == 0)
+
+                    if is_internal and is_dead_end then
+                        table.insert(dead_hops, hop_key)
+                    else
+                        table.insert(active_hops, hop_key)
+                    end
+                end
+
+                if #active_hops > 0 and #dead_hops > 0 then
+                    node.next_hops = active_hops
+                    changed = true
+                end
+            end
+        end
     end
 
     networks.set_metadata(network_id, "flow_map", flow_map)

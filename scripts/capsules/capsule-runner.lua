@@ -48,7 +48,7 @@ local function select_next_target(capsule)
 
     local hops = current_node.outbound_hops
 
-    -- 1. Anti-backtracking filter (avoid returning to last_port_key unless dead end)
+    -- 1. Anti-backtracking filter (avoid returning to last_port_key)
     local candidates = {}
     for _, hop_key in ipairs(hops) do
         if hop_key ~= capsule.last_port_key then
@@ -56,26 +56,64 @@ local function select_next_target(capsule)
         end
     end
 
+    -- Fix 1: Conditional turnaround. Prevents dead-end ping-pong, 
+    -- but allows flow reversal if a new path opens upstream.
     if #candidates == 0 then
-        candidates = hops -- Fallback if turnaround is mandatory
-    end
-
-    -- 2. Prioritize internal entity hops (Inlet -> Outlet pass-through)
-    for _, hop_key in ipairs(candidates) do
-        local target_node = get_node(hop_key)
-        if target_node and target_node.unit_number == current_node.unit_number then
-            return hop_key
+        local last_node = get_node(capsule.last_port_key)
+        local path_opened = false
+        
+        -- Check if the node we came from has any valid exits besides the dead end we are sitting at
+        if last_node and last_node.outbound_hops then
+            for _, next_hop in ipairs(last_node.outbound_hops) do
+                if next_hop ~= capsule.from_port_key then
+                    path_opened = true
+                    break
+                end
+            end
+        end
+        
+        if path_opened then
+            candidates = hops -- Re-allow turnaround because a valid path exists
+        else
+            return nil -- Sit and wait. The only option is a useless ping-pong loop.
         end
     end
 
-    -- 3. Select hop with highest pressure differential
+    -- 2. Select hop with highest effective pressure differential
     local best_target = candidates[1]
     local max_drop = -math.huge
 
     for _, hop_key in ipairs(candidates) do
         local target_node = get_node(hop_key)
         if target_node then
-            local drop = current_node.pressure - target_node.pressure
+            local drop = -math.huge
+            local is_internal = (target_node.unit_number == current_node.unit_number)
+
+            if is_internal then
+                -- For pumps: heavily prioritize internal hops that increase pressure (Inlet -> Outlet)
+                if target_node.pressure > current_node.pressure then
+                    drop = math.huge
+                else
+                    -- Fix 2: For junctions, look ahead one hop to find the lowest pressure exit path
+                    local best_downstream = -math.huge
+                    for _, next_hop in ipairs(target_node.outbound_hops) do
+                        local next_node = get_node(next_hop)
+                        -- Check external neighbors of the target internal port
+                        if next_node and next_node.unit_number ~= target_node.unit_number then
+                            local d = current_node.pressure - next_node.pressure
+                            if d > best_downstream then 
+                                best_downstream = d 
+                            end
+                        end
+                    end
+                    -- Use the best downstream drop, fallback to 0 if no external exits exist
+                    drop = (best_downstream ~= -math.huge) and best_downstream or 0
+                end
+            else
+                -- Standard external hop drop
+                drop = current_node.pressure - target_node.pressure
+            end
+
             if drop > max_drop then
                 max_drop = drop
                 best_target = hop_key

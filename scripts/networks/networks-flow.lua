@@ -5,7 +5,7 @@ local events = require("scripts.events")
 
 local networks_flow = {}
 
---- Safely looks up an entity's port pressure using existing network data
+--- Safely looks up an entity's port pressure across networks, falling back to raw entity defs if unbuilt
 local function get_port_pressure(unit_number, port_index)
     local key = unit_number .. ":" .. port_index
     local net_id = storage.networks.port_to_network[key]
@@ -14,15 +14,46 @@ local function get_port_pressure(unit_number, port_index)
     local net = storage.networks.list[net_id]
     if not net then return 0 end
 
+    -- 1. Read dynamically solved pressure if available
+    if net.metadata and net.metadata.flow_map and net.metadata.flow_map[key] then
+        return net.metadata.flow_map[key].pressure
+    end
+
+    -- 2. Fallback to raw entity port definition (prevents build-order chicken-and-egg deadlocks)
+    local u_num = tonumber(unit_number)
+    local p_idx = tonumber(port_index)
     for _, member in ipairs(net.members) do
-        if member.unit_number == tonumber(unit_number) and member.port_index == tonumber(port_index) then
+        if member.unit_number == u_num and member.port_index == p_idx then
             if member.entity and member.entity.valid then
                 local ports = port_defs.get_ports(member.entity)
-                return ports and ports[tonumber(port_index)] and ports[tonumber(port_index)].pressure or 0
+                return ports and ports[p_idx] and ports[p_idx].pressure or 0
             end
         end
     end
     return 0
+end
+
+--- Determines if a port is a passive boundary (e.g., a Hub join port with no hardcoded pump pressure)
+local function is_passive_boundary(unit_number, port_index)
+    local key = unit_number .. ":" .. port_index
+    local net_id = storage.networks.port_to_network[key]
+    if not net_id then return false end
+    
+    local net = storage.networks.list[net_id]
+    if not net then return false end
+
+    for _, member in ipairs(net.members) do
+        if member.unit_number == tonumber(unit_number) and member.port_index == tonumber(port_index) then
+            if member.entity and member.entity.valid then
+                local ports = port_defs.get_ports(member.entity)
+                local def = ports and ports[tonumber(port_index)]
+                if def and def.connection == "join" and not def.pressure then
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 --- Safely looks up any port's world position across any network
@@ -62,6 +93,7 @@ function networks_flow.build(network_id)
     local pressures = {}
     local queue = {}
     local terminators = {}
+    local decay_rate = 5
 
     -- 1. Seed pressure anchors
     for _, member in ipairs(net.members) do
@@ -89,7 +121,9 @@ function networks_flow.build(network_id)
                     })
 
                     if neighbor_pressure ~= 0 and explicit_pressure == 0 then
-                        explicit_pressure = neighbor_pressure
+                        if not is_passive_boundary(n_unit, n_port) then
+                            explicit_pressure = neighbor_pressure
+                        end
                     end
                 end
             end
@@ -101,8 +135,7 @@ function networks_flow.build(network_id)
         end
     end
 
-    -- 2. Propagate pressure
-    local decay_rate = 5
+    -- 2. Propagate pressure internally
     local head = 1
     while head <= #queue do
         local current = queue[head]
@@ -164,19 +197,16 @@ function networks_flow.build(network_id)
                         local c_port = ports and ports[current_port_idx]
                         local n_port = ports and ports[neighbor_port_idx]
 
-                        -- Check if we are inside a directional entity (like a pump)
                         if c_port and n_port and (c_port.flow ~= "any" or n_port.flow ~= "any") then
                             if c_port.flow == "in" and n_port.flow == "out" then
                                 table.insert(node_flow.next_hops, neighbor_key)
                             end
                         else
-                            -- Standard omnidirectional routing (junctions, tubes)
                             if neighbor_pressure < node_pressure then
                                 table.insert(node_flow.next_hops, neighbor_key)
                             end
                         end
                     else
-                        -- External spatial routing
                         if neighbor_pressure < node_pressure then
                             table.insert(node_flow.next_hops, neighbor_key)
                         end
@@ -187,13 +217,30 @@ function networks_flow.build(network_id)
 
         if terminators[port_key] then
             for _, handoff in ipairs(terminators[port_key]) do
+                local valid_flow = (handoff.pressure < node_pressure)
+                
+                if not valid_flow and handoff.pressure == node_pressure and node_pressure ~= 0 then
+                    local n_unit, n_port = handoff.handoff_to:match("^(%d+):(%d+)$")
+                    local is_handoff_passive = is_passive_boundary(n_unit, n_port)
+                    
+                    if node_pressure > 0 and is_handoff_passive then
+                        valid_flow = true
+                    elseif node_pressure < 0 and not is_handoff_passive then
+                        valid_flow = true
+                    end
+                end
+
+                if valid_flow then
+                    table.insert(node_flow.next_hops, handoff.handoff_to)
+                end
+
                 table.insert(node_flow.handoffs, handoff.handoff_to)
             end
         end
         flow_map[port_key] = node_flow
     end
 
-    -- 4. Prune dead-end internal routes only when a better path exists
+    -- 4. Prune dead-end internal routes safely
     local changed = true
     while changed do
         changed = false
@@ -202,6 +249,18 @@ function networks_flow.build(network_id)
                 local active_hops = {}
                 local dead_hops = {}
                 local current_unit = port_key:match("^(%d+):")
+                local current_port_idx = tonumber(port_key:match(":(%d+)$"))
+                
+                local member_entity
+                for _, m in ipairs(net.members) do
+                    if m.unit_number == tonumber(current_unit) then
+                        member_entity = m.entity
+                        break
+                    end
+                end
+                local ports = member_entity and member_entity.valid and port_defs.get_ports(member_entity)
+                local c_port = ports and ports[current_port_idx]
+                local is_directional = c_port and c_port.flow ~= "any"
 
                 for _, hop_key in ipairs(node.next_hops) do
                     local hop_unit = hop_key:match("^(%d+):")
@@ -210,7 +269,7 @@ function networks_flow.build(network_id)
                     local is_internal = (current_unit == hop_unit)
                     local is_dead_end = hop_node and (#hop_node.next_hops == 0 and #hop_node.handoffs == 0)
 
-                    if is_internal and is_dead_end then
+                    if is_internal and is_dead_end and not is_directional then
                         table.insert(dead_hops, hop_key)
                     else
                         table.insert(active_hops, hop_key)
@@ -229,7 +288,7 @@ function networks_flow.build(network_id)
     return flow_map
 end
 
---- OPTIONAL: Purely visual debug renderer (reads from built flow map)
+--- Visual debug renderer
 function networks_flow.draw_debug(network_id)
     local net = storage.networks.list[network_id]
     if not (net and net.metadata and net.metadata.flow_map) then return end
@@ -269,7 +328,7 @@ function networks_flow.draw_debug(network_id)
                     color = {r = 1, g = 1, b = 1},
                     alignment = "center",
                     scale = 0.8,
-                    time_to_live = 600
+                    time_to_live = 120
                 }
                 table.insert(storage.flow_renders[network_id], t_obj)
             end
@@ -283,7 +342,7 @@ function networks_flow.draw_debug(network_id)
                         from = origin.pos,
                         to = dest.pos,
                         surface = origin.surface,
-                        time_to_live = 600
+                        time_to_live = 120
                     }
                     table.insert(storage.flow_renders[network_id], l_obj)
                 end
@@ -298,7 +357,7 @@ function networks_flow.draw_debug(network_id)
                         from = origin.pos,
                         to = dest.pos,
                         surface = origin.surface,
-                        time_to_live = 600
+                        time_to_live = 120
                     }
                     table.insert(storage.flow_renders[network_id], l_obj)
                 end
@@ -309,7 +368,7 @@ function networks_flow.draw_debug(network_id)
                     filled = true,
                     target = origin.pos,
                     surface = origin.surface,
-                    time_to_live = 600
+                    time_to_live = 120
                 }
                 table.insert(storage.flow_renders[network_id], c_obj)
             end
@@ -317,9 +376,9 @@ function networks_flow.draw_debug(network_id)
     end
 end
 
--- Refresh debug visuals every 10s
+-- Fast responsive debug tick (updates every 2 seconds instead of 10)
 events.on_event(defines.events.on_tick, function(event)
-    if event.tick % 600 == 0 then
+    if event.tick % 120 == 0 then
         if not storage.networks or not storage.networks.list then return end
         for net_id, _ in pairs(storage.networks.list) do
             networks_flow.build(net_id)

@@ -82,6 +82,7 @@ local function select_next_target(capsule)
     -- 2. Select hop with highest effective pressure differential
     local best_target = candidates[1]
     local max_drop = -math.huge
+    local best_is_external = false
 
     for _, hop_key in ipairs(candidates) do
         local target_node = get_node(hop_key)
@@ -114,9 +115,17 @@ local function select_next_target(capsule)
                 drop = current_node.pressure - target_node.pressure
             end
 
+            -- Fix 3: Apply Tie-Breaker Logic
             if drop > max_drop then
                 max_drop = drop
                 best_target = hop_key
+                best_is_external = not is_internal
+            elseif drop == max_drop then
+                -- TIE-BREAKER: Prefer external exits over internal meandering
+                if not is_internal and not best_is_external then
+                    best_target = hop_key
+                    best_is_external = true
+                end
             end
         end
     end

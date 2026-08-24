@@ -17,43 +17,63 @@ local function init_storage()
     end
 end
 
---- Retrieves world coordinates and surface for a specific port key
-local function get_port_world_pos(port_key)
-    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-    if not net_id then return nil, nil end
+--- Retrieves node metadata across network boundaries safely
+local function get_node(port_key)
+    if not (storage.networks and storage.networks.port_to_network) then return nil end
+    local net_id = storage.networks.port_to_network[port_key]
+    if not net_id then return nil end
 
     local flow_map = networks.get_metadata(net_id, "flow_map")
-    if flow_map and flow_map[port_key] then
-        local node = flow_map[port_key]
-        if node.entity and node.entity.valid then
-            return {
-                x = node.entity.position.x + node.offset.x,
-                y = node.entity.position.y + node.offset.y
-            }, node.entity.surface
-        end
+    return flow_map and flow_map[port_key]
+end
+
+--- Retrieves world coordinates and surface for a specific port key
+local function get_port_world_pos(port_key)
+    local node = get_node(port_key)
+    if node and node.entity and node.entity.valid then
+        return {
+            x = node.entity.position.x + node.offset.x,
+            y = node.entity.position.y + node.offset.y
+        }, node.entity.surface
     end
     return nil, nil
 end
 
---- Selects the next outbound hop with the steepest downhill pressure drop
-local function select_next_target(from_port_key)
-    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[from_port_key]
-    if not net_id then return nil end
-
-    local flow_map = networks.get_metadata(net_id, "flow_map")
-    if not (flow_map and flow_map[from_port_key]) then return nil end
-
-    local current_node = flow_map[from_port_key]
-    if not (current_node.outbound_hops and #current_node.outbound_hops > 0) then
+--- Leverages flow_map outbound_hops and applies anti-backtracking
+local function select_next_target(capsule)
+    local current_node = get_node(capsule.from_port_key)
+    if not (current_node and current_node.outbound_hops and #current_node.outbound_hops > 0) then
         return nil
     end
 
-    local best_target = nil
+    local hops = current_node.outbound_hops
+
+    -- 1. Anti-backtracking filter (avoid returning to last_port_key unless dead end)
+    local candidates = {}
+    for _, hop_key in ipairs(hops) do
+        if hop_key ~= capsule.last_port_key then
+            table.insert(candidates, hop_key)
+        end
+    end
+
+    if #candidates == 0 then
+        candidates = hops -- Fallback if turnaround is mandatory
+    end
+
+    -- 2. Prioritize internal entity hops (Inlet -> Outlet pass-through)
+    for _, hop_key in ipairs(candidates) do
+        local target_node = get_node(hop_key)
+        if target_node and target_node.unit_number == current_node.unit_number then
+            return hop_key
+        end
+    end
+
+    -- 3. Select hop with highest pressure differential
+    local best_target = candidates[1]
     local max_drop = -math.huge
 
-    -- Evaluate outbound hops for maximum pressure gradient
-    for _, hop_key in ipairs(current_node.outbound_hops) do
-        local target_node = flow_map[hop_key]
+    for _, hop_key in ipairs(candidates) do
+        local target_node = get_node(hop_key)
         if target_node then
             local drop = current_node.pressure - target_node.pressure
             if drop > max_drop then
@@ -80,13 +100,13 @@ local function update_capsules()
     for id, capsule in pairs(storage.capsules) do
         -- 1. Acquire target if stationary
         if not capsule.to_port_key then
-            capsule.to_port_key = select_next_target(capsule.from_port_key)
+            capsule.to_port_key = select_next_target(capsule)
             capsule.progress = 0.0
         end
 
         local from_pos, surface = get_port_world_pos(capsule.from_port_key)
 
-        -- Remove capsule if its origin pipe was destroyed
+        -- Remove capsule if its origin entity was destroyed
         if not from_pos then
             clear_capsule_render(capsule)
             storage.capsules[id] = nil
@@ -106,7 +126,8 @@ local function update_capsules()
                     local distance = math.sqrt(dx * dx + dy * dy)
 
                     if distance <= 0.001 then
-                        -- Co-located internal hop; step immediately
+                        -- Co-located internal machine hop; step immediately
+                        capsule.last_port_key = capsule.from_port_key
                         capsule.from_port_key = capsule.to_port_key
                         capsule.to_port_key = nil
                         capsule.progress = 0.0
@@ -116,6 +137,7 @@ local function update_capsules()
 
                         if capsule.progress >= 1.0 then
                             -- Arrival at destination port
+                            capsule.last_port_key = capsule.from_port_key
                             capsule.from_port_key = capsule.to_port_key
                             capsule.to_port_key = nil
                             capsule.progress = 0.0
@@ -181,6 +203,7 @@ function capsule_runner.spawn(player, entity)
         id = id,
         from_port_key = target_port_key,
         to_port_key = nil,
+        last_port_key = nil,
         progress = 0.0,
         render_id = nil
     }

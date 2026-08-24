@@ -110,16 +110,28 @@ local function build_single_network(net_id)
         end
     end
 
-    -- 3. Build outbound vector hops based on updated pressure gradients
+    -- 3. Build outbound vector hops based strictly on pressure drops and internal transfers
     for key, node in pairs(flow_map) do
         local neighbors = storage.port_connections and storage.port_connections[key]
         if neighbors then
             for neighbor_key, _ in pairs(neighbors) do
                 local neighbor_node = flow_map[neighbor_key]
                 if neighbor_node then
-                    local p_delta = node.pressure - neighbor_node.pressure
-                    if p_delta > 0 or (p_delta == 0 and node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out") then
-                        table.insert(node.outbound_hops, neighbor_key)
+                    local is_internal = (node.unit_number == neighbor_node.unit_number)
+
+                    if is_internal then
+                        -- Mechanical machine transfer: route internal ports if directions permit
+                        if node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
+                            table.insert(node.outbound_hops, neighbor_key)
+                        end
+                    else
+                        -- External network hop: STRICT pressure gradient required (P_from > P_to)
+                        local p_delta = node.pressure - neighbor_node.pressure
+                        local flow_valid = (node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out")
+
+                        if flow_valid and p_delta > 0 then
+                            table.insert(node.outbound_hops, neighbor_key)
+                        end
                     end
                 end
             end

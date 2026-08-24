@@ -59,8 +59,12 @@ local function get_connected_network_ids(start_net_id)
     return connected_nets
 end
 
-local function can_propagate(curr, n_unit, n_flow, conn_type, next_p)
+local function can_propagate(curr, n_unit, n_flow, conn_type, next_p, n_conn)
     if curr.unit_number == n_unit then
+        -- Do not allow pressure to propagate internally across "join" type ports
+        if curr.connection == "join" or n_conn == "join" then
+            return false
+        end
         if curr.flow ~= "any" and n_flow ~= "any" then
             return false
         end
@@ -74,13 +78,7 @@ local function can_propagate(curr, n_unit, n_flow, conn_type, next_p)
         flow_ok = (curr.flow ~= "out" and n_flow ~= "in")
     end
 
-    if not flow_ok then return false end
-
-    if conn_type == "join" and curr.entered_via_join then
-        return false
-    end
-
-    return true
+    return flow_ok
 end
 
 --- Propagates pressure only across the connected subgraph containing net_id
@@ -127,7 +125,7 @@ function networks_pressure.process(net_id)
                             unit_number = member.unit_number,
                             pressure = port.pressure,
                             flow = port.flow,
-                            entered_via_join = false
+                            connection = port.connection
                         })
                     end
                 end
@@ -152,6 +150,7 @@ function networks_pressure.process(net_id)
                         if n_entity and n_port then
                             local n_unit = n_entity.unit_number
                             local n_flow = n_port.flow
+                            local n_conn = n_port.connection
 
                             -- Internal hops (same entity) cost 0 dropoff; external hops cost PRESSURE_DROPOFF
                             local dropoff = (curr.unit_number == n_unit) and 0 or PRESSURE_DROPOFF
@@ -164,15 +163,8 @@ function networks_pressure.process(net_id)
                             end
 
                             if next_p ~= 0 then
-                                if can_propagate(curr, n_unit, n_flow, conn_type, next_p) then
+                                if can_propagate(curr, n_unit, n_flow, conn_type, next_p, n_conn) then
                                     local existing_p = calculated[neighbor_key] or 0
-
-                                    local next_entered_via_join
-                                    if curr.unit_number == n_unit then
-                                        next_entered_via_join = curr.entered_via_join
-                                    else
-                                        next_entered_via_join = (conn_type == "join")
-                                    end
 
                                     if existing_p == 0 or math.abs(next_p) > math.abs(existing_p) then
                                         calculated[neighbor_key] = next_p
@@ -181,7 +173,7 @@ function networks_pressure.process(net_id)
                                             unit_number = n_unit,
                                             pressure = next_p,
                                             flow = n_flow,
-                                            entered_via_join = next_entered_via_join
+                                            connection = n_conn
                                         })
                                     elseif math.abs(next_p) == math.abs(existing_p) and ((next_p > 0 and existing_p < 0) or (next_p < 0 and existing_p > 0)) then
                                         calculated[neighbor_key] = 0

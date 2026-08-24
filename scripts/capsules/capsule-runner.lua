@@ -6,7 +6,7 @@ local networks = require("scripts.networks.networks")
 local capsule_runner = {}
 
 -- Configurable movement speed (3 tiles / second -> divided by 60 ticks)
-local SPEED_TILES_PER_SEC = 3.0
+local SPEED_TILES_PER_SEC = 180.0
 local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 
 local function init_storage()
@@ -145,75 +145,94 @@ local function clear_capsule_render(capsule)
     capsule.render_id = nil
 end
 
---- Main movement loop executed every game tick
+--- Main movement loop executed every game tick (supports multi-segment high-speed traversal)
 local function update_capsules()
     if not storage.capsules then return end
 
     for id, capsule in pairs(storage.capsules) do
-        -- 1. Acquire target if stationary
-        if not capsule.to_port_key then
-            capsule.to_port_key = select_next_target(capsule)
-            capsule.progress = 0.0
-        end
+        local tiles_this_tick = TILES_PER_TICK
+        local surface = nil
+        local curr_pos = nil
+        local safety_counter = 0
 
-        local from_pos, surface = get_port_world_pos(capsule.from_port_key)
+        -- Loop to consume movement across multiple segments in a single tick if speed permits
+        while tiles_this_tick > 0 and safety_counter < 50 do
+            safety_counter = safety_counter + 1
 
-        -- Remove capsule if its origin entity was destroyed
-        if not from_pos then
-            clear_capsule_render(capsule)
-            storage.capsules[id] = nil
-        else
-            local curr_pos = { x = from_pos.x, y = from_pos.y }
+            -- 1. Acquire target if stationary
+            if not capsule.to_port_key then
+                capsule.to_port_key = select_next_target(capsule)
+                capsule.progress = 0.0
+            end
 
-            -- 2. Process movement toward active target
-            if capsule.to_port_key then
-                local to_pos = get_port_world_pos(capsule.to_port_key)
-                if not to_pos then
-                    -- Target port removed, clear target and retry search next tick
+            local from_pos, surf = get_port_world_pos(capsule.from_port_key)
+            
+            -- Remove capsule if its origin entity was destroyed
+            if not from_pos then
+                clear_capsule_render(capsule)
+                storage.capsules[id] = nil
+                break
+            end
+            
+            surface = surf
+            curr_pos = { x = from_pos.x, y = from_pos.y }
+
+            -- If still no target after searching (e.g. dead end), stop moving this tick
+            if not capsule.to_port_key then
+                break
+            end
+
+            local to_pos = get_port_world_pos(capsule.to_port_key)
+            if not to_pos then
+                -- Target port removed, clear target and retry search next tick
+                capsule.to_port_key = nil
+                capsule.progress = 0.0
+                break
+            end
+
+            local dx = to_pos.x - from_pos.x
+            local dy = to_pos.y - from_pos.y
+            local distance = math.sqrt(dx * dx + dy * dy)
+
+            if distance <= 0.001 then
+                -- Co-located internal machine hop (e.g. machine pass-through); step immediately without consuming distance
+                capsule.last_port_key = capsule.from_port_key
+                capsule.from_port_key = capsule.to_port_key
+                capsule.to_port_key = nil
+                capsule.progress = 0.0
+                -- Loop continues instantly to process the next segment with remaining tiles_this_tick
+            else
+                local remaining_distance = distance * (1.0 - capsule.progress)
+
+                if tiles_this_tick >= remaining_distance then
+                    -- Fully crossed this segment this tick! Consume distance and advance port.
+                    tiles_this_tick = tiles_this_tick - remaining_distance
+                    capsule.last_port_key = capsule.from_port_key
+                    capsule.from_port_key = capsule.to_port_key
                     capsule.to_port_key = nil
                     capsule.progress = 0.0
+                    curr_pos = { x = to_pos.x, y = to_pos.y }
+                    -- Loop continues to the next segment with leftover tiles_this_tick
                 else
-                    local dx = to_pos.x - from_pos.x
-                    local dy = to_pos.y - from_pos.y
-                    local distance = math.sqrt(dx * dx + dy * dy)
-
-                    if distance <= 0.001 then
-                        -- Co-located internal machine hop; step immediately
-                        capsule.last_port_key = capsule.from_port_key
-                        capsule.from_port_key = capsule.to_port_key
-                        capsule.to_port_key = nil
-                        capsule.progress = 0.0
-                    else
-                        local step = TILES_PER_TICK / distance
-                        capsule.progress = capsule.progress + step
-
-                        if capsule.progress >= 1.0 then
-                            -- Arrival at destination port
-                            capsule.last_port_key = capsule.from_port_key
-                            capsule.from_port_key = capsule.to_port_key
-                            capsule.to_port_key = nil
-                            capsule.progress = 0.0
-                            curr_pos = { x = to_pos.x, y = to_pos.y }
-                        else
-                            -- Interpolate position between ports
-                            curr_pos.x = from_pos.x + dx * capsule.progress
-                            curr_pos.y = from_pos.y + dy * capsule.progress
-                        end
-                    end
+                    -- Partial progress; consume all remaining speed for this tick
+                    capsule.progress = capsule.progress + (tiles_this_tick / distance)
+                    curr_pos.x = from_pos.x + dx * capsule.progress
+                    curr_pos.y = from_pos.y + dy * capsule.progress
+                    tiles_this_tick = 0 -- Speed exhausted for this tick
                 end
             end
+        end
 
-            -- 3. Redraw visual render position
-            clear_capsule_render(capsule)
-            if storage.show_capsules then
-                capsule.render_id = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 }, -- Bright Yellow
-                    radius = 0.25,
-                    filled = true,
-                    target = curr_pos,
-                    surface = surface
-                }
-            end
+        -- 3. Redraw visual render position
+        clear_capsule_render(capsule)
+        if storage.show_capsules and surface and curr_pos then
+            capsule.render_id = rendering.draw_circle{
+                color = { r = 1, g = 0.84, b = 0, a = 0.9 }, -- Bright Yellow
+                radius = 0.25,
+                filled = true,
+                target = curr_pos,
+                surface = surface
+            }
         end
     end
 end

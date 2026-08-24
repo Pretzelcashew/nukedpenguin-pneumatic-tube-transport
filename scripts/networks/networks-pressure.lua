@@ -4,29 +4,43 @@ local port_defs = require("scripts.ports.port-definitions")
 local networks_pressure = {}
 local PRESSURE_DROPOFF = 1
 
---- Traverses graph edges to collect all network IDs physically connected to the target network
+--- Traverses graph edges port-by-port to collect network IDs, stopping at internal join boundaries
 local function get_connected_network_ids(start_net_id)
-    local connected_nets = { [start_net_id] = true }
-    local queue = { start_net_id }
-    local head = 1
+    local connected_nets = {}
+    local start_net = storage.networks.list and storage.networks.list[start_net_id]
+    if not (start_net and start_net.members) then return connected_nets end
 
+    local visited_ports = {}
+    local queue = {}
+
+    -- Seed the queue with all ports belonging to the starting network
+    for _, member in ipairs(start_net.members) do
+        local key = member.unit_number .. ":" .. member.port_index
+        visited_ports[key] = true
+        table.insert(queue, { key = key, unit_number = member.unit_number })
+    end
+
+    local head = 1
     while head <= #queue do
-        local curr_net_id = queue[head]
+        local curr = queue[head]
         head = head + 1
 
-        local net = storage.networks.list and storage.networks.list[curr_net_id]
-        if net and net.members then
-            for _, member in ipairs(net.members) do
-                local key = member.unit_number .. ":" .. member.port_index
-                local neighbors = storage.port_connections and storage.port_connections[key]
-                if neighbors then
-                    for n_key, _ in pairs(neighbors) do
-                        local n_net_id = storage.networks.port_to_network and storage.networks.port_to_network[n_key]
-                        if n_net_id and not connected_nets[n_net_id] then
-                            connected_nets[n_net_id] = true
-                            table.insert(queue, n_net_id)
-                        end
-                    end
+        local net_id = storage.networks.port_to_network and storage.networks.port_to_network[curr.key]
+        if net_id then
+            connected_nets[net_id] = true
+        end
+
+        local neighbors = storage.port_connections and storage.port_connections[curr.key]
+        if neighbors then
+            for n_key, conn_type in pairs(neighbors) do
+                local n_unit = tonumber(n_key:match("^(%d+):"))
+
+                -- BLOCK INTERNAL JOIN EDGES (Hub & Pump internal boundaries)
+                local is_internal_join = (curr.unit_number == n_unit) and (conn_type == "join")
+
+                if not is_internal_join and not visited_ports[n_key] then
+                    visited_ports[n_key] = true
+                    table.insert(queue, { key = n_key, unit_number = n_unit })
                 end
             end
         end

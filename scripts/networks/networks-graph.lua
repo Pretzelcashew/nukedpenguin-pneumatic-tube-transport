@@ -68,7 +68,8 @@ function networks_graph.bind_group_to_network(entity, group_id, network_id)
 
     for i = 1, #group_ports do
         for j = i + 1, #group_ports do
-            networks_graph.record_connection(entity.unit_number, group_ports[i], entity.unit_number, group_ports[j], "merge")
+            local conn_type = ports[group_ports[i]].connection or "merge"
+            networks_graph.record_connection(entity.unit_number, group_ports[i], entity.unit_number, group_ports[j], conn_type)
         end
     end
 end

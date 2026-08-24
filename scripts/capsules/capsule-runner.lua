@@ -6,7 +6,7 @@ local networks = require("scripts.networks.networks")
 local capsule_runner = {}
 
 -- Configurable movement speed (3 tiles / second -> divided by 60 ticks)
-local SPEED_TILES_PER_SEC = 180.0
+local SPEED_TILES_PER_SEC = 3
 local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 
 local function init_storage()

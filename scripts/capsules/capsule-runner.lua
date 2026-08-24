@@ -39,7 +39,7 @@ local function get_port_world_pos(port_key)
     return nil, nil
 end
 
---- Leverages flow_map outbound_hops and applies anti-backtracking
+--- Leverages flow_map outbound_hops and applies anti-backtracking with randomized tie-breaking
 local function select_next_target(capsule)
     local current_node = get_node(capsule.from_port_key)
     if not (current_node and current_node.outbound_hops and #current_node.outbound_hops > 0) then
@@ -56,13 +56,11 @@ local function select_next_target(capsule)
         end
     end
 
-    -- Fix 1: Conditional turnaround. Prevents dead-end ping-pong, 
-    -- but allows flow reversal if a new path opens upstream.
+    -- Conditional turnaround check
     if #candidates == 0 then
         local last_node = get_node(capsule.last_port_key)
         local path_opened = false
         
-        -- Check if the node we came from has any valid exits besides the dead end we are sitting at
         if last_node and last_node.outbound_hops then
             for _, next_hop in ipairs(last_node.outbound_hops) do
                 if next_hop ~= capsule.from_port_key then
@@ -73,16 +71,15 @@ local function select_next_target(capsule)
         end
         
         if path_opened then
-            candidates = hops -- Re-allow turnaround because a valid path exists
+            candidates = hops 
         else
-            return nil -- Sit and wait. The only option is a useless ping-pong loop.
+            return nil 
         end
     end
 
-    -- 2. Select hop with highest effective pressure differential
-    local best_target = candidates[1]
+    -- 2. Evaluate scores and collect top candidates for randomized tie-breaking
+    local best_candidates = {}
     local max_drop = -math.huge
-    local best_is_external = false
 
     for _, hop_key in ipairs(candidates) do
         local target_node = get_node(hop_key)
@@ -91,15 +88,12 @@ local function select_next_target(capsule)
             local is_internal = (target_node.unit_number == current_node.unit_number)
 
             if is_internal then
-                -- For pumps: heavily prioritize internal hops that increase pressure (Inlet -> Outlet)
                 if target_node.pressure > current_node.pressure then
                     drop = math.huge
                 else
-                    -- Fix 2: For junctions, look ahead one hop to find the lowest pressure exit path
                     local best_downstream = -math.huge
                     for _, next_hop in ipairs(target_node.outbound_hops) do
                         local next_node = get_node(next_hop)
-                        -- Check external neighbors of the target internal port
                         if next_node and next_node.unit_number ~= target_node.unit_number then
                             local d = current_node.pressure - next_node.pressure
                             if d > best_downstream then 
@@ -107,30 +101,41 @@ local function select_next_target(capsule)
                             end
                         end
                     end
-                    -- Use the best downstream drop, fallback to 0 if no external exits exist
                     drop = (best_downstream ~= -math.huge) and best_downstream or 0
                 end
             else
-                -- Standard external hop drop
                 drop = current_node.pressure - target_node.pressure
             end
 
-            -- Fix 3: Apply Tie-Breaker Logic
+            local is_ext = not is_internal
+
+            -- Handle scores and tie-breaking pools
             if drop > max_drop then
                 max_drop = drop
-                best_target = hop_key
-                best_is_external = not is_internal
+                best_candidates = { { key = hop_key, is_external = is_ext } }
             elseif drop == max_drop then
-                -- TIE-BREAKER: Prefer external exits over internal meandering
-                if not is_internal and not best_is_external then
-                    best_target = hop_key
-                    best_is_external = true
+                local current_best_is_ext = best_candidates[1] and best_candidates[1].is_external
+                
+                if is_ext and not current_best_is_ext then
+                    -- External exits take priority over internal routing on a tie
+                    best_candidates = { { key = hop_key, is_external = true } }
+                elseif not is_ext and current_best_is_ext then
+                    -- Keep the external choice, ignore the internal one
+                else
+                    -- Truly equal options (e.g., two parallel tubes or two internal paths), add to pool!
+                    table.insert(best_candidates, { key = hop_key, is_external = is_ext })
                 end
             end
         end
     end
 
-    return best_target
+    if #best_candidates == 0 then
+        return nil
+    end
+
+    -- 3. Pick randomly among all top-tier tied candidates
+    local chosen = best_candidates[math.random(#best_candidates)]
+    return chosen.key
 end
 
 local function clear_capsule_render(capsule)

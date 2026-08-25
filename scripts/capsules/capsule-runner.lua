@@ -1,11 +1,18 @@
--- scripts/capsules/capsule-runner.lua
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
+local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local capsule_runner = {}
+
+-- Alias extracted queries and cleanup routines for API compatibility
+capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_at_entity
+capsule_runner.remove_capsule = capsule_queries.remove_capsule
+capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
+
+local clear_capsule_render = capsule_queries.clear_capsule_render
 
 -- Configurable movement speed (30 tiles / second -> divided by 60 ticks)
 local SPEED_TILES_PER_SEC = 30
@@ -137,13 +144,6 @@ local function select_next_target(capsule)
     return chosen.key
 end
 
-local function clear_capsule_render(capsule)
-    if capsule.render_id and capsule.render_id.valid then
-        capsule.render_id.destroy()
-    end
-    capsule.render_id = nil
-end
-
 --- Checks memory and evaluates capture conditions upon reaching or standing at a port
 local function handle_arrival(capsule, id)
     local new_unit_num = tonumber(capsule.from_port_key:match("^(%d+)"))
@@ -268,20 +268,6 @@ local function update_capsules()
     end
 end
 
---- Checks how many capsules are currently occupying the entity's ports
-function capsule_runner.get_capsule_count_at_entity(unit_number)
-    if not storage.capsules then return 0 end
-    local count = 0
-    local prefix = tostring(unit_number) .. ":"
-    
-    for _, cap in pairs(storage.capsules) do
-        if cap.from_port_key and string.sub(cap.from_port_key, 1, string.len(prefix)) == prefix then
-            count = count + 1
-        end
-    end
-    return count
-end
-
 --- Injects a physically packed capsule ID into the motion runner on the optimal port
 function capsule_runner.inject_from_hub(capsule_id, entity)
     init_storage()
@@ -333,98 +319,6 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
         source_hub = entity.unit_number
     }
     return true
-end
-
-
---- Removes a capsule from motion tracking and clears its visual debug render
-function capsule_runner.remove_capsule(id)
-    if not storage.capsules then return end
-    local capsule = storage.capsules[id]
-    if capsule then
-        clear_capsule_render(capsule)
-        storage.capsules[id] = nil
-    end
-end
-
---- Finds all active capsule runner IDs currently located at or heading to/from an entity
-function capsule_runner.find_capsules_at_entity(unit_number)
-    if not storage.capsules then return {} end
-    local prefix = tostring(unit_number) .. ":"
-    local prefix_len = #prefix
-    local matches = {}
-
-    for id, cap in pairs(storage.capsules) do
-        local at_from = cap.from_port_key and string.sub(cap.from_port_key, 1, prefix_len) == prefix
-        local at_to = cap.to_port_key and string.sub(cap.to_port_key, 1, prefix_len) == prefix
-        if at_from or at_to then
-            table.insert(matches, id)
-        end
-    end
-
-    return matches
-end
-
-function capsule_runner.spawn(player, entity)
-    init_storage()
-
-    if not (entity and entity.valid) then
-        if player then player.print("[Capsule] No valid entity selected/hovered.") end
-        return
-    end
-
-    local ports = port_defs.get_ports(entity)
-    if not ports then
-        if player then player.print(string.format("[Capsule] %s does not have network ports.", entity.name)) end
-        return
-    end
-
-    local target_port_key = nil
-    for p_idx, _ in ipairs(ports) do
-        local key = entity.unit_number .. ":" .. p_idx
-        local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[key]
-        if net_id then
-            target_port_key = key
-            break
-        end
-    end
-
-    if not target_port_key then
-        if player then player.print("[Capsule] Hovered entity is not bound to an active flow network.") end
-        return
-    end
-
-    local id = storage.next_capsule_id
-    storage.next_capsule_id = id + 1
-
-    storage.capsules[id] = {
-        id = id,
-        from_port_key = target_port_key,
-        to_port_key = nil,
-        last_port_key = nil,
-        progress = 0.0,
-        render_id = nil,
-        source_hub = entity.unit_number
-    }
-
-    if player then
-        player.print(string.format("[Capsule] Spawned Capsule #%d at Port %s", id, target_port_key))
-    end
-end
-
-function capsule_runner.clear_all(player)
-    init_storage()
-    local count = 0
-
-    for _, capsule in pairs(storage.capsules) do
-        clear_capsule_render(capsule)
-        count = count + 1
-    end
-
-    storage.capsules = {}
-
-    if player then
-        player.print(string.format("[Capsule] Cleared %d capsule(s).", count))
-    end
 end
 
 -- Hook game tick event for smooth travel

@@ -1,6 +1,5 @@
--- FILE: scripts/hubs/hub-spill.lua
 local capsule_manager = require("scripts.capsules.capsule-manager")
-local capsule_runner = require("scripts.capsules.capsule-runner")
+local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local hub_spill = {}
 
@@ -116,14 +115,14 @@ function hub_spill.handle_entity_destruction(entity)
     end
 
     -- 2. Query active/in-transit/parked capsules occupying this entity's ports
-    local runner_ids = capsule_runner.find_capsules_at_entity(unit_number)
+    local runner_ids = capsule_queries.find_capsules_at_entity(unit_number)
 
     for _, id in ipairs(runner_ids) do
         local cap = storage.capsules and storage.capsules[id]
         local capsule_id = cap and (cap.capsule_id or cap.id)
 
         -- Clear motion tracking and render object
-        capsule_runner.remove_capsule(id)
+        capsule_queries.remove_capsule(id)
 
         -- Spill payload and destroy liminal holder
         if capsule_id then

@@ -18,32 +18,31 @@ function hub_packing.evaluate_inventory(entity)
     local hub_def = hub_defs.types[entity.name]
     if not (hub_def and hub_def.type == "hub") then return end
 
-    -- 0. EARLY CAPACITY GUARD 
     local unit_number = entity.unit_number
+    local inventory = entity.get_inventory(defines.inventory.chest)
+    if not inventory then return end
+
+    -- 1. MECHANICAL LATCH LOGIC: Run before capacity guard so locks can clear
+    if storage.hub_receive_locks and storage.hub_receive_locks[unit_number] then
+        if inventory.is_empty() then
+            -- Chest was completely emptied! Release the lock.
+            storage.hub_receive_locks[unit_number] = nil
+        else
+            -- Still holds unpacked items. Refuse to pack new capsules.
+            return 
+        end
+    end
+
+    -- 2. If unlocked and empty, there's nothing to pack
+    if inventory.is_empty() then return end
+
+    -- 3. EARLY CAPACITY GUARD: Block NEW packing if capsule capacity is maxed
     local max_capacity = hub_def.capsule_capacity or 1
     local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
 
     if current_occupants >= max_capacity then return end
 
-    local inventory = entity.get_inventory(defines.inventory.chest)
-    if not inventory then return end
-
-    -- MECHANICAL LATCH LOGIC
-    if storage.hub_receive_locks and storage.hub_receive_locks[unit_number] then
-        if inventory.is_empty() then
-            -- The inventory has finally been emptied. Release the lock!
-            storage.hub_receive_locks[unit_number] = nil
-            return -- It's empty, so there's nothing to pack right now anyway.
-        else
-            -- Still has unpacked items waiting to be extracted. Refuse to pack.
-            return 
-        end
-    end
-
-    -- Normal empty check for hubs that aren't locked
-    if inventory.is_empty() then return end
-
-    -- 1. Identify primary vessel capsule
+    -- 4. Identify primary vessel capsule
     local primary_slot = nil
     local capsule_def = nil
     local capsule_name = nil
@@ -69,7 +68,7 @@ function hub_packing.evaluate_inventory(entity)
 
     if not primary_slot then return end
 
-    -- 2. Calculate capacity & limits
+    -- 5. Calculate capacity & limits
     local quality_bonus = quality_level * (capsule_def.quality_affected_capacity or 0)
     local total_capacity = capsule_def.base_capacity + quality_bonus
     local self_slot_cost = capsule_def.include_self and 1 or 0
@@ -84,7 +83,7 @@ function hub_packing.evaluate_inventory(entity)
 
     if max_cargo_slots < 0 then return end
 
-    -- 3. Filter and group inventory
+    -- 6. Filter and group inventory
     local allow_consolidation = (capsule_def.full_stacks or false) and (capsule_def.consolidate_stacks or false)
     local mq_setting = capsule_def.mixed_quality
     local allow_mixed_quality = (mq_setting == true or mq_setting == "any")
@@ -144,7 +143,7 @@ function hub_packing.evaluate_inventory(entity)
         group_order = filtered_order
     end
 
-    -- 4. Calculate transfer plan
+    -- 7. Calculate transfer plan
     local packing_plan = cargo_planner.build_packing_plan(
         grouped_inventory, group_order, max_cargo_slots, capsule_def, self_slot_cost, required_min_slots
     )
@@ -152,7 +151,7 @@ function hub_packing.evaluate_inventory(entity)
     local total_slots_processed = #packing_plan.insertions + self_slot_cost
     if total_slots_processed < required_min_slots then return end
 
-    -- 5. Spawn holder
+    -- 8. Spawn holder
     local liminal_surface = liminal_surface_mgr.get()
     local holder_prototype = capsule_def.holder_type or "invisible-capsule-holder"
     local holder = liminal_surface.create_entity{
@@ -162,7 +161,7 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- 6. DIRECT STACK TRANSFERS
+    -- 9. DIRECT STACK TRANSFERS
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
@@ -189,7 +188,7 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 7. Handle primary capsule lifecycle
+    -- 10. Handle primary capsule lifecycle
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
@@ -211,7 +210,7 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 8. Final checks & runner injection (Updated to hand off to runner)
+    -- 11. Final checks & runner injection
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() then
         holder.destroy()
         return

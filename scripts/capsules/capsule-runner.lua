@@ -147,7 +147,7 @@ local function clear_capsule_render(capsule)
     capsule.render_id = nil
 end
 
---- Checks memory and evaluates capture conditions upon reaching a port
+--- Checks memory and evaluates capture conditions upon reaching or standing at a port
 local function handle_arrival(capsule, id)
     local new_unit_num = tonumber(capsule.from_port_key:match("^(%d+)"))
     
@@ -164,28 +164,24 @@ local function handle_arrival(capsule, id)
         -- If it's a hub, and NOT our source hub
         if hub_def and capsule.source_hub ~= node.entity.unit_number then
             
-            -- Check occupancy (we are already at the port, so count includes us)
-            local occupancy = capsule_runner.get_capsule_count_at_entity(node.entity.unit_number)
+            -- Attempt capture directly. Unpacking will pass if hub has room,
+            -- or fail cleanly if chest is full without locking up.
+            local unpacked = hub_unpacking.capture(capsule, node.entity)
             
-            if occupancy <= (hub_def.capsule_capacity or 1) then
-                local unpacked = hub_unpacking.capture(capsule, node.entity)
-                
-                if unpacked then
-                    clear_capsule_render(capsule)
-                    storage.capsules[id] = nil
-                    return true -- Destroyed successfully
-                else
-                    -- Hub cannot accept the full cargo payload.
-                    -- The capsule bypasses this hub and will naturally
-                    -- find a new outbound port on the next tick.
-                end
+            if unpacked then
+                clear_capsule_render(capsule)
+                storage.capsules[id] = nil
+                return true -- Unpacked and destroyed successfully
+            else
+                -- Hub chest is full. Halt target movement so we remain parked here.
+                capsule.to_port_key = nil
             end
         end
     end
     return false
 end
 
---- Main movement loop executed every game tick (supports multi-segment high-speed traversal)
+--- Main movement loop executed every game tick
 local function update_capsules()
     if not storage.capsules then return end
 
@@ -195,19 +191,21 @@ local function update_capsules()
         local curr_pos = nil
         local safety_counter = 0
 
-        -- Loop to consume movement across multiple segments in a single tick if speed permits
         while tiles_this_tick > 0 and safety_counter < 50 do
             safety_counter = safety_counter + 1
 
-            -- 1. Acquire target if stationary
+            -- 1. If stationary at a port, poll unpacking FIRST before target searching
             if not capsule.to_port_key then
+                if handle_arrival(capsule, id) then 
+                    break -- Capsule unpacked and destroyed successfully!
+                end
+
                 capsule.to_port_key = select_next_target(capsule)
                 capsule.progress = 0.0
             end
 
             local from_pos, surf = get_port_world_pos(capsule.from_port_key)
             
-            -- Remove capsule if its origin entity was destroyed
             if not from_pos then
                 clear_capsule_render(capsule)
                 storage.capsules[id] = nil
@@ -217,14 +215,13 @@ local function update_capsules()
             surface = surf
             curr_pos = { x = from_pos.x, y = from_pos.y }
 
-            -- If still no target after searching (e.g. dead end), stop moving this tick
+            -- Parked waiting at a full hub or dead end
             if not capsule.to_port_key then
                 break
             end
 
             local to_pos = get_port_world_pos(capsule.to_port_key)
             if not to_pos then
-                -- Target port removed, clear target and retry search next tick
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 break
@@ -235,19 +232,16 @@ local function update_capsules()
             local distance = math.sqrt(dx * dx + dy * dy)
 
             if distance <= 0.001 then
-                -- Co-located internal machine hop (e.g. machine pass-through); step immediately without consuming distance
                 capsule.last_port_key = capsule.from_port_key
                 capsule.from_port_key = capsule.to_port_key
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 
-                -- Check arrival logic. If true (captured), break the loop for this tick
                 if handle_arrival(capsule, id) then break end
             else
                 local remaining_distance = distance * (1.0 - capsule.progress)
 
                 if tiles_this_tick >= remaining_distance then
-                    -- Fully crossed this segment this tick! Consume distance and advance port.
                     tiles_this_tick = tiles_this_tick - remaining_distance
                     capsule.last_port_key = capsule.from_port_key
                     capsule.from_port_key = capsule.to_port_key
@@ -255,24 +249,21 @@ local function update_capsules()
                     capsule.progress = 0.0
                     curr_pos = { x = to_pos.x, y = to_pos.y }
                     
-                    -- Check arrival logic. If true (captured), break the loop for this tick
                     if handle_arrival(capsule, id) then break end
                 else
-                    -- Partial progress; consume all remaining speed for this tick
                     capsule.progress = capsule.progress + (tiles_this_tick / distance)
                     curr_pos.x = from_pos.x + dx * capsule.progress
                     curr_pos.y = from_pos.y + dy * capsule.progress
-                    tiles_this_tick = 0 -- Speed exhausted for this tick
+                    tiles_this_tick = 0
                 end
             end
         end
 
-        -- 3. Redraw visual render position (Wrapped safely so destroyed capsules don't crash)
         if storage.capsules[id] then
             clear_capsule_render(capsule)
             if storage.show_capsules and surface and curr_pos then
                 capsule.render_id = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 }, -- Bright Yellow
+                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
                     radius = 0.25,
                     filled = true,
                     target = curr_pos,
@@ -282,7 +273,6 @@ local function update_capsules()
         end
     end
 end
-
 --- Checks how many capsules are currently occupying the entity's ports
 function capsule_runner.get_capsule_count_at_entity(unit_number)
     if not storage.capsules then return 0 end

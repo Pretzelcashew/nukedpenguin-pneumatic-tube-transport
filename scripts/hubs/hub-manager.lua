@@ -18,7 +18,7 @@ local function on_hub_built(event)
     end
 end
 
--- Remove a hub from active registry and clean up compartment memory
+-- Remove a hub from active registry
 local function on_hub_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
@@ -26,7 +26,6 @@ local function on_hub_removed(event)
     local unit_number = entity.unit_number
     local def = hub_defs.types[entity.name]
     if def then
-        -- Execute spill mechanics before clearing active registry entries
         hub_spill.handle_hub_destruction(entity)
 
         if storage.active_hubs then
@@ -46,7 +45,6 @@ local function on_tick(event)
                 hub_packing.evaluate_inventory(entity)
             else
                 storage.active_hubs[unit_number] = nil
-                if storage.hub_compartments then storage.hub_compartments[unit_number] = nil end
             end
         end
     end

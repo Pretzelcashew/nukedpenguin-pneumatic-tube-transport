@@ -8,6 +8,8 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 local quality_filter = require("scripts.hubs.packing.quality-filter")
 local cargo_planner = require("scripts.hubs.packing.cargo-planner")
 
+local capsule_runner = require("scripts.capsules.capsule-runner")
+
 local hub_packing = {}
 
 function hub_packing.evaluate_inventory(entity)
@@ -16,14 +18,12 @@ function hub_packing.evaluate_inventory(entity)
     local hub_def = hub_defs.types[entity.name]
     if not (hub_def and hub_def.type == "hub") then return end
 
-    -- 0. EARLY CAPACITY GUARD
+    -- 0. EARLY CAPACITY GUARD (Updated to check actual runner port occupancy)
     local unit_number = entity.unit_number
-    storage.hub_compartments = storage.hub_compartments or {}
-    storage.hub_compartments[unit_number] = storage.hub_compartments[unit_number] or {}
-    local compartment = storage.hub_compartments[unit_number]
-
     local max_capacity = hub_def.capsule_capacity or 1
-    if #compartment >= max_capacity then return end
+    local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
+
+    if current_occupants >= max_capacity then return end
 
     local inventory = entity.get_inventory(defines.inventory.chest)
     if not inventory or inventory.is_empty() then return end
@@ -117,7 +117,6 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- Enforce 'strict' / 'capsule' single quality lock
     if is_strict_capsule and #group_order > 0 then
         local target_quality = grouped_inventory[group_order[1]].sources[1].quality_name
         local filtered_order = {}
@@ -148,7 +147,7 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- 6. DIRECT STACK TRANSFERS (Deducts directly from source stack)
+    -- 6. DIRECT STACK TRANSFERS
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
@@ -175,7 +174,7 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 7. Handle primary capsule lifecycle (Deducts source capsule)
+    -- 7. Handle primary capsule lifecycle
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
@@ -197,7 +196,7 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 8. Final checks & compartment loading
+    -- 8. Final checks & runner injection (Updated to hand off to runner)
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() then
         holder.destroy()
         return
@@ -205,7 +204,11 @@ function hub_packing.evaluate_inventory(entity)
 
     local capsule_id = capsule_manager.register(holder, capsule_name)
     if capsule_id then
-        table.insert(compartment, capsule_id)
+        local success = capsule_runner.inject_from_hub(capsule_id, entity)
+        if not success then
+            -- Fallback: The hub is not connected to a network, undo packing.
+            capsule_manager.remove(capsule_id)
+        end
     end
 end
 

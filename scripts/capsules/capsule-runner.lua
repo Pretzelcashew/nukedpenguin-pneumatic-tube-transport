@@ -237,6 +237,50 @@ local function update_capsules()
     end
 end
 
+--- Checks how many capsules are currently occupying the entity's ports
+function capsule_runner.get_capsule_count_at_entity(unit_number)
+    if not storage.capsules then return 0 end
+    local count = 0
+    local prefix = tostring(unit_number) .. ":"
+    
+    for _, cap in pairs(storage.capsules) do
+        if cap.from_port_key and string.sub(cap.from_port_key, 1, string.len(prefix)) == prefix then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+--- Injects a physically packed capsule ID into the motion runner
+function capsule_runner.inject_from_hub(capsule_id, entity)
+    init_storage()
+    local ports = port_defs.get_ports(entity)
+    if not ports then return false end
+
+    -- Find the first port connected to an active network
+    local target_port_key = nil
+    for p_idx, _ in ipairs(ports) do
+        local key = entity.unit_number .. ":" .. p_idx
+        if storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[key] then
+            target_port_key = key
+            break
+        end
+    end
+
+    if not target_port_key then return false end -- Not connected to a network
+
+    -- Link the runner tracker directly to the physical capsule ID
+    storage.capsules[capsule_id] = {
+        id = capsule_id,
+        from_port_key = target_port_key,
+        to_port_key = nil,
+        last_port_key = nil,
+        progress = 0.0,
+        render_id = nil
+    }
+    return true
+end
+
 function capsule_runner.spawn(player, entity)
     init_storage()
 

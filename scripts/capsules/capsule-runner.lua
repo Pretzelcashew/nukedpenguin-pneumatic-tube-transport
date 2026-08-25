@@ -8,7 +8,7 @@ local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_runner = {}
 
 -- Configurable movement speed (3 tiles / second -> divided by 60 ticks)
-local SPEED_TILES_PER_SEC = 3
+local SPEED_TILES_PER_SEC = 30
 local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 
 local function init_storage()
@@ -175,8 +175,9 @@ local function handle_arrival(capsule, id)
                     storage.capsules[id] = nil
                     return true -- Destroyed successfully
                 else
-                    -- Hub inventory is full, halt movement and wait here
-                    capsule.to_port_key = nil
+                    -- Hub cannot accept the full cargo payload.
+                    -- The capsule bypasses this hub and will naturally
+                    -- find a new outbound port on the next tick.
                 end
             end
         end

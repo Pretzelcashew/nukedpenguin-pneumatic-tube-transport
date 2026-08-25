@@ -1,0 +1,358 @@
+Yes, your AI revisions contained all the critical architectural changes! To make this document truly useful as an "all-encompassing reference", those revisions need to be fully integrated back into the core sections (the data flow, module directory, storage schema, and algorithm specifications) rather than just living in a changelog at the bottom.
+
+Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`**.
+
+```markdown
+# ARCHITECTURE.md - Project Blueprint & Structural Overview
+**Mod Name:** `nukedpenguin-pneumatic-tube-transport`  
+**Factorio Target Version:** 2.1  
+**Author / Maintainer:** Collaborator / Nukedpenguin  
+**Description:** Architectural manifest, module map, event lifecycle table, global storage schema, and algorithmic specification for AI context and developer quick-reference.
+
+---
+
+## 1. System Architecture & Core Data Flow
+
+```
++-----------------------------------------------------------------------------------+
+|                                 FACTORIO ENGINE                                   |
++-----------------------------------------------------------------------------------+
+   | Build / Rotate / Mine Events                       | Interleaved & Motion on_tick
+   v                                                    v
++----------------------------------+       +---------------------------------------+
+|  NETWORK TOPOLOGY LAYER          |       |  RUNTIME SIMULATION LAYER             |
+|  - network-connect / disconnect  |       |  - hub-manager (Scanner & Lock Reset) |
+|  - network-validate / invalidate |       |  - hub-packing -> cargo-planner       |
+|  - network-merge / join / split  |       |  - capsule-runner (Motion Engine)     |
+|                                  |       |  - hub-unpacking (Cargo Unloader)     |
++----------------------------------+       +---------------------------------------+
+   | Spatial & Graph Updates                            | Inject / Motion / Unpack Loop
+   v                                                    v
++-----------------------------------------------------------------------------------+
+|  NETWORK PRESSURE & FLOW ENGINE                                                   |
+|  - networks-pressure (BFS pressure propagation from sources e.g. pumps)           |
+|  - networks-flow (Calculates pressure gradients & outbound directional vectors)   |
+|  - flow-cull (Internal dead-end path pruning for multi-port entities)             |
++-----------------------------------------------------------------------------------+
+   | Outputs Metadata
+   v
++-----------------------------------------------------------------------------------+
+|  PERSISTENT STORAGE (`storage`) & DEBUG OVERLAYS                                  |
+|  - storage.networks / storage.port_connections / storage.port_pressures          |
+|  - storage.active_capsules / storage.active_hubs / storage.hub_receive_locks     |
+|  - networks-flow-renderer / port-renderer                                        |
++-----------------------------------------------------------------------------------+
+```
+
+---
+
+## 2. All-Encompassing Module Directory
+
+### 2.1 Root & Prototype Stage Files
+
+| File | Sub-Path | Purpose & Role | Key Exports / Prototypes | Key Dependencies |
+| :--- | :--- | :--- | :--- | :--- |
+| `info.json` | `/` | Mod metadata manifest. | Defines mod ID, version (`0.0.1`), title, Factorio version (`2.1`), dependencies (`base`). | Factorio Engine |
+| `data.lua` | `/` | Prototype stage entry point. Loads item, recipe, entity, and input prototypes. | Loads prototype files via `require`. | Data Stage |
+| `control.lua` | `/` | Runtime script entry point. Initializes global `storage` structure and loads all systems. | Hooks `script.on_init`, `script.on_configuration_changed`, requires all logic scripts. | Script Stage |
+| `custom-input.lua` | `prototypes/` | Custom input hotkey definitions. | Defines `on-player-rotate` custom input (currently unused). | `data.lua` |
+| `entity.lua` | `prototypes/` | Registers mod entities in Factorio data stage. | Defines `capsule-hub-horizontal`, `capsule-hub-vertical`, `invisible-capsule-holder`, `visible-capsule-holder`, `pneumatic-tube`, `pneumatic-pump`, `junction`. | `data.lua` |
+| `item.lua` | `prototypes/` | Prototype item definitions for placeable structures and transport capsules. | Defines items: `item-capsule`, `capsule-hub-horizontal`, `capsule-hub-vertical`, `pneumatic-tube`, `pneumatic-pump`, `junction`. | `data.lua` |
+| `recipe.lua` | `prototypes/` | Crafting recipes for all mod items. | Defines recipes matching item prototypes using base resources (plates, steel, engines, circuits). | `data.lua` |
+
+---
+
+### 2.2 System Framework & Surface Management
+
+| File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
+| :--- | :--- | :--- | :--- | :--- |
+| `events.lua` | `scripts/` | Centralized event dispatching wrapper around Factorio's `script.on_event`. Allows multiple listeners per event ID. | `events.on_event(event_id, handler)` | System-wide event listeners |
+| `event-logger.lua` | `scripts/` | Debug utility logging fired game events to the chat console with blacklist/whitelist filters. | Dynamic debug event listeners. | `scripts/events.lua` |
+| `liminal-surface.lua` | `scripts/surfaces/` | Manages a dedicated 1x1 off-grid surface (`liminal_surface`) holding invisible capsule containers out of the playable map. | `liminal_surface.get()` | `hub-packing.lua`, `hub-unpacking.lua`, Factorio Engine |
+
+---
+
+### 2.3 Port Topology & Compatibility Layer
+
+| File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
+| :--- | :--- | :--- | :--- | :--- |
+| `port-definitions.lua` | `scripts/ports/` | Static entity offset and property registry: directional spatial offsets, flow directions (`in`, `out`, `any`), pressure levels, and connection modes (`join`, `merge`). | `port_defs.get_ports(entity)`<br>`port_defs.registered_names` | `port-finder`, `network-validate`, `networks-flow` |
+| `port-finder.lua` | `scripts/ports/` | Spatial query engine using `find_entities_filtered` to locate nearby compatible entity ports on the surface based on position and offset. | `port_finder.find_connections(entity)` | `network-validate.lua` |
+| `port-evaluator.lua` | `scripts/ports/` | Evaluates flow and connection compatibility between candidate port pairs against rule matrices. | `port_evaluator.are_compatible(ent_a, port_a, ent_b, port_b)` | `port-compatibility-definitions`, `network-validate` |
+| `port-compatibility-definitions.lua` | `scripts/ports/` | Configuration matrices detailing allowed flow pairs (`in`+`out`, `any`+`any`) and physical connection outcomes (`merge`+`merge` $\rightarrow$ `merge`, `join`+`merge` $\rightarrow$ `join`). | Matrices `flows` and `connections`. | `port-evaluator.lua` |
+| `port-connection-definitions.lua` | `scripts/ports/` | Handler map binding outcome keys (`join`, `merge`, `unjoin`, `unmerge`) to script modules. | Maps `connection_defs.types` and `connection_defs.inverses`. | `network-join`, `network-merge`, `network-unjoin`, `network-unmerge` |
+| `port-walk.lua` | `scripts/ports/` | Graph traversal engine (BFS) walking connected port edges matching specific edge types. | `port_walk.traverse(start_port_key, match_conn_type)` | `network-unmerge.lua` |
+| `port-renderer.lua` | `scripts/ports/` | Visual debug overlay toggling green circle markers on active entity ports. | Command: `/toggle-ports` | `scripts/events.lua`, Factorio Rendering API |
+
+---
+
+### 2.4 Network Topology, Pressure & Flow Engine
+
+| File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
+| :--- | :--- | :--- | :--- | :--- |
+| `networks.lua` | `scripts/networks/` | Main API facade unifying network data storage, graph building, and metadata tracking. | Unified proxy for store and graph operations. | Used mod-wide |
+| `networks-store.lua` | `scripts/networks/` | Low-level state storage manager for network IDs in `storage.networks.list`, member arrays, metadata extraction, and recycling IDs. | `create()`, `delete()`, `merge()`, `purge_port()`, `set_metadata()`, `get_metadata()`, `extract_metadata()` | `networks.lua` |
+| `networks-graph.lua` | `scripts/networks/` | Spatial graph manager maintaining adjacency dictionaries in `storage.port_connections` and binding internal entity groups. | `record_connection()`, `remove_connection()`, `bind_group_to_network()` | `networks-store`, `port-definitions` |
+| `network-connect.lua` | `scripts/networks/` | Hooks entity placement events and passes newly built entities to spatial validation. | Event listeners (`on_built_entity`, `script_raised_built`, etc.). | `network-validate.lua` |
+| `network-disconnect.lua` | `scripts/networks/` | Hooks entity mining and destruction events and passes removed entities to invalidation workflows. | Event listeners (`on_player_mined_entity`, `on_entity_died`, etc.). | `network-invalidate.lua` |
+| `network-rotate.lua` | `scripts/networks/` | Hooks orientation-change events, severing old spatial graph links and validating new orientation connections. | Event listeners (`on_player_rotated_entity`, `on_player_flipped_entity`). | `network-invalidate`, `network-validate` |
+| `network-validate.lua` | `scripts/networks/` | Main spatial validation workflow: provisions internal networks, queries spatial neighbors via `port-finder`, tests via `port-evaluator`, invokes connection handlers, rebuilds flow overlays. | `network_validate.execute(entity)` | `port-finder`, `port-evaluator`, `networks-flow`, `network-form-internals` |
+| `network-invalidate.lua` | `scripts/networks/` | Main invalidation workflow: identifies external edges, runs unjoin/unmerge handlers, purges port entries, triggers flow map rebuilds on surviving subgraphs. | `network_invalidate.execute(entity)` | `port-connection-definitions`, `networks`, `networks-flow` |
+| `network-form-internals.lua` | `scripts/networks/` | Provisions default standalone internal network IDs for an entity's internal port groups upon build/rotate. | `network_form_internals.execute(entity)` | `networks.lua`, `port-definitions.lua` |
+| `network-join.lua` | `scripts/networks/` | Registers a boundary edge between separate networks ("join"), leaving their network IDs independent. | `network_join.execute(ent_a, p_a, ent_b, p_b)` | `networks.lua` |
+| `network-merge.lua` | `scripts/networks/` | Combines two subgraphs or entity internal groups into a single network ID ("merge"). | `network_merge.execute(ent_a, p_a, ent_b, p_b)` | `networks.lua` |
+| `network-unjoin.lua` | `scripts/networks/` | Severs boundary edges between independent networks without recalculating network split topologies. | `network_unjoin.execute(port_key, neighbor_key)` | `networks.lua` |
+| `network-unmerge.lua` | `scripts/networks/` | Uses `port-walk` graph traversal to evaluate if severing a merge edge breaks a network into disconnected subgraphs, provisioning new network IDs as required. | `network_unmerge.execute(port_key, neighbor_key)` | `port-walk.lua`, `networks.lua` |
+| `networks-pressure.lua` | `scripts/networks/` | Multi-source BFS pressure propagation engine calculating distance drop-offs (`PRESSURE_DROPOFF = 1`) across network edges starting from fixed pressure sources (e.g. pumps). | `networks_pressure.process(net_id)` | `port-definitions.lua` |
+| `networks-flow.lua` | `scripts/networks/` | Rebuilds directional vector maps, checks flow rules and pressure deltas, invokes path culling, updates network metadata, triggers visual debug renderers. | `networks_flow.build(net_id)`<br>Command: `/toggle-flow` | `networks-pressure`, `flow-cull`, `networks-flow-renderer` |
+| `networks-flow-renderer.lua` | `scripts/networks/` | Visual debug renderer displaying cyan directional vectors and pressure labels (`P: X`) on entities. | `draw(net_id)`, `clear(net_id)` | Factorio Rendering API |
+| `flow-cull.lua` | `scripts/networks/` | Iterative dead-end path pruner clearing non-viable outbound hops on multi-port entities (e.g., junctions). | `flow_cull.process(flow_map)` | `networks-flow.lua` |
+
+---
+
+### 2.5 Hub System & Cargo Packing / Unpacking
+
+| File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
+| :--- | :--- | :--- | :--- | :--- |
+| `hub-definitions.lua` | `scripts/hubs/` | Configuration registry for hub entity container capacities. | Registry `hub_definitions.types` | `hub-manager.lua`, `hub-packing.lua` |
+| `hub-manager.lua` | `scripts/hubs/` | Event listener for hub lifecycle, interleaved background tick scanner (`on_tick`) for inventory packing, and automatic resetting of mechanical receive locks when hub chests are empty. | Interleaved background scanner. | `hub-packing`, `hub-spill`, `events` |
+| `hub-packing.lua` | `scripts/hubs/` | Main hub packing pipeline: checks mechanical receive locks (`storage.hub_receive_locks`) and runner occupancy, evaluates vessel capsule, plans cargo, spawns liminal holder, and triggers `capsule_runner.inject_from_hub()`. | `hub_packing.evaluate_inventory(entity)` | `liminal-surface`, `capsule-manager`, `quality-filter`, `cargo-planner`, `capsule-runner` |
+| `hub-unpacking.lua` | `scripts/hubs/` | Main hub arrival & unpacking pipeline: transfers items from liminal capsule holder into hub chest inventory, destroys liminal holder, unregisters capsule, and engages mechanical receive latch. | `hub_unpacking.unpack_capsule(capsule_id, capsule_data, hub_entity)` | `capsule-manager.lua`, `liminal-surface.lua`, `capsule-runner.lua` |
+| `hub-spill.lua` | `scripts/hubs/` | Handles safety unloading/spilling of capsule contents into chests or floor item stacks when hubs or holders are mined or destroyed. | `hub_spill.handle_hub_destruction(entity)` | `capsule-manager.lua` |
+| `quality-filter.lua` | `scripts/hubs/packing/` | Evaluates item quality against capsule vessel rules (`ceil`, comparators, whitelists, blacklists). | `quality_filter.is_quality_allowed(...)` | `hub-packing.lua` |
+| `cargo-planner.lua` | `scripts/hubs/packing/` | Calculates exact stack extraction and insertion plans for single or mixed cargo types, handling full-stack and consolidation logic. | `cargo_planner.build_packing_plan(...)` | `hub-packing.lua` |
+
+---
+
+### 2.6 Capsule System & Traversal Engine
+
+| File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
+| :--- | :--- | :--- | :--- | :--- |
+| `capsule-definitions.lua` | `scripts/capsules/` | Configuration specification for capsule items: base slot capacities, quality scaling, mixed cargo/quality rules, stack consolidation rules, holder types, spill behaviors. | Registry `capsule_definitions.types` | `hub-packing.lua`, `capsule-manager.lua` |
+| `capsule-definitions-guide.md` | `scripts/capsules/` | Technical reference document detailing all configuration parameters in `capsule-definitions.lua`. | Specification document. | Reference |
+| `capsule-manager.lua` | `scripts/capsules/` | CRUD tracking registry for active capsule holder entities stored in `storage.active_capsules`. | `register()`, `get()`, `remove()` | `capsule-definitions.lua`, `storage` |
+| `capsule-runner.lua` | `scripts/capsules/` | Main tick-based motion & traversal engine (`on_tick`). Handles `inject_from_hub()` via optimal pressure drop peeking, `source_hub` memory tracking, traversal, tie-breaking, occupancy queries (`get_capsule_count_at_entity`), hub capture triggers (`hub-unpacking`), and visual overlays. | `inject_from_hub()`, `get_capsule_count_at_entity()`<br>Commands:<br>`/spawn-capsule`<br>`/clear-capsules`<br>`/toggle-capsule` | `networks.lua`, `port-definitions.lua`, `events.lua`, `hub-unpacking.lua` |
+
+---
+
+## 3. Event Hook & Lifecycle Matrix
+
+```
++-----------------------------------+------------------------------------+------------------------------------------+
+| Factorio Engine Event             | Custom Dispatcher / Handler Module | Actions Triggered                        |
++-----------------------------------+------------------------------------+------------------------------------------+
+| script.on_init                    | control.lua -> setup_storage()     | Initializes global storage schema        |
+| script.on_configuration_changed   | control.lua -> setup_storage()     | Re-initializes global storage tables     |
++-----------------------------------+------------------------------------+------------------------------------------+
+| defines.events.on_built_entity    | network-connect.lua                | Runs network_validate.execute()          |
+| defines.events.on_robot_built_... | hub-manager.lua                    | Registers hub in storage.active_hubs     |
+| defines.events.script_raised_...  | port-renderer.lua                  | Renders green port visualization circles |
+| defines.events.script_raised_...  |                                    |                                          |
++-----------------------------------+------------------------------------+------------------------------------------+
+| defines.events.on_player_mined... | network-disconnect.lua             | Runs network_invalidate.execute()        |
+| defines.events.on_robot_mined_... | hub-manager.lua                    | Triggers hub_spill handling & unregisters|
+| defines.events.on_entity_died     |                                    | Clears graph connections & subgraphs     |
+| defines.events.script_raised_...  |                                    |                                          |
++-----------------------------------+------------------------------------+------------------------------------------+
+| defines.events.on_player_rotated  | network-rotate.lua                 | Runs network_invalidate.execute()        |
+| defines.events.on_player_flipped  |                                    | followed by network_validate.execute()   |
++-----------------------------------+------------------------------------+------------------------------------------+
+| defines.events.on_tick            | hub-manager.lua                    | Interleaved hub scanner & lock reset check|
+|                                   | capsule-runner.lua                 | Traversal, hub arrival check & overlays  |
++-----------------------------------+------------------------------------+------------------------------------------+
+```
+
+---
+
+## 4. Persistent Storage Schema (`storage`)
+
+All persistent runtime state is preserved in Factorio's `storage` table:
+
+```lua
+storage = {
+  -- Network Management System
+  networks = {
+    next_id = 1,
+    recycled_ids = {}, -- Stack of recycled network IDs available for reuse
+    list = {
+      [net_id] = {
+        id = 1,
+        members = {
+          { unit_number = 101, port_index = 1, entity = LuaEntity }
+        },
+        metadata = {
+          flow_map = { -- Flow vector topology metadata table
+            ["101:1"] = {
+              key = "101:1",
+              unit_number = 101,
+              port_index = 1,
+              entity = LuaEntity,
+              offset = { x = 0, y = -1.0 },
+              pos = { x = 10.5, y = 20.5, surface = "nauvis" },
+              pressure = 100,
+              flow_dir = "out",
+              outbound_hops = { "102:2" }
+            }
+          }
+        }
+      }
+    },
+    port_to_network = {
+      ["101:1"] = net_id -- Port key string ("unit_number:port_index") mapped to Network ID
+    }
+  },
+
+  -- Adjacency & Pressure Graphs
+  port_connections = {
+    ["101:1"] = {
+      ["102:2"] = "merge" -- Dictionary mapping neighbor port keys to edge types ("merge" | "join")
+    }
+  },
+  port_pressures = {
+    ["101:1"] = 100 -- Map of port keys to calculated numerical pressure values
+  },
+
+  -- Hub Container Registry & Mechanical Latches
+  active_hubs = {
+    [unit_number] = LuaEntity -- Registered active hub entities
+  },
+  hub_receive_locks = {
+    [unit_number] = true -- Lock engaged on hub unpack; prevents re-packing until chest inventory is completely empty
+  },
+
+  -- Capsule System & Motion Engine
+  active_capsules = {
+    [capsule_id] = {
+      holder = LuaEntity, -- Reference to invisible holder on liminal_surface
+      type = "capsule",
+      definition = { ... } -- Dynamic reference to capsule-definitions.lua
+    }
+  },
+  capsules = {
+    [capsule_runner_id] = {
+      id = 1,
+      capsule_id = capsule_id, -- Link to active_capsules entry
+      source_hub = 101, -- Unit number of origin hub (prevents immediate self-re-capture; cleared on exit)
+      from_port_key = "101:1",
+      to_port_key = "102:2",
+      last_port_key = "100:1",
+      progress = 0.45, -- Traversal progress across current segment (0.0 to 1.0)
+      render_id = LuaRenderObject
+    }
+  },
+
+  -- Visual Rendering Flags
+  show_ports = true,
+  show_capsules = true,
+  flow_render_ids = {
+    [net_id] = { LuaRenderObject, ... }
+  }
+}
+```
+
+---
+
+## 5. Core Algorithms & Operational Mechanics
+
+### 5.1 Spatial Validation & Internal Provisioning (`network-validate.lua`)
+1. Provisions default internal networks for entity port groups via `network-form-internals`.
+2. Searches for neighboring entities using spatial bounding boxes derived from `port-definitions`.
+3. Verifies direction and connection compatibility against rule matrices using `port-evaluator`.
+4. Executes specific edge handlers based on connection outcomes:
+   * **`merge`**: Combines subgraphs into a unified Network ID (`network-merge`).
+   * **`join`**: Establishes a cross-network boundary link while maintaining separate Network IDs (`network-join`).
+5. Rebuilds flow topology overlays and pressure values for all affected networks (`networks-flow`).
+
+### 5.2 Split Detection Graph Walking (`network-unmerge.lua` / `port-walk.lua`)
+1. Removes the target connection edge from `storage.port_connections`.
+2. Executes a Breadth-First Search (`port-walk`) starting from the severed neighbor port.
+3. Compares reachable node counts against total remaining network members:
+   * **No Split:** Preserves current Network ID and updates member list.
+   * **Split Detected:** Provisions a new Network ID for the disconnected subgraph and updates `port_to_network` references.
+
+### 5.3 Multi-Source Pressure Calculation (`networks-pressure.lua`)
+1. Traverses connected networks via graph edges, halting at internal `"join"` boundaries (e.g. pumps, hubs).
+2. Identifies fixed pressure source nodes (e.g., pumps configured with positive or negative pressure).
+3. Executes multi-source BFS propagation:
+   * Applies step-wise pressure drop-offs (`PRESSURE_DROPOFF = 1`) across external entity boundaries.
+   * Evaluates port direction compatibility (`in`, `out`, `any`).
+   * Commits output pressure values into `storage.port_pressures`.
+
+### 5.4 Flow Map Generation & Path Culling (`networks-flow.lua` / `flow-cull.lua`)
+1. Assembles flow nodes for local network members and cross-boundary neighbor ports.
+2. Constructs outbound vector hops between ports if pressure gradients exist ($P_{\text{from}} > P_{\text{to}}$) or if internal mechanical pass-throughs allow it.
+3. Invokes `flow-cull.lua` to remove dead-end internal hops on multi-port entities (such as 4-way junctions).
+4. Stores completed flow maps in network metadata and updates visualization overlays.
+
+### 5.5 Hub Cargo Evaluation, Consolidation & Injection (`hub-packing.lua` / `cargo-planner.lua`)
+1. Interleaved background scanner runs every 10 ticks per hub (`hub-manager.lua`).
+2. Checks `storage.hub_receive_locks[unit_number]`. If locked, packing is aborted until the hub inventory is completely empty.
+3. Queries `capsule_runner.get_capsule_count_at_entity(hub_entity)` to dynamically verify remaining hub capacity.
+4. Checks hub inventory for primary vessel capsule items and calculates quality-scaled capacity bonuses (`base_capacity + quality_level * quality_affected_capacity`).
+5. Filters container items against quality constraints (`quality-filter.lua`) and builds extraction plans via `cargo-planner.lua`.
+6. Spawns an `invisible-capsule-holder` on `liminal_surface`, transfers items, and registers `capsule_id`.
+7. Calls `capsule_runner.inject_from_hub(hub_entity, capsule_id)`:
+   * Peeks the flow map metadata across all connected ports.
+   * Injects the capsule onto the port exhibiting the strongest outward pressure gradient ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
+   * If connected to a network with no active flow, places capsule on a connected port in a dormant state until flow starts.
+   * If hub has no network connections, aborts injection, destroys holder, and reverts items back into chest.
+
+### 5.6 Capsule Traversal & Motion Engine (`capsule-runner.lua`)
+1. Executes on every game tick (`on_tick`).
+2. Evaluates trajectory using flow map outbound vectors:
+   * **Memory Tracking:** Retains `source_hub` (`unit_number`) on spawn/injection. Wipes memory once capsule steps off origin entity.
+   * **Anti-Backtracking:** Filters out `last_port_key` unless hitting a dead end.
+   * **Pressure Drop Scoring:** Prioritizes movement toward ports with lower pressure levels ($\Delta P = P_{\text{current}} - P_{\text{target}}$).
+   * **Randomized Tie-Breaking:** Randomly selects among equal top-scoring target hops.
+3. Consumes motion distance ($3.0 \text{ tiles/sec} = 0.05 \text{ tiles/tick}$), supporting multi-segment hops within a single tick.
+4. Redraws visual circle overlays on target surface using Factorio Rendering API.
+
+### 5.7 Hub Capture, Unpacking & Mechanical Latch (`hub-unpacking.lua`)
+1. When a capsule steps onto a hub port during traversal:
+   * Verifies hub unit number against capsule's `source_hub` memory (prevents origin hub from re-capturing its own capsule).
+   * Checks if target hub has available capacity.
+2. If captured, triggers `hub_unpacking.unpack_capsule(...)`:
+   * Unloads items from the liminal holder into the destination hub's chest inventory.
+   * Spills any overflow cargo to floor/chest if destination hub inventory fills up.
+   * Destroys liminal holder entity and unregisters capsule from tracking systems.
+   * Sets `storage.hub_receive_locks[hub_unit_number] = true` (mechanical receive latch).
+3. Lock Reset (`hub-manager.lua`): On each scanner tick, if a hub is locked and its inventory becomes completely empty (`inventory.is_empty()`), `storage.hub_receive_locks[hub_unit_number]` is cleared, allowing new capsules to be packed.
+
+---
+
+## 6. In-Game Console Debug Commands
+
+| Command | Description | Module Source |
+| :--- | :--- | :--- |
+| `/spawn-capsule` | Spawns a debug test capsule at the hovered network entity. | `scripts/capsules/capsule-runner.lua` |
+| `/clear-capsules` | Clears and unregisters all active capsules from the map. | `scripts/capsules/capsule-runner.lua` |
+| `/toggle-capsule` | Toggles the visual rendering overlay for capsule positions. | `scripts/capsules/capsule-runner.lua` |
+| `/toggle-flow` | Toggles cyan flow vector lines and pressure numerical text. | `scripts/networks/networks-flow.lua` |
+| `/toggle-ports` | Toggles green visual port marker circles on entities. | `scripts/ports/port-renderer.lua` |
+
+---
+
+## 7. Architecture Revisions & Changelog
+
+### Revision: Hub Packing to Motion Runner Handoff 
+**Context:** Bridge static cargo packing directly to the dynamic motion engine.
+**Key Changes:**
+1. **Deprecation of `storage.hub_compartments`:** Hubs no longer track internal packed capsules via isolated storage tables. 
+2. **Dynamic Occupancy via Runner:** Hub occupancy is calculated dynamically by `capsule-runner.lua` via `get_capsule_count_at_entity()`.
+3. **Direct Injection Handoff:** Finished liminal holders trigger `capsule_runner.inject_from_hub()`.
+4. **Network Disconnect Fallback:** Reverses packing if target entity is not bound to a network.
+
+### Revision: Smarter Hub Injection & Internal Isolation
+**Context:** Prevent capsules from leaking into hubs due to isolated internal ports.
+**Key Changes:**
+1. **Flow Map Peeking:** Evaluates `flow_map` metadata of connected ports.
+2. **Optimal Gradient Injection:** Spawns capsule on port with highest outbound pressure drop ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
+3. **Dormant Fallback:** Default injection onto port while awaiting flow establishment.
+
+### Revision: Hub Capture, Unpacking & Mechanical Latch
+**Context:** Implemented destination unpacking and anti-infinite-loop latches.
+**Key Changes:**
+1. **Short-Term Capsule Memory:** Capsules track `source_hub` (`unit_number`) until stepping off origin entity.
+2. **Hub Capture & Unpacking (`hub-unpacking.lua`):** Arriving at a new hub triggers inventory unloading and liminal holder destruction.
+3. **Mechanical Latch (`storage.hub_receive_locks`):** Destination hubs lock on receipt and refuse to pack until chest is completely empty.
+```

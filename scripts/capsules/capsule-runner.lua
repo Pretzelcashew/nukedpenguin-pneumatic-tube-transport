@@ -251,23 +251,52 @@ function capsule_runner.get_capsule_count_at_entity(unit_number)
     return count
 end
 
---- Injects a physically packed capsule ID into the motion runner
+--- Injects a physically packed capsule ID into the motion runner on the optimal port
 function capsule_runner.inject_from_hub(capsule_id, entity)
     init_storage()
     local ports = port_defs.get_ports(entity)
     if not ports then return false end
 
-    -- Find the first port connected to an active network
-    local target_port_key = nil
+    local best_port_key = nil
+    local max_drop = -math.huge
+    local fallback_port_key = nil
+
     for p_idx, _ in ipairs(ports) do
         local key = entity.unit_number .. ":" .. p_idx
-        if storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[key] then
-            target_port_key = key
-            break
+        
+        -- Use the internal network mappings to safely check flow
+        if storage.networks and storage.networks.port_to_network then
+            local net_id = storage.networks.port_to_network[key]
+            if net_id then
+                -- Save the first connected port just in case none have active flow right now
+                if not fallback_port_key then fallback_port_key = key end
+                
+                -- Check flow_map metadata for this port
+                local flow_map = networks.get_metadata(net_id, "flow_map")
+                local node = flow_map and flow_map[key]
+                
+                if node and node.outbound_hops then
+                    -- Check all outbound hops for the best external pressure drop
+                    for _, hop_key in ipairs(node.outbound_hops) do
+                        local target_node = flow_map[hop_key]
+                        
+                        -- We only care about external hops leaving the hub
+                        if target_node and target_node.unit_number ~= entity.unit_number then
+                            local drop = node.pressure - target_node.pressure
+                            if drop > max_drop then
+                                max_drop = drop
+                                best_port_key = key
+                            end
+                        end
+                    end
+                end
+            end
         end
     end
 
-    if not target_port_key then return false end -- Not connected to a network
+    -- Use the optimal port, or fall back to a dormant connected port
+    local target_port_key = best_port_key or fallback_port_key
+    if not target_port_key then return false end -- Not connected to a network at all
 
     -- Link the runner tracker directly to the physical capsule ID
     storage.capsules[capsule_id] = {

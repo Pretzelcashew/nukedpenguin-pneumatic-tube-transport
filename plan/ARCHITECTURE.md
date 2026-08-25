@@ -1,3 +1,10 @@
+Here are both updated files in full, ready to copy.
+
+---
+
+### `ARCHITECTURE.md`
+
+```markdown
 # ARCHITECTURE.md - Project Blueprint & Structural Overview
 **Mod Name:** `nukedpenguin-pneumatic-tube-transport`  
 **Factorio Target Version:** 2.1  
@@ -35,7 +42,8 @@
 |  PERSISTENT STORAGE (`storage`) & DEBUG OVERLAYS                                  |
 |  - storage.networks / storage.port_connections / storage.port_pressures          |
 |  - storage.active_capsules / storage.active_hubs / storage.hub_receive_locks     |
-|  - networks-flow-renderer / port-renderer                                        |
+|  - storage.debug (Centralized master & feature toggle state)                      |
+|  - debug-manager / networks-flow-renderer / port-renderer                         |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -62,7 +70,8 @@
 | File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
 | :--- | :--- | :--- | :--- | :--- |
 | `events.lua` | `scripts/` | Centralized event dispatching wrapper around Factorio's `script.on_event`. Allows multiple listeners per event ID. | `events.on_event(event_id, handler)` | System-wide event listeners |
-| `event-logger.lua` | `scripts/` | Debug utility logging fired game events to the chat console with blacklist/whitelist filters. | Dynamic debug event listeners. | `scripts/events.lua` |
+| `debug-manager.lua` | `scripts/` | Centralized debug state manager (`storage.debug`), exposing global `debug_print`, feature checks (`is_debug_active`), and master/sub-flag debug console commands. | `debug_print(msg)`<br>`is_debug_active(feature)`<br>Commands:<br>`/toggle-debug`, `/toggle-prints`, `/toggle-ports`, `/toggle-flow`, `/toggle-capsules` | System-wide |
+| `event-logger.lua` | `scripts/` | Debug utility logging fired game events to chat console using `debug_print` wrapper. | Dynamic debug event listeners. | `scripts/events.lua`, `debug-manager.lua` |
 | `liminal-surface.lua` | `scripts/surfaces/` | Manages a dedicated 1x1 off-grid surface (`liminal_surface`) holding invisible capsule containers out of the playable map. | `liminal_surface.get()` | `hub-packing.lua`, `hub-unpacking.lua`, Factorio Engine |
 
 ---
@@ -77,7 +86,7 @@
 | `port-compatibility-definitions.lua` | `scripts/ports/` | Configuration matrices detailing allowed flow pairs (`in`+`out`, `any`+`any`) and physical connection outcomes (`merge`+`merge` $\rightarrow$ `merge`, `join`+`merge` $\rightarrow$ `join`). | Matrices `flows` and `connections`. | `port-evaluator.lua` |
 | `port-connection-definitions.lua` | `scripts/ports/` | Handler map binding outcome keys (`join`, `merge`, `unjoin`, `unmerge`) to script modules. | Maps `connection_defs.types` and `connection_defs.inverses`. | `network-join`, `network-merge`, `network-unjoin`, `network-unmerge` |
 | `port-walk.lua` | `scripts/ports/` | Graph traversal engine (BFS) walking connected port edges matching specific edge types. | `port_walk.traverse(start_port_key, match_conn_type)` | `network-unmerge.lua` |
-| `port-renderer.lua` | `scripts/ports/` | Visual debug overlay toggling green circle markers on active entity ports. | Command: `/toggle-ports` | `scripts/events.lua`, Factorio Rendering API |
+| `port-renderer.lua` | `scripts/ports/` | Visual debug overlay rendering green circle markers on active entity ports. | `draw_all()`, `clear_all()`, `toggle()` | `debug-manager.lua`, Factorio Rendering API |
 
 ---
 
@@ -99,7 +108,7 @@
 | `network-unjoin.lua` | `scripts/networks/` | Severs boundary edges between independent networks without recalculating network split topologies. | `network_unjoin.execute(port_key, neighbor_key)` | `networks.lua` |
 | `network-unmerge.lua` | `scripts/networks/` | Uses `port-walk` graph traversal to evaluate if severing a merge edge breaks a network into disconnected subgraphs, provisioning new network IDs as required. | `network_unmerge.execute(port_key, neighbor_key)` | `port-walk.lua`, `networks.lua` |
 | `networks-pressure.lua` | `scripts/networks/` | Multi-source BFS pressure propagation engine calculating distance drop-offs (`PRESSURE_DROPOFF = 1`) across network edges starting from fixed pressure sources (e.g. pumps). | `networks_pressure.process(net_id)` | `port-definitions.lua` |
-| `networks-flow.lua` | `scripts/networks/` | Rebuilds directional vector maps, checks flow rules and pressure deltas, invokes path culling, updates network metadata, triggers visual debug renderers. | `networks_flow.build(net_id)`<br>Command: `/toggle-flow` | `networks-pressure`, `flow-cull`, `networks-flow-renderer` |
+| `networks-flow.lua` | `scripts/networks/` | Rebuilds directional vector maps, checks flow rules and pressure deltas, invokes path culling, updates network metadata, triggers visual debug renderers. | `networks_flow.build(net_id)`<br>`draw_all()`, `clear_all()` | `networks-pressure`, `flow-cull`, `networks-flow-renderer`, `debug-manager` |
 | `networks-flow-renderer.lua` | `scripts/networks/` | Visual debug renderer displaying cyan directional vectors and pressure labels (`P: X`) on entities. | `draw(net_id)`, `clear(net_id)` | Factorio Rendering API |
 | `flow-cull.lua` | `scripts/networks/` | Iterative dead-end path pruner clearing non-viable outbound hops on multi-port entities (e.g., junctions). | `flow_cull.process(flow_map)` | `networks-flow.lua` |
 
@@ -112,7 +121,7 @@
 | `hub-definitions.lua` | `scripts/hubs/` | Configuration registry for hub entity container capacities. | Registry `hub_definitions.types` | `hub-manager.lua`, `hub-packing.lua` |
 | `hub-manager.lua` | `scripts/hubs/` | Event listener for hub lifecycle and interleaved background tick scanner (`on_tick`) evaluating hub packing logic. | Interleaved background scanner. | `hub-packing`, `hub-spill`, `events` |
 | `hub-packing.lua` | `scripts/hubs/` | Main hub packing pipeline: Priority lock release on empty inventory, pre-packing lock evaluation (`storage.hub_receive_locks`), runner occupancy check, cargo planning, liminal holder spawning, and injection via `capsule_runner.inject_from_hub()`. | `hub_packing.evaluate_inventory(entity)` | `liminal-surface`, `capsule-manager`, `quality-filter`, `cargo-planner`, `capsule-runner` |
-| `hub-unpacking.lua` | `scripts/hubs/` | Main hub arrival & unpacking pipeline: All-or-nothing cargo + vessel unpacking using multi-item slot space simulation (`can_insert_all()`) with inventory slot filter awareness (`get_filter`), liminal holder cleanup, and mechanical receive latch engagement. | `hub_unpacking.unpack_capsule(...)`<br>`hub_unpacking.can_insert_all(...)` | `capsule-manager.lua`, `liminal-surface.lua`, `capsule-runner.lua` |
+| `hub-unpacking.lua` | `scripts/hubs/` | Main hub arrival & unpacking pipeline: All-or-nothing cargo + vessel unpacking using multi-item slot space simulation (`can_insert_all()`) with Factorio 2.0+ quality-aware inventory slot filter parsing (`filter_name`, `filter_quality`), liminal holder cleanup, and mechanical receive latch engagement. | `hub_unpacking.unpack_capsule(...)`<br>`hub_unpacking.can_insert_all(...)` | `capsule-manager.lua`, `liminal-surface.lua`, `capsule-runner.lua` |
 | `hub-spill.lua` | `scripts/hubs/` | Handles safety unloading/spilling of capsule contents into chests or floor item stacks when hubs or holders are mined or destroyed. | `hub_spill.handle_hub_destruction(entity)` | `capsule-manager.lua` |
 | `quality-filter.lua` | `scripts/hubs/packing/` | Evaluates item quality against capsule vessel rules (`ceil`, comparators, whitelists, blacklists). | `quality_filter.is_quality_allowed(...)` | `hub-packing.lua` |
 | `cargo-planner.lua` | `scripts/hubs/packing/` | Calculates exact stack extraction and insertion plans for single or mixed cargo types, handling full-stack and consolidation logic. | `cargo_planner.build_packing_plan(...)` | `hub-packing.lua` |
@@ -126,7 +135,7 @@
 | `capsule-definitions.lua` | `scripts/capsules/` | Configuration specification for capsule items: base slot capacities, quality scaling, mixed cargo/quality rules, stack consolidation rules, holder types, spill behaviors. | Registry `capsule_definitions.types` | `hub-packing.lua`, `capsule-manager.lua` |
 | `capsule-definitions-guide.md` | `scripts/capsules/` | Technical reference document detailing all configuration parameters in `capsule-definitions.lua`. | Specification document. | Reference |
 | `capsule-manager.lua` | `scripts/capsules/` | CRUD tracking registry for active capsule holder entities stored in `storage.active_capsules`. | `register()`, `get()`, `remove()` | `capsule-definitions.lua`, `storage` |
-| `capsule-runner.lua` | `scripts/capsules/` | Main tick-based motion & traversal engine (`on_tick`). Handles `inject_from_hub()` via optimal pressure drop peeking, `source_hub` memory tracking, continuous tick polling for parked/stationary capsules (`to_port_key == nil`), tie-breaking, occupancy queries (`get_capsule_count_at_entity`), hub capture triggers (`hub-unpacking`), and visual overlays. | `inject_from_hub()`, `get_capsule_count_at_entity()`<br>Commands:<br>`/spawn-capsule`<br>`/clear-capsules`<br>`/toggle-capsule` | `networks.lua`, `port-definitions.lua`, `events.lua`, `hub-unpacking.lua` |
+| `capsule-runner.lua` | `scripts/capsules/` | Main tick-based motion & traversal engine (`on_tick`). Handles `inject_from_hub()` via optimal pressure drop peeking, `source_hub` memory tracking, continuous tick polling for parked/stationary capsules (`to_port_key == nil`), tie-breaking, occupancy queries (`get_capsule_count_at_entity`), hub capture triggers (`hub-unpacking`), and synchronized debug overlays (`is_debug_active("capsules")`). | `inject_from_hub()`, `get_capsule_count_at_entity()` | `networks.lua`, `port-definitions.lua`, `events.lua`, `hub-unpacking.lua`, `debug-manager` |
 
 ---
 
@@ -237,9 +246,16 @@ storage = {
     }
   },
 
-  -- Visual Rendering Flags
-  show_ports = true,
-  show_capsules = true,
+  -- Centralized Debug System State
+  debug = {
+    master = true,     -- Master debug system toggle (default: true)
+    capsules = true,   -- Capsule visual rendering overlay flag (default: true)
+    ports = false,     -- Port marker visual overlay flag (default: false)
+    flow = false,      -- Flow vector visual overlay flag (default: false)
+    prints = false     -- Console debug print logging flag (default: false)
+  },
+
+  -- Visual Rendering Overhead Storage
   flow_render_ids = {
     [net_id] = { LuaRenderObject, ... }
   }
@@ -303,7 +319,7 @@ storage = {
    * **Pressure Drop Scoring:** Prioritizes movement toward ports with lower pressure levels ($\Delta P = P_{\text{current}} - P_{\text{target}}$).
    * **Randomized Tie-Breaking:** Randomly selects among equal top-scoring target hops.
 4. Consumes motion distance ($3.0 \text{ tiles/sec} = 0.05 \text{ tiles/tick}$), supporting multi-segment hops within a single tick.
-5. Redraws visual circle overlays on target surface using Factorio Rendering API.
+5. Redraws visual circle overlays on target surface using Factorio Rendering API when `is_debug_active("capsules")` is `true`.
 
 ### 5.7 Hub Capture, Multi-Item Unpacking & Mechanical Latch (`hub-unpacking.lua`)
 1. When a capsule steps onto or polls a hub port:
@@ -311,7 +327,7 @@ storage = {
    * Note: Artificial `occupancy <= capsule_capacity` lockout pre-checks are removed to prevent multi-capsule deadlocks. Safety is strictly enforced by virtual inventory simulation.
 2. Invokes `hub_unpacking.can_insert_all(hub_entity, holder_entity)`:
    * Performs multi-item slot space simulation across all payload items (cargo + vessel capsule shell).
-   * Inspects slot filters via `hub_inv.get_filter(i)`. Empty slots with active filters are categorized separately and only counted as available space if the incoming item matches the filter.
+   * Inspects slot filters via `hub_inv.get_filter(i)`, extracting Factorio 2.0+ filter structure attributes (`filter_name` and `filter_quality`). Empty slots with active filters are categorized separately and matched against incoming items (`item|quality` before falling back to generic item prototype filters and unfiltered slots).
    * Allocates empty chest slots sequentially across distinct item types to prevent partial stack collision errors.
 3. If `can_insert_all()` passes (All-or-Nothing Guarantee):
    * Transfers 100% of payload items from liminal holder into hub chest inventory.
@@ -327,11 +343,12 @@ storage = {
 
 | Command | Description | Module Source |
 | :--- | :--- | :--- |
-| `/spawn-capsule` | Spawns a debug test capsule at the hovered network entity. | `scripts/capsules/capsule-runner.lua` |
-| `/clear-capsules` | Clears and unregisters all active capsules from the map. | `scripts/capsules/capsule-runner.lua` |
-| `/toggle-capsule` | Toggles the visual rendering overlay for capsule positions. | `scripts/capsules/capsule-runner.lua` |
-| `/toggle-flow` | Toggles cyan flow vector lines and pressure numerical text. | `scripts/networks/networks-flow.lua` |
-| `/toggle-ports` | Toggles green visual port marker circles on entities. | `scripts/ports/port-renderer.lua` |
+| `/toggle-debug` | Toggles master debug mode on/off. | `scripts/debug-manager.lua` |
+| `/toggle-prints` | Toggles console debug print logging output. | `scripts/debug-manager.lua` |
+| `/toggle-ports` | Toggles green visual port marker circles on entities. | `scripts/debug-manager.lua` |
+| `/toggle-flow` | Toggles cyan flow vector lines and pressure numerical text. | `scripts/debug-manager.lua` |
+| `/toggle-capsules` | Toggles visual rendering overlay for active capsule positions. | `scripts/debug-manager.lua` |
+```
 
 ---
 

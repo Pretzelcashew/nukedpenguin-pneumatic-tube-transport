@@ -403,16 +403,4 @@ events.on_event(defines.events.on_tick, function(event)
     update_capsules()
 end)
 
--- Utility Commands
-commands.add_command("spawn-capsule", "Spawn an abstract capsule at the hovered network entity", function(command)
-    local player = command.player_index and game.get_player(command.player_index)
-    local selected = player and player.selected
-    capsule_runner.spawn(player, selected)
-end)
-
-commands.add_command("clear-capsules", "Clear all active capsules from the map", function(command)
-    local player = command.player_index and game.get_player(command.player_index)
-    capsule_runner.clear_all(player)
-end)
-
 return capsule_runner

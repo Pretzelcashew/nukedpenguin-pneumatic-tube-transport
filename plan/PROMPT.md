@@ -4,4 +4,6 @@ Context: Mature, iterated architecture. See attached `ARCHITECTURE.md`.
 
 Target Task: [INSERT TASK HERE]
 
+Ensure require statements only stay at the top level of a script.
+
 Review `ARCHITECTURE.md`, identify which specific source files you need to examine to complete this objective, and request them before writing any code.

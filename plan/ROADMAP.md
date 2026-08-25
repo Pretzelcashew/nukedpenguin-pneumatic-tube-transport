@@ -13,7 +13,7 @@
   * **Details:** Expands `hub-spill.lua` beyond hub entities so that destroying an active pipe or junction ejects the capsule's payload (cargo + capsule vessel item) onto the ground or into surrounding inventories, preventing liminal holder entity leaks or orphaned state tables.
   * **Target File(s):** `scripts/networks/network-disconnect.lua`, `scripts/hubs/hub-spill.lua`, `scripts/capsules/capsule-runner.lua`
 
-* **Network Capsule Capacity Limits**
+* **Network Capsule Capacity Limits** [INCORPORATED IN MOD]
   * **Description:** Enforce maximum simultaneous in-flight capsule capacity per individual network ID (`net_id`).
   * **Details:** Entities hosting multiple distinct internal networks track and enforce capsule limits independently per network instance.
   * **Target File(s):** `scripts/networks/networks-store.lua`, `scripts/capsules/capsule-runner.lua`

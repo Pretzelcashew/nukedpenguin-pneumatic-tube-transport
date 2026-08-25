@@ -6,11 +6,11 @@ local debug_manager = {}
 
 local function get_debug()
     storage.debug = storage.debug or {
-        master = false,  -- Master power switch (starts OFF)
-        ports = true,    -- Sub-features ready to activate when master turns ON
-        flow = true,
+        master = true,  -- Master power switch (starts OFF)
+        ports = false,    -- Sub-features ready to activate when master turns ON
+        flow = false,
         capsules = true,
-        prints = true,
+        prints = false,
     }
     return storage.debug
 end

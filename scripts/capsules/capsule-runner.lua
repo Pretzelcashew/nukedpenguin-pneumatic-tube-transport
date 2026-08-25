@@ -7,16 +7,13 @@ local hub_unpacking = require("scripts.hubs.hub-unpacking")
 
 local capsule_runner = {}
 
--- Configurable movement speed (3 tiles / second -> divided by 60 ticks)
+-- Configurable movement speed (30 tiles / second -> divided by 60 ticks)
 local SPEED_TILES_PER_SEC = 30
 local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 
 local function init_storage()
     storage.capsules = storage.capsules or {}
     storage.next_capsule_id = storage.next_capsule_id or 1
-    if storage.show_capsules == nil then
-        storage.show_capsules = true
-    end
 end
 
 --- Retrieves node metadata across network boundaries safely
@@ -124,7 +121,7 @@ local function select_next_target(capsule)
                 elseif not is_ext and current_best_is_ext then
                     -- Keep the external choice, ignore the internal one
                 else
-                    -- Truly equal options (e.g., two parallel tubes or two internal paths), add to pool!
+                    -- Truly equal options, add to pool
                     table.insert(best_candidates, { key = hop_key, is_external = is_ext })
                 end
             end
@@ -151,7 +148,7 @@ end
 local function handle_arrival(capsule, id)
     local new_unit_num = tonumber(capsule.from_port_key:match("^(%d+)"))
     
-    -- 1. Memory Wipe: If we stepped onto a different entity, forget the source hub
+    -- 1. Memory Wipe: If stepped onto a different entity, forget the source hub
     if capsule.source_hub and new_unit_num ~= capsule.source_hub then
         capsule.source_hub = nil
     end
@@ -163,9 +160,6 @@ local function handle_arrival(capsule, id)
         
         -- If it's a hub, and NOT our source hub
         if hub_def and capsule.source_hub ~= node.entity.unit_number then
-            
-            -- Attempt capture directly. Unpacking will pass if hub has room,
-            -- or fail cleanly if chest is full without locking up.
             local unpacked = hub_unpacking.capture(capsule, node.entity)
             
             if unpacked then
@@ -261,7 +255,7 @@ local function update_capsules()
 
         if storage.capsules[id] then
             clear_capsule_render(capsule)
-            if storage.show_capsules and surface and curr_pos then
+            if is_debug_active("capsules") and surface and curr_pos then
                 capsule.render_id = rendering.draw_circle{
                     color = { r = 1, g = 0.84, b = 0, a = 0.9 },
                     radius = 0.25,
@@ -273,6 +267,7 @@ local function update_capsules()
         end
     end
 end
+
 --- Checks how many capsules are currently occupying the entity's ports
 function capsule_runner.get_capsule_count_at_entity(unit_number)
     if not storage.capsules then return 0 end
@@ -300,23 +295,18 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
     for p_idx, _ in ipairs(ports) do
         local key = entity.unit_number .. ":" .. p_idx
         
-        -- Use the internal network mappings to safely check flow
         if storage.networks and storage.networks.port_to_network then
             local net_id = storage.networks.port_to_network[key]
             if net_id then
-                -- Save the first connected port just in case none have active flow right now
                 if not fallback_port_key then fallback_port_key = key end
                 
-                -- Check flow_map metadata for this port
                 local flow_map = networks.get_metadata(net_id, "flow_map")
                 local node = flow_map and flow_map[key]
                 
                 if node and node.outbound_hops then
-                    -- Check all outbound hops for the best external pressure drop
                     for _, hop_key in ipairs(node.outbound_hops) do
                         local target_node = flow_map[hop_key]
                         
-                        -- We only care about external hops leaving the hub
                         if target_node and target_node.unit_number ~= entity.unit_number then
                             local drop = node.pressure - target_node.pressure
                             if drop > max_drop then
@@ -330,11 +320,9 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
         end
     end
 
-    -- Use the optimal port, or fall back to a dormant connected port
     local target_port_key = best_port_key or fallback_port_key
-    if not target_port_key then return false end -- Not connected to a network at all
+    if not target_port_key then return false end
 
-    -- Link the runner tracker directly to the physical capsule ID
     storage.capsules[capsule_id] = {
         id = capsule_id,
         from_port_key = target_port_key,
@@ -361,7 +349,6 @@ function capsule_runner.spawn(player, entity)
         return
     end
 
-    -- Find first port on an active network
     local target_port_key = nil
     for p_idx, _ in ipairs(ports) do
         local key = entity.unit_number .. ":" .. p_idx
@@ -411,27 +398,12 @@ function capsule_runner.clear_all(player)
     end
 end
 
-function capsule_runner.toggle_rendering(player)
-    init_storage()
-    storage.show_capsules = not storage.show_capsules
-
-    if not storage.show_capsules then
-        for _, capsule in pairs(storage.capsules) do
-            clear_capsule_render(capsule)
-        end
-    end
-
-    if player then
-        player.print(string.format("[Capsule] Visualization: %s", storage.show_capsules and "ENABLED" or "DISABLED"))
-    end
-end
-
 -- Hook game tick event for smooth travel
 events.on_event(defines.events.on_tick, function(event)
     update_capsules()
 end)
 
--- Command Registrations
+-- Utility Commands
 commands.add_command("spawn-capsule", "Spawn an abstract capsule at the hovered network entity", function(command)
     local player = command.player_index and game.get_player(command.player_index)
     local selected = player and player.selected
@@ -441,11 +413,6 @@ end)
 commands.add_command("clear-capsules", "Clear all active capsules from the map", function(command)
     local player = command.player_index and game.get_player(command.player_index)
     capsule_runner.clear_all(player)
-end)
-
-commands.add_command("toggle-capsule", "Toggle capsule rendering overlay", function(command)
-    local player = command.player_index and game.get_player(command.player_index)
-    capsule_runner.toggle_rendering(player)
 end)
 
 return capsule_runner

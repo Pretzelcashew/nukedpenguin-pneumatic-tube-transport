@@ -29,7 +29,7 @@ function network_form_internals.execute(entity)
             if not storage.networks.port_to_network[port_key] then
                 local new_net_id = networks.create()
                 networks.bind_group_to_network(entity, group_id, new_net_id)
-                game.print(string.format("[INIT] Unit %d provisioned Network #%d for Group %d", entity.unit_number, new_net_id, group_id))
+                debug_print(string.format("[INIT] Unit %d provisioned Network #%d for Group %d", entity.unit_number, new_net_id, group_id))
             end
         end
     end

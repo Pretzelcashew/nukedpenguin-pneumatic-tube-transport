@@ -119,7 +119,7 @@ function networks_store.purge_port(port_key)
             -- Emptied networks are recycled, handing off the metadata packet
             if #net.members == 0 then
                 local all_metadata = networks_store.delete(net_id)
-                game.print(string.format("[NETWORK RECYCLED] Network #%d is empty and was recycled.", net_id))
+                debug_print(string.format("[NETWORK RECYCLED] Network #%d is empty and was recycled.", net_id))
                 return all_metadata
             end
         end

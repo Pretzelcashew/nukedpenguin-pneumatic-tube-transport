@@ -30,10 +30,10 @@ function network_validate.execute(entity)
                 def.handler(entity, conn.port_index, conn.neighbor, conn.neighbor_port_index)
             end
 
-            game.print(string.format("[CONNECTED] %s (Port %d) <-> %s (Port %d) | Outcome: %s", 
+            debug_print(string.format("[CONNECTED] %s (Port %d) <-> %s (Port %d) | Outcome: %s", 
                 entity.name, conn.port_index, conn.neighbor.name, conn.neighbor_port_index, outcome))
         else
-            game.print(string.format("[INCOMPATIBLE] %s (Port %d) <-> %s (Port %d)", 
+            debug_print(string.format("[INCOMPATIBLE] %s (Port %d) <-> %s (Port %d)", 
                 entity.name, conn.port_index, conn.neighbor.name, conn.neighbor_port_index))
         end
     end

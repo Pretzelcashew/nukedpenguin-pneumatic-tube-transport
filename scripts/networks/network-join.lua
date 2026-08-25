@@ -34,7 +34,7 @@ function network_join.execute(entity_a, port_a_index, entity_b, port_b_index)
         networks.bind_group_to_network(entity_b, group_b, net_b)
     end
 
-    game.print(string.format("[JOIN BOUNDARY] Edge created between Network #%d and Network #%d (Keeping IDs separate)", net_a, net_b))
+    debug_print(string.format("[JOIN BOUNDARY] Edge created between Network #%d and Network #%d (Keeping IDs separate)", net_a, net_b))
 end
 
 return network_join

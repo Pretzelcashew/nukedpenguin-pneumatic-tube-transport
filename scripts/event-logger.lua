@@ -29,7 +29,7 @@ for event_name, event_id in pairs(defines.events) do
         end
 
         if should_process then
-            game.print("Event fired: " .. event_name)
+            debug_print("Event fired: " .. event_name)
         end
     end)
 end

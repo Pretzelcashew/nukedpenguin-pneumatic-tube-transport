@@ -144,9 +144,21 @@ local function build_single_network(net_id)
     -- 5. Store metadata and refresh render overlays
     networks.set_metadata(net_id, "flow_map", flow_map)
     
-    if networks_flow.DEBUG_RENDER then
+    if is_debug_active("flow") then
         flow_renderer.draw(net_id)
     else
+        flow_renderer.clear(net_id)
+    end
+end
+
+function networks_flow.draw_all()
+    for net_id, _ in pairs(storage.networks and storage.networks.list or {}) do
+        flow_renderer.draw(net_id)
+    end
+end
+
+function networks_flow.clear_all()
+    for net_id, _ in pairs(storage.flow_render_ids or {}) do
         flow_renderer.clear(net_id)
     end
 end
@@ -154,28 +166,10 @@ end
 --- Recalculates pressure and refreshes ONLY networks physically connected to net_ids
 function networks_flow.build(net_id)
     networks.init()
-
-    -- 1. Calculate pressure only for connected networks and return their IDs
     local affected_nets = networks_pressure.process(net_id)
-
-    -- 2. Rebuild flow maps and redraw debug overlays exclusively for affected networks
     for id in pairs(affected_nets) do
         build_single_network(id)
     end
 end
-
-commands.add_command("toggle-flow", "Toggle flow visualization overlay", function(command)
-    networks_flow.DEBUG_RENDER = not networks_flow.DEBUG_RENDER
-
-    if networks_flow.DEBUG_RENDER then
-        for net_id, _ in pairs(storage.networks and storage.networks.list or {}) do
-            flow_renderer.draw(net_id)
-        end
-    else
-        for net_id, _ in pairs(storage.flow_render_ids or {}) do
-            flow_renderer.clear(net_id)
-        end
-    end
-end)
 
 return networks_flow

@@ -5,10 +5,13 @@ local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 
+local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
+
 local capsule_runner = {}
 
 -- Alias extracted queries and cleanup routines for API compatibility
 capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_at_entity
+capsule_runner.get_capsule_count_at_entity_network = capsule_queries.get_capsule_count_at_entity_network
 capsule_runner.remove_capsule = capsule_queries.remove_capsule
 capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
@@ -45,6 +48,28 @@ local function get_port_world_pos(port_key)
     return nil, nil
 end
 
+--- Evaluates if target entity's network segment has available capsule capacity
+local function has_entity_network_capacity(from_port_key, target_port_key)
+    if not (storage.networks and storage.networks.port_to_network) then return false end
+
+    local target_unit = tonumber(target_port_key:match("^(%d+)"))
+    local target_net_id = storage.networks.port_to_network[target_port_key]
+
+    if not (target_unit and target_net_id) then return false end
+
+    local current_unit = tonumber(from_port_key:match("^(%d+)"))
+    local current_net_id = storage.networks.port_to_network[from_port_key]
+
+    local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id)
+
+    -- If moving within the exact same entity and network, capsule is already accounted for
+    if current_unit == target_unit and current_net_id == target_net_id then
+        return count <= MAX_CAPSULES_PER_ENTITY_NETWORK
+    else
+        return count < MAX_CAPSULES_PER_ENTITY_NETWORK
+    end
+end
+
 --- Leverages flow_map outbound_hops and applies anti-backtracking with randomized tie-breaking
 local function select_next_target(capsule)
     local current_node = get_node(capsule.from_port_key)
@@ -54,32 +79,44 @@ local function select_next_target(capsule)
 
     local hops = current_node.outbound_hops
 
-    -- 1. Anti-backtracking filter (avoid returning to last_port_key)
+    -- 1. Anti-backtracking & local entity-network capacity filter
     local candidates = {}
     for _, hop_key in ipairs(hops) do
-        if hop_key ~= capsule.last_port_key then
+        if hop_key ~= capsule.last_port_key and has_entity_network_capacity(capsule.from_port_key, hop_key) then
             table.insert(candidates, hop_key)
         end
     end
 
     -- Conditional turnaround check
     if #candidates == 0 then
-        local last_node = get_node(capsule.last_port_key)
-        local path_opened = false
-        
-        if last_node and last_node.outbound_hops then
-            for _, next_hop in ipairs(last_node.outbound_hops) do
-                if next_hop ~= capsule.from_port_key then
-                    path_opened = true
-                    break
-                end
+        local backtrack_candidate = nil
+        for _, hop_key in ipairs(hops) do
+            if hop_key == capsule.last_port_key and has_entity_network_capacity(capsule.from_port_key, hop_key) then
+                backtrack_candidate = hop_key
+                break
             end
         end
-        
-        if path_opened then
-            candidates = hops 
+
+        if backtrack_candidate then
+            local last_node = get_node(capsule.last_port_key)
+            local path_opened = false
+            
+            if last_node and last_node.outbound_hops then
+                for _, next_hop in ipairs(last_node.outbound_hops) do
+                    if next_hop ~= capsule.from_port_key then
+                        path_opened = true
+                        break
+                    end
+                end
+            end
+            
+            if path_opened then
+                candidates = { backtrack_candidate }
+            else
+                return nil
+            end
         else
-            return nil 
+            return nil
         end
     end
 

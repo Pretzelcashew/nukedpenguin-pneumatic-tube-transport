@@ -1,3 +1,5 @@
+local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
+
 local capsule_queries = {}
 
 --- Destroys the visual rendering object associated with a capsule
@@ -53,6 +55,36 @@ function capsule_queries.get_capsule_count_at_entity(unit_number)
 
     for _, cap in pairs(storage.capsules) do
         if cap.from_port_key and string.sub(cap.from_port_key, 1, prefix_len) == prefix then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+--- Checks how many capsules occupy a specific entity's internal/external network segment
+--- @param unit_number number
+--- @param net_id number
+--- @return number
+function capsule_queries.get_capsule_count_at_entity_network(unit_number, net_id)
+    if not (unit_number and net_id and storage.capsules and storage.networks and storage.networks.port_to_network) then
+        return 0
+    end
+
+    local count = 0
+    local port_to_net = storage.networks.port_to_network
+    local prefix = tostring(unit_number) .. ":"
+    local prefix_len = #prefix
+
+    for _, cap in pairs(storage.capsules) do
+        local is_at_from = cap.from_port_key 
+            and string.sub(cap.from_port_key, 1, prefix_len) == prefix 
+            and port_to_net[cap.from_port_key] == net_id
+
+        local is_at_to = cap.to_port_key 
+            and string.sub(cap.to_port_key, 1, prefix_len) == prefix 
+            and port_to_net[cap.to_port_key] == net_id
+
+        if is_at_from or is_at_to then
             count = count + 1
         end
     end

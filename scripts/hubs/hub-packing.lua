@@ -18,7 +18,7 @@ function hub_packing.evaluate_inventory(entity)
     local hub_def = hub_defs.types[entity.name]
     if not (hub_def and hub_def.type == "hub") then return end
 
-    -- 0. EARLY CAPACITY GUARD (Updated to check actual runner port occupancy)
+    -- 0. EARLY CAPACITY GUARD 
     local unit_number = entity.unit_number
     local max_capacity = hub_def.capsule_capacity or 1
     local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
@@ -26,7 +26,22 @@ function hub_packing.evaluate_inventory(entity)
     if current_occupants >= max_capacity then return end
 
     local inventory = entity.get_inventory(defines.inventory.chest)
-    if not inventory or inventory.is_empty() then return end
+    if not inventory then return end
+
+    -- MECHANICAL LATCH LOGIC
+    if storage.hub_receive_locks and storage.hub_receive_locks[unit_number] then
+        if inventory.is_empty() then
+            -- The inventory has finally been emptied. Release the lock!
+            storage.hub_receive_locks[unit_number] = nil
+            return -- It's empty, so there's nothing to pack right now anyway.
+        else
+            -- Still has unpacked items waiting to be extracted. Refuse to pack.
+            return 
+        end
+    end
+
+    -- Normal empty check for hubs that aren't locked
+    if inventory.is_empty() then return end
 
     -- 1. Identify primary vessel capsule
     local primary_slot = nil

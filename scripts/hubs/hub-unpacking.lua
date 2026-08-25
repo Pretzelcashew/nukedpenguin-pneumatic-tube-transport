@@ -1,28 +1,103 @@
 -- scripts/hubs/hub-unpacking.lua
 local hub_unpacking = {}
 
---- Virtual Cargo Check: Verifies hub can fit every item currently in the liminal holder.
+--- Multi-Item Slot Simulation: Verifies destination hub chest can fit ALL payload stacks combined,
+--- strictly respecting inventory bar limits AND slot item filters.
 local function can_insert_all(holder_inv, hub_inv)
     local required_items = {}
 
-    -- 1. Aggregate all stacks (cargo + item-capsule vessel) inside the liminal holder
+    -- 1. Aggregate all required item quantities and stack sizes from liminal holder
     for i = 1, #holder_inv do
         local stack = holder_inv[i]
         if stack and stack.valid_for_read then
             local q_name = (stack.quality and stack.quality.name) or "normal"
             local key = stack.name .. "|" .. q_name
             if not required_items[key] then
-                required_items[key] = { name = stack.name, quality = q_name, count = 0 }
+                local proto = stack.prototype
+                required_items[key] = {
+                    name = stack.name,
+                    quality = q_name,
+                    count = 0,
+                    stack_size = (proto and proto.stack_size) or 50
+                }
             end
             required_items[key].count = required_items[key].count + stack.count
         end
     end
 
-    -- 2. Verify the destination hub chest has room for the entire payload
-    for _, req in pairs(required_items) do
-        local insertable = hub_inv.get_insertable_count({ name = req.name, quality = req.quality })
-        if insertable < req.count then
-            return false -- Hub cannot take everything in one swoop
+    -- If holder is empty, transfer is trivial
+    local has_items = false
+    for _ in pairs(required_items) do
+        has_items = true
+        break
+    end
+    if not has_items then return true end
+
+    -- 2. Respect Inventory Bar Limits (Red crossed slots)
+    local max_usable_slot = #hub_inv
+    if hub_inv.supports_bar() then
+        max_usable_slot = math.min(max_usable_slot, hub_inv.get_bar() - 1)
+    end
+
+    local supports_filters = hub_inv.supports_filters()
+
+    -- 3. Map usable hub chest space up to the bar limit only
+    local partial_capacities = {}
+    local filtered_empty_slots = {} -- Maps item_name -> count of empty slots matching filter
+    local unmapped_empty_slots = 0 -- Count of empty slots with no filter
+
+    for i = 1, max_usable_slot do
+        local stack = hub_inv[i]
+        local filter = supports_filters and hub_inv.get_filter(i)
+
+        if stack and stack.valid_for_read then
+            local q_name = (stack.quality and stack.quality.name) or "normal"
+            local key = stack.name .. "|" .. q_name
+            local proto = stack.prototype
+            local max_size = (proto and proto.stack_size) or 50
+            local space = max_size - stack.count
+            if space > 0 then
+                partial_capacities[key] = (partial_capacities[key] or 0) + space
+            end
+        else
+            -- Slot is empty: check if restricted by an item filter
+            if filter then
+                filtered_empty_slots[filter] = (filtered_empty_slots[filter] or 0) + 1
+            else
+                unmapped_empty_slots = unmapped_empty_slots + 1
+            end
+        end
+    end
+
+    -- 4. Verify required items fit sequentially into partial stacks then empty slots
+    for key, req in pairs(required_items) do
+        local remaining = req.count
+
+        -- Fill into matching partial stacks first
+        if partial_capacities[key] and partial_capacities[key] > 0 then
+            local fit = math.min(remaining, partial_capacities[key])
+            remaining = remaining - fit
+            partial_capacities[key] = partial_capacities[key] - fit
+        end
+
+        -- Allocate remaining items into matching filtered empty slots or unfiltered slots
+        if remaining > 0 then
+            local slots_needed = math.ceil(remaining / req.stack_size)
+            
+            -- Use matching filtered slots first if available for this item
+            if filtered_empty_slots[req.name] and filtered_empty_slots[req.name] > 0 then
+                local use_filtered = math.min(slots_needed, filtered_empty_slots[req.name])
+                slots_needed = slots_needed - use_filtered
+                filtered_empty_slots[req.name] = filtered_empty_slots[req.name] - use_filtered
+            end
+
+            -- Use general unmapped empty slots for the rest
+            if slots_needed > 0 then
+                if slots_needed > unmapped_empty_slots then
+                    return false -- Hub chest cannot fit payload due to item filters or full slots
+                end
+                unmapped_empty_slots = unmapped_empty_slots - slots_needed
+            end
         end
     end
 
@@ -43,7 +118,7 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
 
     if not holder_inv or not hub_inv then return false end
 
-    -- VIRTUAL CARGO CHECK: Abort immediately if the hub can't accept every item
+    -- VIRTUAL CARGO CHECK: Abort immediately if hub chest cannot fit combined payload
     if not can_insert_all(holder_inv, hub_inv) then
         return false 
     end

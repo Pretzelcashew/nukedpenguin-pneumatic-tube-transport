@@ -1,6 +1,7 @@
 -- scripts/networks/network-disconnect.lua
 local events = require("scripts.events")
 local network_invalidate = require("scripts.networks.network-invalidate")
+local hub_spill = require("scripts.hubs.hub-spill")
 
 local removal_events = {
     defines.events.on_player_mined_entity,
@@ -10,7 +11,11 @@ local removal_events = {
 }
 
 local function handle_entity_removed(event)
-    network_invalidate.execute(event.entity)
+    local entity = event.entity
+    if entity and entity.valid then
+        hub_spill.handle_entity_destruction(entity)
+        network_invalidate.execute(entity)
+    end
 end
 
 for _, event_id in ipairs(removal_events) do

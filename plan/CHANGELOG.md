@@ -1,6 +1,3 @@
-### `CHANGELOG.md`
-
-```markdown
 # CHANGELOG.md - Architecture Revisions & Historical Log
 
 ## Revisions & Historical Log
@@ -8,7 +5,7 @@
 ### Revision: Hub Packing to Motion Runner Handoff `[INCORPORATED IN TABLE]`
 **Context:** Bridge static cargo packing directly to the dynamic motion engine.
 **Key Changes:**
-1. **Deprecation of `storage.hub_compartments`:** Hubs no longer track internal packed capsules via isolated storage tables. 
+1. **Deprecation of `storage.hub_compartments`:** Hubs no longer track internal packed capsules via isolated storage tables.
 2. **Dynamic Occupancy via Runner:** Hub occupancy is calculated dynamically by `capsule-runner.lua` via `get_capsule_count_at_entity()`.
 3. **Direct Injection Handoff:** Finished liminal holders trigger `capsule_runner.inject_from_hub()`.
 4. **Network Disconnect Fallback:** Reverses packing if target entity is not bound to a network.
@@ -87,4 +84,10 @@
 1. **Markdown Extension Migration:** Transitioned documentation files from plain `.txt` extensions to native `.md` format to enable rich Markdown parsing and native editor/VS Code icon theme integration.
 2. **Roadmap Standardization:** Renamed `roadmap.txt` to `ROADMAP.md`.
 3. **Architecture & Changelog Decoupling:** Split the unified table document into two dedicated files: `ARCHITECTURE.md` for active system blueprints and `CHANGELOG.md` for historical revision tracking.
-```
+
+### Revision: Entity Destruction & Capsule Spill Safety
+**Context:** Prevent liminal holder entity leaks, orphaned storage state tables, and lost items when network components (tubes, junctions, pumps) hosting active in-transit or parked capsules are mined or destroyed.
+**Key Changes:**
+1. **Generalized Network Spill Pipeline (`hub-spill.lua`):** Expanded spill routines beyond hub entities into `handle_entity_destruction()`, allowing tubes, pumps, and junctions to spill capsule payloads (cargo + vessel items) directly onto the ground or into container entities upon destruction.
+2. **In-Transit Capsule Query & Removal (`capsule-runner.lua`):** Implemented `find_capsules_at_entity()` and `remove_capsule()` to locate active or parked capsules bound to an entity's ports, unregistering them from runner tracking and destroying visual rendering objects.
+3. **Disconnect Hook Interception (`network-disconnect.lua`):** Integrated payload spill handling directly into entity removal event listeners (`on_player_mined_entity`, `on_robot_mined_entity`, `on_entity_died`, `script_raised_destroy`), guaranteeing payload spilling and liminal holder cleanup execute before network graph invalidation.

@@ -335,6 +335,35 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
     return true
 end
 
+
+--- Removes a capsule from motion tracking and clears its visual debug render
+function capsule_runner.remove_capsule(id)
+    if not storage.capsules then return end
+    local capsule = storage.capsules[id]
+    if capsule then
+        clear_capsule_render(capsule)
+        storage.capsules[id] = nil
+    end
+end
+
+--- Finds all active capsule runner IDs currently located at or heading to/from an entity
+function capsule_runner.find_capsules_at_entity(unit_number)
+    if not storage.capsules then return {} end
+    local prefix = tostring(unit_number) .. ":"
+    local prefix_len = #prefix
+    local matches = {}
+
+    for id, cap in pairs(storage.capsules) do
+        local at_from = cap.from_port_key and string.sub(cap.from_port_key, 1, prefix_len) == prefix
+        local at_to = cap.to_port_key and string.sub(cap.to_port_key, 1, prefix_len) == prefix
+        if at_from or at_to then
+            table.insert(matches, id)
+        end
+    end
+
+    return matches
+end
+
 function capsule_runner.spawn(player, entity)
     init_storage()
 

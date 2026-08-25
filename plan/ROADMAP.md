@@ -8,7 +8,7 @@
 
 ## Priority 1: Core Systems & Usability Enhancements
 
-* **Entity Destruction & Disconnect Capsule Spill Safety**
+* **Entity Destruction & Disconnect Capsule Spill Safety** [INCORPORATED IN MOD]
   * **Description:** Trigger payload spilling when any network component (tubes, junctions, pumps) hosting an active in-transit capsule is mined or destroyed.
   * **Details:** Expands `hub-spill.lua` beyond hub entities so that destroying an active pipe or junction ejects the capsule's payload (cargo + capsule vessel item) onto the ground or into surrounding inventories, preventing liminal holder entity leaks or orphaned state tables.
   * **Target File(s):** `scripts/networks/network-disconnect.lua`, `scripts/hubs/hub-spill.lua`, `scripts/capsules/capsule-runner.lua`

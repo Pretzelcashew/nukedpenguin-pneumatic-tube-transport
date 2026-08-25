@@ -1,8 +1,3 @@
-Yes, your AI revisions contained all the critical architectural changes! To make this document truly useful as an "all-encompassing reference", those revisions need to be fully integrated back into the core sections (the data flow, module directory, storage schema, and algorithm specifications) rather than just living in a changelog at the bottom.
-
-Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`**.
-
-```markdown
 # ARCHITECTURE.md - Project Blueprint & Structural Overview
 **Mod Name:** `nukedpenguin-pneumatic-tube-transport`  
 **Factorio Target Version:** 2.1  
@@ -22,11 +17,11 @@ Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`
 +----------------------------------+       +---------------------------------------+
 |  NETWORK TOPOLOGY LAYER          |       |  RUNTIME SIMULATION LAYER             |
 |  - network-connect / disconnect  |       |  - hub-manager (Scanner & Lock Reset) |
-|  - network-validate / invalidate |       |  - hub-packing -> cargo-planner       |
-|  - network-merge / join / split  |       |  - capsule-runner (Motion Engine)     |
-|                                  |       |  - hub-unpacking (Cargo Unloader)     |
+|  - network-validate / invalidate |       |  - hub-packing (Priority Lock Release)|
+|  - network-merge / join / split  |       |  - capsule-runner (Motion & Polling)  |
+|                                  |       |  - hub-unpacking (Simulated Unloader) |
 +----------------------------------+       +---------------------------------------+
-   | Spatial & Graph Updates                            | Inject / Motion / Unpack Loop
+   | Spatial & Graph Updates                            | Inject / Motion / Poll / Unpack
    v                                                    v
 +-----------------------------------------------------------------------------------+
 |  NETWORK PRESSURE & FLOW ENGINE                                                   |
@@ -115,9 +110,9 @@ Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`
 | File | Sub-Path | Purpose & Role | Key Exports / Functions | Connected Modules |
 | :--- | :--- | :--- | :--- | :--- |
 | `hub-definitions.lua` | `scripts/hubs/` | Configuration registry for hub entity container capacities. | Registry `hub_definitions.types` | `hub-manager.lua`, `hub-packing.lua` |
-| `hub-manager.lua` | `scripts/hubs/` | Event listener for hub lifecycle, interleaved background tick scanner (`on_tick`) for inventory packing, and automatic resetting of mechanical receive locks when hub chests are empty. | Interleaved background scanner. | `hub-packing`, `hub-spill`, `events` |
-| `hub-packing.lua` | `scripts/hubs/` | Main hub packing pipeline: checks mechanical receive locks (`storage.hub_receive_locks`) and runner occupancy, evaluates vessel capsule, plans cargo, spawns liminal holder, and triggers `capsule_runner.inject_from_hub()`. | `hub_packing.evaluate_inventory(entity)` | `liminal-surface`, `capsule-manager`, `quality-filter`, `cargo-planner`, `capsule-runner` |
-| `hub-unpacking.lua` | `scripts/hubs/` | Main hub arrival & unpacking pipeline: transfers items from liminal capsule holder into hub chest inventory, destroys liminal holder, unregisters capsule, and engages mechanical receive latch. | `hub_unpacking.unpack_capsule(capsule_id, capsule_data, hub_entity)` | `capsule-manager.lua`, `liminal-surface.lua`, `capsule-runner.lua` |
+| `hub-manager.lua` | `scripts/hubs/` | Event listener for hub lifecycle and interleaved background tick scanner (`on_tick`) evaluating hub packing logic. | Interleaved background scanner. | `hub-packing`, `hub-spill`, `events` |
+| `hub-packing.lua` | `scripts/hubs/` | Main hub packing pipeline: Priority lock release on empty inventory, pre-packing lock evaluation (`storage.hub_receive_locks`), runner occupancy check, cargo planning, liminal holder spawning, and injection via `capsule_runner.inject_from_hub()`. | `hub_packing.evaluate_inventory(entity)` | `liminal-surface`, `capsule-manager`, `quality-filter`, `cargo-planner`, `capsule-runner` |
+| `hub-unpacking.lua` | `scripts/hubs/` | Main hub arrival & unpacking pipeline: All-or-nothing cargo + vessel unpacking using multi-item slot space simulation (`can_insert_all()`) with inventory slot filter awareness (`get_filter`), liminal holder cleanup, and mechanical receive latch engagement. | `hub_unpacking.unpack_capsule(...)`<br>`hub_unpacking.can_insert_all(...)` | `capsule-manager.lua`, `liminal-surface.lua`, `capsule-runner.lua` |
 | `hub-spill.lua` | `scripts/hubs/` | Handles safety unloading/spilling of capsule contents into chests or floor item stacks when hubs or holders are mined or destroyed. | `hub_spill.handle_hub_destruction(entity)` | `capsule-manager.lua` |
 | `quality-filter.lua` | `scripts/hubs/packing/` | Evaluates item quality against capsule vessel rules (`ceil`, comparators, whitelists, blacklists). | `quality_filter.is_quality_allowed(...)` | `hub-packing.lua` |
 | `cargo-planner.lua` | `scripts/hubs/packing/` | Calculates exact stack extraction and insertion plans for single or mixed cargo types, handling full-stack and consolidation logic. | `cargo_planner.build_packing_plan(...)` | `hub-packing.lua` |
@@ -131,7 +126,7 @@ Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`
 | `capsule-definitions.lua` | `scripts/capsules/` | Configuration specification for capsule items: base slot capacities, quality scaling, mixed cargo/quality rules, stack consolidation rules, holder types, spill behaviors. | Registry `capsule_definitions.types` | `hub-packing.lua`, `capsule-manager.lua` |
 | `capsule-definitions-guide.md` | `scripts/capsules/` | Technical reference document detailing all configuration parameters in `capsule-definitions.lua`. | Specification document. | Reference |
 | `capsule-manager.lua` | `scripts/capsules/` | CRUD tracking registry for active capsule holder entities stored in `storage.active_capsules`. | `register()`, `get()`, `remove()` | `capsule-definitions.lua`, `storage` |
-| `capsule-runner.lua` | `scripts/capsules/` | Main tick-based motion & traversal engine (`on_tick`). Handles `inject_from_hub()` via optimal pressure drop peeking, `source_hub` memory tracking, traversal, tie-breaking, occupancy queries (`get_capsule_count_at_entity`), hub capture triggers (`hub-unpacking`), and visual overlays. | `inject_from_hub()`, `get_capsule_count_at_entity()`<br>Commands:<br>`/spawn-capsule`<br>`/clear-capsules`<br>`/toggle-capsule` | `networks.lua`, `port-definitions.lua`, `events.lua`, `hub-unpacking.lua` |
+| `capsule-runner.lua` | `scripts/capsules/` | Main tick-based motion & traversal engine (`on_tick`). Handles `inject_from_hub()` via optimal pressure drop peeking, `source_hub` memory tracking, continuous tick polling for parked/stationary capsules (`to_port_key == nil`), tie-breaking, occupancy queries (`get_capsule_count_at_entity`), hub capture triggers (`hub-unpacking`), and visual overlays. | `inject_from_hub()`, `get_capsule_count_at_entity()`<br>Commands:<br>`/spawn-capsule`<br>`/clear-capsules`<br>`/toggle-capsule` | `networks.lua`, `port-definitions.lua`, `events.lua`, `hub-unpacking.lua` |
 
 ---
 
@@ -158,7 +153,8 @@ Here is your complete, fully integrated, updated single-file **`ARCHITECTURE.md`
 | defines.events.on_player_flipped  |                                    | followed by network_validate.execute()   |
 +-----------------------------------+------------------------------------+------------------------------------------+
 | defines.events.on_tick            | hub-manager.lua                    | Interleaved hub scanner & lock reset check|
-|                                   | capsule-runner.lua                 | Traversal, hub arrival check & overlays  |
+|                                   | capsule-runner.lua                 | Motion, continuous stationary arrival    |
+|                                   |                                    | polling & visual rendering overlays      |
 +-----------------------------------+------------------------------------+------------------------------------------+
 ```
 
@@ -217,7 +213,7 @@ storage = {
     [unit_number] = LuaEntity -- Registered active hub entities
   },
   hub_receive_locks = {
-    [unit_number] = true -- Lock engaged on hub unpack; prevents re-packing until chest inventory is completely empty
+    [unit_number] = true -- Mechanical receive latch engaged on unpack; cleared immediately when hub chest is empty
   },
 
   -- Capsule System & Motion Engine
@@ -232,9 +228,9 @@ storage = {
     [capsule_runner_id] = {
       id = 1,
       capsule_id = capsule_id, -- Link to active_capsules entry
-      source_hub = 101, -- Unit number of origin hub (prevents immediate self-re-capture; cleared on exit)
+      source_hub = 101, -- Origin hub unit number (cleared when capsule exits origin entity)
       from_port_key = "101:1",
-      to_port_key = "102:2",
+      to_port_key = nil, -- Set to nil when parked/stationary, continuously polling arrival
       last_port_key = "100:1",
       progress = 0.45, -- Traversal progress across current segment (0.0 to 1.0)
       render_id = LuaRenderObject
@@ -286,12 +282,13 @@ storage = {
 
 ### 5.5 Hub Cargo Evaluation, Consolidation & Injection (`hub-packing.lua` / `cargo-planner.lua`)
 1. Interleaved background scanner runs every 10 ticks per hub (`hub-manager.lua`).
-2. Checks `storage.hub_receive_locks[unit_number]`. If locked, packing is aborted until the hub inventory is completely empty.
-3. Queries `capsule_runner.get_capsule_count_at_entity(hub_entity)` to dynamically verify remaining hub capacity.
-4. Checks hub inventory for primary vessel capsule items and calculates quality-scaled capacity bonuses (`base_capacity + quality_level * quality_affected_capacity`).
-5. Filters container items against quality constraints (`quality-filter.lua`) and builds extraction plans via `cargo-planner.lua`.
-6. Spawns an `invisible-capsule-holder` on `liminal_surface`, transfers items, and registers `capsule_id`.
-7. Calls `capsule_runner.inject_from_hub(hub_entity, capsule_id)`:
+2. **Priority Lock Release:** Evaluates `evaluate_inventory()` at the top level. If `hub_inventory.is_empty()`, immediately clears `storage.hub_receive_locks[unit_number]`.
+3. Checks `storage.hub_receive_locks[unit_number]`. If still active, aborts packing to prevent immediate re-packing of freshly arrived items.
+4. Queries `capsule_runner.get_capsule_count_at_entity(hub_entity)` to dynamically verify remaining hub capacity.
+5. Checks hub inventory for primary vessel capsule items and calculates quality-scaled capacity bonuses (`base_capacity + quality_level * quality_affected_capacity`).
+6. Filters container items against quality constraints (`quality-filter.lua`) and builds extraction plans via `cargo-planner.lua`.
+7. Spawns an `invisible-capsule-holder` on `liminal_surface`, transfers items, and registers `capsule_id`.
+8. Calls `capsule_runner.inject_from_hub(hub_entity, capsule_id)`:
    * Peeks the flow map metadata across all connected ports.
    * Injects the capsule onto the port exhibiting the strongest outward pressure gradient ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
    * If connected to a network with no active flow, places capsule on a connected port in a dormant state until flow starts.
@@ -299,24 +296,30 @@ storage = {
 
 ### 5.6 Capsule Traversal & Motion Engine (`capsule-runner.lua`)
 1. Executes on every game tick (`on_tick`).
-2. Evaluates trajectory using flow map outbound vectors:
+2. **Stationary Arrival Polling:** Before executing distance motion, evaluates any stationary/parked capsules (`to_port_key == nil`). Re-triggers `handle_arrival()` every tick so parked capsules unpack the instant space frees up in a destination hub chest.
+3. Evaluates trajectory using flow map outbound vectors:
    * **Memory Tracking:** Retains `source_hub` (`unit_number`) on spawn/injection. Wipes memory once capsule steps off origin entity.
    * **Anti-Backtracking:** Filters out `last_port_key` unless hitting a dead end.
    * **Pressure Drop Scoring:** Prioritizes movement toward ports with lower pressure levels ($\Delta P = P_{\text{current}} - P_{\text{target}}$).
    * **Randomized Tie-Breaking:** Randomly selects among equal top-scoring target hops.
-3. Consumes motion distance ($3.0 \text{ tiles/sec} = 0.05 \text{ tiles/tick}$), supporting multi-segment hops within a single tick.
-4. Redraws visual circle overlays on target surface using Factorio Rendering API.
+4. Consumes motion distance ($3.0 \text{ tiles/sec} = 0.05 \text{ tiles/tick}$), supporting multi-segment hops within a single tick.
+5. Redraws visual circle overlays on target surface using Factorio Rendering API.
 
-### 5.7 Hub Capture, Unpacking & Mechanical Latch (`hub-unpacking.lua`)
-1. When a capsule steps onto a hub port during traversal:
+### 5.7 Hub Capture, Multi-Item Unpacking & Mechanical Latch (`hub-unpacking.lua`)
+1. When a capsule steps onto or polls a hub port:
    * Verifies hub unit number against capsule's `source_hub` memory (prevents origin hub from re-capturing its own capsule).
-   * Checks if target hub has available capacity.
-2. If captured, triggers `hub_unpacking.unpack_capsule(...)`:
-   * Unloads items from the liminal holder into the destination hub's chest inventory.
-   * Spills any overflow cargo to floor/chest if destination hub inventory fills up.
+   * Note: Artificial `occupancy <= capsule_capacity` lockout pre-checks are removed to prevent multi-capsule deadlocks. Safety is strictly enforced by virtual inventory simulation.
+2. Invokes `hub_unpacking.can_insert_all(hub_entity, holder_entity)`:
+   * Performs multi-item slot space simulation across all payload items (cargo + vessel capsule shell).
+   * Inspects slot filters via `hub_inv.get_filter(i)`. Empty slots with active filters are categorized separately and only counted as available space if the incoming item matches the filter.
+   * Allocates empty chest slots sequentially across distinct item types to prevent partial stack collision errors.
+3. If `can_insert_all()` passes (All-or-Nothing Guarantee):
+   * Transfers 100% of payload items from liminal holder into hub chest inventory.
    * Destroys liminal holder entity and unregisters capsule from tracking systems.
    * Sets `storage.hub_receive_locks[hub_unit_number] = true` (mechanical receive latch).
-3. Lock Reset (`hub-manager.lua`): On each scanner tick, if a hub is locked and its inventory becomes completely empty (`inventory.is_empty()`), `storage.hub_receive_locks[hub_unit_number]` is cleared, allowing new capsules to be packed.
+4. If `can_insert_all()` fails:
+   * Capsule remains in liminal storage and parks on the hub port (`to_port_key = nil`).
+   * Polling loop in `capsule-runner.lua` continues re-checking `can_insert_all()` on subsequent ticks until hub inventory space clears.
 
 ---
 
@@ -334,7 +337,7 @@ storage = {
 
 ## 7. Architecture Revisions & Changelog
 
-### Revision: Hub Packing to Motion Runner Handoff 
+### Revision: Hub Packing to Motion Runner Handoff `[INCORPORATED IN TABLE]`
 **Context:** Bridge static cargo packing directly to the dynamic motion engine.
 **Key Changes:**
 1. **Deprecation of `storage.hub_compartments`:** Hubs no longer track internal packed capsules via isolated storage tables. 
@@ -342,47 +345,45 @@ storage = {
 3. **Direct Injection Handoff:** Finished liminal holders trigger `capsule_runner.inject_from_hub()`.
 4. **Network Disconnect Fallback:** Reverses packing if target entity is not bound to a network.
 
-### Revision: Smarter Hub Injection & Internal Isolation
+### Revision: Smarter Hub Injection & Internal Isolation `[INCORPORATED IN TABLE]`
 **Context:** Prevent capsules from leaking into hubs due to isolated internal ports.
 **Key Changes:**
 1. **Flow Map Peeking:** Evaluates `flow_map` metadata of connected ports.
 2. **Optimal Gradient Injection:** Spawns capsule on port with highest outbound pressure drop ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
 3. **Dormant Fallback:** Default injection onto port while awaiting flow establishment.
 
-### Revision: Hub Capture, Unpacking & Mechanical Latch
+### Revision: Hub Capture, Unpacking & Mechanical Latch `[INCORPORATED IN TABLE]`
 **Context:** Implemented destination unpacking and anti-infinite-loop latches.
 **Key Changes:**
 1. **Short-Term Capsule Memory:** Capsules track `source_hub` (`unit_number`) until stepping off origin entity.
 2. **Hub Capture & Unpacking (`hub-unpacking.lua`):** Arriving at a new hub triggers inventory unloading and liminal holder destruction.
 3. **Mechanical Latch (`storage.hub_receive_locks`):** Destination hubs lock on receipt and refuse to pack until chest is completely empty.
-```
 
-### Revision: All-or-Nothing Unpacking & Stationary Re-evaluation
+### Revision: All-or-Nothing Unpacking & Stationary Re-evaluation `[INCORPORATED IN TABLE]`
 **Context:** Prevent hubs from partially skimming items out of capsules mid-transit and fix dormant/sleeping capsule states at full hubs.
 **Key Changes:**
 1. **All-or-Nothing Virtual Unpacking (`hub-unpacking.lua`):** Added `can_insert_all()` pre-check using `LuaInventory.get_insertable_count()` to aggregate all liminal holder contents (cargo + item-capsule vessel). Aborts transfer entirely if the destination hub chest cannot fit 100% of the payload in a single swoop.
 2. **Single Source Payload Tracking (`hub-unpacking.lua`):** Treats the liminal holder inventory as the single source of truth for both cargo and vessel items to eliminate duplicate item generation.
 3. **Continuous Arrival Polling (`capsule-runner.lua`):** Updated `update_capsules()` so stationary capsules (`to_port_key == nil`) re-trigger `handle_arrival()` on every tick while parked at a hub port. Parked capsules immediately resume unpacking the moment space is cleared in the hub chest.
 
-### Revision: Continuous Stationary Polling & Occupancy Lockout Fix
+### Revision: Continuous Stationary Polling & Occupancy Lockout Fix `[INCORPORATED IN TABLE]`
 **Context:** Fixes a bug where stationary capsules parked at full hubs would fall asleep indefinitely and only wake up when network flow changed.
 **Key Changes:**
 1. **Stationary Arrival Polling (`capsule-runner.lua`):** Modified `update_capsules()` to invoke `handle_arrival()` at the start of the tick loop for stationary capsules (`to_port_key == nil`). Parked capsules now continuously poll the destination hub inventory on every tick.
 2. **Removal of Occupancy Lockout (`capsule-runner.lua`):** Removed the artificial `occupancy <= capsule_capacity` pre-check inside `handle_arrival()`. Eliminates deadlocks where trailing queued capsules artificially inflated total entity occupancy and locked both out. Unpacking safety is now governed strictly by virtual item insertion capacity in `hub-unpacking.lua`.
 
-### Revision: Priority Lock Clearing & Order-of-Operations Fix
+### Revision: Priority Lock Clearing & Order-of-Operations Fix `[INCORPORATED IN TABLE]`
 **Context:** Fixed a bug where hubs remained stuck in `storage.hub_receive_locks` even after being completely emptied, preventing future capsule packing when reloaded.
 **Key Changes:**
 1. **Mechanical Latch Re-ordering (`hub-packing.lua`):** Shifted the mechanical latch and lock evaluation block to the very top of `evaluate_inventory()`, executing *before* the capsule capacity guard.
 2. **Unconditional Lock Removal on Empty (`hub-packing.lua`):** Ensures that whenever a hub chest is completely emptied (`inventory.is_empty()`), the lock is released immediately without being blocked or bypassed by parked capsule occupancy counts.
 
-### Revision: Multi-Item Slot Simulation Unpacking
+### Revision: Multi-Item Slot Simulation Unpacking `[INCORPORATED IN TABLE]`
 **Context:** Resolved an item skimming issue where capsules partially unloaded cargo because `LuaInventory.get_insertable_count()` evaluated multi-item payload capacities independently.
 **Key Changes:**
 1. **Multi-Item Slot Simulation (`hub-unpacking.lua`):** Upgraded `can_insert_all()` to simulate combined inventory space across all payload item types (cargo + capsule vessel shell). It maps partial stack space and allocates empty slots sequentially to prevent multiple distinct items from claiming identical empty chest slots prior to unpacking.
 
-### Revision: Inventory Slot Filter Awareness in Unpacking
+### Revision: Inventory Slot Filter Awareness in Unpacking `[INCORPORATED IN TABLE]`
 **Context:** Fixed an issue where `can_insert_all()` treated empty slots configured with item filters as open space for any item type, leading to partial unloading at hubs.
 **Key Changes:**
 1. **Slot Filter Evaluation (`hub-unpacking.lua`):** Updated `can_insert_all()` to query `hub_inv.get_filter(i)`. Empty slots with active filters are now categorized separately and are only counted as available space if the incoming item matches the configured filter prototype.
-

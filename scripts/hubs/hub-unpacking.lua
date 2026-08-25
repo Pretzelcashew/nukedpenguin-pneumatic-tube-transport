@@ -43,12 +43,12 @@ local function can_insert_all(holder_inv, hub_inv)
 
     -- 3. Map usable hub chest space up to the bar limit only
     local partial_capacities = {}
-    local filtered_empty_slots = {} -- Maps item_name -> count of empty slots matching filter
-    local unmapped_empty_slots = 0 -- Count of empty slots with no filter
+    local filtered_empty_slots = {} -- Maps filter_name or "filter_name|quality" -> count
+    local unmapped_empty_slots = 0  -- Count of empty slots with no filter
 
     for i = 1, max_usable_slot do
         local stack = hub_inv[i]
-        local filter = supports_filters and hub_inv.get_filter(i)
+        local raw_filter = supports_filters and hub_inv.get_filter(i)
 
         if stack and stack.valid_for_read then
             local q_name = (stack.quality and stack.quality.name) or "normal"
@@ -60,9 +60,28 @@ local function can_insert_all(holder_inv, hub_inv)
                 partial_capacities[key] = (partial_capacities[key] or 0) + space
             end
         else
-            -- Slot is empty: check if restricted by an item filter
-            if filter then
-                filtered_empty_slots[filter] = (filtered_empty_slots[filter] or 0) + 1
+            -- Slot is empty: extract name/quality strings if restricted by an item filter
+            if raw_filter then
+                local filter_name = nil
+                local filter_quality = nil
+
+                if type(raw_filter) == "table" then
+                    filter_name = raw_filter.name
+                    filter_quality = raw_filter.quality and (type(raw_filter.quality) == "table" and raw_filter.quality.name or raw_filter.quality)
+                else
+                    filter_name = raw_filter
+                end
+
+                if filter_name then
+                    if filter_quality then
+                        local f_key = filter_name .. "|" .. filter_quality
+                        filtered_empty_slots[f_key] = (filtered_empty_slots[f_key] or 0) + 1
+                    else
+                        filtered_empty_slots[filter_name] = (filtered_empty_slots[filter_name] or 0) + 1
+                    end
+                else
+                    unmapped_empty_slots = unmapped_empty_slots + 1
+                end
             else
                 unmapped_empty_slots = unmapped_empty_slots + 1
             end
@@ -83,9 +102,17 @@ local function can_insert_all(holder_inv, hub_inv)
         -- Allocate remaining items into matching filtered empty slots or unfiltered slots
         if remaining > 0 then
             local slots_needed = math.ceil(remaining / req.stack_size)
-            
-            -- Use matching filtered slots first if available for this item
-            if filtered_empty_slots[req.name] and filtered_empty_slots[req.name] > 0 then
+
+            -- Try quality-specific filtered empty slots first (e.g., "iron-ore|uncommon")
+            local q_filter_key = req.name .. "|" .. req.quality
+            if filtered_empty_slots[q_filter_key] and filtered_empty_slots[q_filter_key] > 0 then
+                local use_filtered = math.min(slots_needed, filtered_empty_slots[q_filter_key])
+                slots_needed = slots_needed - use_filtered
+                filtered_empty_slots[q_filter_key] = filtered_empty_slots[q_filter_key] - use_filtered
+            end
+
+            -- Try generic item filtered empty slots (no quality restriction on filter, e.g., "iron-ore")
+            if slots_needed > 0 and filtered_empty_slots[req.name] and filtered_empty_slots[req.name] > 0 then
                 local use_filtered = math.min(slots_needed, filtered_empty_slots[req.name])
                 slots_needed = slots_needed - use_filtered
                 filtered_empty_slots[req.name] = filtered_empty_slots[req.name] - use_filtered

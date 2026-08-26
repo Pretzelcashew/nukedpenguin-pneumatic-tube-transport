@@ -47,24 +47,29 @@
   * **Details:** Replaces static velocity ($30 \text{ tiles/sec}$) with dynamic scaling tied to local edge pressure drops ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`
 
-* **Circuit Network Automation Integration** [INCORPORATED IN MOD]
-  * **Description:** Expose hubs and pumps to Factorio's red/green circuit network signal controls.
-  * **Details:** Enables dynamic pump enabling/disabling, target pressure manipulation, hub container inventory signal output, and automated `can_send`/`can_receive` toggles.
-  * **Target File(s):** `prototypes/entity.lua`, `scripts/hubs/hub-manager.lua`, `scripts/networks/networks-pressure.lua`
+* **Hub Operational Mode Circuit Network Integration** [INCORPORATED IN MOD]
+  * **Description:** Expose hub operational toggles (`can_send`/`can_receive`) to circuit network condition evaluation.
+  * **Details:** Enables dynamic dispatch and arrival gating based on connected red/green circuit network signal conditions using `evaluate_circuit_condition`.
+  * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`
+
+* **Pump & Advanced Circuit Network Automation**
+  * **Description:** Expose pumps and hub chest inventories to full red/green circuit network signals and controls.
+  * **Details:** Enables dynamic pump enabling/disabling via circuit signals, target pressure manipulation based on network inputs, and hub container inventory signal outputs to connected wire networks.
+  * **Target File(s):** `prototypes/entity.lua`, `scripts/hubs/hub-manager.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
 
 ---
 
 ## Priority 3: Logistics Suite Expansion, Specialized Vessels & GUI Controls
 
+* **Hub Receive Lock Bypass GUI Toggle** [INCORPORATED IN MOD]
+  * **Description:** Add a GUI toggle option on Hubs to enable or disable the post-arrival empty-inventory requirement ("receive lock").
+  * **Details:** Allows high-throughput hubs to immediately pack outgoing cargo without requiring the chest to be 100% emptied of incoming items first, stored in `storage.hub_settings[unit_number].use_receive_lock`.
+  * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`, `scripts/hubs/hub-packing.lua`
+
 * **Pneumatic Diverter Entity (Tube Splitter)**
   * **Description:** Introduce a multi-port diverter structure acting as a physical splitter for pneumatic tube lines.
   * **Details:** Implements proportional or alternating flow-culling logic to evenly split pressure gradients or alternate capsule routing across multiple output tubes.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/ports/port-definitions.lua`, `scripts/networks/flow-cull.lua`, `scripts/networks/networks-flow.lua`
-
-* **Hub Receive Lock Bypass GUI Toggle** [INCORPORATED IN MOD]
-  * **Description:** Add a GUI toggle option on Hubs to enable or disable the post-arrival empty-inventory requirement ("receive lock").
-  * **Details:** Allows high-throughput hubs to immediately pack outgoing cargo without requiring the chest to be 100% emptied of incoming items first, stored in `storage.hub_settings[unit_number].ignore_receive_lock`.
-  * **Target File(s):** `scripts/hubs/hub-manager.lua`, `scripts/hubs/hub-packing.lua`, `scripts/hubs/hub-unpacking.lua`
 
 * **Specialized Transit Capsule Variants**
   * **Description:** Expand vessel capsule types with custom behavior profiles, slot mechanics, and lifecycle rules.
@@ -111,5 +116,3 @@
   * **Description:** Optimize graph rebuilds during pump state toggles or network polarity changes.
   * **Details:** Replaces full network flow map reconstruction with targeted incremental BFS updates and memoized pressure pathing when a pump changes power state or direction.
   * **Target File(s):** `scripts/networks/networks-flow.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
-
-  

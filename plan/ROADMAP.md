@@ -28,7 +28,7 @@
   * **Details:** Allows players to restrict hub behavior to send-only (dispatch), receive-only (arrival), or bidirectional operation without altering physical pressure or flow vectors.
   * **Target File(s):** `scripts/hubs/hub-packing.lua`, `scripts/hubs/hub-unpacking.lua``
 
-* **Dominant Capsule Content Visual Indicators**
+* **Dominant Capsule Content Visual Indicators** [INCORPORATED IN MOD]
   * **Description:** Dynamic rendering overlay reflecting the primary payload inside transit capsules.
   * **Details:** Inspects cargo payload to display the icon or color signature of the dominant item stack on active in-flight capsule render objects.
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`

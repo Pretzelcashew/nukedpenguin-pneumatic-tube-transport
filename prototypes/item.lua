@@ -1,3 +1,5 @@
+-- prototypes/item.lua
+
 data:extend({
   {
     type = "item",

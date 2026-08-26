@@ -129,3 +129,10 @@
 1. **Multi-Layer Render Cleanup (`scripts/capsules/capsule-queries.lua`):** Refactored `clear_capsule_render()` to accept both standalone render IDs and array tables of `LuaRenderObject` handles, ensuring leak-free cleanup of multi-part visual objects on tick updates, arrival, and destruction events.
 2. **Payload Inventory Inspection (`scripts/capsules/capsule-runner.lua`):** Added `get_dominant_item()` helper to inspect active liminal holder container inventories, prioritizing internal cargo stacks by highest item count over the vessel capsule shell.
 3. **Dynamic Render Overlay & Sprite Framing (`scripts/capsules/capsule-runner.lua`):** Updated the tick rendering pipeline in `update_capsules()` to draw a gold ring border (`radius = 0.35`, `width = 2`) framing a scaled item sprite (`x_scale = 0.55`, `y_scale = 0.55`) of the dominant payload item, with fallback rendering for empty capsules when `is_debug_active("capsules")` is enabled.
+
+### Revision: Pneumatic Technology Tree & Recipe Progression
+**Context:** Establish early-to-mid-game technology progression and rebalance crafting recipes for pneumatic transport infrastructure. Lock core mod items behind a dedicated research node and introduce explicit base craft times (`energy_required`).
+**Key Changes:**
+1. **Technology Prototype Definition (`prototypes/technology.lua`):** Created the `pneumatic-transport` research node at the Chemical (Blue) Science tier (350 cycles @ 45s), requiring `advanced-circuit`, `fluid-handling`, and `logistics-2`. Added recipe unlock effects for tubes, junctions, pumps, hubs, and transport capsules.
+2. **Recipe Rebalancing & Research Gating (`prototypes/recipe.lua`):** Set `enabled = false` across all base mod recipes to mandate technology unlock gating. Rebalanced material costs (steel, plastic, engines, circuits) and assigned explicit `energy_required` values (1.0s to 3.5s) to eliminate default instant crafting.
+3. **Data Lifecycle Integration (`data.lua`):** Required `prototypes/technology.lua` strictly within the prototype data stage in `data.lua`, preventing runtime `data` global table indexing errors in `control.lua`.

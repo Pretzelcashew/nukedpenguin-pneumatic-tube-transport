@@ -1,10 +1,15 @@
+-- prototypes/recipe.lua
+
 data:extend({
   {
     type = "recipe",
     name = "item-capsule",
-    enabled = true,
+    enabled = false,
+    energy_required = 2.0,
     ingredients = {
-      {type = "item", name = "steel-plate", amount = 2}
+      {type = "item", name = "steel-plate", amount = 4},
+      {type = "item", name = "plastic-bar", amount = 2},
+      {type = "item", name = "electronic-circuit", amount = 1}
     },
     results = {
       {type = "item", name = "item-capsule", amount = 1}
@@ -13,10 +18,13 @@ data:extend({
   {
     type = "recipe",
     name = "capsule-hub-horizontal",
-    enabled = true,
+    enabled = false,
+    energy_required = 3.5,
     ingredients = {
       {type = "item", name = "steel-chest", amount = 1},
-      {type = "item", name = "electronic-circuit", amount = 2}
+      {type = "item", name = "steel-plate", amount = 4},
+      {type = "item", name = "advanced-circuit", amount = 2},
+      {type = "item", name = "electric-engine-unit", amount = 1}
     },
     results = {
       {type = "item", name = "capsule-hub-horizontal", amount = 1}
@@ -25,10 +33,13 @@ data:extend({
   {
     type = "recipe",
     name = "capsule-hub-vertical",
-    enabled = true,
+    enabled = false,
+    energy_required = 3.5,
     ingredients = {
       {type = "item", name = "steel-chest", amount = 1},
-      {type = "item", name = "electronic-circuit", amount = 2}
+      {type = "item", name = "steel-plate", amount = 4},
+      {type = "item", name = "advanced-circuit", amount = 2},
+      {type = "item", name = "electric-engine-unit", amount = 1}
     },
     results = {
       {type = "item", name = "capsule-hub-vertical", amount = 1}
@@ -37,21 +48,27 @@ data:extend({
   {
     type = "recipe",
     name = "pneumatic-tube",
-    enabled = true,
+    enabled = false,
+    energy_required = 1.0,
     ingredients = {
-      {type = "item", name = "iron-plate", amount = 1}
+      {type = "item", name = "steel-plate", amount = 2},
+      {type = "item", name = "copper-plate", amount = 1},
+      {type = "item", name = "plastic-bar", amount = 1}
     },
     results = {
-      {type = "item", name = "pneumatic-tube", amount = 1}
+      {type = "item", name = "pneumatic-tube", amount = 2}
     }
   },
   {
     type = "recipe",
     name = "pneumatic-pump",
-    enabled = true,
+    enabled = false,
+    energy_required = 3.0,
     ingredients = {
-      {type = "item", name = "steel-plate", amount = 2},
-      {type = "item", name = "engine-unit", amount = 1}
+      {type = "item", name = "pump", amount = 1},
+      {type = "item", name = "engine-unit", amount = 1},
+      {type = "item", name = "steel-plate", amount = 5},
+      {type = "item", name = "advanced-circuit", amount = 2}
     },
     results = {
       {type = "item", name = "pneumatic-pump", amount = 1}
@@ -60,9 +77,12 @@ data:extend({
   {
     type = "recipe",
     name = "junction",
-    enabled = true,
+    enabled = false,
+    energy_required = 1.5,
     ingredients = {
-      {type = "item", name = "iron-plate", amount = 1}
+      {type = "item", name = "pneumatic-tube", amount = 4},
+      {type = "item", name = "steel-plate", amount = 2},
+      {type = "item", name = "advanced-circuit", amount = 1}
     },
     results = {
       {type = "item", name = "junction", amount = 1}

@@ -37,7 +37,7 @@
 
 ## Priority 2: Advanced Dynamic Mechanics, Progression & Automation
 
-* **Pneumatic Technology Tree, Recipes & Item Progression**
+* **Pneumatic Technology Tree, Recipes & Item Progression** [INCORPORATED IN MOD]
   * **Description:** Define crafting recipes, machine requirements, and technology tree unlock nodes for all pneumatic transport items.
   * **Details:** Establishes early-to-late game tech progression, balancing material costs (plates, steel, engines, circuits, lubricants) across tubes, pumps, hubs, and capsule vessels.
   * **Target File(s):** `prototypes/recipe.lua`, `prototypes/technology.lua`, `prototypes/item.lua`

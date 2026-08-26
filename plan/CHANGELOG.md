@@ -115,7 +115,7 @@
 2. **Sprite Table Correction (`prototypes/entity.lua`):** Updated `pneumatic-pump` prototype definition to use the plural `pictures` table required by `electric-energy-interface` entities.
 3. **Power-State Polling & Invalidation (`scripts/networks/pump-manager.lua`):** Implemented a periodic `on_tick` scanner (15-tick interval) tracking `active_pumps` and `pump_power_states`. Power toggles automatically trigger `networks_flow.build(net_id)` to re-evaluate pressure and flow vectors across connected subgraphs.
 
-### Revision: Hub Operational Mode Toggles (`can_send` / `can_receive`) & Relative GUI Integration
+### Revision: Hub Operational Mode Toggles (`can_send` / `can_receive`) & Relative GUI Integration `[INCORPORATED IN TABLE]`
 **Context:** Add configurable operational mode toggles to Hub GUIs, allowing players to restrict hubs to send-only (dispatch), receive-only (arrival), or bidirectional operation without altering physical pressure or network flow vectors.
 **Key Changes:**
 1. **Persistent Hub Settings Storage (`control.lua`, `hub-manager.lua`):** Initialized `storage.hub_settings` schema to store per-entity boolean toggles (`can_send`, `can_receive` defaulting to `true`). Added automatic entry provisioning on build (`on_hub_built`) and cleanup on entity destruction (`on_hub_removed`).
@@ -123,28 +123,28 @@
 3. **Dispatch Permission Gating (`hub-packing.lua`):** Integrated an early evaluation guard in `hub_packing.evaluate_inventory()` checking `storage.hub_settings[unit_number].can_send`. If `false`, inventory packing and runner injection are aborted before container item extraction.
 4. **Arrival Permission Gating (`hub-unpacking.lua`):** Integrated a capture guard in `hub_unpacking.capture()` checking `storage.hub_settings[unit_number].can_receive`. If `false`, capsule capture and liminal holder inventory transfer are rejected, leaving incoming capsules safely parked upstream on destination entity ports.
 
-### Revision: Dynamic Dominant Capsule Content Visual Indicators
+### Revision: Dynamic Dominant Capsule Content Visual Indicators `[INCORPORATED IN TABLE]`
 **Context:** Enhance dynamic visual feedback for in-flight transit capsules by inspecting liminal container inventories and rendering the dominant payload item icon directly over active capsule objects during movement ticks.
 **Key Changes:**
 1. **Multi-Layer Render Cleanup (`scripts/capsules/capsule-queries.lua`):** Refactored `clear_capsule_render()` to accept both standalone render IDs and array tables of `LuaRenderObject` handles, ensuring leak-free cleanup of multi-part visual objects on tick updates, arrival, and destruction events.
 2. **Payload Inventory Inspection (`scripts/capsules/capsule-runner.lua`):** Added `get_dominant_item()` helper to inspect active liminal holder container inventories, prioritizing internal cargo stacks by highest item count over the vessel capsule shell.
 3. **Dynamic Render Overlay & Sprite Framing (`scripts/capsules/capsule-runner.lua`):** Updated the tick rendering pipeline in `update_capsules()` to draw a gold ring border (`radius = 0.35`, `width = 2`) framing a scaled item sprite (`x_scale = 0.55`, `y_scale = 0.55`) of the dominant payload item, with fallback rendering for empty capsules when `is_debug_active("capsules")` is enabled.
 
-### Revision: Pneumatic Technology Tree & Recipe Progression
+### Revision: Pneumatic Technology Tree & Recipe Progression `[INCORPORATED IN TABLE]`
 **Context:** Establish early-to-mid-game technology progression and rebalance crafting recipes for pneumatic transport infrastructure. Lock core mod items behind a dedicated research node and introduce explicit base craft times (`energy_required`).
 **Key Changes:**
 1. **Technology Prototype Definition (`prototypes/technology.lua`):** Created the `pneumatic-transport` research node at the Chemical (Blue) Science tier (350 cycles @ 45s), requiring `advanced-circuit`, `fluid-handling`, and `logistics-2`. Added recipe unlock effects for tubes, junctions, pumps, hubs, and transport capsules.
 2. **Recipe Rebalancing & Research Gating (`prototypes/recipe.lua`):** Set `enabled = false` across all base mod recipes to mandate technology unlock gating. Rebalanced material costs (steel, plastic, engines, circuits) and assigned explicit `energy_required` values (1.0s to 3.5s) to eliminate default instant crafting.
 3. **Data Lifecycle Integration (`data.lua`):** Required `prototypes/technology.lua` strictly within the prototype data stage in `data.lua`, preventing runtime `data` global table indexing errors in `control.lua`.
 
-### Revision: Dynamic Pressure Drop-Off & Gradient-Scaled Capsule Velocity
+### Revision: Dynamic Pressure Drop-Off & Gradient-Scaled Capsule Velocity `[INCORPORATED IN TABLE]`
 **Context:** Replace flat edge pressure loss and constant capsule travel velocity with dynamic pressure decay and pressure-gradient-proportional movement speed across the network graph.
 **Key Changes:**
 1. **Dynamic Pressure Decay Calculation (`scripts/networks/networks-pressure.lua`):** Replaced the static `PRESSURE_DROPOFF` constant with `calculate_dropoff()`, scaling resistive pressure loss at 10% of local line pressure per edge hop (with a floor minimum of 1). Integrated local drop-off calculation directly into step 2 of the multi-source BFS traversal.
 2. **Pressure-Proportional Velocity Scaling (`scripts/capsules/capsule-runner.lua`):** Replaced fixed constant `SPEED_TILES_PER_SEC` with `calculate_segment_speed()`. Capsule travel velocity now scales non-linearly relative to the square root of the local pressure gradient ($\Delta P = |P_{\text{from}} - P_{\text{to}}|$), clamped safely within a 4 to 60 tiles/second envelope (baseline 15 tiles/sec).
 3. **Mid-Tick Distance Recalibration (`scripts/capsules/capsule-runner.lua`):** Refactored `update_capsules()` movement execution to dynamically scale remaining per-tick distance (`tiles_this_tick`) whenever a capsule acquires a new destination node mid-tick, ensuring smooth speed transitions across varying pressure regions.
 
-### Revision: Hub Settings Architecture, Circuit Signal Fixes & Receive Latch Toggle
+### Revision: Hub Settings Architecture, Circuit Signal Fixes & Receive Latch Toggle `[INCORPORATED IN TABLE]`
 **Context:** Refactor circuit evaluation into `hub-settings.lua` to eliminate circular dependencies, fix `get_signal` API crashes when wire channels are disabled, enforce symmetrical GUI toggle synchronization, and expose a configurable receive lock toggle.
 **Key Changes:**
 1. **Settings Modularization & Signal Safeguards (`scripts/hubs/hub-settings.lua`):** Extracted state storage and permission evaluation (`can_send`, `can_receive`) out of `hub-manager.lua`. Updated `evaluate_circuit_condition` to safely validate active `defines.wire_connector_id` channels before calling `entity.get_signal()`, preventing nil parameter crashes when wire channels are toggled off.

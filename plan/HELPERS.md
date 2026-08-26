@@ -32,3 +32,14 @@ I have provided a sample of previous revisions to give you an idea of the format
 Now make a commit title for git in vs code
 
 Avoid using [cite] blocks
+
+
+
+
+
+
+Please sync our documentation with the latest changelog updates by following these steps:
+
+1. **Update Architecture:** Modify `architecture.md` to fully reflect all unapplied changes listed in `changelog.md` (specifically, any items not yet marked as incorporated in the changelog table).
+2. **Mark as Applied:** Update `changelog.md` to clearly mark all of those newly processed items as applied/incorporated.
+3. **Output Format:** Provide the full, updated contents of both `architecture.md` and `changelog.md` in full, ready for me to copy and paste.

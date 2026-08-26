@@ -1,4 +1,3 @@
--- scripts/hubs/hub-unpacking.lua
 local hub_unpacking = {}
 
 --- Multi-Item Slot Simulation: Verifies destination hub chest can fit ALL payload stacks combined,
@@ -138,6 +137,14 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
     
     if not phys_capsule or not phys_capsule.holder or not phys_capsule.holder.valid then
         return true 
+    end
+
+    -- OPERATIONAL MODE TOGGLE: Verify receive (arrival) permission
+    local unit_number = hub_entity.unit_number
+    if storage.hub_settings and storage.hub_settings[unit_number] then
+        if storage.hub_settings[unit_number].can_receive == false then
+            return false
+        end
     end
 
     local holder_inv = phys_capsule.holder.get_inventory(defines.inventory.chest)

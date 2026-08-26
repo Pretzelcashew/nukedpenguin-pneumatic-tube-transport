@@ -23,7 +23,7 @@
   * **Details:** Unpowered pumps (`entity.energy == 0`) halt pressure generation, disrupting BFS pressure propagation along connected tube graphs.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`
 
-* **Hub Operational Mode Toggles (`can_send` / `can_receive`)**
+* **Hub Operational Mode Toggles (`can_send` / `can_receive`)** [INCORPORATED IN MOD]
   * **Description:** Add configurable transfer permission toggles to Hub GUIs.
   * **Details:** Allows players to restrict hub behavior to send-only (dispatch), receive-only (arrival), or bidirectional operation without altering physical pressure or flow vectors.
   * **Target File(s):** `scripts/hubs/hub-packing.lua`, `scripts/hubs/hub-unpacking.lua``

@@ -1,4 +1,3 @@
--- FILE: scripts/hubs/hub-packing.lua
 local events = require("scripts.events")
 local liminal_surface_mgr = require("scripts.surfaces.liminal-surface")
 local capsule_manager = require("scripts.capsules.capsule-manager")
@@ -19,6 +18,14 @@ function hub_packing.evaluate_inventory(entity)
     if not (hub_def and hub_def.type == "hub") then return end
 
     local unit_number = entity.unit_number
+
+    -- OPERATIONAL MODE TOGGLE: Verify send (dispatch) permission
+    if storage.hub_settings and storage.hub_settings[unit_number] then
+        if storage.hub_settings[unit_number].can_send == false then
+            return
+        end
+    end
+
     local inventory = entity.get_inventory(defines.inventory.chest)
     if not inventory then return end
 

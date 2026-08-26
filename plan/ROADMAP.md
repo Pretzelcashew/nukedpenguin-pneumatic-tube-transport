@@ -52,11 +52,6 @@
   * **Details:** Enables dynamic dispatch and arrival gating based on connected red/green circuit network signal conditions using `evaluate_circuit_condition`.
   * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`
 
-* **Pneumatic Pump Circuit Controls & Direction Flipping**
-  * **Description:** Expose pneumatic pumps to red/green circuit network signals for dynamic power enabling and flow direction toggling.
-  * **Details:** Enables dynamic pump enabling/disabling and directional reversal (flipping pressure vector polarity) based on configurable circuit network signal conditions.
-  * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
-
 ---
 
 ## Priority 3: Logistics Suite Expansion, Specialized Vessels & GUI Controls
@@ -121,3 +116,8 @@
   * **Description:** Optimize graph rebuilds during pump state toggles or network polarity changes.
   * **Details:** Replaces full network flow map reconstruction with targeted incremental BFS updates and memoized pressure pathing when a pump changes power state or direction.
   * **Target File(s):** `scripts/networks/networks-flow.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
+
+  * **Pneumatic Pump Circuit Controls & Direction Flipping**
+  * **Description:** Expose pneumatic pumps to red/green circuit network signals for dynamic power enabling and flow direction toggling.
+  * **Details:** Enables dynamic pump enabling/disabling and directional reversal (flipping pressure vector polarity) based on configurable circuit network signal conditions.
+  * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`

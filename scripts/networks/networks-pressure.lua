@@ -1,4 +1,3 @@
--- scripts/networks/networks-pressure.lua
 local port_defs = require("scripts.ports.port-definitions")
 
 local networks_pressure = {}
@@ -92,14 +91,19 @@ function networks_pressure.process(net_id)
                         port_cache[key] = port
 
                         if port.pressure and port.pressure ~= 0 then
-                            fixed_sources[key] = true
-                            calculated[key] = port.pressure
-                            table.insert(queue, {
-                                key = key,
-                                unit_number = member.unit_number,
-                                pressure = port.pressure,
-                                flow = port.flow
-                            })
+                            -- Power Check: Unpowered entities (entity.energy == 0) halt pressure generation
+                            local is_powered = not (member.entity.energy and member.entity.energy == 0)
+
+                            if is_powered then
+                                fixed_sources[key] = true
+                                calculated[key] = port.pressure
+                                table.insert(queue, {
+                                    key = key,
+                                    unit_number = member.unit_number,
+                                    pressure = port.pressure,
+                                    flow = port.flow
+                                })
+                            end
                         end
                     end
                 end

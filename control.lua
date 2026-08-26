@@ -10,6 +10,7 @@ require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
 require("scripts.hubs.hub-manager")
 require("scripts.capsules.capsule-runner")
+require("scripts.networks.pump-manager")
 
 
 local function setup_storage()

@@ -18,7 +18,7 @@
   * **Details:** Entities hosting multiple distinct internal networks track and enforce capsule limits independently per network instance.
   * **Target File(s):** `scripts/networks/networks-store.lua`, `scripts/capsules/capsule-runner.lua`
 
-* **Pneumatic Pump Power Consumption**
+* **Pneumatic Pump Power Consumption** [INCORPORATED IN MOD]
   * **Description:** Integrate electric power requirements into pneumatic pump entity prototypes.
   * **Details:** Unpowered pumps (`entity.energy == 0`) halt pressure generation, disrupting BFS pressure propagation along connected tube graphs.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`

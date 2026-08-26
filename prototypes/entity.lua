@@ -219,7 +219,7 @@ data:extend({
     }
   },
   {
-    type = "simple-entity-with-owner",
+    type = "electric-energy-interface",
     name = "pneumatic-pump",
     icon = "__base__/graphics/icons/pump.png",
     icon_size = 64,
@@ -230,7 +230,14 @@ data:extend({
     max_health = 180,
     collision_box = {{-0.4, -0.9}, {0.4, 0.9}},
     selection_box = {{-0.5, -1.0}, {0.5, 1.0}},
-    picture = {
+    energy_source = {
+      type = "electric",
+      usage_priority = "secondary-input",
+      buffer_capacity = "3kJ",
+      input_flow_limit = "60kW"
+    },
+    energy_usage = "30kW",
+    pictures = {
       north = {
         filename = "__base__/graphics/entity/pump/pump-north.png",
         priority = "high",

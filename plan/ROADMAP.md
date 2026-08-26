@@ -52,10 +52,10 @@
   * **Details:** Enables dynamic dispatch and arrival gating based on connected red/green circuit network signal conditions using `evaluate_circuit_condition`.
   * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`
 
-* **Pump & Advanced Circuit Network Automation**
-  * **Description:** Expose pumps and hub chest inventories to full red/green circuit network signals and controls.
-  * **Details:** Enables dynamic pump enabling/disabling via circuit signals, target pressure manipulation based on network inputs, and hub container inventory signal outputs to connected wire networks.
-  * **Target File(s):** `prototypes/entity.lua`, `scripts/hubs/hub-manager.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
+* **Pneumatic Pump Circuit Controls & Direction Flipping**
+  * **Description:** Expose pneumatic pumps to red/green circuit network signals for dynamic power enabling and flow direction toggling.
+  * **Details:** Enables dynamic pump enabling/disabling and directional reversal (flipping pressure vector polarity) based on configurable circuit network signal conditions.
+  * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
 
 ---
 
@@ -65,6 +65,11 @@
   * **Description:** Add a GUI toggle option on Hubs to enable or disable the post-arrival empty-inventory requirement ("receive lock").
   * **Details:** Allows high-throughput hubs to immediately pack outgoing cargo without requiring the chest to be 100% emptied of incoming items first, stored in `storage.hub_settings[unit_number].use_receive_lock`.
   * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`, `scripts/hubs/hub-packing.lua`
+
+* **Automated Dynamic Hub Slot Filtering via Circuit Network**
+  * **Description:** Dynamically set and update hub container inventory slot filters based on incoming red/green circuit network signals.
+  * **Details:** Parses incoming circuit signals (e.g., 3 $\times$ `item-capsule`, 7 $\times$ `iron-plate`) to automatically allocate matching inventory slot filters on the hub chest, enabling dynamic cargo partitioning and space management.
+  * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`, `scripts/hubs/hub-unpacking.lua`
 
 * **Pneumatic Diverter Entity (Tube Splitter)**
   * **Description:** Introduce a multi-port diverter structure acting as a physical splitter for pneumatic tube lines.

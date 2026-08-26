@@ -1,4 +1,3 @@
--- FILE: scripts/capsules/capsule-runner.lua
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
@@ -21,13 +20,61 @@ capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
 local clear_capsule_render = capsule_queries.clear_capsule_render
 
--- Configurable movement speed (30 tiles / second -> divided by 60 ticks)
-local SPEED_TILES_PER_SEC = 30
-local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
+-- Velocity bounds & baseline configuration (tiles per second)
+local BASE_SPEED_TILES_PER_SEC = 15
+local MIN_SPEED_TILES_PER_SEC = 4
+local MAX_SPEED_TILES_PER_SEC = 60
 
 local function init_storage()
     storage.capsules = storage.capsules or {}
     storage.next_capsule_id = storage.next_capsule_id or 1
+end
+
+--- Retrieves node metadata across network boundaries safely
+local function get_node(port_key)
+    if not (storage.networks and storage.networks.port_to_network) then return nil end
+    local net_id = storage.networks.port_to_network[port_key]
+    if not net_id then return nil end
+
+    local flow_map = networks.get_metadata(net_id, "flow_map")
+    return flow_map and flow_map[port_key]
+end
+
+--- Dynamic velocity calculation scaling strictly with the intensity of local pressure drop (ΔP)
+--- @param from_port_key string|nil
+--- @param to_port_key string|nil
+--- @return number tiles_per_tick
+local function calculate_segment_speed(from_port_key, to_port_key)
+    if not (from_port_key and to_port_key) then
+        return MIN_SPEED_TILES_PER_SEC / 60.0
+    end
+
+    local node_from = get_node(from_port_key)
+    local node_to = get_node(to_port_key)
+    if not (node_from and node_to) then
+        return BASE_SPEED_TILES_PER_SEC / 60.0
+    end
+
+    local p_from = (storage.port_pressures and storage.port_pressures[from_port_key]) or node_from.pressure or 0
+    local p_to = (storage.port_pressures and storage.port_pressures[to_port_key]) or node_to.pressure or 0
+    local is_internal = (node_from.unit_number == node_to.unit_number)
+
+    local delta_p = 0
+    if is_internal then
+        -- Internal machine pass-through: fallback drop based on local node pressure (minimum 1.0)
+        delta_p = math.max(1.0, math.abs(p_from) * 0.10)
+    else
+        -- External pipe segment edge drop: ΔP = |P_from - P_to|
+        delta_p = math.max(0.1, math.abs(p_from - p_to))
+    end
+
+    -- Velocity scales non-linearly with the square root of local pressure drop intensity
+    local speed_multiplier = math.sqrt(delta_p)
+    local tiles_per_sec = BASE_SPEED_TILES_PER_SEC * speed_multiplier
+
+    tiles_per_sec = math.max(MIN_SPEED_TILES_PER_SEC, math.min(MAX_SPEED_TILES_PER_SEC, tiles_per_sec))
+
+    return tiles_per_sec / 60.0
 end
 
 --- Inspects the capsule's liminal holder container to determine the dominant cargo item stack
@@ -70,16 +117,6 @@ local function get_dominant_item(capsule_id)
 
     -- Prioritize internal cargo items over vessel capsule shell
     return dominant_cargo_item or dominant_vessel_item
-end
-
---- Retrieves node metadata across network boundaries safely
-local function get_node(port_key)
-    if not (storage.networks and storage.networks.port_to_network) then return nil end
-    local net_id = storage.networks.port_to_network[port_key]
-    if not net_id then return nil end
-
-    local flow_map = networks.get_metadata(net_id, "flow_map")
-    return flow_map and flow_map[port_key]
 end
 
 --- Retrieves world coordinates and surface for a specific port key
@@ -263,7 +300,8 @@ local function update_capsules()
     if not storage.capsules then return end
 
     for id, capsule in pairs(storage.capsules) do
-        local tiles_this_tick = TILES_PER_TICK
+        local current_speed = calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
+        local tiles_this_tick = current_speed
         local surface = nil
         local curr_pos = nil
         local safety_counter = 0
@@ -279,6 +317,16 @@ local function update_capsules()
 
                 capsule.to_port_key = select_next_target(capsule)
                 capsule.progress = 0.0
+
+                if capsule.to_port_key then
+                    local new_speed = calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
+                    if current_speed > 0 then
+                        tiles_this_tick = tiles_this_tick * (new_speed / current_speed)
+                    else
+                        tiles_this_tick = new_speed
+                    end
+                    current_speed = new_speed
+                end
             end
 
             local from_pos, surf = get_port_world_pos(capsule.from_port_key)

@@ -42,7 +42,7 @@
   * **Details:** Establishes early-to-late game tech progression, balancing material costs (plates, steel, engines, circuits, lubricants) across tubes, pumps, hubs, and capsule vessels.
   * **Target File(s):** `prototypes/recipe.lua`, `prototypes/technology.lua`, `prototypes/item.lua`
 
-* **Pressure-Gradient Variable Capsule Velocity**
+* **Pressure-Gradient Variable Capsule Velocity** [INCORPORATED IN MOD]
   * **Description:** Dynamically calculate capsule motion speed based on pressure differentials.
   * **Details:** Replaces static velocity ($30 \text{ tiles/sec}$) with dynamic scaling tied to local edge pressure drops ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`

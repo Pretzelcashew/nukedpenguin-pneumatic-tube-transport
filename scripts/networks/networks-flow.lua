@@ -1,4 +1,3 @@
--- scripts/networks/networks-flow.lua
 local networks = require("scripts.networks.networks")
 local port_defs = require("scripts.ports.port-definitions")
 local flow_renderer = require("scripts.networks.networks-flow-renderer")

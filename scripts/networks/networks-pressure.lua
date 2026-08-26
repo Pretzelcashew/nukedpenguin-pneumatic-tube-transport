@@ -1,7 +1,15 @@
 local port_defs = require("scripts.ports.port-definitions")
 
 local networks_pressure = {}
-local PRESSURE_DROPOFF = 1
+
+--- Dynamic pressure decay: higher line pressure experiences steeper resistive drop-off
+--- @param current_pressure number
+--- @return number dropoff
+local function calculate_dropoff(current_pressure)
+    local abs_p = math.abs(current_pressure)
+    -- Drops 10% of local pressure per edge hop (minimum drop of 1)
+    return math.max(1, math.floor(abs_p * 0.10))
+end
 
 --- Traverses graph edges port-by-port to collect network IDs, stopping at internal join boundaries
 local function get_connected_network_ids(start_net_id)
@@ -111,7 +119,7 @@ function networks_pressure.process(net_id)
         end
     end
 
-    -- 2. Multi-source BFS traversal driven purely by graph connections
+    -- 2. Multi-source BFS traversal driven by graph connections & dynamic drop-off
     local head = 1
     while head <= #queue do
         local curr = queue[head]
@@ -127,7 +135,7 @@ function networks_pressure.process(net_id)
 
                         if n_port then
                             local n_unit = tonumber(neighbor_key:match("^(%d+):"))
-                            local dropoff = (curr.unit_number == n_unit) and 0 or PRESSURE_DROPOFF
+                            local dropoff = (curr.unit_number == n_unit) and 0 or calculate_dropoff(curr_p)
 
                             local next_p = 0
                             if curr_p > 0 then

@@ -47,7 +47,7 @@
   * **Details:** Replaces static velocity ($30 \text{ tiles/sec}$) with dynamic scaling tied to local edge pressure drops ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`
 
-* **Circuit Network Automation Integration**
+* **Circuit Network Automation Integration** [INCORPORATED IN MOD]
   * **Description:** Expose hubs and pumps to Factorio's red/green circuit network signal controls.
   * **Details:** Enables dynamic pump enabling/disabling, target pressure manipulation, hub container inventory signal output, and automated `can_send`/`can_receive` toggles.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/hubs/hub-manager.lua`, `scripts/networks/networks-pressure.lua`
@@ -61,7 +61,7 @@
   * **Details:** Implements proportional or alternating flow-culling logic to evenly split pressure gradients or alternate capsule routing across multiple output tubes.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/ports/port-definitions.lua`, `scripts/networks/flow-cull.lua`, `scripts/networks/networks-flow.lua`
 
-* **Hub Receive Lock Bypass GUI Toggle**
+* **Hub Receive Lock Bypass GUI Toggle** [INCORPORATED IN MOD]
   * **Description:** Add a GUI toggle option on Hubs to enable or disable the post-arrival empty-inventory requirement ("receive lock").
   * **Details:** Allows high-throughput hubs to immediately pack outgoing cargo without requiring the chest to be 100% emptied of incoming items first, stored in `storage.hub_settings[unit_number].ignore_receive_lock`.
   * **Target File(s):** `scripts/hubs/hub-manager.lua`, `scripts/hubs/hub-packing.lua`, `scripts/hubs/hub-unpacking.lua`
@@ -111,3 +111,5 @@
   * **Description:** Optimize graph rebuilds during pump state toggles or network polarity changes.
   * **Details:** Replaces full network flow map reconstruction with targeted incremental BFS updates and memoized pressure pathing when a pump changes power state or direction.
   * **Target File(s):** `scripts/networks/networks-flow.lua`, `scripts/networks/networks-pressure.lua`, `scripts/networks/pump-manager.lua`
+
+  

@@ -3,11 +3,10 @@ local liminal_surface_mgr = require("scripts.surfaces.liminal-surface")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
-
 local quality_filter = require("scripts.hubs.packing.quality-filter")
 local cargo_planner = require("scripts.hubs.packing.cargo-planner")
-
 local capsule_runner = require("scripts.capsules.capsule-runner")
+local hub_settings = require("scripts.hubs.hub-settings")
 
 local hub_packing = {}
 
@@ -19,31 +18,28 @@ function hub_packing.evaluate_inventory(entity)
 
     local unit_number = entity.unit_number
 
-    -- OPERATIONAL MODE TOGGLE: Verify send (dispatch) permission
-    if storage.hub_settings and storage.hub_settings[unit_number] then
-        if storage.hub_settings[unit_number].can_send == false then
-            return
-        end
+    -- OPERATIONAL MODE & CIRCUIT CONDITION: Verify dispatch permission
+    if not hub_settings.can_send(entity) then
+        return
     end
 
     local inventory = entity.get_inventory(defines.inventory.chest)
     if not inventory then return end
 
-    -- 1. MECHANICAL LATCH LOGIC: Run before capacity guard so locks can clear
-    if storage.hub_receive_locks and storage.hub_receive_locks[unit_number] then
+    -- 1. MECHANICAL LATCH LOGIC
+    local settings = hub_settings.get(unit_number)
+    if settings.use_receive_lock and storage.hub_receive_locks and storage.hub_receive_locks[unit_number] then
         if inventory.is_empty() then
-            -- Chest was completely emptied! Release the lock.
             storage.hub_receive_locks[unit_number] = nil
         else
-            -- Still holds unpacked items. Refuse to pack new capsules.
-            return 
+            return
         end
     end
 
-    -- 2. If unlocked and empty, there's nothing to pack
+    -- 2. Empty check
     if inventory.is_empty() then return end
 
-    -- 3. EARLY CAPACITY GUARD: Block NEW packing if capsule capacity is maxed
+    -- 3. EARLY CAPACITY GUARD
     local max_capacity = hub_def.capsule_capacity or 1
     local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
 
@@ -227,7 +223,6 @@ function hub_packing.evaluate_inventory(entity)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity)
         if not success then
-            -- Fallback: The hub is not connected to a network, undo packing.
             capsule_manager.remove(capsule_id)
         end
     end

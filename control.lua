@@ -7,6 +7,7 @@ require("scripts.networks.network-connect")
 require("scripts.networks.network-disconnect")
 require("scripts.networks.network-rotate")
 require("scripts.hubs.hub-manager")
+require("scripts.hubs.hub-gui")
 require("scripts.capsules.capsule-runner")
 require("scripts.networks.pump-manager")
 

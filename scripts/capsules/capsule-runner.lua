@@ -1,9 +1,13 @@
+-- FILE: scripts/capsules/capsule-runner.lua
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_queries = require("scripts.capsules.capsule-queries")
+local capsule_manager = require("scripts.capsules.capsule-manager")
+local capsule_defs = require("scripts.capsules.capsule-definitions")
+local debug_manager = require("scripts.debug-manager")
 
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 
@@ -24,6 +28,48 @@ local TILES_PER_TICK = SPEED_TILES_PER_SEC / 60.0
 local function init_storage()
     storage.capsules = storage.capsules or {}
     storage.next_capsule_id = storage.next_capsule_id or 1
+end
+
+--- Inspects the capsule's liminal holder container to determine the dominant cargo item stack
+--- @param capsule_id number
+--- @return string|nil item_name
+local function get_dominant_item(capsule_id)
+    local cap_data = capsule_manager.get(capsule_id)
+    if not (cap_data and cap_data.holder and cap_data.holder.valid) then
+        return nil
+    end
+
+    local inventory = cap_data.holder.get_inventory(defines.inventory.chest)
+    if not (inventory and inventory.valid and not inventory.is_empty()) then
+        return nil
+    end
+
+    local max_cargo_count = 0
+    local dominant_cargo_item = nil
+
+    local max_vessel_count = 0
+    local dominant_vessel_item = nil
+
+    for i = 1, #inventory do
+        local stack = inventory[i]
+        if stack and stack.valid_for_read and stack.count > 0 then
+            local is_vessel = capsule_defs.types[stack.name] ~= nil
+            if is_vessel then
+                if stack.count > max_vessel_count then
+                    max_vessel_count = stack.count
+                    dominant_vessel_item = stack.name
+                end
+            else
+                if stack.count > max_cargo_count then
+                    max_cargo_count = stack.count
+                    dominant_cargo_item = stack.name
+                end
+            end
+        end
+    end
+
+    -- Prioritize internal cargo items over vessel capsule shell
+    return dominant_cargo_item or dominant_vessel_item
 end
 
 --- Retrieves node metadata across network boundaries safely
@@ -293,13 +339,43 @@ local function update_capsules()
         if storage.capsules[id] then
             clear_capsule_render(capsule)
             if is_debug_active("capsules") and surface and curr_pos then
-                capsule.render_id = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                    radius = 0.25,
-                    filled = true,
-                    target = curr_pos,
-                    surface = surface
-                }
+                local render_objects = {}
+
+                local dominant_item = get_dominant_item(capsule.id or id)
+                if dominant_item then
+                    -- Clean gold border outline framing the item sprite
+                    local ring = rendering.draw_circle{
+                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                        radius = 0.35,
+                        filled = false,
+                        width = 2,
+                        target = curr_pos,
+                        surface = surface
+                    }
+                    table.insert(render_objects, ring)
+
+                    -- Scaled item sprite rendered clearly on top
+                    local sprite = rendering.draw_sprite{
+                        sprite = "item/" .. dominant_item,
+                        target = curr_pos,
+                        surface = surface,
+                        x_scale = 0.55,
+                        y_scale = 0.55
+                    }
+                    table.insert(render_objects, sprite)
+                else
+                    -- Fallback simple gold indicator dot if capsule is completely empty
+                    local dot = rendering.draw_circle{
+                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                        radius = 0.25,
+                        filled = true,
+                        target = curr_pos,
+                        surface = surface
+                    }
+                    table.insert(render_objects, dot)
+                end
+
+                capsule.render_id = render_objects
             end
         end
     end

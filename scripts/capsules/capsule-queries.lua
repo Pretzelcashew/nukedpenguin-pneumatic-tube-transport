@@ -1,14 +1,21 @@
+-- FILE: scripts/capsules/capsule-queries.lua
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 
 local capsule_queries = {}
 
---- Destroys the visual rendering object associated with a capsule
+--- Destroys the visual rendering object(s) associated with a capsule
 --- @param capsule table
 function capsule_queries.clear_capsule_render(capsule)
-    if capsule and capsule.render_id and capsule.render_id.valid then
-        capsule.render_id.destroy()
-    end
-    if capsule then
+    if capsule and capsule.render_id then
+        if type(capsule.render_id) == "table" then
+            for _, render_obj in ipairs(capsule.render_id) do
+                if render_obj and render_obj.valid then
+                    render_obj.destroy()
+                end
+            end
+        elseif capsule.render_id.valid then
+            capsule.render_id.destroy()
+        end
         capsule.render_id = nil
     end
 end

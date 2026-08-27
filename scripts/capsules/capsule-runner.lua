@@ -1,4 +1,3 @@
--- File: scripts/capsules/capsule-runner.lua
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
@@ -82,12 +81,12 @@ local function get_dominant_item(capsule_id)
     local dominant_cargo_item = nil
     local max_vessel_count = 0
     local dominant_vessel_item = nil
+    local primary_slot = cap_data.primary_slot
 
     for i = 1, #inventory do
         local stack = inventory[i]
         if stack and stack.valid_for_read and stack.count > 0 then
-            local is_vessel = capsule_defs.types[stack.name] ~= nil
-            if is_vessel then
+            if primary_slot and i == primary_slot then
                 if stack.count > max_vessel_count then
                     max_vessel_count = stack.count
                     dominant_vessel_item = stack.name
@@ -101,7 +100,7 @@ local function get_dominant_item(capsule_id)
         end
     end
 
-    return dominant_cargo_item or dominant_vessel_item
+    return dominant_cargo_item or dominant_vessel_item or (cap_data.definition and cap_data.definition.name)
 end
 
 local function get_port_world_pos(port_key)
@@ -284,7 +283,6 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                             local raw_delta = current_spoil - last_spoil
                             local target_spoil = math.max(0.0, last_spoil + (raw_delta * modifier))
 
-                            -- Base stack specification
                             local stack_spec = {
                                 name = stack.name,
                                 count = stack.count,
@@ -292,7 +290,6 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                                 spoil_percent = target_spoil
                             }
 
-                            -- Type-guarded property queries
                             if stack.is_tool then
                                 stack_spec.durability = stack.durability
                             end
@@ -306,7 +303,6 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                                 stack_spec.tags = stack.tags
                             end
 
-                            -- Re-instantiate slot with modified spoil_percent
                             inv[i].clear()
                             inv[i].set_stack(stack_spec)
                             capsule.slot_spoil_percents[i] = target_spoil
@@ -318,10 +314,11 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                     end
                 end
 
-                -- Deduct tool durability when actively cooling spoilable items
-                if actively_cooling then
-                    for i = 1, #inv do
-                        local stack = inv[i]
+                -- Deduct tool durability strictly from the primary capsule shell slot
+                if actively_cooling and phys_capsule.primary_slot then
+                    local p_slot = phys_capsule.primary_slot
+                    if p_slot <= #inv then
+                        local stack = inv[p_slot]
                         if stack and stack.valid_for_read and stack.is_tool then
                             local caps_def = capsule_defs.types[stack.name]
                             if caps_def and caps_def.spoilage_modifier and caps_def.spoilage_modifier < 1.0 then
@@ -331,8 +328,8 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                                 if new_durability <= 0 then
                                     local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
                                     local quality = stack.quality
-                                    inv[i].clear()
-                                    inv[i].set_stack({
+                                    inv[p_slot].clear()
+                                    inv[p_slot].set_stack({
                                         name = spent_item_name,
                                         count = 1,
                                         quality = quality
@@ -341,7 +338,6 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
                                 else
                                     stack.durability = new_durability
                                 end
-                                break
                             end
                         end
                     end

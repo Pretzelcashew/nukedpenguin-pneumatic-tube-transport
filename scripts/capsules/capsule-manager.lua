@@ -7,10 +7,12 @@ function capsule_manager.init()
 end
 
 --- Registers a newly created holder entity into the tracking system
-function capsule_manager.register(holder_entity, capsule_item_name)
+--- @param holder_entity LuaEntity The liminal holder entity
+--- @param capsule_item_name string Name of the capsule prototype
+--- @param primary_slot number|nil Index of the slot containing the primary capsule item in holder inventory
+function capsule_manager.register(holder_entity, capsule_item_name, primary_slot)
     if not (holder_entity and holder_entity.valid) then return nil end
     
-    -- Lookup capsule configuration rules
     local def = capsule_defs.types[capsule_item_name]
     if not def then return nil end
 
@@ -20,19 +22,43 @@ function capsule_manager.register(holder_entity, capsule_item_name)
     storage.active_capsules[capsule_id] = {
         holder = holder_entity,
         type = def.type,
-        definition = def
+        definition = def,
+        primary_slot = primary_slot
     }
     
     return capsule_id
 end
 
 --- Retrieves the capsule tracking data
+--- @param capsule_id number
+--- @return table|nil
 function capsule_manager.get(capsule_id)
     if not storage.active_capsules then return nil end
     return storage.active_capsules[capsule_id]
 end
 
+--- Retrieves the primary capsule item stack from the holder inventory, if present and valid
+--- @param capsule_id number
+--- @return LuaItemStack|nil stack
+--- @return number|nil slot_index
+function capsule_manager.get_primary_stack(capsule_id)
+    local data = capsule_manager.get(capsule_id)
+    if not (data and data.holder and data.holder.valid and data.primary_slot) then
+        return nil, nil
+    end
+    local inv = data.holder.get_inventory(defines.inventory.chest)
+    if not (inv and inv.valid and data.primary_slot <= #inv) then
+        return nil, nil
+    end
+    local stack = inv[data.primary_slot]
+    if stack and stack.valid_for_read then
+        return stack, data.primary_slot
+    end
+    return nil, data.primary_slot
+end
+
 --- Safely destroys the holder entity and removes it from the registry
+--- @param capsule_id number
 function capsule_manager.remove(capsule_id)
     if not storage.active_capsules then return end
     

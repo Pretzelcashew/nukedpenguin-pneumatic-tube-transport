@@ -74,7 +74,7 @@ function hub_packing.evaluate_inventory(entity)
         if #nearby_players > 0 and nearby_players[1].player then
             passenger = nearby_players[1].player
         else
-            return -- Abort player transit dispatch if no player is waiting nearby
+            return
         end
     end
 
@@ -166,6 +166,7 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
+    -- 1. Insert Cargo Extractions First
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
@@ -192,17 +193,53 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
+    -- 2. Insert and Track Primary Capsule Shell Slot
+    local primary_holder_slot = nil
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
-            local original_count = primary_stack.count
-            primary_stack.count = 1
-            local inserted = dest_inv.insert(primary_stack)
-            local remaining = (original_count - 1) + (1 - inserted)
-            if remaining > 0 then
-                primary_stack.count = remaining
+            local target_slot = nil
+            for i = 1, #dest_inv do
+                if not dest_inv[i].valid_for_read then
+                    target_slot = i
+                    break
+                end
+            end
+
+            local stack_spec = {
+                name = primary_stack.name,
+                count = 1,
+                quality = primary_stack.quality
+            }
+            if primary_stack.is_tool then
+                stack_spec.durability = primary_stack.durability
+            end
+            if primary_stack.is_ammo then
+                stack_spec.ammo = primary_stack.ammo
+            end
+            if primary_stack.is_item_with_tags then
+                stack_spec.custom_description = primary_stack.custom_description
+                stack_spec.tags = primary_stack.tags
+            end
+
+            if primary_stack.count > 1 then
+                primary_stack.count = primary_stack.count - 1
             else
                 primary_stack.clear()
+            end
+
+            if target_slot then
+                dest_inv[target_slot].set_stack(stack_spec)
+                primary_holder_slot = target_slot
+            else
+                local inserted = dest_inv.insert(stack_spec)
+                if inserted > 0 then
+                    for i = 1, #dest_inv do
+                        if dest_inv[i].valid_for_read and dest_inv[i].name == primary_stack.name then
+                            primary_holder_slot = i
+                        end
+                    end
+                end
             end
         elseif capsule_def.include_self or capsule_def.destroy_self then
             if primary_stack.count > 1 then
@@ -218,7 +255,7 @@ function hub_packing.evaluate_inventory(entity)
         return
     end
 
-    local capsule_id = capsule_manager.register(holder, capsule_name)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

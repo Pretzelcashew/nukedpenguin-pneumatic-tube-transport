@@ -26,7 +26,7 @@ data:extend({
     subgroup = "intermediate-product",
     order = "a[capsule]-c[refrigerated]",
     stack_size = 1,
-    durability = 1000
+    durability = 100
   },
   {
     type = "item",

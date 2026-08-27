@@ -63,3 +63,12 @@
 2. **Bio-Capsule Integrity Research Tree (`prototypes/technology.lua`):** Removed `biodegradable-capsule` from baseline `pneumatic-transport` and placed it under `bio-capsule-integrity-1` (requiring `agricultural-science-pack`). Expanded the tree with 4 exponential research tiers (`bio-capsule-integrity-1` through `4`) scaling science counts at 250, 1,000, 4,000, and 16,000 units.
 3. **Dynamic Cargo Weight & Slot Density (`scripts/capsules/capsule-definitions.lua` & `scripts/hubs/packing/cargo-planner.lua`):** Introduced `slot_costs` (`bio_item = 0.5`, `inorganic = 1.0`) on bio-capsules. Added a biological item registry (`BIO_ITEMS`) and slot cost evaluator in `cargo-planner.lua`, allowing bio-capsules to hold twice as many biological item stacks compared to inorganic metals.
 4. **Tech-Gated Mid-Transit Spill Mitigation (`scripts/capsules/capsule-lifecycle.lua`):** Updated lifecycle updates to inspect force research progress. Mid-transit structural failure risk (baseline 0.0008) is dynamically reduced by 25% per researched integrity level (100% risk at L0 down to 0% total failure immunity at L4).
+
+
+### Revision: Sub-Network Port Group Capacity Isolation
+**Date:** 2026-08-27 19:20 (EDT)
+**Context:** Resolve capsule flow blocking across multi-group entities (such as crossflow junctions) caused by capacity queries evaluating occupancy purely by unit number and network ID rather than isolated internal port groups.
+**Key Changes:**
+1. **Port Group Lookup (`scripts/capsules/capsule-queries.lua`):** Implemented `capsule_queries.get_port_group(port_key)` to retrieve entity port group definitions (`group = 1` vs `group = 2`) from network metadata and `port-definitions.lua`.
+2. **Group-Aware Occupancy Queries (`scripts/capsules/capsule-queries.lua`):** Refactored `get_capsule_count_at_entity_network` to accept a target port key or group ID, filtering `is_at_from` and `is_at_to` matches against the specific port group.
+3. **Capacity Check Routing (`scripts/capsules/capsule-motion.lua`):** Updated `has_entity_network_capacity` to pass the target port key to `get_capsule_count_at_entity_network`, ensuring capacity checks independently evaluate orthogonal internal segments.

@@ -68,9 +68,12 @@ function capsule_motion.has_entity_network_capacity(from_port_key, target_port_k
 
     local current_unit = tonumber(from_port_key:match("^(%d+)"))
     local current_net_id = storage.networks.port_to_network[from_port_key]
-    local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id)
+    local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id, target_port_key)
 
-    if current_unit == target_unit and current_net_id == target_net_id then
+    local target_group = capsule_queries.get_port_group(target_port_key)
+    local current_group = capsule_queries.get_port_group(from_port_key)
+
+    if current_unit == target_unit and current_net_id == target_net_id and current_group == target_group then
         return count <= MAX_CAPSULES_PER_ENTITY_NETWORK
     else
         return count < MAX_CAPSULES_PER_ENTITY_NETWORK

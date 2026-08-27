@@ -116,6 +116,33 @@ local definitions = {
             { group = 2, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
             { group = 2, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
         }
+    },
+
+    ["pneumatic-diverter"] = {
+        [defines.direction.north] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+        },
+        [defines.direction.east] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+        },
+        [defines.direction.south] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+        },
+        [defines.direction.west] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+        }
     }
 }
 

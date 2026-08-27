@@ -24,6 +24,10 @@ data:extend({
       },
       {
         type = "unlock-recipe",
+        recipe = "pneumatic-diverter"
+      },
+      {
+        type = "unlock-recipe",
         recipe = "pneumatic-pump"
       },
       {

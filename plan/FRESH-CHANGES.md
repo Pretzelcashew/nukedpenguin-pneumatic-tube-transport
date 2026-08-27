@@ -72,3 +72,16 @@
 1. **Port Group Lookup (`scripts/capsules/capsule-queries.lua`):** Implemented `capsule_queries.get_port_group(port_key)` to retrieve entity port group definitions (`group = 1` vs `group = 2`) from network metadata and `port-definitions.lua`.
 2. **Group-Aware Occupancy Queries (`scripts/capsules/capsule-queries.lua`):** Refactored `get_capsule_count_at_entity_network` to accept a target port key or group ID, filtering `is_at_from` and `is_at_to` matches against the specific port group.
 3. **Capacity Check Routing (`scripts/capsules/capsule-motion.lua`):** Updated `has_entity_network_capacity` to pass the target port key to `get_capsule_count_at_entity_network`, ensuring capacity checks independently evaluate orthogonal internal segments.
+
+
+### Revision: Pneumatic Diverter Entity, Recipe & 4-Port Topology Integration
+**Date:** 2026-08-27 19:54 (EDT)
+**Context:** Implement the 3x3 Pneumatic Diverter prototype, item registration, crafting recipe, tech unlock, and 4-port definition to enable multi-directional capsule routing across pneumatic transport networks.
+**Key Changes:**
+1. **Diverter Entity Prototype (`prototypes/entity.lua`):** Added the 3x3 `pneumatic-diverter` prototype using an `electric-energy-interface` base with tinted assembling machine graphics, 50kW continuous power draw, and a 10kJ energy buffer.
+2. **Item Prototype (`prototypes/item.lua`):** Registered the `pneumatic-diverter` item in the `storage` subgroup with stack size 10 and standard `place_result`.
+3. **Crafting Recipe (`prototypes/recipe.lua`):** Added the crafting recipe for `pneumatic-diverter` (1x junction, 6x steel plate, 4x advanced circuit, 2x electric engine unit; 3.0s crafting time) set to `enabled = false`.
+4. **Technology Unlock (`prototypes/technology.lua`):** Added the `pneumatic-diverter` unlock effect directly to the baseline `pneumatic-transport` technology node.
+5. **4-Port Connection Definitions (`scripts/ports/port-definitions.lua`):** Configured 4-port cardinal routing entries for `pneumatic-diverter` with merge connections centered along entity boundaries (offset 1.5 tiles from origin).
+
+

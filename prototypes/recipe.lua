@@ -158,5 +158,20 @@ data:extend({
     results = {
       {type = "item", name = "crossflow-junction", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "pneumatic-diverter",
+    enabled = false,
+    energy_required = 3.0,
+    ingredients = {
+      {type = "item", name = "junction", amount = 1},
+      {type = "item", name = "steel-plate", amount = 6},
+      {type = "item", name = "advanced-circuit", amount = 4},
+      {type = "item", name = "electric-engine-unit", amount = 2}
+    },
+    results = {
+      {type = "item", name = "pneumatic-diverter", amount = 1}
+    }
   }
 })

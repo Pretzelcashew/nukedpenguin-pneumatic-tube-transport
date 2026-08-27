@@ -113,5 +113,15 @@ data:extend({
     order = "z[crossflow-junction]",
     stack_size = 50,
     place_result = "crossflow-junction"
+  },
+  {
+    type = "item",
+    name = "pneumatic-diverter",
+    icon = "__base__/graphics/icons/assembling-machine-2.png",
+    icon_size = 64,
+    subgroup = "storage",
+    order = "z[pneumatic-diverter]",
+    stack_size = 10,
+    place_result = "pneumatic-diverter"
   }
 })

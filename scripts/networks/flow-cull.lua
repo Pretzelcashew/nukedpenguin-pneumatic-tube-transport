@@ -1,4 +1,5 @@
--- scripts/networks/flow-cull.lua
+local port_defs = require("scripts.ports.port-definitions")
+
 local flow_cull = {}
 
 local function is_external_hop(node, target_key, flow_map)
@@ -31,15 +32,12 @@ end
 function flow_cull.process(flow_map)
     if not flow_map then return flow_map end
 
-    local entity_port_counts = {}
-    for _, node in pairs(flow_map) do
-        entity_port_counts[node.unit_number] = (entity_port_counts[node.unit_number] or 0) + 1
-    end
-
-    -- 1. Clear outbound paths for ports on multi-port entities (>2 ports) that lack external links
+    -- 1. Clear outbound paths for ports on multi-port entities (>2 total physical ports) that lack external links
     for key, node in pairs(flow_map) do
-        local port_count = entity_port_counts[node.unit_number] or 0
-        if port_count > 2 then
+        local all_ports = node.entity and node.entity.valid and port_defs.get_ports(node.entity)
+        local total_port_count = all_ports and #all_ports or 0
+
+        if total_port_count > 2 then
             if count_external_hops(key, node, flow_map) == 0 then
                 node.outbound_hops = {}
             end
@@ -56,9 +54,10 @@ function flow_cull.process(flow_map)
         iteration = iteration + 1
 
         for _, node in pairs(flow_map) do
-            local port_count = entity_port_counts[node.unit_number] or 0
+            local all_ports = node.entity and node.entity.valid and port_defs.get_ports(node.entity)
+            local total_port_count = all_ports and #all_ports or 0
 
-            if port_count > 2 then
+            if total_port_count > 2 then
                 local valid_hops = {}
 
                 for _, hop_key in ipairs(node.outbound_hops) do

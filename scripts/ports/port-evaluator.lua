@@ -1,4 +1,3 @@
--- scripts/ports/port-evaluator.lua
 local port_defs = require("scripts.ports.port-definitions")
 local compat_defs = require("scripts.ports.port-compatibility-definitions")
 
@@ -31,11 +30,6 @@ function port_evaluator.are_compatible(entity_a, port_a_index, entity_b, port_b_
     local port_b = ports_b[port_b_index]
 
     if not (port_a and port_b) then return false end
-
-    -- Group check
-    if port_a.group ~= port_b.group then
-        return false
-    end
 
     -- Flow check
     local flow_valid = check_pair(compat_defs.flows, port_a.flow, port_b.flow)

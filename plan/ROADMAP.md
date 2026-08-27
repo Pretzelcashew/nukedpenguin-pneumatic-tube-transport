@@ -8,27 +8,27 @@
 
 ## Priority 1: Core Systems & Usability Enhancements
 
-* **Entity Destruction & Disconnect Capsule Spill Safety** [INCORPORATED IN MOD]
+* **Entity Destruction & Disconnect Capsule Spill Safety** `[INCORPORATED IN MOD]`
   * **Description:** Trigger payload spilling when any network component (tubes, junctions, pumps) hosting an active in-transit capsule is mined or destroyed.
   * **Details:** Expands `hub-spill.lua` beyond hub entities so that destroying an active pipe or junction ejects the capsule's payload (cargo + capsule vessel item) onto the ground or into surrounding inventories, preventing liminal holder entity leaks or orphaned state tables.
   * **Target File(s):** `scripts/networks/network-disconnect.lua`, `scripts/hubs/hub-spill.lua`, `scripts/capsules/capsule-runner.lua`
 
-* **Network Capsule Capacity Limits** [INCORPORATED IN MOD]
+* **Network Capsule Capacity Limits** `[INCORPORATED IN MOD]`
   * **Description:** Enforce maximum simultaneous in-flight capsule capacity per individual network ID (`net_id`).
   * **Details:** Entities hosting multiple distinct internal networks track and enforce capsule limits independently per network instance.
   * **Target File(s):** `scripts/networks/networks-store.lua`, `scripts/capsules/capsule-runner.lua`
 
-* **Pneumatic Pump Power Consumption** [INCORPORATED IN MOD]
+* **Pneumatic Pump Power Consumption** `[INCORPORATED IN MOD]`
   * **Description:** Integrate electric power requirements into pneumatic pump entity prototypes.
   * **Details:** Unpowered pumps (`entity.energy == 0`) halt pressure generation, disrupting BFS pressure propagation along connected tube graphs.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/networks/networks-pressure.lua`
 
-* **Hub Operational Mode Toggles (`can_send` / `can_receive`)** [INCORPORATED IN MOD]
+* **Hub Operational Mode Toggles (`can_send` / `can_receive`)** `[INCORPORATED IN MOD]`
   * **Description:** Add configurable transfer permission toggles to Hub GUIs.
   * **Details:** Allows players to restrict hub behavior to send-only (dispatch), receive-only (arrival), or bidirectional operation without altering physical pressure or flow vectors.
   * **Target File(s):** `scripts/hubs/hub-packing.lua`, `scripts/hubs/hub-unpacking.lua`
 
-* **Dominant Capsule Content Visual Indicators** [INCORPORATED IN MOD]
+* **Dominant Capsule Content Visual Indicators** `[INCORPORATED IN MOD]`
   * **Description:** Dynamic rendering overlay reflecting the primary payload inside transit capsules.
   * **Details:** Inspects cargo payload to display the icon or color signature of the dominant item stack on active in-flight capsule render objects.
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`
@@ -37,17 +37,17 @@
 
 ## Priority 2: Advanced Dynamic Mechanics, Progression & Automation
 
-* **Pneumatic Technology Tree, Recipes & Item Progression** [INCORPORATED IN MOD]
+* **Pneumatic Technology Tree, Recipes & Item Progression** `[INCORPORATED IN MOD]`
   * **Description:** Define crafting recipes, machine requirements, and technology tree unlock nodes for all pneumatic transport items.
   * **Details:** Establishes early-to-late game tech progression, balancing material costs (plates, steel, engines, circuits, lubricants) across tubes, pumps, hubs, and capsule vessels.
   * **Target File(s):** `prototypes/recipe.lua`, `prototypes/technology.lua`, `prototypes/item.lua`
 
-* **Pressure-Gradient Variable Capsule Velocity** [INCORPORATED IN MOD]
+* **Pressure-Gradient Variable Capsule Velocity** `[INCORPORATED IN MOD]`
   * **Description:** Dynamically calculate capsule motion speed based on pressure differentials.
   * **Details:** Replaces static velocity ($30 \text{ tiles/sec}$) with dynamic scaling tied to local edge pressure drops ($\Delta P = P_{\text{from}} - P_{\text{to}}$).
   * **Target File(s):** `scripts/capsules/capsule-runner.lua`
 
-* **Hub Operational Mode Circuit Network Integration** [INCORPORATED IN MOD]
+* **Hub Operational Mode Circuit Network Integration** `[INCORPORATED IN MOD]`
   * **Description:** Expose hub operational toggles (`can_send`/`can_receive`) to circuit network condition evaluation.
   * **Details:** Enables dynamic dispatch and arrival gating based on connected red/green circuit network signal conditions using `evaluate_circuit_condition`.
   * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`
@@ -56,7 +56,7 @@
 
 ## Priority 3: Logistics Suite Expansion, Specialized Vessels & GUI Controls
 
-* **Hub Receive Lock Bypass GUI Toggle** [INCORPORATED IN MOD]
+* **Hub Receive Lock Bypass GUI Toggle** `[INCORPORATED IN MOD]`
   * **Description:** Add a GUI toggle option on Hubs to enable or disable the post-arrival empty-inventory requirement ("receive lock").
   * **Details:** Allows high-throughput hubs to immediately pack outgoing cargo without requiring the chest to be 100% emptied of incoming items first, stored in `storage.hub_settings[unit_number].use_receive_lock`.
   * **Target File(s):** `scripts/hubs/hub-settings.lua`, `scripts/hubs/hub-gui.lua`, `scripts/hubs/hub-packing.lua`
@@ -71,7 +71,7 @@
   * **Details:** Implements proportional or alternating flow-culling logic to evenly split pressure gradients or alternate capsule routing across multiple output tubes.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/ports/port-definitions.lua`, `scripts/networks/flow-cull.lua`, `scripts/networks/networks-flow.lua`
 
-* **Specialized Transit Capsule Variants** [INCORPORATED IN MOD]
+* **Specialized Transit Capsule Variants** `[INCORPORATED IN MOD]`
   * **Description:** Expand vessel capsule types with custom behavior profiles, slot mechanics, and lifecycle rules.
   * **Variants:**
     * **Biodegradable Capsules:** Low-cost early-game vessels that dissolve upon unpacking (eliminating capsule shell recycling), with a higher risk of structural failure/spilling mid-transit.
@@ -80,11 +80,15 @@
     * **Player Transit Capsules:** Special single-occupant capsules allowing players to enter the pneumatic network and ride across tube topologies.
   * **Target File(s):** `scripts/capsules/capsule-definitions.lua`, `prototypes/item.lua`, `scripts/capsules/capsule-runner.lua`, `scripts/hubs/hub-packing.lua`
 
+* **Non-Interfering Crossflow Junctions** `[INCORPORATED IN MOD]`
+  * **Description:** Multi-layer tube crossover allowing intersecting horizontal and vertical transport paths without merging independent network graph topologies.
+  * **Implementation Details:** Multi-group port segregation (`group = 1` vertical, `group = 2` horizontal) with independent network graph creation, cross-entity group evaluator validation, and multi-group entity dead-end vector culling.
+  * **Target File(s):** `prototypes/entity.lua`, `prototypes/item.lua`, `prototypes/recipe.lua`, `scripts/ports/port-definitions.lua`, `scripts/ports/port-evaluator.lua`, `scripts/networks/flow-cull.lua`
+
 * **Specialized Logistics Entities**
-  * **Description:** Introduce advanced structural components to solve complex factory layout challenges.
+  * **Description:** Introduce advanced structural components to solve subterranean routing and high-throughput layout challenges.
   * **Entities:**
     * **Underground Tubes:** Long-distance subterranean transport channels.
-    * **Non-Interfering Crossflow Junctions:** Multi-layer tube crossovers allowing intersecting paths without merging network graph topologies.
     * **High-Pressure Compressors:** Advanced pressure generators requiring fluid lubrication and compressed gas inputs for maximum throughput.
   * **Target File(s):** `prototypes/entity.lua`, `prototypes/item.lua`, `prototypes/recipe.lua`, `scripts/ports/port-definitions.lua`
 

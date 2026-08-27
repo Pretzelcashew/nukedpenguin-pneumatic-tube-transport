@@ -1,9 +1,39 @@
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
+local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local capsule_lifecycle = {}
 
---- Handles per-tick passenger position synchronization and refrigerated durability/spoilage mechanics
+--- Handles mid-transit structural failure by spilling payload items and cleaning up entities
+local function execute_spill(capsule, phys_capsule, id, curr_pos, surface)
+    surface.create_entity{
+        name = "explosion",
+        position = curr_pos
+    }
+
+    if phys_capsule.holder and phys_capsule.holder.valid then
+        local inv = phys_capsule.holder.get_inventory(defines.inventory.chest)
+        if inv and inv.valid and not inv.is_empty() then
+            for i = 1, #inv do
+                local stack = inv[i]
+                if stack and stack.valid_for_read then
+                    surface.spill_item_stack{
+                        position = curr_pos,
+                        stack = stack,
+                        enable_looted = true
+                    }
+                end
+            end
+        end
+        phys_capsule.holder.destroy()
+    end
+
+    capsule_queries.clear_capsule_render(capsule)
+    capsule_queries.remove_capsule(capsule.capsule_id or id)
+    storage.capsules[id] = nil
+end
+
+--- Handles per-tick passenger position synchronization, spill risk, and refrigerated mechanics
 function capsule_lifecycle.update(capsule, id, curr_pos, surface)
     local phys_capsule = capsule_manager.get(capsule.capsule_id or id)
     if not (phys_capsule and phys_capsule.definition) then return false end
@@ -15,7 +45,13 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
         capsule.passenger.teleport(curr_pos, surface)
     end
 
-    -- 2. Refrigerated Capsule Spoilage Modifier & Tool Durability Drain
+    -- 2. Mid-Transit Structural Failure (Biodegradable / Fragile Spill Risk)
+    if def.spill_risk and math.random() < def.spill_risk then
+        execute_spill(capsule, phys_capsule, id, curr_pos, surface)
+        return true
+    end
+
+    -- 3. Refrigerated Capsule Spoilage Modifier & Tool Durability Drain
     local modifier = def.spoilage_modifier or 1.0
     if modifier < 1.0 and ((game.tick + id) % 60 == 0) then
         if phys_capsule.holder and phys_capsule.holder.valid then

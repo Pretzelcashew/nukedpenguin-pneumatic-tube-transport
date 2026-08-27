@@ -42,7 +42,7 @@ capsule_definitions.types = {
         spill_contents = {
             units = true,
             mode = "ground",
-            mark_for_deconstruction = false
+            mark_for_deconstruction = true
         }
     },
     ["refrigerated-capsule"] = {

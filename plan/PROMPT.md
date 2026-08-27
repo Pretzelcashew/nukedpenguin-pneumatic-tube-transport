@@ -6,6 +6,6 @@ Target Task: [INSERT TASK HERE]
 
 Ensure require statements only stay at the top level of a script.
 
-Review `ARCHITECTURE.md`, identify which specific source files you need to examine to complete this objective, and request them before writing any code.
+Review `1`ARCHITECTURE.md`, identify which specific source files you need to examine to complete this objective, generate a single-line Windows File Explorer search string (e.g., filename:"file1.lua" OR filename:"file2.lua") for those files, and request them before writing any code.
 
 Included revision notes which weren't yet incorporated into architecture.md: [None]

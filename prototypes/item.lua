@@ -1,5 +1,3 @@
--- prototypes/item.lua
-
 data:extend({
   {
     type = "item",
@@ -7,7 +5,43 @@ data:extend({
     icon = "__base__/graphics/icons/iron-plate.png",
     icon_size = 64,
     subgroup = "intermediate-product",
-    order = "a[capsule]",
+    order = "a[capsule]-a[standard]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "biodegradable-capsule",
+    icon = "__base__/graphics/icons/wood.png",
+    icon_size = 64,
+    subgroup = "intermediate-product",
+    order = "a[capsule]-b[biodegradable]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "refrigerated-capsule",
+    icon = "__space-age__/graphics/icons/ice.png",
+    icon_size = 64,
+    subgroup = "intermediate-product",
+    order = "a[capsule]-c[refrigerated]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "reinforced-capsule",
+    icon = "__base__/graphics/icons/steel-plate.png",
+    icon_size = 64,
+    subgroup = "intermediate-product",
+    order = "a[capsule]-d[reinforced]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "player-transit-capsule",
+    icon = "__base__/graphics/icons/car.png",
+    icon_size = 64,
+    subgroup = "intermediate-product",
+    order = "a[capsule]-e[player]",
     stack_size = 1
   },
   {

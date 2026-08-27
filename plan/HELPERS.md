@@ -33,7 +33,7 @@ Now make a commit title for git in vs code
 
 Avoid using [cite] blocks
 
-Iclude today's date YYYY-MM-DD HH:MM (EDT/EST)
+Include today's date YYYY-MM-DD HH:MM (EDT/EST)
 
 
 

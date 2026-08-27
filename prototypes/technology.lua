@@ -1,5 +1,3 @@
--- prototypes/technology.lua
-
 data:extend({
   {
     type = "technology",
@@ -35,6 +33,10 @@ data:extend({
       {
         type = "unlock-recipe",
         recipe = "item-capsule"
+      },
+      {
+        type = "unlock-recipe",
+        recipe = "biodegradable-capsule"
       }
     },
     unit = {
@@ -47,5 +49,38 @@ data:extend({
       time = 45
     },
     order = "c-a-a"
+  },
+  {
+    type = "technology",
+    name = "specialized-pneumatic-capsules",
+    icon = "__base__/graphics/technology/logistic-system.png",
+    icon_size = 256,
+    prerequisites = {
+      "pneumatic-transport"
+    },
+    effects = {
+      {
+        type = "unlock-recipe",
+        recipe = "refrigerated-capsule"
+      },
+      {
+        type = "unlock-recipe",
+        recipe = "reinforced-capsule"
+      },
+      {
+        type = "unlock-recipe",
+        recipe = "player-transit-capsule"
+      }
+    },
+    unit = {
+      count = 250,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1},
+        {"chemical-science-pack", 1}
+      },
+      time = 30
+    },
+    order = "c-a-b"
   }
 })

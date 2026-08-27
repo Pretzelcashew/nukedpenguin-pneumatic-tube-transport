@@ -3,7 +3,7 @@
   * **Details:** Holds standard item stacks with zero base spill risk. Requires dedicated return-line tube infrastructure or logistics handling to recycle empty capsules back to origin hubs.
   * **Target File(s):** `prototypes/capsules.lua`, `scripts/logistics/capsule-manager.lua`
 
-* **Bio-Capsule**
+* **Bio-Capsule** `[INCORPORATED IN MOD]`
   * **Description:** Single-use disposable capsule engineered specifically for Gleba's organic economy and zero-maintenance outposts.
   * **Details:** Crafted on Gleba (1 Carbon Fiber + 2 Jelly + 4 Sulfuric Acid -> 4 Capsules). Features dynamic capacity with higher stack limits for soft biological items (Yumako, Jellynuts, Bioflux) and reduced capacity for inorganic metals. Dissolves into zero items on arrival to eliminate return traffic, balanced by a baseline in-transit spill risk ($0.0008$).
   * **Target File(s):** `prototypes/capsules.lua`, `prototypes/recipes.lua`, `scripts/logistics/capsule-manager.lua`, `scripts/logistics/spill-handler.lua`

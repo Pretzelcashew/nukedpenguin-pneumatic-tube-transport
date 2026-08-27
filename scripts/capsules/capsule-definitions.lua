@@ -1,4 +1,3 @@
--- File: scripts/capsules/capsule-definitions.lua
 local capsule_definitions = {}
 
 capsule_definitions.types = {
@@ -31,12 +30,16 @@ capsule_definitions.types = {
         mixed_cargo = false,
         mixed_quality = "strict",
         quality_filter = "any",
-        minimum_cargo = 2,
+        minimum_cargo = 1,
         full_stacks = false,
         consolidate_stacks = true,
         include_self = true,
         destroy_self = true,
         spill_risk = 0.0008,
+        slot_costs = {
+            bio_item = 0.5,
+            inorganic = 1.0
+        },
         destroy_holder_if_empty = true,
         holder_type = "invisible-capsule-holder",
         spill_contents = {

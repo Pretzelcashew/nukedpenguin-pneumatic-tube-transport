@@ -1,8 +1,39 @@
--- FILE: scripts/hubs/packing/cargo-planner.lua
 local cargo_planner = {}
 
-function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, max_slots, require_full_stacks, allow_consolidation)
-    local plan = { extractions = {}, insertions = {} }
+local BIO_ITEMS = {
+    ["yumako"] = true,
+    ["jellynut"] = true,
+    ["bioflux"] = true,
+    ["jelly"] = true,
+    ["yumako-mash"] = true,
+    ["jellynut-slump"] = true,
+    ["spoilage"] = true,
+    ["nutrients"] = true,
+    ["agricultural-science-pack"] = true,
+    ["tree-seed"] = true,
+    ["yumako-seed"] = true,
+    ["jellynut-seed"] = true
+}
+
+--- Evaluates the slot cost factor for a given item type based on capsule slot cost definitions
+--- @param item_name string
+--- @param capsule_def table
+--- @return number Slot cost per stack (e.g. 0.5 for bio items, 1.0 for inorganic)
+function cargo_planner.get_item_slot_cost(item_name, capsule_def)
+    if not (capsule_def and capsule_def.slot_costs) then
+        return 1.0
+    end
+    local is_bio = BIO_ITEMS[item_name] or item_name:find("yumako") or item_name:find("jelly") or item_name:find("spoilage") or item_name:find("bio")
+    if is_bio then
+        return capsule_def.slot_costs.bio_item or 0.5
+    end
+    return capsule_def.slot_costs.inorganic or 1.0
+end
+
+function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, max_slots, require_full_stacks, allow_consolidation, capsule_def)
+    local plan = { extractions = {}, insertions = {}, slots_used = 0 }
+    local slot_cost = cargo_planner.get_item_slot_cost(item_name, capsule_def)
+    local max_affordable_stacks = math.floor(max_slots / slot_cost)
 
     if allow_consolidation then
         local total_count = 0
@@ -10,7 +41,7 @@ function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, ma
         for _, src in ipairs(sources) do total_count = total_count + src.count end
 
         local possible_full_stacks = math.floor(total_count / stack_size)
-        local stacks_to_take = math.min(possible_full_stacks, max_slots)
+        local stacks_to_take = math.min(possible_full_stacks, max_affordable_stacks)
 
         if stacks_to_take > 0 then
             local items_needed = stacks_to_take * stack_size
@@ -28,6 +59,7 @@ function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, ma
             for k = 1, stacks_to_take do
                 table.insert(plan.insertions, { name = item_name, count = stack_size, quality = quality_name })
             end
+            plan.slots_used = stacks_to_take * slot_cost
         end
 
     elseif require_full_stacks then
@@ -38,7 +70,7 @@ function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, ma
             end
         end
 
-        local stacks_to_take = math.min(#full_sources, max_slots)
+        local stacks_to_take = math.min(#full_sources, max_affordable_stacks)
         for k = 1, stacks_to_take do
             local src = full_sources[k]
             table.insert(plan.extractions, {
@@ -48,10 +80,11 @@ function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, ma
             })
             table.insert(plan.insertions, { name = item_name, count = stack_size, quality = src.quality_name })
         end
+        plan.slots_used = stacks_to_take * slot_cost
 
     else
-        local slots_to_take = math.min(#sources, max_slots)
-        for k = 1, slots_to_take do
+        local stacks_to_take = math.min(#sources, max_affordable_stacks)
+        for k = 1, stacks_to_take do
             local src = sources[k]
             table.insert(plan.extractions, {
                 slot_index = src.slot_index,
@@ -60,6 +93,7 @@ function cargo_planner.plan_single_type_cargo(item_name, stack_size, sources, ma
             })
             table.insert(plan.insertions, { name = item_name, count = src.count, quality = src.quality_name })
         end
+        plan.slots_used = stacks_to_take * slot_cost
     end
 
     return plan
@@ -68,29 +102,30 @@ end
 function cargo_planner.build_packing_plan(grouped_inventory, group_order, max_cargo_slots, capsule_def, self_slot_cost, required_min_slots)
     local require_full_stacks = capsule_def.full_stacks or false
     local allow_consolidation = require_full_stacks and (capsule_def.consolidate_stacks or false)
-    local packing_plan = { extractions = {}, insertions = {} }
+    local packing_plan = { extractions = {}, insertions = {}, slots_used = 0 }
 
     if capsule_def.mixed_cargo then
         local remaining_slots = max_cargo_slots
         for _, group_key in ipairs(group_order) do
             if remaining_slots <= 0 then break end
             local grp = grouped_inventory[group_key]
-            local plan = cargo_planner.plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, remaining_slots, require_full_stacks, allow_consolidation)
+            local plan = cargo_planner.plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, remaining_slots, require_full_stacks, allow_consolidation, capsule_def)
 
             for _, ext in ipairs(plan.extractions) do table.insert(packing_plan.extractions, ext) end
             for _, ins in ipairs(plan.insertions) do table.insert(packing_plan.insertions, ins) end
 
-            remaining_slots = remaining_slots - #plan.insertions
+            packing_plan.slots_used = packing_plan.slots_used + plan.slots_used
+            remaining_slots = remaining_slots - plan.slots_used
         end
     else
-        local best_plan = { extractions = {}, insertions = {} }
+        local best_plan = { extractions = {}, insertions = {}, slots_used = 0 }
         local max_found_slots = -1
 
         for _, group_key in ipairs(group_order) do
             local grp = grouped_inventory[group_key]
-            local plan = cargo_planner.plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, max_cargo_slots, require_full_stacks, allow_consolidation)
-            local num_slots = #plan.insertions
-            local total_processed = num_slots + self_slot_cost
+            local plan = cargo_planner.plan_single_type_cargo(grp.item_name, grp.stack_size, grp.sources, max_cargo_slots, require_full_stacks, allow_consolidation, capsule_def)
+            local num_slots = plan.slots_used
+            local total_processed = #plan.insertions + self_slot_cost
 
             if total_processed >= required_min_slots and num_slots > max_found_slots then
                 max_found_slots = num_slots

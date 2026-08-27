@@ -18,9 +18,31 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
     end
 
     -- 2. Mid-Transit Structural Failure (Biodegradable / Fragile Spill Risk)
-    if def.spill_risk and math.random() < def.spill_risk then
-        hub_spill.spill_capsule(capsule.capsule_id or id, surface, curr_pos, nil, true)
-        return true
+    if def.spill_risk then
+        local effective_risk = def.spill_risk
+        local holder = phys_capsule.holder
+        local force = (holder and holder.valid and holder.force) or (capsule.passenger and capsule.passenger.valid and capsule.passenger.force)
+
+        if force then
+            local tech_level = 0
+            if force.technologies["bio-capsule-integrity-4"] and force.technologies["bio-capsule-integrity-4"].researched then
+                tech_level = 4
+            elseif force.technologies["bio-capsule-integrity-3"] and force.technologies["bio-capsule-integrity-3"].researched then
+                tech_level = 3
+            elseif force.technologies["bio-capsule-integrity-2"] and force.technologies["bio-capsule-integrity-2"].researched then
+                tech_level = 2
+            elseif force.technologies["bio-capsule-integrity-1"] and force.technologies["bio-capsule-integrity-1"].researched then
+                tech_level = 1
+            end
+
+            -- Reduces baseline spill risk by 25% per tier (100% at L0, 75% at L1, 50% at L2, 25% at L3, 0% at L4)
+            effective_risk = math.max(0, effective_risk * (1.0 - (tech_level * 0.25)))
+        end
+
+        if effective_risk > 0 and math.random() < effective_risk then
+            hub_spill.spill_capsule(capsule.capsule_id or id, surface, curr_pos, nil, true)
+            return true
+        end
     end
 
     -- 3. Refrigerated Capsule Spoilage Modifier & Tool Durability Drain

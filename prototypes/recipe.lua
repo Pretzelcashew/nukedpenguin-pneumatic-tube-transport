@@ -16,15 +16,16 @@ data:extend({
   {
     type = "recipe",
     name = "biodegradable-capsule",
+    categories = {"organic", "crafting-with-fluid"},
     enabled = false,
     energy_required = 1.0,
     ingredients = {
-      {type = "item", name = "wood", amount = 4},
-      {type = "item", name = "plastic-bar", amount = 1},
-      {type = "item", name = "iron-plate", amount = 1}
+      {type = "item", name = "carbon-fiber", amount = 1},
+      {type = "item", name = "jelly", amount = 2},
+      {type = "fluid", name = "sulfuric-acid", amount = 4}
     },
     results = {
-      {type = "item", name = "biodegradable-capsule", amount = 1}
+      {type = "item", name = "biodegradable-capsule", amount = 4}
     }
   },
   {

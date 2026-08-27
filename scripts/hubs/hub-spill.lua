@@ -3,18 +3,55 @@ local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local hub_spill = {}
 
---- Spills an individual capsule's payload items and safely removes its liminal holder
+--- Helper to spill a single item stack and handle explicit deconstruction ordering for spawned items on the ground
+--- @param surface LuaSurface
+--- @param position MapPosition
+--- @param stack LuaItemStack
+--- @param mark_decon boolean
+--- @param force LuaForce|string
+local function spill_and_mark_stack(surface, position, stack, mark_decon, force)
+    local spilled_entities = surface.spill_item_stack{
+        position = position,
+        stack = stack,
+        enable_looted = mark_decon,
+        force = force
+    }
+
+    if mark_decon and force and spilled_entities then
+        for _, item_entity in ipairs(spilled_entities) do
+            if item_entity and item_entity.valid then
+                item_entity.order_deconstruction(force)
+            end
+        end
+    end
+end
+
+--- Central hook for spilling a liminal capsule's contents and cleaning up all motion, render, and holder state
 --- @param capsule_id number The unit_number of the holder entity / capsule ID
 --- @param surface LuaSurface Surface to spill items onto
 --- @param position MapPosition Map position for spill location
---- @param force LuaForce|string Force for container or item looting ownership
-function hub_spill.spill_capsule(capsule_id, surface, position, force)
+--- @param force LuaForce|string|nil Force for container or item looting ownership
+--- @param create_explosion boolean|nil Optional flag to spawn explosion visual effect
+function hub_spill.spill_capsule(capsule_id, surface, position, force, create_explosion)
+    if create_explosion and surface and position then
+        surface.create_entity{
+            name = "explosion",
+            position = position
+        }
+    end
+
+    -- Clean up motion runner tracking and visual overlays
+    capsule_queries.remove_capsule(capsule_id)
+
     local capsule_data = capsule_manager.get(capsule_id)
     if not capsule_data then return end
 
     local holder = capsule_data.holder
     local capsule_def = capsule_data.definition or {}
     local raw_spill = capsule_def.spill_contents
+
+    -- Resolve fallback force from holder entity if not explicitly provided (e.g., mid-transit rupture)
+    local effective_force = force or (holder and holder.valid and holder.force) or "player"
 
     -- Explicitly false suppresses spilling entirely
     if raw_spill ~= false then
@@ -35,18 +72,18 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force)
         if holder and holder.valid then
             local holder_inv = holder.get_inventory(defines.inventory.chest)
 
-            -- Mode: "container" -> Unloads cargo into chest entity, spills overflow
+            -- Mode: "container" -> Unloads cargo into chest entity, spills overflow onto floor
             if mode == "container" and container_proto and holder_inv and not holder_inv.is_empty() then
                 local container_entity = surface.create_entity{
                     name = container_proto,
                     position = position,
-                    force = force,
+                    force = effective_force,
                     raise_built = true
                 }
 
                 if container_entity and container_entity.valid then
                     if mark_decon then
-                        container_entity.order_deconstruction(force)
+                        container_entity.order_deconstruction(effective_force)
                     end
 
                     local container_inv = container_entity.get_inventory(defines.inventory.chest)
@@ -60,12 +97,7 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force)
                                     stack.clear()
                                 else
                                     stack.count = original_count - inserted
-                                    surface.spill_item_stack{
-                                        position = position,
-                                        stack = stack,
-                                        enable_looted = mark_decon,
-                                        force = force
-                                    }
+                                    spill_and_mark_stack(surface, position, stack, mark_decon, effective_force)
                                     stack.clear()
                                 end
                             end
@@ -73,17 +105,12 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force)
                     end
                 end
 
-            -- Mode: "ground" -> Spills cargo directly onto the floor
+            -- Mode: "ground" -> Spills cargo directly onto the floor and marks for deconstruction
             elseif holder_inv and not holder_inv.is_empty() then
                 for i = 1, #holder_inv do
                     local stack = holder_inv[i]
                     if stack and stack.valid_for_read then
-                        surface.spill_item_stack{
-                            position = position,
-                            stack = stack,
-                            enable_looted = mark_decon,
-                            force = force
-                        }
+                        spill_and_mark_stack(surface, position, stack, mark_decon, effective_force)
                         stack.clear()
                     end
                 end
@@ -119,15 +146,9 @@ function hub_spill.handle_entity_destruction(entity)
 
     for _, id in ipairs(runner_ids) do
         local cap = storage.capsules and storage.capsules[id]
-        local capsule_id = cap and (cap.capsule_id or cap.id)
+        local capsule_id = cap and (cap.capsule_id or cap.id) or id
 
-        -- Clear motion tracking and render object
-        capsule_queries.remove_capsule(id)
-
-        -- Spill payload and destroy liminal holder
-        if capsule_id then
-            hub_spill.spill_capsule(capsule_id, surface, position, force)
-        end
+        hub_spill.spill_capsule(capsule_id, surface, position, force)
     end
 end
 

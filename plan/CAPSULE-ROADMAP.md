@@ -8,7 +8,7 @@
   * **Details:** Crafted on Gleba (1 Carbon Fiber + 2 Jelly + 4 Sulfuric Acid -> 4 Capsules). Features dynamic capacity with higher stack limits for soft biological items (Yumako, Jellynuts, Bioflux) and reduced capacity for inorganic metals. Dissolves into zero items on arrival to eliminate return traffic, balanced by a baseline in-transit spill risk ($0.0008$).
   * **Target File(s):** `prototypes/capsules.lua`, `prototypes/recipes.lua`, `scripts/logistics/capsule-manager.lua`, `scripts/logistics/spill-handler.lua`
 
-* **Bio-Capsule Integrity Upgrade Tech Tree**
+* **Bio-Capsule Integrity Upgrade Tech Tree** `[INCORPORATED IN MOD]`
   * **Description:** Dedicated Gleba/Agricultural science technology path to incrementally eliminate bio-capsule spill risks.
   * **Details:** Reduces base spill risk by 25% per tier against exponential science costs ($1\times, 4\times, 16\times, 64\times$). Level 0: $100\%$ risk ($0.0008$). Level 1: $75\%$ risk ($0.0006$). Level 2: $50\%$ risk ($0.0004$). Level 3: $25\%$ risk ($0.0002$). Level 4: $0\%$ risk (completely nullifies spills and construction bot decon cleanup strain).
   * **Target File(s):** `prototypes/technology.lua`, `scripts/logistics/spill-handler.lua`

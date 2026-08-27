@@ -34,6 +34,12 @@ local function get_entity_and_port(port_key)
     return nil, nil
 end
 
+local function is_pump_powered(entity)
+    if not (entity and entity.valid) then return false end
+    if entity.name ~= "pneumatic-pump" then return true end
+    return storage.pump_power_states and storage.pump_power_states[entity.unit_number] == true
+end
+
 --- Rebuilds flow map, vector hops, culling, and renders for a single network ID
 local function build_single_network(net_id)
     local net = storage.networks.list[net_id]
@@ -119,16 +125,16 @@ local function build_single_network(net_id)
                     local is_internal = (node.unit_number == neighbor_node.unit_number)
 
                     if is_internal then
-                        -- Mechanical machine transfer: route internal ports if directions permit
-                        if node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
+                        -- Mechanical machine transfer: route internal ports if directions permit and pump is powered
+                        if is_pump_powered(node.entity) and node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
                             table.insert(node.outbound_hops, neighbor_key)
                         end
                     else
-                        -- External network hop: STRICT pressure gradient required (P_from > P_to)
+                        -- External network hop: STRICT pressure gradient required (P_from > P_to) and powered endpoints
                         local p_delta = node.pressure - neighbor_node.pressure
                         local flow_valid = (node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out")
 
-                        if flow_valid and p_delta > 0 then
+                        if is_pump_powered(node.entity) and is_pump_powered(neighbor_node.entity) and flow_valid and p_delta > 0 then
                             table.insert(node.outbound_hops, neighbor_key)
                         end
                     end

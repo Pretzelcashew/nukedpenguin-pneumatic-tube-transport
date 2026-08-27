@@ -263,39 +263,59 @@ local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
         capsule.passenger.teleport(curr_pos, surface)
     end
 
-    -- 2. Refrigerated Capsule Spoilage Modifier (STUBBED)
-    -- TODO: Implement Factorio 2.0 engine-compatible spoilage mitigation
+    -- 2. Refrigerated Capsule Spoilage Modifier
     local modifier = def.spoilage_modifier or 1.0
-    if modifier < 1.0 then
-        -- Placeholder: Spoilage mitigation bypassed to avoid engine queue conflicts
-    end
-
-    -- 3. Biodegradable Mid-Transit Structural Failure Risk
-    if def.spill_risk and math.random() < def.spill_risk then
+    if modifier < 1.0 and ((game.tick + id) % 60 == 0) then
         if phys_capsule.holder and phys_capsule.holder.valid then
             local inv = phys_capsule.holder.get_inventory(defines.inventory.chest)
-            if inv then
+            if inv and inv.valid and not inv.is_empty() then
+                capsule.slot_spoil_percents = capsule.slot_spoil_percents or {}
+
                 for i = 1, #inv do
                     local stack = inv[i]
-                    if stack and stack.valid_for_read then
-                        surface.spill_item_stack(curr_pos, stack, true, nil, false)
+                    if stack and stack.valid_for_read and stack.spoil_percent > 0 then
+                        local current_spoil = stack.spoil_percent
+                        local last_spoil = capsule.slot_spoil_percents[i]
+
+                        if last_spoil and current_spoil > last_spoil then
+                            local raw_delta = current_spoil - last_spoil
+                            local target_spoil = math.max(0.0, last_spoil + (raw_delta * modifier))
+
+                            -- Base stack specification
+                            local stack_spec = {
+                                name = stack.name,
+                                count = stack.count,
+                                quality = stack.quality,
+                                spoil_percent = target_spoil
+                            }
+
+                            -- Type-guarded property queries
+                            if stack.is_tool then
+                                stack_spec.durability = stack.durability
+                            end
+
+                            if stack.is_ammo then
+                                stack_spec.ammo = stack.ammo
+                            end
+
+                            if stack.is_item_with_tags then
+                                stack_spec.custom_description = stack.custom_description
+                                stack_spec.tags = stack.tags
+                            end
+
+                            -- Re-instantiate slot with modified spoil_percent
+                            inv[i].clear()
+                            inv[i].set_stack(stack_spec)
+                            capsule.slot_spoil_percents[i] = target_spoil
+                        else
+                            capsule.slot_spoil_percents[i] = current_spoil
+                        end
+                    else
+                        capsule.slot_spoil_percents[i] = nil
                     end
                 end
             end
-            phys_capsule.holder.destroy()
         end
-
-        if capsule.passenger and capsule.passenger.valid then
-            capsule.passenger.surface.create_entity{
-                name = "small-explosion",
-                position = curr_pos
-            }
-        end
-
-        clear_capsule_render(capsule)
-        capsule_queries.remove_capsule(capsule.capsule_id or id)
-        storage.capsules[id] = nil
-        return true -- Destroyed mid-transit
     end
 
     return false

@@ -1,4 +1,3 @@
--- scripts/ports/port-definitions.lua
 local port_defs = {}
 
 local definitions = {
@@ -91,6 +90,33 @@ local definitions = {
             { group = 1, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
         }
     },
+
+    ["crossflow-junction"] = {
+        [defines.direction.north] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 2, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 2, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.east] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 2, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 2, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.south] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 2, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 2, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        },
+        [defines.direction.west] = {
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -0.5} },
+            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  0.5} },
+            { group = 2, flow = "any", connection = "merge", offset = {x = -0.5, y =  0.0} },
+            { group = 2, flow = "any", connection = "merge", offset = {x =  0.5, y =  0.0} }
+        }
+    }
 }
 
 -- Flat array for engine-level filtering in find_entities_filtered
@@ -99,7 +125,6 @@ for entity_name in pairs(definitions) do
     table.insert(port_defs.registered_names, entity_name)
 end
 
--- scripts/ports/port-definitions.lua
 function port_defs.get_ports(entity)
     local entity_ports = definitions[entity.name]
     if not entity_ports then return nil end

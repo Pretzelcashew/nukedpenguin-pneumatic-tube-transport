@@ -18,14 +18,16 @@ data:extend({
           width = 64,
           height = 64,
           scale = 0.5,
-          shift = {-0.5, 0}
+          shift = {-0.5, 0},
+          tint = {r = 0.6, g = 0.8, b = 1.0, a = 1.0}
         },
         {
           filename = "__base__/graphics/entity/steel-chest/steel-chest.png",
           width = 64,
           height = 64,
           scale = 0.5,
-          shift = {0.5, 0}
+          shift = {0.5, 0},
+          tint = {r = 0.6, g = 0.8, b = 1.0, a = 1.0}
         }
       }
     },
@@ -52,14 +54,16 @@ data:extend({
           width = 64,
           height = 64,
           scale = 0.5,
-          shift = {0, -0.5}
+          shift = {0, -0.5},
+          tint = {r = 0.4, g = 0.9, b = 0.9, a = 1.0}
         },
         {
           filename = "__base__/graphics/entity/steel-chest/steel-chest.png",
           width = 64,
           height = 64,
           scale = 0.5,
-          shift = {0, 0.5}
+          shift = {0, 0.5},
+          tint = {r = 0.4, g = 0.9, b = 0.9, a = 1.0}
         }
       }
     },
@@ -144,7 +148,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0, -0.5}
+            shift = {0, -0.5},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           },
           {
             filename = "__base__/graphics/entity/pipe/pipe-straight-vertical.png",
@@ -152,7 +157,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0, 0.5}
+            shift = {0, 0.5},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           }
         }
       },
@@ -164,7 +170,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {-0.5, 0}
+            shift = {-0.5, 0},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           },
           {
             filename = "__base__/graphics/entity/pipe/pipe-straight-horizontal.png",
@@ -172,7 +179,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0.5, 0}
+            shift = {0.5, 0},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           }
         }
       },
@@ -184,7 +192,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0, -0.5}
+            shift = {0, -0.5},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           },
           {
             filename = "__base__/graphics/entity/pipe/pipe-straight-vertical.png",
@@ -192,7 +201,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0, 0.5}
+            shift = {0, 0.5},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           }
         }
       },
@@ -204,7 +214,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {-0.5, 0}
+            shift = {-0.5, 0},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           },
           {
             filename = "__base__/graphics/entity/pipe/pipe-straight-horizontal.png",
@@ -212,7 +223,8 @@ data:extend({
             width = 128,
             height = 128,
             scale = 0.5,
-            shift = {0.5, 0}
+            shift = {0.5, 0},
+            tint = {r = 0.5, g = 0.9, b = 0.5, a = 1.0}
           }
         }
       }
@@ -243,28 +255,32 @@ data:extend({
         priority = "high",
         width = 64,
         height = 128,
-        scale = 0.5
+        scale = 0.5,
+        tint = {r = 1.0, g = 0.7, b = 0.3, a = 1.0}
       },
       east = {
         filename = "__base__/graphics/entity/pump/pump-east.png",
         priority = "high",
         width = 128,
         height = 64,
-        scale = 0.5
+        scale = 0.5,
+        tint = {r = 1.0, g = 0.7, b = 0.3, a = 1.0}
       },
       south = {
         filename = "__base__/graphics/entity/pump/pump-south.png",
         priority = "high",
         width = 64,
         height = 128,
-        scale = 0.5
+        scale = 0.5,
+        tint = {r = 1.0, g = 0.7, b = 0.3, a = 1.0}
       },
       west = {
         filename = "__base__/graphics/entity/pump/pump-west.png",
         priority = "high",
         width = 128,
         height = 64,
-        scale = 0.5
+        scale = 0.5,
+        tint = {r = 1.0, g = 0.7, b = 0.3, a = 1.0}
       }
     }
   },
@@ -285,7 +301,31 @@ data:extend({
           width = 64,
           height = 64,
           scale = 0.5,
-          shift = {0, 0}
+          shift = {0, 0},
+          tint = {r = 1.0, g = 0.9, b = 0.3, a = 1.0}
+        }
+      }
+    }
+  },
+  {
+    type = "simple-entity-with-owner",
+    name = "crossflow-junction",
+    icon = "__base__/graphics/icons/iron-chest.png",
+    icon_size = 64,
+    flags = {"placeable-neutral", "placeable-player", "player-creation"},
+    minable = {mining_time = 0.2, result = "crossflow-junction"},
+    max_health = 100,
+    collision_box = {{-0.4, -0.4}, {0.4, 0.4}},
+    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
+    picture = {
+      layers = {
+        {
+          filename = "__base__/graphics/entity/iron-chest/iron-chest.png",
+          width = 64,
+          height = 64,
+          scale = 0.5,
+          shift = {0, 0},
+          tint = {r = 0.8, g = 0.4, b = 0.9, a = 1.0}
         }
       }
     }

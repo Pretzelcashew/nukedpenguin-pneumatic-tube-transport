@@ -20,6 +20,10 @@ data:extend({
       },
       {
         type = "unlock-recipe",
+        recipe = "crossflow-junction"
+      },
+      {
+        type = "unlock-recipe",
         recipe = "pneumatic-pump"
       },
       {

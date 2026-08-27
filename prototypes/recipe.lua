@@ -143,5 +143,19 @@ data:extend({
     results = {
       {type = "item", name = "junction", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "crossflow-junction",
+    enabled = false,
+    energy_required = 1.5,
+    ingredients = {
+      {type = "item", name = "pneumatic-tube", amount = 4},
+      {type = "item", name = "steel-plate", amount = 4},
+      {type = "item", name = "advanced-circuit", amount = 2}
+    },
+    results = {
+      {type = "item", name = "crossflow-junction", amount = 1}
+    }
   }
 })

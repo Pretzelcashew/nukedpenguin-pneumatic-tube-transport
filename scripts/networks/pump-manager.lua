@@ -34,11 +34,16 @@ local function check_pump_power_states()
             if is_powered ~= last_state then
                 storage.pump_power_states[unit_number] = is_powered
 
-                -- Find network ID associated with pump port 1 and trigger pressure rebuild
-                local port_key = unit_number .. ":1"
-                local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-                if net_id then
-                    networks_flow.build(net_id)
+                -- Find network IDs for ALL ports on the pump and trigger pressure rebuilds
+                local ports = port_defs.get_ports(entity)
+                if ports then
+                    for p_idx, _ in ipairs(ports) do
+                        local port_key = unit_number .. ":" .. p_idx
+                        local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
+                        if net_id then
+                            networks_flow.build(net_id)
+                        end
+                    end
                 end
             end
         else

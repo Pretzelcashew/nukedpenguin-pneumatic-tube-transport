@@ -37,7 +37,7 @@ end
 local function is_pump_powered(entity)
     if not (entity and entity.valid) then return false end
     if entity.name ~= "pneumatic-pump" then return true end
-    return storage.pump_power_states and storage.pump_power_states[entity.unit_number] == true
+    return entity.energy > 0
 end
 
 --- Rebuilds flow map, vector hops, culling, and renders for a single network ID

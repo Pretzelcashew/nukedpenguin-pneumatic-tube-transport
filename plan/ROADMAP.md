@@ -71,7 +71,7 @@
   * **Details:** Implements proportional or alternating flow-culling logic to evenly split pressure gradients or alternate capsule routing across multiple output tubes.
   * **Target File(s):** `prototypes/entity.lua`, `scripts/ports/port-definitions.lua`, `scripts/networks/flow-cull.lua`, `scripts/networks/networks-flow.lua`
 
-* **Specialized Transit Capsule Variants**
+* **Specialized Transit Capsule Variants** [INCORPORATED IN MOD]
   * **Description:** Expand vessel capsule types with custom behavior profiles, slot mechanics, and lifecycle rules.
   * **Variants:**
     * **Biodegradable Capsules:** Low-cost early-game vessels that dissolve upon unpacking (eliminating capsule shell recycling), with a higher risk of structural failure/spilling mid-transit.

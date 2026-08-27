@@ -44,9 +44,26 @@ end
 function capsule_renderer.render(capsule, id, curr_pos, surface)
     capsule_queries.clear_capsule_render(capsule)
 
-    if is_debug_active("capsules") and surface and curr_pos then
-        local render_objects = {}
+    if not (surface and curr_pos) then return end
 
+    local render_objects = {}
+
+    -- Render emergency exit hotkey prompt visible ONLY to the active passenger
+    if capsule.passenger and capsule.passenger.valid then
+        local eject_text = rendering.draw_text{
+            text = "[Shift + E] Emergency Eject",
+            surface = surface,
+            target = { curr_pos.x, curr_pos.y + 0.8 },
+            color = { r = 1, g = 0.9, b = 0.3, a = 1.0 },
+            players = { capsule.passenger },
+            alignment = "center",
+            scale = 0.9
+        }
+        table.insert(render_objects, eject_text)
+    end
+
+    -- Visual debug overlays
+    if is_debug_active("capsules") then
         if capsule.passenger and capsule.passenger.valid then
             local ring = rendering.draw_circle{
                 color = { r = 0, g = 0.8, b = 1, a = 0.9 },
@@ -89,7 +106,9 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(render_objects, dot)
             end
         end
+    end
 
+    if #render_objects > 0 then
         capsule.render_id = render_objects
     end
 end

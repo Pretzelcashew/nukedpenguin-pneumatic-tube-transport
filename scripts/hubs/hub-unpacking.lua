@@ -125,7 +125,6 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
         return true
     end
 
-    -- OPERATIONAL MODE & CIRCUIT CONDITION: Verify receive permission
     if not hub_settings.can_receive(hub_entity) then
         return false
     end
@@ -143,6 +142,14 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
         local stack = holder_inv[i]
         if stack and stack.valid_for_read then
             hub_inv.insert(stack)
+        end
+    end
+
+    -- Safely exit player passenger adjacent to receiving hub entity
+    if capsule_tracker.passenger and capsule_tracker.passenger.valid then
+        local safe_pos = hub_entity.surface.find_non_colliding_position("character", hub_entity.position, 3, 0.5)
+        if safe_pos then
+            capsule_tracker.passenger.teleport(safe_pos, hub_entity.surface)
         end
     end
 

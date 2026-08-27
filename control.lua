@@ -10,6 +10,7 @@ require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
 require("scripts.capsules.capsule-runner")
 require("scripts.networks.pump-manager")
+require("scripts.capsules.capsule-inputs")
 
 
 local function setup_storage()

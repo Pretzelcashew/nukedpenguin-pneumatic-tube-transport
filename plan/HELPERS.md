@@ -45,3 +45,9 @@ Please sync our documentation with the latest changelog updates by following the
 1. **Update Architecture:** Modify `architecture.md` to fully reflect all unapplied changes listed in `changelog.md` (specifically, any items not yet marked as incorporated in the changelog table).
 2. **Mark as Applied:** Update `changelog.md` to clearly mark all of those newly processed items as applied/incorporated.
 3. **Output Format:** Provide the full, updated contents of both `architecture.md` and `changelog.md` in full, ready for me to copy and paste.
+
+
+
+
+
+/c local p = game.player p.set_controller{type=defines.controllers.character, character=p.surface.create_entity{name='character', force=p.force, position=p.position}}

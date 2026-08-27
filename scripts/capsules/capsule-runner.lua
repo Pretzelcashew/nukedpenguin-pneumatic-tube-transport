@@ -12,7 +12,6 @@ local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 
 local capsule_runner = {}
 
--- Alias extracted queries and cleanup routines for API compatibility
 capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_at_entity
 capsule_runner.get_capsule_count_at_entity_network = capsule_queries.get_capsule_count_at_entity_network
 capsule_runner.remove_capsule = capsule_queries.remove_capsule
@@ -20,7 +19,6 @@ capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
 local clear_capsule_render = capsule_queries.clear_capsule_render
 
--- Velocity bounds & baseline configuration (tiles per second)
 local BASE_SPEED_TILES_PER_SEC = 15
 local MIN_SPEED_TILES_PER_SEC = 4
 local MAX_SPEED_TILES_PER_SEC = 60
@@ -30,7 +28,6 @@ local function init_storage()
     storage.next_capsule_id = storage.next_capsule_id or 1
 end
 
---- Retrieves node metadata across network boundaries safely
 local function get_node(port_key)
     if not (storage.networks and storage.networks.port_to_network) then return nil end
     local net_id = storage.networks.port_to_network[port_key]
@@ -40,10 +37,6 @@ local function get_node(port_key)
     return flow_map and flow_map[port_key]
 end
 
---- Dynamic velocity calculation scaling strictly with the intensity of local pressure drop (ΔP)
---- @param from_port_key string|nil
---- @param to_port_key string|nil
---- @return number tiles_per_tick
 local function calculate_segment_speed(from_port_key, to_port_key)
     if not (from_port_key and to_port_key) then
         return MIN_SPEED_TILES_PER_SEC / 60.0
@@ -61,25 +54,18 @@ local function calculate_segment_speed(from_port_key, to_port_key)
 
     local delta_p = 0
     if is_internal then
-        -- Internal machine pass-through: fallback drop based on local node pressure (minimum 1.0)
         delta_p = math.max(1.0, math.abs(p_from) * 0.10)
     else
-        -- External pipe segment edge drop: ΔP = |P_from - P_to|
         delta_p = math.max(0.1, math.abs(p_from - p_to))
     end
 
-    -- Velocity scales non-linearly with the square root of local pressure drop intensity
     local speed_multiplier = math.sqrt(delta_p)
     local tiles_per_sec = BASE_SPEED_TILES_PER_SEC * speed_multiplier
-
     tiles_per_sec = math.max(MIN_SPEED_TILES_PER_SEC, math.min(MAX_SPEED_TILES_PER_SEC, tiles_per_sec))
 
     return tiles_per_sec / 60.0
 end
 
---- Inspects the capsule's liminal holder container to determine the dominant cargo item stack
---- @param capsule_id number
---- @return string|nil item_name
 local function get_dominant_item(capsule_id)
     local cap_data = capsule_manager.get(capsule_id)
     if not (cap_data and cap_data.holder and cap_data.holder.valid) then
@@ -93,7 +79,6 @@ local function get_dominant_item(capsule_id)
 
     local max_cargo_count = 0
     local dominant_cargo_item = nil
-
     local max_vessel_count = 0
     local dominant_vessel_item = nil
 
@@ -115,11 +100,9 @@ local function get_dominant_item(capsule_id)
         end
     end
 
-    -- Prioritize internal cargo items over vessel capsule shell
     return dominant_cargo_item or dominant_vessel_item
 end
 
---- Retrieves world coordinates and surface for a specific port key
 local function get_port_world_pos(port_key)
     local node = get_node(port_key)
     if node and node.entity and node.entity.valid then
@@ -131,21 +114,17 @@ local function get_port_world_pos(port_key)
     return nil, nil
 end
 
---- Evaluates if target entity's network segment has available capsule capacity
 local function has_entity_network_capacity(from_port_key, target_port_key)
     if not (storage.networks and storage.networks.port_to_network) then return false end
 
     local target_unit = tonumber(target_port_key:match("^(%d+)"))
     local target_net_id = storage.networks.port_to_network[target_port_key]
-
     if not (target_unit and target_net_id) then return false end
 
     local current_unit = tonumber(from_port_key:match("^(%d+)"))
     local current_net_id = storage.networks.port_to_network[from_port_key]
-
     local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id)
 
-    -- If moving within the exact same entity and network, capsule is already accounted for
     if current_unit == target_unit and current_net_id == target_net_id then
         return count <= MAX_CAPSULES_PER_ENTITY_NETWORK
     else
@@ -153,7 +132,6 @@ local function has_entity_network_capacity(from_port_key, target_port_key)
     end
 end
 
---- Leverages flow_map outbound_hops and applies anti-backtracking with randomized tie-breaking
 local function select_next_target(capsule)
     local current_node = get_node(capsule.from_port_key)
     if not (current_node and current_node.outbound_hops and #current_node.outbound_hops > 0) then
@@ -161,8 +139,6 @@ local function select_next_target(capsule)
     end
 
     local hops = current_node.outbound_hops
-
-    -- 1. Anti-backtracking & local entity-network capacity filter
     local candidates = {}
     for _, hop_key in ipairs(hops) do
         if hop_key ~= capsule.last_port_key and has_entity_network_capacity(capsule.from_port_key, hop_key) then
@@ -170,7 +146,6 @@ local function select_next_target(capsule)
         end
     end
 
-    -- Conditional turnaround check
     if #candidates == 0 then
         local backtrack_candidate = nil
         for _, hop_key in ipairs(hops) do
@@ -183,7 +158,6 @@ local function select_next_target(capsule)
         if backtrack_candidate then
             local last_node = get_node(capsule.last_port_key)
             local path_opened = false
-            
             if last_node and last_node.outbound_hops then
                 for _, next_hop in ipairs(last_node.outbound_hops) do
                     if next_hop ~= capsule.from_port_key then
@@ -192,7 +166,6 @@ local function select_next_target(capsule)
                     end
                 end
             end
-            
             if path_opened then
                 candidates = { backtrack_candidate }
             else
@@ -203,7 +176,6 @@ local function select_next_target(capsule)
         end
     end
 
-    -- 2. Evaluate scores and collect top candidates for randomized tie-breaking
     local best_candidates = {}
     local max_drop = -math.huge
 
@@ -235,59 +207,43 @@ local function select_next_target(capsule)
 
             local is_ext = not is_internal
 
-            -- Handle scores and tie-breaking pools
             if drop > max_drop then
                 max_drop = drop
                 best_candidates = { { key = hop_key, is_external = is_ext } }
             elseif drop == max_drop then
                 local current_best_is_ext = best_candidates[1] and best_candidates[1].is_external
-                
                 if is_ext and not current_best_is_ext then
-                    -- External exits take priority over internal routing on a tie
                     best_candidates = { { key = hop_key, is_external = true } }
                 elseif not is_ext and current_best_is_ext then
-                    -- Keep the external choice, ignore the internal one
                 else
-                    -- Truly equal options, add to pool
                     table.insert(best_candidates, { key = hop_key, is_external = is_ext })
                 end
             end
         end
     end
 
-    if #best_candidates == 0 then
-        return nil
-    end
-
-    -- 3. Pick randomly among all top-tier tied candidates
+    if #best_candidates == 0 then return nil end
     local chosen = best_candidates[math.random(#best_candidates)]
     return chosen.key
 end
 
---- Checks memory and evaluates capture conditions upon reaching or standing at a port
 local function handle_arrival(capsule, id)
     local new_unit_num = tonumber(capsule.from_port_key:match("^(%d+)"))
     
-    -- 1. Memory Wipe: If stepped onto a different entity, forget the source hub
     if capsule.source_hub and new_unit_num ~= capsule.source_hub then
         capsule.source_hub = nil
     end
 
-    -- 2. Capture Check
     local node = get_node(capsule.from_port_key)
     if node and node.entity and node.entity.valid then
         local hub_def = hub_defs.types[node.entity.name]
-        
-        -- If it's a hub, and NOT our source hub
         if hub_def and capsule.source_hub ~= node.entity.unit_number then
             local unpacked = hub_unpacking.capture(capsule, node.entity)
-            
             if unpacked then
                 clear_capsule_render(capsule)
                 storage.capsules[id] = nil
-                return true -- Unpacked and destroyed successfully
+                return true
             else
-                -- Hub chest is full. Halt target movement so we remain parked here.
                 capsule.to_port_key = nil
             end
         end
@@ -295,7 +251,56 @@ local function handle_arrival(capsule, id)
     return false
 end
 
---- Main movement loop executed every game tick
+--- Handles per-tick passenger position synchronization and refrigerated/biodegradable mechanics
+local function update_capsule_lifecycle(capsule, id, curr_pos, surface)
+    local phys_capsule = capsule_manager.get(capsule.capsule_id or id)
+    if not (phys_capsule and phys_capsule.definition) then return false end
+
+    local def = phys_capsule.definition
+
+    -- 1. Player Transit Teleportation
+    if capsule.passenger and capsule.passenger.valid then
+        capsule.passenger.teleport(curr_pos, surface)
+    end
+
+    -- 2. Refrigerated Capsule Spoilage Modifier (STUBBED)
+    -- TODO: Implement Factorio 2.0 engine-compatible spoilage mitigation
+    local modifier = def.spoilage_modifier or 1.0
+    if modifier < 1.0 then
+        -- Placeholder: Spoilage mitigation bypassed to avoid engine queue conflicts
+    end
+
+    -- 3. Biodegradable Mid-Transit Structural Failure Risk
+    if def.spill_risk and math.random() < def.spill_risk then
+        if phys_capsule.holder and phys_capsule.holder.valid then
+            local inv = phys_capsule.holder.get_inventory(defines.inventory.chest)
+            if inv then
+                for i = 1, #inv do
+                    local stack = inv[i]
+                    if stack and stack.valid_for_read then
+                        surface.spill_item_stack(curr_pos, stack, true, nil, false)
+                    end
+                end
+            end
+            phys_capsule.holder.destroy()
+        end
+
+        if capsule.passenger and capsule.passenger.valid then
+            capsule.passenger.surface.create_entity{
+                name = "small-explosion",
+                position = curr_pos
+            }
+        end
+
+        clear_capsule_render(capsule)
+        capsule_queries.remove_capsule(capsule.capsule_id or id)
+        storage.capsules[id] = nil
+        return true -- Destroyed mid-transit
+    end
+
+    return false
+end
+
 local function update_capsules()
     if not storage.capsules then return end
 
@@ -309,11 +314,8 @@ local function update_capsules()
         while tiles_this_tick > 0 and safety_counter < 50 do
             safety_counter = safety_counter + 1
 
-            -- 1. If stationary at a port, poll unpacking FIRST before target searching
             if not capsule.to_port_key then
-                if handle_arrival(capsule, id) then 
-                    break -- Capsule unpacked and destroyed successfully!
-                end
+                if handle_arrival(capsule, id) then break end
 
                 capsule.to_port_key = select_next_target(capsule)
                 capsule.progress = 0.0
@@ -330,7 +332,6 @@ local function update_capsules()
             end
 
             local from_pos, surf = get_port_world_pos(capsule.from_port_key)
-            
             if not from_pos then
                 clear_capsule_render(capsule)
                 storage.capsules[id] = nil
@@ -340,10 +341,7 @@ local function update_capsules()
             surface = surf
             curr_pos = { x = from_pos.x, y = from_pos.y }
 
-            -- Parked waiting at a full hub or dead end
-            if not capsule.to_port_key then
-                break
-            end
+            if not capsule.to_port_key then break end
 
             local to_pos = get_port_world_pos(capsule.to_port_key)
             if not to_pos then
@@ -385,52 +383,64 @@ local function update_capsules()
         end
 
         if storage.capsules[id] then
-            clear_capsule_render(capsule)
-            if is_debug_active("capsules") and surface and curr_pos then
-                local render_objects = {}
+            if curr_pos and surface and update_capsule_lifecycle(capsule, id, curr_pos, surface) then
+                -- Capsule ruptured mid-transit
+            else
+                clear_capsule_render(capsule)
+                if is_debug_active("capsules") and surface and curr_pos then
+                    local render_objects = {}
 
-                local dominant_item = get_dominant_item(capsule.id or id)
-                if dominant_item then
-                    -- Clean gold border outline framing the item sprite
-                    local ring = rendering.draw_circle{
-                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                        radius = 0.35,
-                        filled = false,
-                        width = 2,
-                        target = curr_pos,
-                        surface = surface
-                    }
-                    table.insert(render_objects, ring)
+                    if capsule.passenger and capsule.passenger.valid then
+                        local ring = rendering.draw_circle{
+                            color = { r = 0, g = 0.8, b = 1, a = 0.9 },
+                            radius = 0.45,
+                            filled = false,
+                            width = 3,
+                            target = curr_pos,
+                            surface = surface
+                        }
+                        table.insert(render_objects, ring)
+                    else
+                        local dominant_item = get_dominant_item(capsule.capsule_id or id)
+                        if dominant_item then
+                            local ring = rendering.draw_circle{
+                                color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                                radius = 0.35,
+                                filled = false,
+                                width = 2,
+                                target = curr_pos,
+                                surface = surface
+                            }
+                            table.insert(render_objects, ring)
 
-                    -- Scaled item sprite rendered clearly on top
-                    local sprite = rendering.draw_sprite{
-                        sprite = "item/" .. dominant_item,
-                        target = curr_pos,
-                        surface = surface,
-                        x_scale = 0.55,
-                        y_scale = 0.55
-                    }
-                    table.insert(render_objects, sprite)
-                else
-                    -- Fallback simple gold indicator dot if capsule is completely empty
-                    local dot = rendering.draw_circle{
-                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                        radius = 0.25,
-                        filled = true,
-                        target = curr_pos,
-                        surface = surface
-                    }
-                    table.insert(render_objects, dot)
+                            local sprite = rendering.draw_sprite{
+                                sprite = "item/" .. dominant_item,
+                                target = curr_pos,
+                                surface = surface,
+                                x_scale = 0.55,
+                                y_scale = 0.55
+                            }
+                            table.insert(render_objects, sprite)
+                        else
+                            local dot = rendering.draw_circle{
+                                color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                                radius = 0.25,
+                                filled = true,
+                                target = curr_pos,
+                                surface = surface
+                            }
+                            table.insert(render_objects, dot)
+                        end
+                    end
+
+                    capsule.render_id = render_objects
                 end
-
-                capsule.render_id = render_objects
             end
         end
     end
 end
 
---- Injects a physically packed capsule ID into the motion runner on the optimal port
-function capsule_runner.inject_from_hub(capsule_id, entity)
+function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     init_storage()
     local ports = port_defs.get_ports(entity)
     if not ports then return false end
@@ -453,7 +463,6 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
                 if node and node.outbound_hops then
                     for _, hop_key in ipairs(node.outbound_hops) do
                         local target_node = flow_map[hop_key]
-                        
                         if target_node and target_node.unit_number ~= entity.unit_number then
                             local drop = node.pressure - target_node.pressure
                             if drop > max_drop then
@@ -472,17 +481,47 @@ function capsule_runner.inject_from_hub(capsule_id, entity)
 
     storage.capsules[capsule_id] = {
         id = capsule_id,
+        capsule_id = capsule_id,
         from_port_key = target_port_key,
         to_port_key = nil,
         last_port_key = nil,
         progress = 0.0,
         render_id = nil,
-        source_hub = entity.unit_number
+        source_hub = entity.unit_number,
+        passenger = passenger
     }
     return true
 end
 
--- Hook game tick event for smooth travel
+function capsule_runner.emergency_eject(player)
+    if not (storage.capsules and player and player.valid) then return end
+
+    for id, capsule in pairs(storage.capsules) do
+        if capsule.passenger == player then
+            local phys_capsule = capsule_manager.get(capsule.capsule_id or id)
+            local surface = player.surface
+            local curr_pos = player.position
+
+            local safe_pos = surface.find_non_colliding_position("character", curr_pos, 4, 0.5) or curr_pos
+            player.teleport(safe_pos, surface)
+
+            surface.create_entity{
+                name = "explosion",
+                position = safe_pos
+            }
+
+            clear_capsule_render(capsule)
+            if phys_capsule and phys_capsule.holder and phys_capsule.holder.valid then
+                phys_capsule.holder.destroy()
+            end
+
+            capsule_queries.remove_capsule(capsule.capsule_id or id)
+            storage.capsules[id] = nil
+            break
+        end
+    end
+end
+
 events.on_event(defines.events.on_tick, function(event)
     update_capsules()
 end)

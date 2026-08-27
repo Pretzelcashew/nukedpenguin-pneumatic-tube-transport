@@ -1,3 +1,4 @@
+-- File: prototypes/item.lua
 data:extend({
   {
     type = "item",
@@ -18,12 +19,22 @@ data:extend({
     stack_size = 1
   },
   {
-    type = "item",
+    type = "tool",
     name = "refrigerated-capsule",
     icon = "__space-age__/graphics/icons/ice.png",
     icon_size = 64,
     subgroup = "intermediate-product",
     order = "a[capsule]-c[refrigerated]",
+    stack_size = 1,
+    durability = 1000
+  },
+  {
+    type = "item",
+    name = "spent-refrigerated-capsule",
+    icon = "__space-age__/graphics/icons/ice.png",
+    icon_size = 64,
+    subgroup = "intermediate-product",
+    order = "a[capsule]-c[refrigerated-spent]",
     stack_size = 1
   },
   {

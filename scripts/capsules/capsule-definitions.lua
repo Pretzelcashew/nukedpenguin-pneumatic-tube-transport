@@ -1,3 +1,4 @@
+-- File: scripts/capsules/capsule-definitions.lua
 local capsule_definitions = {}
 
 capsule_definitions.types = {
@@ -34,8 +35,8 @@ capsule_definitions.types = {
         full_stacks = false,
         consolidate_stacks = true,
         include_self = true,
-        destroy_self = true, -- Dissolves upon unpacking, eliminating capsule shell recycling
-        spill_risk = 0.0008, -- Risk of structural failure mid-transit
+        destroy_self = true,
+        spill_risk = 0.0008,
         destroy_holder_if_empty = true,
         holder_type = "invisible-capsule-holder",
         spill_contents = {
@@ -56,7 +57,30 @@ capsule_definitions.types = {
         consolidate_stacks = true,
         include_self = true,
         destroy_self = false,
-        spoilage_modifier = 0.10, -- Drastically slows spoilage degradation (90% reduction)
+        spoilage_modifier = 0.10,
+        spent_capsule_item = "spent-refrigerated-capsule",
+        destroy_holder_if_empty = true,
+        holder_type = "invisible-capsule-holder",
+        spill_contents = {
+            units = true,
+            mode = "container",
+            container = "visible-capsule-holder",
+            mark_for_deconstruction = true
+        }
+    },
+    ["spent-refrigerated-capsule"] = {
+        type = "capsule",
+        base_capacity = 3,
+        quality_affected_capacity = 1,
+        mixed_cargo = true,
+        mixed_quality = "any",
+        quality_filter = "any",
+        minimum_cargo = 2,
+        full_stacks = true,
+        consolidate_stacks = true,
+        include_self = true,
+        destroy_self = false,
+        spoilage_modifier = 1.0,
         destroy_holder_if_empty = true,
         holder_type = "invisible-capsule-holder",
         spill_contents = {
@@ -90,7 +114,7 @@ capsule_definitions.types = {
     ["player-transit-capsule"] = {
         type = "capsule",
         is_player_transit = true,
-        base_capacity = 0, -- Dedicated passenger vessel
+        base_capacity = 0,
         quality_affected_capacity = 0,
         mixed_cargo = false,
         mixed_quality = "any",

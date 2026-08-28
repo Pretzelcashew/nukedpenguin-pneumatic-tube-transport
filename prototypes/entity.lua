@@ -1,3 +1,5 @@
+
+
 data:extend({
   {
     type = "container",
@@ -329,43 +331,5 @@ data:extend({
         }
       }
     }
-  },
-  { 
-  type = "electric-energy-interface", 
-  name = "pneumatic-diverter", 
-  icon = "__base__/graphics/icons/assembling-machine-2.png", 
-  icon_size = 64, 
-  flags = {"placeable-neutral", "placeable-player", "player-creation"}, 
-  rotatable = true, 
-  fast_replaceable_group = "pneumatic-diverter", 
-  minable = {mining_time = 0.3, result = "pneumatic-diverter"}, 
-  max_health = 250, 
-  collision_box = {{-1.4, -1.4}, {1.4, 1.4}}, 
-  selection_box = {{-1.5, -1.5}, {1.5, 1.5}}, 
-  energy_source = { 
-    type = "electric", 
-    usage_priority = "secondary-input", 
-    buffer_capacity = "10kJ", 
-    input_flow_limit = "100kW" 
-  }, 
-  energy_usage = "50kW", 
-  picture = { 
-    layers = { 
-      { 
-        filename = "__base__/graphics/icons/assembling-machine-2.png", 
-        priority = "high", 
-        width = 64, 
-        height = 64, 
-        frame_count = 1, 
-        line_length = 1, 
-        shift = {0, 0},
-        scale = 1.0, 
-        tint = {r = 0.3, g = 0.7, b = 0.9, a = 1.0} 
-      } 
-    } 
-  },
-  circuit_wire_connection_point = circuit_connector_definitions["chest"].points, 
-  circuit_connector_sprites = circuit_connector_definitions["chest"].sprites, 
-  circuit_wire_max_distance = default_circuit_wire_max_distance 
-}
+  }
 })

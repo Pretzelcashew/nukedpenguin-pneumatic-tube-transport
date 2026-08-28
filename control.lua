@@ -12,6 +12,8 @@ require("scripts.capsules.capsule-runner")
 require("scripts.networks.pump-manager")
 require("scripts.capsules.capsule-inputs")
 
+require("prototypes.pneumatic-diverter-proxy-linkage")
+
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}

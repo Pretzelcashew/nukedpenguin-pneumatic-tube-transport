@@ -85,3 +85,11 @@
 5. **4-Port Connection Definitions (`scripts/ports/port-definitions.lua`):** Configured 4-port cardinal routing entries for `pneumatic-diverter` with merge connections centered along entity boundaries (offset 1.5 tiles from origin).
 
 
+### Revision: Composite Diverter Entity Architecture & Synchronous GUI Interception
+**Date:** 2026-08-27 22:45 (EDT)  
+**Context:** Establish an operable physical energy entity paired with a hidden circuit network proxy for the pneumatic diverter, enabling circuit terminal capability and synchronous left-click UI hijacking while suppressing vanilla energy interface window rendering.
+
+**Key Changes:**
+1. **Composite Entity Prototype (`prototypes/pneumatic-diverter.lua`):** Cloned `constant-combinator` to construct the `pneumatic-diverter-circuit-proxy` prototype configured with `"not-selectable-in-game"`, `"not-deconstructable"`, `"hide-alt-info"`, and `minable = nil`. Defined the main `pneumatic-diverter` physical entity as an `electric-energy-interface` (50kW usage, 10kJ buffer) using assembling-machine-2 visual assets and `gui_mode = "all"` to capture player open interactions.
+2. **Proxy Lifecycle & GUI Interception (`prototypes/pneumatic-diverter-proxy-linkage.lua`):** Implemented lifecycle event listeners (`on_built_entity`, `on_robot_built_entity`, `script_raised_built`, `script_raised_revive`) to automatically spawn non-operable, indestructible circuit proxies paired to diverter positions, as well as removal listeners (`on_player_mined_entity`, `on_entity_died`, etc.) for proxy cleanup. Added `on_gui_opened` handler to synchronously set `player.opened = nil`, suppressing the native energy interface GUI on the exact tick it is clicked to prepare for custom Lua frame rendering.
+

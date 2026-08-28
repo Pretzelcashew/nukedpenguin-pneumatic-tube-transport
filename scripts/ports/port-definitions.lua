@@ -1,3 +1,5 @@
+local diverter_settings = require("scripts.diverter-settings")
+
 local port_defs = {}
 
 local definitions = {
@@ -44,7 +46,7 @@ local definitions = {
         }
     },
 
-    -- ROTATABLE PUMPS (Updated with optional pressure properties)
+    -- ROTATABLE PUMPS
     ["pneumatic-pump"] = {
         [defines.direction.north] = {
             { group = 1, flow = "in",  connection = "join", offset = {x = 0.0, y =  1.0}, pressure = -100 },
@@ -118,31 +120,31 @@ local definitions = {
         }
     },
 
-    -- PNEUMATIC DIVERTER (Static 2 Inflow / 2 Outflow Pump-Style Baseline)
+    -- PNEUMATIC DIVERTER (Base Cardinal Port Offsets)
     ["pneumatic-diverter"] = {
         [defines.direction.north] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y = -1.5}, pressure = -100 }, -- Port 1: North
-            { group = 1, flow = "in",  connection = "join", offset = {x =  1.5, y =  0.0}, pressure = -100 }, -- Port 2: East
-            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y =  1.5}, pressure =  100 }, -- Port 3: South
-            { group = 1, flow = "out", connection = "join", offset = {x = -1.5, y =  0.0}, pressure =  100 }  -- Port 4: West
+            { group = 1, offset = {x =  0.0, y = -1.5}, connection = "join" }, -- Port 1: North
+            { group = 1, offset = {x =  1.5, y =  0.0}, connection = "join" }, -- Port 2: East
+            { group = 1, offset = {x =  0.0, y =  1.5}, connection = "join" }, -- Port 3: South
+            { group = 1, offset = {x = -1.5, y =  0.0}, connection = "join" }  -- Port 4: West
         },
         [defines.direction.east] = {
-            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y = -1.5}, pressure =  100 }, -- Port 1: North
-            { group = 1, flow = "in",  connection = "join", offset = {x =  1.5, y =  0.0}, pressure = -100 }, -- Port 2: East
-            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y =  1.5}, pressure = -100 }, -- Port 3: South
-            { group = 1, flow = "out", connection = "join", offset = {x = -1.5, y =  0.0}, pressure =  100 }  -- Port 4: West
+            { group = 1, offset = {x =  0.0, y = -1.5}, connection = "join" }, -- Port 1: North
+            { group = 1, offset = {x =  1.5, y =  0.0}, connection = "join" }, -- Port 2: East
+            { group = 1, offset = {x =  0.0, y =  1.5}, connection = "join" }, -- Port 3: South
+            { group = 1, offset = {x = -1.5, y =  0.0}, connection = "join" }  -- Port 4: West
         },
         [defines.direction.south] = {
-            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y = -1.5}, pressure =  100 }, -- Port 1: North
-            { group = 1, flow = "out", connection = "join", offset = {x =  1.5, y =  0.0}, pressure =  100 }, -- Port 2: East
-            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y =  1.5}, pressure = -100 }, -- Port 3: South
-            { group = 1, flow = "in",  connection = "join", offset = {x = -1.5, y =  0.0}, pressure = -100 }  -- Port 4: West
+            { group = 1, offset = {x =  0.0, y = -1.5}, connection = "join" }, -- Port 1: North
+            { group = 1, offset = {x =  1.5, y =  0.0}, connection = "join" }, -- Port 2: East
+            { group = 1, offset = {x =  0.0, y =  1.5}, connection = "join" }, -- Port 3: South
+            { group = 1, offset = {x = -1.5, y =  0.0}, connection = "join" }  -- Port 4: West
         },
         [defines.direction.west] = {
-            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y = -1.5}, pressure = -100 }, -- Port 1: North
-            { group = 1, flow = "out", connection = "join", offset = {x =  1.5, y =  0.0}, pressure =  100 }, -- Port 2: East
-            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y =  1.5}, pressure =  100 }, -- Port 3: South
-            { group = 1, flow = "in",  connection = "join", offset = {x = -1.5, y =  0.0}, pressure = -100 }  -- Port 4: West
+            { group = 1, offset = {x =  0.0, y = -1.5}, connection = "join" }, -- Port 1: North
+            { group = 1, offset = {x =  1.5, y =  0.0}, connection = "join" }, -- Port 2: East
+            { group = 1, offset = {x =  0.0, y =  1.5}, connection = "join" }, -- Port 3: South
+            { group = 1, offset = {x = -1.5, y =  0.0}, connection = "join" }  -- Port 4: West
         }
     }
 }
@@ -160,6 +162,41 @@ function port_defs.get_ports(entity)
     local ports = entity_ports[entity.direction]
     if not ports then
         error(string.format("[Port Definitions] Missing direction definition '%s' for entity '%s'", tostring(entity.direction), entity.name))
+    end
+
+    if entity.name == "pneumatic-diverter" and entity.unit_number then
+        local settings = diverter_settings.get(entity.unit_number)
+        if settings and settings.ports then
+            local dynamic_ports = {}
+            for i, base_port in ipairs(ports) do
+                local p_setting = settings.ports[i]
+                local is_enabled = p_setting and (p_setting.enabled ~= false)
+                local mode = p_setting and p_setting.mode or "input"
+
+                local flow = "none"
+                local pressure = nil
+
+                if is_enabled then
+                    if mode == "input" then
+                        flow = "in"
+                        pressure = -100
+                    else
+                        flow = "out"
+                        pressure = 100
+                    end
+                end
+
+                table.insert(dynamic_ports, {
+                    group = base_port.group,
+                    connection = base_port.connection,
+                    offset = base_port.offset,
+                    enabled = is_enabled,
+                    flow = flow,
+                    pressure = pressure
+                })
+            end
+            return dynamic_ports
+        end
     end
 
     return ports

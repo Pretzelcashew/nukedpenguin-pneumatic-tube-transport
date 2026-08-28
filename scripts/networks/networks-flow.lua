@@ -34,10 +34,12 @@ local function get_entity_and_port(port_key)
     return nil, nil
 end
 
-local function is_pump_powered(entity)
+local function is_powered(entity)
     if not (entity and entity.valid) then return false end
-    if entity.name ~= "pneumatic-pump" then return true end
-    return entity.energy > 0
+    if entity.name == "pneumatic-pump" or entity.name == "pneumatic-diverter" then
+        return entity.energy > 0
+    end
+    return true
 end
 
 --- Rebuilds flow map, vector hops, culling, and renders for a single network ID
@@ -74,6 +76,7 @@ local function build_single_network(net_id)
                     },
                     pressure = storage.port_pressures[key] or 0,
                     flow_dir = port.flow,
+                    enabled = (port.enabled ~= false),
                     outbound_hops = {}
                 }
             end
@@ -110,6 +113,7 @@ local function build_single_network(net_id)
                 },
                 pressure = storage.port_pressures[b_key] or 0,
                 flow_dir = port.flow,
+                enabled = (port.enabled ~= false),
                 outbound_hops = {}
             }
         end
@@ -117,25 +121,27 @@ local function build_single_network(net_id)
 
     -- 3. Build outbound vector hops based strictly on pressure drops and internal transfers
     for key, node in pairs(flow_map) do
-        local neighbors = storage.port_connections and storage.port_connections[key]
-        if neighbors then
-            for neighbor_key, _ in pairs(neighbors) do
-                local neighbor_node = flow_map[neighbor_key]
-                if neighbor_node then
-                    local is_internal = (node.unit_number == neighbor_node.unit_number)
+        if node.enabled ~= false then
+            local neighbors = storage.port_connections and storage.port_connections[key]
+            if neighbors then
+                for neighbor_key, _ in pairs(neighbors) do
+                    local neighbor_node = flow_map[neighbor_key]
+                    if neighbor_node and neighbor_node.enabled ~= false then
+                        local is_internal = (node.unit_number == neighbor_node.unit_number)
 
-                    if is_internal then
-                        -- Mechanical machine transfer: route internal ports if directions permit and pump is powered
-                        if is_pump_powered(node.entity) and node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
-                            table.insert(node.outbound_hops, neighbor_key)
-                        end
-                    else
-                        -- External network hop: STRICT pressure gradient required (P_from > P_to) and powered endpoints
-                        local p_delta = node.pressure - neighbor_node.pressure
-                        local flow_valid = (node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out")
+                        if is_internal then
+                            -- Mechanical machine transfer: route internal ports if directions permit and entity is powered
+                            if is_powered(node.entity) and node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
+                                table.insert(node.outbound_hops, neighbor_key)
+                            end
+                        else
+                            -- External network hop: STRICT pressure gradient required (P_from > P_to) and powered endpoints
+                            local p_delta = node.pressure - neighbor_node.pressure
+                            local flow_valid = (node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out")
 
-                        if is_pump_powered(node.entity) and is_pump_powered(neighbor_node.entity) and flow_valid and p_delta > 0 then
-                            table.insert(node.outbound_hops, neighbor_key)
+                            if is_powered(node.entity) and is_powered(neighbor_node.entity) and flow_valid and p_delta > 0 then
+                                table.insert(node.outbound_hops, neighbor_key)
+                            end
                         end
                     end
                 end

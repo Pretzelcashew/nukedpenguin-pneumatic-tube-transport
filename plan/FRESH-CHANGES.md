@@ -93,3 +93,13 @@
 1. **Composite Entity Prototype (`prototypes/pneumatic-diverter.lua`):** Cloned `constant-combinator` to construct the `pneumatic-diverter-circuit-proxy` prototype configured with `"not-selectable-in-game"`, `"not-deconstructable"`, `"hide-alt-info"`, and `minable = nil`. Defined the main `pneumatic-diverter` physical entity as an `electric-energy-interface` (50kW usage, 10kJ buffer) using assembling-machine-2 visual assets and `gui_mode = "all"` to capture player open interactions.
 2. **Proxy Lifecycle & GUI Interception (`prototypes/pneumatic-diverter-proxy-linkage.lua`):** Implemented lifecycle event listeners (`on_built_entity`, `on_robot_built_entity`, `script_raised_built`, `script_raised_revive`) to automatically spawn non-operable, indestructible circuit proxies paired to diverter positions, as well as removal listeners (`on_player_mined_entity`, `on_entity_died`, etc.) for proxy cleanup. Added `on_gui_opened` handler to synchronously set `player.opened = nil`, suppressing the native energy interface GUI on the exact tick it is clicked to prepare for custom Lua frame rendering.
 
+
+### Revision: Pneumatic Diverter Proxy Lifecycle & GUI Event Wiring Parity
+**Date:** 2026-08-27 23:05 (EDT)
+**Context:** Resolve game UI interference, proxy lifecycle desync, and event dispatch collisions on the Pneumatic Diverter by standardizing event registration loops, adding GUI type isolation guards, and syncing proxy orientation.
+
+**Key Changes:**
+1. **Event Registration Loop Parity (`prototypes/pneumatic-diverter-proxy-linkage.lua`):** Refactored build, destruction, and rotation hooks to iterate over event ID tables via explicit `for _, id in ipairs(...)` loops, matching subsystem dispatcher patterns in `pump-manager.lua` and `hub-manager.lua` to prevent lookup collisions in `events.lua`.
+2. **Defensive Entity & GUI Type Isolation (`prototypes/pneumatic-diverter-proxy-linkage.lua`):** Implemented defensive `if not (entity and entity.valid)` checks across all listener callbacks and gated `on_gui_opened` strictly behind `event.gui_type == defines.gui_type.entity`, preventing `player.opened = nil` from closing unrelated player inventory screens or custom UI frames.
+3. **Proxy Creation Deduplication & Rotation Sync (`prototypes/pneumatic-diverter-proxy-linkage.lua`):** Added `#existing == 0` spatial filter check on creation to prevent duplicate proxy stacking, enforced `proxy.valid` verification prior to destruction, and registered `on_player_rotated_entity` / `on_player_flipped_entity` listeners to sync proxy direction with the parent diverter structure.
+

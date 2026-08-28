@@ -2,6 +2,8 @@ local networks = require("scripts.networks.networks")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_queries = require("scripts.capsules.capsule-queries")
+local diverter_settings = require("scripts.diverter-settings")
+local capsule_renderer = require("scripts.capsules.capsule-renderer")
 
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 local BASE_SPEED_TILES_PER_SEC = 15
@@ -9,6 +11,93 @@ local MIN_SPEED_TILES_PER_SEC = 4
 local MAX_SPEED_TILES_PER_SEC = 60
 
 local capsule_motion = {}
+
+local function evaluate_filter_slot(slot, payload_item)
+    if not slot then return nil end
+    local filter_item = slot.item or slot.signal
+    if not filter_item then return nil end
+
+    local item_match = (payload_item == filter_item)
+    local comp = slot.comparator or "="
+
+    if comp == "=" then
+        return item_match
+    elseif comp == "≠" or comp == "!=" then
+        return not item_match
+    elseif comp == ">" or comp == "≥" or comp == ">=" then
+        return item_match
+    elseif comp == "<" then
+        return not item_match
+    elseif comp == "≤" or comp == "<=" then
+        return true
+    end
+
+    return item_match
+end
+
+local function evaluates_port_filter(port_setting, payload_item)
+    if not (port_setting and port_setting.use_filters) then
+        return true
+    end
+
+    if not payload_item then
+        return port_setting.filter_mode == "blacklist"
+    end
+
+    local filter_mode = port_setting.filter_mode or "whitelist"
+    local filters = port_setting.filters
+    if not filters then return true end
+
+    local has_configured_slots = false
+    local any_slot_matched = false
+
+    for i = 1, 5 do
+        local slot = filters[i]
+        local match_res = evaluate_filter_slot(slot, payload_item)
+        if match_res ~= nil then
+            has_configured_slots = true
+            if match_res == true then
+                any_slot_matched = true
+            end
+        end
+    end
+
+    if not has_configured_slots then
+        return filter_mode == "blacklist"
+    end
+
+    if filter_mode == "whitelist" then
+        return any_slot_matched
+    else
+        return not any_slot_matched
+    end
+end
+
+local function check_diverter_port_filter(port_key, payload_item)
+    if not (port_key and storage.diverter_settings) then return true end
+    local unit_str, port_str = port_key:match("^(%d+):(%d+)$")
+    if not (unit_str and port_str) then return true end
+
+    local unit_number = tonumber(unit_str)
+    local port_index = tonumber(port_str)
+    local d_settings = storage.diverter_settings[unit_number]
+    if not (d_settings and d_settings.ports) then return true end
+
+    local port_setting = d_settings.ports[port_index]
+    if not port_setting then return true end
+
+    return evaluates_port_filter(port_setting, payload_item)
+end
+
+local function is_hop_allowed_by_diverter_filters(from_port_key, hop_key, payload_item)
+    if not check_diverter_port_filter(hop_key, payload_item) then
+        return false
+    end
+    if not check_diverter_port_filter(from_port_key, payload_item) then
+        return false
+    end
+    return true
+end
 
 function capsule_motion.get_node(port_key)
     if not (storage.networks and storage.networks.port_to_network) then return nil end
@@ -86,10 +175,14 @@ function capsule_motion.select_next_target(capsule)
         return nil
     end
 
+    local payload_item = capsule_renderer.get_dominant_item(capsule.capsule_id or capsule.id)
+
     local hops = current_node.outbound_hops
     local candidates = {}
     for _, hop_key in ipairs(hops) do
-        if hop_key ~= capsule.last_port_key and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key) then
+        if hop_key ~= capsule.last_port_key 
+           and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
+           and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
             table.insert(candidates, hop_key)
         end
     end
@@ -97,7 +190,9 @@ function capsule_motion.select_next_target(capsule)
     if #candidates == 0 then
         local backtrack_candidate = nil
         for _, hop_key in ipairs(hops) do
-            if hop_key == capsule.last_port_key and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key) then
+            if hop_key == capsule.last_port_key 
+               and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
+               and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
                 backtrack_candidate = hop_key
                 break
             end

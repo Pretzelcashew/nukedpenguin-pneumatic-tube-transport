@@ -11,11 +11,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "=", signal = nil },
-                        [2] = { comparator = "=", signal = nil },
-                        [3] = { comparator = "=", signal = nil },
-                        [4] = { comparator = "=", signal = nil },
-                        [5] = { comparator = "=", signal = nil }
+                        [1] = { comparator = "=", item = nil },
+                        [2] = { comparator = "=", item = nil },
+                        [3] = { comparator = "=", item = nil },
+                        [4] = { comparator = "=", item = nil },
+                        [5] = { comparator = "=", item = nil }
                     }
                 },
                 [2] = { -- Port 2: East
@@ -24,11 +24,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "=", signal = nil },
-                        [2] = { comparator = "=", signal = nil },
-                        [3] = { comparator = "=", signal = nil },
-                        [4] = { comparator = "=", signal = nil },
-                        [5] = { comparator = "=", signal = nil }
+                        [1] = { comparator = "=", item = nil },
+                        [2] = { comparator = "=", item = nil },
+                        [3] = { comparator = "=", item = nil },
+                        [4] = { comparator = "=", item = nil },
+                        [5] = { comparator = "=", item = nil }
                     }
                 },
                 [3] = { -- Port 3: South
@@ -37,11 +37,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "=", signal = nil },
-                        [2] = { comparator = "=", signal = nil },
-                        [3] = { comparator = "=", signal = nil },
-                        [4] = { comparator = "=", signal = nil },
-                        [5] = { comparator = "=", signal = nil }
+                        [1] = { comparator = "=", item = nil },
+                        [2] = { comparator = "=", item = nil },
+                        [3] = { comparator = "=", item = nil },
+                        [4] = { comparator = "=", item = nil },
+                        [5] = { comparator = "=", item = nil }
                     }
                 },
                 [4] = { -- Port 4: West
@@ -50,11 +50,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "=", signal = nil },
-                        [2] = { comparator = "=", signal = nil },
-                        [3] = { comparator = "=", signal = nil },
-                        [4] = { comparator = "=", signal = nil },
-                        [5] = { comparator = "=", signal = nil }
+                        [1] = { comparator = "=", item = nil },
+                        [2] = { comparator = "=", item = nil },
+                        [3] = { comparator = "=", item = nil },
+                        [4] = { comparator = "=", item = nil },
+                        [5] = { comparator = "=", item = nil }
                     }
                 }
             }

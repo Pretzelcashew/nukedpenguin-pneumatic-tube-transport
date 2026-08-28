@@ -1,4 +1,5 @@
 local events = require("scripts.events")
+local diverter_gui = require("scripts.diverter-gui")
 
 local diverter_linkage = {}
 
@@ -87,7 +88,7 @@ local function on_gui_opened(event)
 
     local player = game.get_player(event.player_index)
     if player and player.valid then
-        player.opened = nil
+        diverter_gui.open(player, entity)
     end
 end
 

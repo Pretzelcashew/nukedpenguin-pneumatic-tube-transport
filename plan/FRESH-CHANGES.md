@@ -54,10 +54,19 @@
 4. **Diverter Entity Graphics Tinting (`prototypes/pneumatic-diverter.lua`):** Deepcopied the cloned `assembling-machine-2` animation layers for `pneumatic-diverter` and applied the emerald tint (`{r = 0.25, g = 0.80, b = 0.60, a = 1.0}`) exclusively to non-shadow layers (`not layer.draw_as_shadow`).
 
 
-### Revision: Locale Definitions for Pneumatic Diverter & Bio-Capsules
-**Date:** 2026-08-28 13:08 (EDT)
-**Context:** Add localized names, descriptions, and UI tooltips for newly integrated pneumatic transport entities, items, and bio-capsule technology nodes to ensure complete Factoriopedia and inventory coverage.
+### Revision: Complete Mod Localization & Factoriopedia Coverage
+**Date:** 2026-08-28 13:10 (EDT)
+**Context:** Implement complete English localization strings across all items, entities, transit capsule variants, and research technologies within the pneumatic transport ecosystem.
 
 **Key Changes:**
-1. **Technology Localizations (`locale/en/config.cfg`):** Registered display names and descriptions for `bio-capsule-integrity-1` through `4` and `specialized-pneumatic-capsules` under the `[technology-name]` and `[technology-description]` sections.
-2. **Item & Entity UI Strings (`locale/en/config.cfg`):** Added localized entries for `pneumatic-diverter` across `[entity-name]`, `[entity-description]`, `[item-name]`, and `[item-description]`, ensuring consistent tooltips when hovering over items, building entities, or viewing recipe trees.
+1. **Infrastructure Entities & Items (`locale/en/config.cfg`):** Registered display names and descriptive tooltips under `[entity-name]`, `[entity-description]`, `[item-name]`, and `[item-description]` for `capsule-hub-horizontal`, `capsule-hub-vertical`, `pneumatic-tube`, `pneumatic-pump`, `junction`, `crossflow-junction`, and `pneumatic-diverter`.
+2. **Transit Capsule Variants (`locale/en/config.cfg`):** Added localizations covering the full capsule lineup (`item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `spent-refrigerated-capsule`, `reinforced-capsule`, and `player-transit-capsule`), ensuring proper Factoriopedia and inventory display.
+3. **Technology Tree Localizations (`locale/en/config.cfg`):** Created `[technology-name]` and `[technology-description]` entries for `pneumatic-transport`, `specialized-pneumatic-capsules`, and `bio-capsule-integrity-1` through `4`.
+
+
+### Revision: Release Packaging, Version Graduation & Space Age Dependency
+**Date:** 2026-08-28 13:11 (EDT)
+**Context:** Prepare mod archive for public release on the Factorio Mod Portal by graduating project versioning to 0.1.0, establishing required expansion dependencies, and adding engine release artifacts.
+**Key Changes:**
+1. **Mod Metadata Manifest (`info.json`):** Graduated mod version from `0.0.1` to `0.1.0`. Updated engine requirements to `base >= 2.1.0`, set a hard dependency for `space-age >= 2.1.0` to enforce expansion feature requirements, and retained `? quality` as an optional integration.
+2. **Engine Changelog (`changelog.txt`):** Created standard Factorio-formatted release log detailing initial public testing feature set for version 0.1.0.

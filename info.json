@@ -1,9 +1,13 @@
 {
   "name": "nukedpenguin-pneumatic-tube-transport",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "factorio_version": "2.1",
   "title": "Nukedpenguin Pneumatic Tube Transport",
   "author": "Collaborator",
   "description": "A mod with pneumatic tube transport",
-  "dependencies": ["base"]
+  "dependencies": [
+    "base >= 2.1.0",
+    "space-age >= 2.1.0",
+    "? quality"
+  ]
 }

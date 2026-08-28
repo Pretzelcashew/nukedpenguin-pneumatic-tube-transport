@@ -4,6 +4,20 @@ local cc = data.raw["constant-combinator"]["constant-combinator"]
 local am2_icon = am2.icon or (am2.icons and am2.icons[1].icon)
 local am2_icon_size = am2.icon_size or (am2.icons and am2.icons[1].icon_size) or 64
 
+-- Deepcopy and tint assembling-machine-2 animation (matching item icon emerald)
+local diverter_animation = table.deepcopy(am2.graphics_set and am2.graphics_set.animation or am2.animation)
+local diverter_tint = {r = 0.25, g = 0.80, b = 0.60, a = 1.0}
+
+if diverter_animation and diverter_animation.layers then
+  for _, layer in ipairs(diverter_animation.layers) do
+    if not layer.draw_as_shadow then
+      layer.tint = diverter_tint
+    end
+  end
+elseif diverter_animation then
+  diverter_animation.tint = diverter_tint
+end
+
 -- Clone constant-combinator so the circuit proxy inherits all required LED/sprite structures
 local proxy = table.deepcopy(cc)
 
@@ -43,7 +57,7 @@ data:extend({
       input_flow_limit = "100kW"
     },
     energy_usage = "50kW",
-    animation = am2.graphics_set and am2.graphics_set.animation or am2.animation
+    animation = diverter_animation
   },
 
   -- Hidden circuit proxy

@@ -1,5 +1,6 @@
 local events = require("scripts.events")
 local diverter_settings = require("scripts.diverter-settings")
+local diverter_manager = require("scripts.networks.diverter-manager")
 
 local diverter_gui = {}
 
@@ -16,6 +17,13 @@ local function get_comparator_index(comp)
         if v == comp then return i end
     end
     return 1
+end
+
+local function notify_change(unit_number)
+    local entity = storage.active_diverters and storage.active_diverters[unit_number]
+    if entity and entity.valid then
+        diverter_manager.notify_settings_changed(entity)
+    end
 end
 
 function diverter_gui.close(player)
@@ -218,6 +226,8 @@ local function on_gui_checked_state_changed(event)
     elseif element.name == "port_use_filters" then
         port.use_filters = element.state
     end
+
+    notify_change(tags.unit_number)
 end
 
 local function on_gui_switch_state_changed(event)
@@ -256,6 +266,8 @@ local function on_gui_switch_state_changed(event)
             right_label.caption = ((not is_whitelist) and COLOR_ACTIVE or COLOR_INACTIVE) .. "Blacklist" .. COLOR_END
         end
     end
+
+    notify_change(tags.unit_number)
 end
 
 local function on_gui_elem_changed(event)
@@ -269,6 +281,7 @@ local function on_gui_elem_changed(event)
     if not (port and port.filters[tags.slot_index]) then return end
 
     port.filters[tags.slot_index].item = element.elem_value
+    notify_change(tags.unit_number)
 end
 
 local function on_gui_selection_state_changed(event)
@@ -284,6 +297,8 @@ local function on_gui_selection_state_changed(event)
     if element.name == "filter_comparator_dropdown" then
         port.filters[tags.slot_index].comparator = COMPARATORS[element.selected_index] or "="
     end
+
+    notify_change(tags.unit_number)
 end
 
 local function on_gui_closed(event)

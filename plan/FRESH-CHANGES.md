@@ -52,3 +52,12 @@
 2. **Item Icon Restoration & Multi-Layer Tinting (`prototypes/item.lua`):** Fixed invalid icon paths by restoring base game and Space Age fallback sprite assets (`iron-plate`, `wood`, `ice`, `steel-plate`, `car`, `steel-chest`, `pipe`, `pump`, `iron-chest`, `assembling-machine-2`). Converted single `icon` paths to tinted `icons` layer tables while preserving original stack sizes, subgroups, order keys, and tool durability.
 3. **Entity and Inventory Color Synchronization (`prototypes/item.lua`):** Matched item icon palette tints directly to the entity RGB values used across horizontal/vertical hubs, tubes, pumps, junctions, crossflow junctions, and diverters.
 4. **Diverter Entity Graphics Tinting (`prototypes/pneumatic-diverter.lua`):** Deepcopied the cloned `assembling-machine-2` animation layers for `pneumatic-diverter` and applied the emerald tint (`{r = 0.25, g = 0.80, b = 0.60, a = 1.0}`) exclusively to non-shadow layers (`not layer.draw_as_shadow`).
+
+
+### Revision: Locale Definitions for Pneumatic Diverter & Bio-Capsules
+**Date:** 2026-08-28 13:08 (EDT)
+**Context:** Add localized names, descriptions, and UI tooltips for newly integrated pneumatic transport entities, items, and bio-capsule technology nodes to ensure complete Factoriopedia and inventory coverage.
+
+**Key Changes:**
+1. **Technology Localizations (`locale/en/config.cfg`):** Registered display names and descriptions for `bio-capsule-integrity-1` through `4` and `specialized-pneumatic-capsules` under the `[technology-name]` and `[technology-description]` sections.
+2. **Item & Entity UI Strings (`locale/en/config.cfg`):** Added localized entries for `pneumatic-diverter` across `[entity-name]`, `[entity-description]`, `[item-name]`, and `[item-description]`, ensuring consistent tooltips when hovering over items, building entities, or viewing recipe trees.

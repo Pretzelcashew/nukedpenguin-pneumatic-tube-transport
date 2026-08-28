@@ -118,30 +118,31 @@ local definitions = {
         }
     },
 
+    -- PNEUMATIC DIVERTER (Static 2 Inflow / 2 Outflow Pump-Style Baseline)
     ["pneumatic-diverter"] = {
         [defines.direction.north] = {
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y = -1.5}, pressure = -100 }, -- Port 1: North
+            { group = 1, flow = "in",  connection = "join", offset = {x =  1.5, y =  0.0}, pressure = -100 }, -- Port 2: East
+            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y =  1.5}, pressure =  100 }, -- Port 3: South
+            { group = 1, flow = "out", connection = "join", offset = {x = -1.5, y =  0.0}, pressure =  100 }  -- Port 4: West
         },
         [defines.direction.east] = {
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y = -1.5}, pressure =  100 }, -- Port 1: North
+            { group = 1, flow = "in",  connection = "join", offset = {x =  1.5, y =  0.0}, pressure = -100 }, -- Port 2: East
+            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y =  1.5}, pressure = -100 }, -- Port 3: South
+            { group = 1, flow = "out", connection = "join", offset = {x = -1.5, y =  0.0}, pressure =  100 }  -- Port 4: West
         },
         [defines.direction.south] = {
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y = -1.5}, pressure =  100 }, -- Port 1: North
+            { group = 1, flow = "out", connection = "join", offset = {x =  1.5, y =  0.0}, pressure =  100 }, -- Port 2: East
+            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y =  1.5}, pressure = -100 }, -- Port 3: South
+            { group = 1, flow = "in",  connection = "join", offset = {x = -1.5, y =  0.0}, pressure = -100 }  -- Port 4: West
         },
         [defines.direction.west] = {
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y = -1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  0.0, y =  1.5} },
-            { group = 1, flow = "any", connection = "merge", offset = {x = -1.5, y =  0.0} },
-            { group = 1, flow = "any", connection = "merge", offset = {x =  1.5, y =  0.0} }
+            { group = 1, flow = "in",  connection = "join", offset = {x =  0.0, y = -1.5}, pressure = -100 }, -- Port 1: North
+            { group = 1, flow = "out", connection = "join", offset = {x =  1.5, y =  0.0}, pressure =  100 }, -- Port 2: East
+            { group = 1, flow = "out", connection = "join", offset = {x =  0.0, y =  1.5}, pressure =  100 }, -- Port 3: South
+            { group = 1, flow = "in",  connection = "join", offset = {x = -1.5, y =  0.0}, pressure = -100 }  -- Port 4: West
         }
     }
 }

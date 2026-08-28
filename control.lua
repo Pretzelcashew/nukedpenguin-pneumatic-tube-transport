@@ -12,6 +12,7 @@ require("scripts.diverter-settings")
 require("scripts.diverter-gui")
 require("scripts.capsules.capsule-runner")
 require("scripts.networks.pump-manager")
+require("scripts.networks.diverter-manager")
 require("scripts.capsules.capsule-inputs")
 
 require("prototypes.pneumatic-diverter-proxy-linkage")
@@ -22,6 +23,8 @@ local function setup_storage()
     storage.active_hubs = storage.active_hubs or {}
     storage.hub_settings = storage.hub_settings or {}
     storage.diverter_settings = storage.diverter_settings or {}
+    storage.active_diverters = storage.active_diverters or {}
+    storage.diverter_power_states = storage.diverter_power_states or {}
     networks.init()
 end
 

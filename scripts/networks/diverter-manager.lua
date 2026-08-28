@@ -1,0 +1,95 @@
+local events = require("scripts.events")
+local networks_flow = require("scripts.networks.networks-flow")
+local port_defs = require("scripts.ports.port-definitions")
+local diverter_settings = require("scripts.diverter-settings")
+
+local diverter_manager = {}
+local SCAN_INTERVAL = 15
+
+local function rebuild_diverter_networks(entity)
+    if not (entity and entity.valid) then return end
+    local unit_number = entity.unit_number
+    local ports = port_defs.get_ports(entity)
+    if not ports then return end
+
+    for p_idx, _ in ipairs(ports) do
+        local port_key = unit_number .. ":" .. p_idx
+        local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
+        if net_id then
+            networks_flow.build(net_id)
+        end
+    end
+end
+
+function diverter_manager.notify_settings_changed(entity)
+    rebuild_diverter_networks(entity)
+end
+
+local function register_diverter(entity)
+    if not (entity and entity.valid and entity.name == "pneumatic-diverter") then return end
+    storage.active_diverters = storage.active_diverters or {}
+    storage.diverter_power_states = storage.diverter_power_states or {}
+
+    local unit_number = entity.unit_number
+    storage.active_diverters[unit_number] = entity
+    storage.diverter_power_states[unit_number] = (entity.energy > 0)
+    diverter_settings.get(unit_number)
+end
+
+local function unregister_diverter(entity)
+    if not (entity and entity.valid and entity.name == "pneumatic-diverter") then return end
+    local unit_number = entity.unit_number
+    if storage.active_diverters then storage.active_diverters[unit_number] = nil end
+    if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
+end
+
+local function check_diverter_states()
+    if not storage.active_diverters then return end
+    storage.diverter_power_states = storage.diverter_power_states or {}
+
+    for unit_number, entity in pairs(storage.active_diverters) do
+        if entity.valid then
+            local is_powered = (entity.energy > 0)
+            local last_state = storage.diverter_power_states[unit_number]
+
+            if is_powered ~= last_state then
+                storage.diverter_power_states[unit_number] = is_powered
+                rebuild_diverter_networks(entity)
+            end
+        else
+            storage.active_diverters[unit_number] = nil
+            storage.diverter_power_states[unit_number] = nil
+        end
+    end
+end
+
+events.on_event(defines.events.on_tick, function(event)
+    if (event.tick % SCAN_INTERVAL) == 0 then
+        check_diverter_states()
+    end
+end)
+
+local build_events = {
+    defines.events.on_built_entity,
+    defines.events.on_robot_built_entity,
+    defines.events.script_raised_built
+}
+for _, id in ipairs(build_events) do
+    events.on_event(id, function(event)
+        register_diverter(event.entity)
+    end)
+end
+
+local destroy_events = {
+    defines.events.on_player_mined_entity,
+    defines.events.on_robot_mined_entity,
+    defines.events.on_entity_died,
+    defines.events.script_raised_destroy
+}
+for _, id in ipairs(destroy_events) do
+    events.on_event(id, function(event)
+        unregister_diverter(event.entity)
+    end)
+end
+
+return diverter_manager

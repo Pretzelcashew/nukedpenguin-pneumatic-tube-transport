@@ -2,9 +2,9 @@
   "name": "nukedpenguin-pneumatic-tube-transport",
   "version": "0.1.0",
   "factorio_version": "2.1",
-  "title": "Nukedpenguin Pneumatic Tube Transport",
-  "author": "Collaborator",
-  "description": "A mod with pneumatic tube transport",
+  "title": "Pneumatic Tube Transport",
+  "author": "Nukedpenguin",
+  "description": "Fast, high-throughput item and player logistics via custom pressurized pipe networks, specialized capsules, and multi-port diverters.",
   "dependencies": [
     "base >= 2.1.0",
     "space-age >= 2.1.0",

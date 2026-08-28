@@ -50,3 +50,34 @@ data:extend({
     circuit_wire_max_distance = cc.circuit_wire_max_distance or default_circuit_wire_max_distance
   }
 })
+
+
+
+
+
+Pneumatic Tube Transport
+
+Fast, high-throughput item and player logistics via custom pressurized pipe networks. Route specialized capsules through pneumatic tubes, control flow with multi-port diverters, and blast across your factory in personal transit capsules.
+
+### Key Features
+
+* **High-Speed Pneumatic Networks:** Build custom pressure networks using tubes, horizontal/vertical hubs, pumps, junctions, and 4-way crossflow junctions.
+* **Specialized Transit Capsules:**
+  * **Standard Capsules:** Reliable baseline item transport.
+  * **Biodegradable Capsules:** High-capacity vessels that safely dissolve upon delivery.
+  * **Refrigerated Capsules:** Drastically slow down spoil times for perishable cargo during transit.
+  * **Reinforced Capsules:** Heavy-duty shells designed for volatile items.
+  * **Player Transit Capsules:** Hop inside the network to travel across your factory at high speed (press `SHIFT + E` to emergency eject!).
+* **Smart Flow & Port Filtering:** Route capsules using 4-port directional diverters with configurable push/pull flow modes and per-port item filters (whitelists & blacklists).
+* **Hub Circuit Integration:** Control container hub dispatching and receiving rules via manual toggles or red/green circuit network conditions.
+* **Dynamic Pressure Simulation:** Real-time pressure gradients and pathing—network speed dynamically scales based on line pressure and pump power.
+* **Built-in Visual Debugging:** Includes console diagnostic commands like `/toggle-flow` to project directional flow vectors and numerical pressure levels directly on world entities (along with `/toggle-ports`, `/toggle-capsules`, and `/toggle-debug`).
+* **Space Age Integration:** Fully integrated tech tree supporting Space Age science progression and quality-aware item filtering.
+
+---
+
+### Developer Note
+
+I vibe coded this entire mod with AI assistance—couldn't have built it without it! Special shoutout to CatFireDragon for encouraging me to actually make this mod in the first place.
+
+This is an early release because I wanted to get it out into the community to gather feedback. I plan to actively update the mod with more features (including expanding circuit functionality to diverters), better balance, custom graphics, and performance optimizations. If you run into issues or have ideas, let me know!

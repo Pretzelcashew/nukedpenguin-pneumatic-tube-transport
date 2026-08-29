@@ -1,6 +1,8 @@
 local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
 local networks_flow = require("scripts.networks.networks-flow")
+local liminal_surface = require("scripts.surfaces.liminal-surface")
+
 require("scripts.debug-manager")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
@@ -30,6 +32,7 @@ local function setup_storage()
     storage.active_diverters = storage.active_diverters or {}
     storage.diverter_power_states = storage.diverter_power_states or {}
     networks.init()
+    liminal_surface.init_storage()
 
     if is_debug_active("flow") then
         networks_flow.draw_all()

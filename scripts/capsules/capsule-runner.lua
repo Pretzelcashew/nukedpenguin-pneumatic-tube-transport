@@ -136,7 +136,6 @@ function capsule_runner.emergency_eject(player)
 
     for id, capsule in pairs(storage.capsules) do
         if capsule.passenger == player then
-            local phys_capsule = capsule_manager.get(capsule.capsule_id or id)
             local surface = player.surface
             local curr_pos = player.position
 
@@ -149,11 +148,7 @@ function capsule_runner.emergency_eject(player)
             }
 
             capsule_queries.clear_capsule_render(capsule)
-            if phys_capsule and phys_capsule.holder and phys_capsule.holder.valid then
-                phys_capsule.holder.destroy()
-            end
-
-            capsule_queries.remove_capsule(capsule.capsule_id or id)
+            capsule_manager.remove(capsule.capsule_id or id)
             storage.capsules[id] = nil
             break
         end

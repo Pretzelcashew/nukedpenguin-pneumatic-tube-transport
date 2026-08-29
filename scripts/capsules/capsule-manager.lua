@@ -1,4 +1,5 @@
 local capsule_defs = require("scripts.capsules.capsule-definitions")
+local liminal_surface_mgr = require("scripts.surfaces.liminal-surface")
 
 local capsule_manager = {}
 
@@ -18,12 +19,14 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
 
     capsule_manager.init()
     local capsule_id = holder_entity.unit_number
+    local pos = holder_entity.position
     
     storage.active_capsules[capsule_id] = {
         holder = holder_entity,
         type = def.type,
         definition = def,
-        primary_slot = primary_slot
+        primary_slot = primary_slot,
+        position = { x = pos.x, y = pos.y }
     }
     
     return capsule_id
@@ -57,15 +60,19 @@ function capsule_manager.get_primary_stack(capsule_id)
     return nil, data.primary_slot
 end
 
---- Safely destroys the holder entity and removes it from the registry
+--- Safely destroys the holder entity, releases its grid position, and removes it from the registry
 --- @param capsule_id number
 function capsule_manager.remove(capsule_id)
     if not storage.active_capsules then return end
     
     local data = storage.active_capsules[capsule_id]
     if data then
+        local pos = data.position or (data.holder and data.holder.valid and data.holder.position)
         if data.holder and data.holder.valid then
             data.holder.destroy()
+        end
+        if pos then
+            liminal_surface_mgr.release_position(pos)
         end
         storage.active_capsules[capsule_id] = nil
     end

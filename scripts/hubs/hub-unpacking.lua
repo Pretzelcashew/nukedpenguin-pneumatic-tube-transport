@@ -1,4 +1,5 @@
 local hub_settings = require("scripts.hubs.hub-settings")
+local capsule_manager = require("scripts.capsules.capsule-manager")
 
 local hub_unpacking = {}
 
@@ -120,7 +121,7 @@ local function can_insert_all(holder_inv, hub_inv)
 end
 
 function hub_unpacking.capture(capsule_tracker, hub_entity)
-    local phys_capsule = storage.active_capsules and storage.active_capsules[capsule_tracker.id]
+    local phys_capsule = capsule_manager.get(capsule_tracker.id)
 
     if not phys_capsule or not phys_capsule.holder or not phys_capsule.holder.valid then
         return true
@@ -155,8 +156,7 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
         end
     end
 
-    phys_capsule.holder.destroy()
-    storage.active_capsules[capsule_tracker.id] = nil
+    capsule_manager.remove(capsule_tracker.id)
 
     storage.hub_receive_locks = storage.hub_receive_locks or {}
     storage.hub_receive_locks[hub_entity.unit_number] = true

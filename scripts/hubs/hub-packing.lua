@@ -159,9 +159,14 @@ function hub_packing.evaluate_inventory(entity)
 
     local liminal_surface = liminal_surface_mgr.get()
     local holder_prototype = capsule_def.holder_type or "invisible-capsule-holder"
+    local holder_pos = liminal_surface_mgr.allocate_position()
+
+    -- Synchronously ensure target chunk exists before entity creation
+    liminal_surface_mgr.ensure_chunk_at(liminal_surface, holder_pos)
+
     local holder = liminal_surface.create_entity{
         name = holder_prototype,
-        position = {0, 0},
+        position = holder_pos,
         force = entity.force
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
@@ -259,7 +264,9 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() and not passenger then
+        local pos = holder.position
         holder.destroy()
+        liminal_surface_mgr.release_position(pos)
         return
     end
 

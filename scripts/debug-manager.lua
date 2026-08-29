@@ -1,4 +1,3 @@
--- scripts/debug-manager.lua
 local port_renderer = require("scripts.ports.port-renderer")
 local networks_flow = require("scripts.networks.networks-flow")
 
@@ -6,9 +5,9 @@ local debug_manager = {}
 
 local function get_debug()
     storage.debug = storage.debug or {
-        master = true,  -- Master power switch (starts OFF)
-        ports = false,    -- Sub-features ready to activate when master turns ON
-        flow = false,
+        master = true,  -- Master power switch
+        ports = false,  -- Sub-features ready to activate when master turns ON
+        flow = true,   -- Enabled by default for Alt Mode flow overlay
         capsules = true,
         prints = false,
     }
@@ -51,12 +50,12 @@ commands.add_command("toggle-ports", "Toggle port overlay", function()
     game.print("[Debug] Ports: " .. (dbg.ports and "[ENABLED]" or "[DISABLED]"))
 end)
 
-commands.add_command("toggle-flow", "Toggle flow vector overlay", function()
+commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function()
     local dbg = get_debug()
     dbg.flow = not dbg.flow
 
     if is_debug_active("flow") then networks_flow.draw_all() else networks_flow.clear_all() end
-    game.print("[Debug] Flow: " .. (dbg.flow and "[ENABLED]" or "[DISABLED]"))
+    game.print("[Debug] Flow Overlay: " .. (dbg.flow and "[ENABLED]" or "[DISABLED]"))
 end)
 
 commands.add_command("toggle-capsules", "Toggle capsule overlay", function()

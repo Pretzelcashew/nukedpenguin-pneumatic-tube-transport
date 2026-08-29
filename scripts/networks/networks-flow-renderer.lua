@@ -1,4 +1,3 @@
--- scripts/networks/networks-flow-renderer.lua
 local networks = require("scripts.networks.networks")
 
 local flow_renderer = {}
@@ -42,18 +41,19 @@ function flow_renderer.draw(net_id)
         if entity and entity.valid then
             local offset = node.offset or { x = 0, y = 0 }
 
-            -- Draw pressure text anchored to entity port
+            -- Draw pressure text anchored to entity port (visible only in alt mode)
             local text_obj = rendering.draw_text{
                 text = string.format("P: %d", node.pressure),
                 surface = entity.surface,
                 target = { entity = entity, offset = { x = offset.x, y = offset.y - 0.25 } },
                 color = node.pressure > 0 and {r = 0.2, g = 1, b = 0.2} or {r = 1, g = 0.3, b = 0.3},
                 scale = 0.8,
-                alignment = "center"
+                alignment = "center",
+                only_in_alt_mode = true
             }
             table.insert(render_objects, text_obj)
 
-            -- Draw directional flow vectors
+            -- Draw directional flow vectors (visible only in alt mode)
             for _, hop_key in ipairs(node.outbound_hops) do
                 local target_node = flow_map[hop_key]
                 if target_node and target_node.entity and target_node.entity.valid then
@@ -65,7 +65,8 @@ function flow_renderer.draw(net_id)
                         to = { entity = target_node.entity, offset = target_offset },
                         color = {r = 0, g = 0.8, b = 1, a = 0.8},
                         width = 2,
-                        draw_on_ground = false
+                        draw_on_ground = false,
+                        only_in_alt_mode = true
                     }
                     table.insert(render_objects, line_obj)
                 end

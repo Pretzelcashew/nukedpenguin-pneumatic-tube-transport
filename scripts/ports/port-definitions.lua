@@ -170,7 +170,7 @@ function port_defs.get_ports(entity)
             local dynamic_ports = {}
             for i, base_port in ipairs(ports) do
                 local p_setting = settings.ports[i]
-                local is_enabled = p_setting and (p_setting.enabled ~= false)
+                local is_enabled = diverter_settings.is_port_enabled(entity, i)
                 local mode = p_setting and p_setting.mode or "input"
 
                 local flow = "none"

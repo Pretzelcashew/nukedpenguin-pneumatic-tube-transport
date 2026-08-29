@@ -75,6 +75,27 @@ function diverter_gui.open(player, entity)
         tags = { unit_number = entity.unit_number }
     }
 
+    -- Global Wire Channel Toggles
+    local wire_flow = main_frame.add{ type = "flow", direction = "horizontal" }
+    wire_flow.style.vertical_align = "center"
+    wire_flow.style.horizontal_spacing = 12
+
+    wire_flow.add{
+        type = "checkbox",
+        name = "diverter_read_red",
+        caption = "Read Red Wire",
+        state = settings.read_red ~= false,
+        tags = { unit_number = entity.unit_number }
+    }
+
+    wire_flow.add{
+        type = "checkbox",
+        name = "diverter_read_green",
+        caption = "Read Green Wire",
+        state = settings.read_green ~= false,
+        tags = { unit_number = entity.unit_number }
+    }
+
     -- 2x2 Port Grid Layout
     local inner_frame = main_frame.add{
         type = "frame",
@@ -100,6 +121,7 @@ function diverter_gui.open(player, entity)
 
         -- Port Enable Checkbox Header
         local header_flow = card_frame.add{ type = "flow", direction = "horizontal" }
+        header_flow.style.vertical_align = "center"
         header_flow.add{
             type = "checkbox",
             name = "port_enable",
@@ -107,6 +129,48 @@ function diverter_gui.open(player, entity)
             state = port_data.enabled,
             tags = { unit_number = entity.unit_number, port_index = i }
         }
+
+        -- Circuit Network Enable Row
+        local circuit_flow = card_frame.add{ type = "flow", direction = "horizontal" }
+        circuit_flow.style.vertical_align = "center"
+        circuit_flow.style.horizontal_spacing = 6
+
+        circuit_flow.add{
+            type = "checkbox",
+            name = "port_use_circuit_enable",
+            caption = "Circuit Enable",
+            state = port_data.use_circuit_enable or false,
+            tags = { unit_number = entity.unit_number, port_index = i }
+        }
+
+        local cond = port_data.enable_condition or { first_signal = nil, comparator = "=", constant = 0 }
+
+        circuit_flow.add{
+            type = "choose-elem-button",
+            name = "port_circuit_signal",
+            elem_type = "signal",
+            signal = cond.first_signal,
+            tags = { unit_number = entity.unit_number, port_index = i }
+        }
+
+        local comp_dropdown = circuit_flow.add{
+            type = "drop-down",
+            name = "port_circuit_comparator",
+            items = COMPARATORS,
+            selected_index = get_comparator_index(cond.comparator or "="),
+            tags = { unit_number = entity.unit_number, port_index = i }
+        }
+        comp_dropdown.style.width = 40
+
+        local const_tf = circuit_flow.add{
+            type = "textfield",
+            name = "port_circuit_constant",
+            text = tostring(cond.constant or 0),
+            numeric = true,
+            allow_negative = true,
+            tags = { unit_number = entity.unit_number, port_index = i }
+        }
+        const_tf.style.width = 50
 
         -- Item Flow Direction Toggle (Pull vs Push)
         local is_pull = (port_data.mode == "input")
@@ -169,7 +233,7 @@ function diverter_gui.open(player, entity)
             caption = ((not is_whitelist) and COLOR_ACTIVE or COLOR_INACTIVE) .. "Blacklist" .. COLOR_END
         }
 
-        -- Filter Slots: Item Picker Button top, Micro Comparator Dropdown bottom
+        -- Filter Slots
         local slots_flow = card_frame.add{ type = "flow", direction = "horizontal" }
         slots_flow.style.horizontal_spacing = 8
 
@@ -215,14 +279,28 @@ local function on_gui_checked_state_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
     local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index) then return end
+    if not (tags and tags.unit_number) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
+
+    if element.name == "diverter_read_red" then
+        settings.read_red = element.state
+        notify_change(tags.unit_number)
+        return
+    elseif element.name == "diverter_read_green" then
+        settings.read_green = element.state
+        notify_change(tags.unit_number)
+        return
+    end
+
+    if not tags.port_index then return end
     local port = settings.ports[tags.port_index]
     if not port then return end
 
     if element.name == "port_enable" then
         port.enabled = element.state
+    elseif element.name == "port_use_circuit_enable" then
+        port.use_circuit_enable = element.state
     elseif element.name == "port_use_filters" then
         port.use_filters = element.state
     end
@@ -274,31 +352,60 @@ local function on_gui_elem_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
     local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index and tags.slot_index) then return end
+    if not (tags and tags.unit_number and tags.port_index) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
     local port = settings.ports[tags.port_index]
-    if not (port and port.filters[tags.slot_index]) then return end
+    if not port then return end
 
-    port.filters[tags.slot_index].item = element.elem_value
-    notify_change(tags.unit_number)
+    if element.name == "port_circuit_signal" then
+        port.enable_condition.first_signal = element.elem_value
+        notify_change(tags.unit_number)
+        return
+    end
+
+    if tags.slot_index and port.filters[tags.slot_index] then
+        port.filters[tags.slot_index].item = element.elem_value
+        notify_change(tags.unit_number)
+    end
 end
 
 local function on_gui_selection_state_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
     local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index and tags.slot_index) then return end
+    if not (tags and tags.unit_number and tags.port_index) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
     local port = settings.ports[tags.port_index]
-    if not (port and port.filters[tags.slot_index]) then return end
+    if not port then return end
 
-    if element.name == "filter_comparator_dropdown" then
-        port.filters[tags.slot_index].comparator = COMPARATORS[element.selected_index] or "="
+    if element.name == "port_circuit_comparator" then
+        port.enable_condition.comparator = COMPARATORS[element.selected_index] or "="
+        notify_change(tags.unit_number)
+        return
     end
 
-    notify_change(tags.unit_number)
+    if tags.slot_index and port.filters[tags.slot_index] and element.name == "filter_comparator_dropdown" then
+        port.filters[tags.slot_index].comparator = COMPARATORS[element.selected_index] or "="
+        notify_change(tags.unit_number)
+    end
+end
+
+local function on_gui_text_changed(event)
+    local element = event.element
+    if not (element and element.valid) then return end
+    local tags = element.tags
+    if not (tags and tags.unit_number and tags.port_index) then return end
+
+    local settings = diverter_settings.get(tags.unit_number)
+    local port = settings.ports[tags.port_index]
+    if not port then return end
+
+    if element.name == "port_circuit_constant" then
+        port.enable_condition.constant = tonumber(element.text) or 0
+        notify_change(tags.unit_number)
+    end
 end
 
 local function on_gui_closed(event)
@@ -319,5 +426,6 @@ events.on_event(defines.events.on_gui_checked_state_changed, on_gui_checked_stat
 events.on_event(defines.events.on_gui_switch_state_changed, on_gui_switch_state_changed)
 events.on_event(defines.events.on_gui_elem_changed, on_gui_elem_changed)
 events.on_event(defines.events.on_gui_selection_state_changed, on_gui_selection_state_changed)
+events.on_event(defines.events.on_gui_text_changed, on_gui_text_changed)
 
 return diverter_gui

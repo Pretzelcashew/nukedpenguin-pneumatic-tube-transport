@@ -8,7 +8,7 @@
 
 ~make debug commands per player
 
-add use cricuit network toggles for the enable/disable modes of the diverter entity
+add use circuit network toggles for the enable/disable modes of the diverter entity
 
 improve hub packing dispatch port picking
 

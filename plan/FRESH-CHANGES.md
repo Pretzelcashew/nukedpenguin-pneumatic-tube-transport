@@ -99,3 +99,13 @@
 2. **Scoped Port Overlay Renderer (`scripts/ports/port-renderer.lua`):** Updated `storage.port_render_objects` to track circle render handles per `player_index`. Applied `players = { player }` filtering to `rendering.draw_circle` calls and updated `draw_all()` / `clear_all()` handlers to clear and redraw per player.
 3. **Scoped Network Flow Overlay Renderer (`scripts/networks/networks-flow-renderer.lua`):** Updated storage handle table to `storage.flow_render_ids[player_index][net_id]`. Added `players = { player }` scope targeting to pressure text and flow vector line render calls, allowing Alt Mode overlays to render strictly for players with active debug flags.
 4. **Scoped Capsule Overlay Renderer (`scripts/capsules/capsule-renderer.lua`):** Updated `capsule_renderer.render()` to iterate active game players, evaluating per-player debug feature checks and appending `players = { player }` constraints to gold ring borders, item sprites, and position dots.
+
+
+### Revision: Dynamic Pneumatic Diverter Circuit Control Integration
+**Date:** 2026-08-29 11:21 (EDT)
+**Context:** Implement circuit network signal evaluation for pneumatic diverter ports via paired proxy constant combinators, updating port flow vectors dynamically and adding circuit condition controls to the diverter GUI.
+**Key Changes:**
+1. **Circuit Signal Evaluation (`scripts/diverter-settings.lua`):** Implemented signal querying against `pneumatic-diverter-circuit-proxy` entities across configurable red/green wire connectors. Added logic to evaluate comparison operators (`=`, `≥`, `≤`, `>`, `<`, `≠`) against target signal values to resolve dynamic port enable/disable states.
+2. **Dynamic Port Flow & Pressure Allocation (`scripts/ports/port-definitions.lua`):** Refactored `port_defs.get_ports()` for diverter entities to resolve runtime settings. Dynamically sets port flow (`in`/`out`/`none`) and applies pressure modifiers (-100 for input, 100 for output) based on circuit conditions and manual overrides.
+3. **State Change Detection & Polling (`scripts/networks/diverter-manager.lua`):** Added a 15-tick periodic scanner tracking active diverters. Caches per-port enable states and power conditions, triggering `networks_flow.build()` rebuilds whenever circuit condition thresholds or entity power states toggle.
+4. **GUI Circuit Integration (`scripts/diverter-gui.lua`):** Updated the existing configuration GUI and event handlers to expose circuit settings—adding red/green wire channel toggles, signal selectors, comparator dropdowns, constant text fields, and real-time settings synchronization.

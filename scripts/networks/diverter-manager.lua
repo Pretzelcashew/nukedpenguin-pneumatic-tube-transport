@@ -29,10 +29,18 @@ local function register_diverter(entity)
     if not (entity and entity.valid and entity.name == "pneumatic-diverter") then return end
     storage.active_diverters = storage.active_diverters or {}
     storage.diverter_power_states = storage.diverter_power_states or {}
+    storage.diverter_port_states = storage.diverter_port_states or {}
 
     local unit_number = entity.unit_number
     storage.active_diverters[unit_number] = entity
     storage.diverter_power_states[unit_number] = (entity.energy > 0)
+
+    local initial_ports = {}
+    for i = 1, 4 do
+        initial_ports[i] = diverter_settings.is_port_enabled(entity, i)
+    end
+    storage.diverter_port_states[unit_number] = initial_ports
+
     diverter_settings.get(unit_number)
 end
 
@@ -41,24 +49,39 @@ local function unregister_diverter(entity)
     local unit_number = entity.unit_number
     if storage.active_diverters then storage.active_diverters[unit_number] = nil end
     if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
+    if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
 end
 
 local function check_diverter_states()
     if not storage.active_diverters then return end
     storage.diverter_power_states = storage.diverter_power_states or {}
+    storage.diverter_port_states = storage.diverter_port_states or {}
 
     for unit_number, entity in pairs(storage.active_diverters) do
         if entity.valid then
             local is_powered = (entity.energy > 0)
-            local last_state = storage.diverter_power_states[unit_number]
+            local last_power = storage.diverter_power_states[unit_number]
+            local last_ports = storage.diverter_port_states[unit_number] or {}
 
-            if is_powered ~= last_state then
+            local port_changed = false
+            local current_ports = {}
+            for i = 1, 4 do
+                local state = diverter_settings.is_port_enabled(entity, i)
+                current_ports[i] = state
+                if state ~= last_ports[i] then
+                    port_changed = true
+                end
+            end
+
+            if is_powered ~= last_power or port_changed then
                 storage.diverter_power_states[unit_number] = is_powered
+                storage.diverter_port_states[unit_number] = current_ports
                 rebuild_diverter_networks(entity)
             end
         else
             storage.active_diverters[unit_number] = nil
             storage.diverter_power_states[unit_number] = nil
+            storage.diverter_port_states[unit_number] = nil
         end
     end
 end

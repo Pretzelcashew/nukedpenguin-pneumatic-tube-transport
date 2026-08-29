@@ -88,3 +88,14 @@
 1. **Alt Mode Rendering Flags (`scripts/networks/networks-flow-renderer.lua`):** Applied `only_in_alt_mode = true` to both `rendering.draw_text` (pressure labels) and `rendering.draw_line` (directional flow vectors), allowing the game engine to automatically toggle flow map overlays when the player toggles Alt Mode.
 2. **Default Flow State (`scripts/debug-manager.lua`):** Updated default state for `storage.debug.flow` from `false` to `true` so flow visualization is active by default in Alt Mode. Updated `/toggle-flow` console command descriptions and chat messages to reflect Alt Mode overlay functionality.
 3. **Main Script Wiring (`control.lua`):** Required `scripts/networks/networks-flow` at top level and added `networks_flow.draw_all()` call inside `setup_storage()` to render existing flow maps across subgraphs on world initialization or mod configuration changes.
+
+
+### Revision: Per-Player Debug State & Visual Overlay Isolation
+**Date:** 2026-08-29 10:57 (EDT)
+**Context:** Refactor centralized debug commands and visual rendering overlays to operate on a per-player basis, ensuring debug states, prints, and visual indicators (port markers, flow vectors, and capsule sprites) are scoped to individual players without cross-contaminating multiplayer sessions.
+
+**Key Changes:**
+1. **Per-Player Storage Schema (`scripts/debug-manager.lua`):** Restructured `storage.debug` to index feature flags (`master`, `ports`, `flow`, `capsules`, `prints`) by `player_index`. Updated `/toggle-*` console commands to target the executing player (`command.player_index`) and adapted `is_debug_active()` and `debug_print()` to accept optional target player arguments.
+2. **Scoped Port Overlay Renderer (`scripts/ports/port-renderer.lua`):** Updated `storage.port_render_objects` to track circle render handles per `player_index`. Applied `players = { player }` filtering to `rendering.draw_circle` calls and updated `draw_all()` / `clear_all()` handlers to clear and redraw per player.
+3. **Scoped Network Flow Overlay Renderer (`scripts/networks/networks-flow-renderer.lua`):** Updated storage handle table to `storage.flow_render_ids[player_index][net_id]`. Added `players = { player }` scope targeting to pressure text and flow vector line render calls, allowing Alt Mode overlays to render strictly for players with active debug flags.
+4. **Scoped Capsule Overlay Renderer (`scripts/capsules/capsule-renderer.lua`):** Updated `capsule_renderer.render()` to iterate active game players, evaluating per-player debug feature checks and appending `players = { player }` constraints to gold ring borders, item sprites, and position dots.

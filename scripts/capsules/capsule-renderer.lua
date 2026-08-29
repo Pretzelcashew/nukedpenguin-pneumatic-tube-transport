@@ -48,7 +48,6 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
 
     local render_objects = {}
 
-    -- Render emergency exit hotkey prompt visible ONLY to the active passenger
     if capsule.passenger and capsule.passenger.valid then
         local eject_text = rendering.draw_text{
             text = "[Shift + E] Emergency Eject",
@@ -62,48 +61,53 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         table.insert(render_objects, eject_text)
     end
 
-    -- Visual debug overlays
-    if is_debug_active("capsules") then
-        if capsule.passenger and capsule.passenger.valid then
-            local ring = rendering.draw_circle{
-                color = { r = 0, g = 0.8, b = 1, a = 0.9 },
-                radius = 0.45,
-                filled = false,
-                width = 3,
-                target = curr_pos,
-                surface = surface
-            }
-            table.insert(render_objects, ring)
-        else
-            local dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
-            if dominant_item then
+    for _, player in pairs(game.players) do
+        if is_debug_active("capsules", player.index) then
+            if capsule.passenger and capsule.passenger.valid then
                 local ring = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                    radius = 0.35,
+                    color = { r = 0, g = 0.8, b = 1, a = 0.9 },
+                    radius = 0.45,
                     filled = false,
-                    width = 2,
-                    target = curr_pos,
-                    surface = surface
-                }
-                table.insert(render_objects, ring)
-
-                local sprite = rendering.draw_sprite{
-                    sprite = "item/" .. dominant_item,
+                    width = 3,
                     target = curr_pos,
                     surface = surface,
-                    x_scale = 0.55,
-                    y_scale = 0.55
+                    players = { player }
                 }
-                table.insert(render_objects, sprite)
+                table.insert(render_objects, ring)
             else
-                local dot = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                    radius = 0.25,
-                    filled = true,
-                    target = curr_pos,
-                    surface = surface
-                }
-                table.insert(render_objects, dot)
+                local dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
+                if dominant_item then
+                    local ring = rendering.draw_circle{
+                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                        radius = 0.35,
+                        filled = false,
+                        width = 2,
+                        target = curr_pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    table.insert(render_objects, ring)
+
+                    local sprite = rendering.draw_sprite{
+                        sprite = "item/" .. dominant_item,
+                        target = curr_pos,
+                        surface = surface,
+                        x_scale = 0.55,
+                        y_scale = 0.55,
+                        players = { player }
+                    }
+                    table.insert(render_objects, sprite)
+                else
+                    local dot = rendering.draw_circle{
+                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                        radius = 0.25,
+                        filled = true,
+                        target = curr_pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    table.insert(render_objects, dot)
+                end
             end
         end
     end

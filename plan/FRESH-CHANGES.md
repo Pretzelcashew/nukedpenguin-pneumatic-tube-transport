@@ -119,3 +119,12 @@
 2. **Parked Capsule Rerouting (`scripts/capsules/capsule-motion.lua`):** Updated `select_next_target()` for stationary capsules (`to_port_key == nil`) parked at hub entities, automatically updating `from_port_key` to whichever port acquires active flow when network state updates.
 3. **Internal Hub Hop Exclusion & Pump Pressure Fix (`scripts/capsules/capsule-motion.lua`):** Filtered out internal ports of the same hub entity (`target_unit == entity.unit_number`) from candidate target selection to prevent internal hub bouncing. Restricted the `drop = math.huge` internal hop pressure override strictly to `pneumatic-pump` entities.
 4. **Unified Dispatch Port Selection (`scripts/capsules/capsule-runner.lua`):** Refactored `inject_from_hub()` to utilize `find_best_hub_outbound_port()`, ensuring newly packed capsules select capacity-cleared and filter-valid exit ports at injection time.
+
+
+### Revision: Pneumatic Pump Circuit Proxy & Lifecycle Linkage Integration
+**Date:** 2026-08-29 12:24 (EDT)
+**Context:** Add circuit network proxy constant combinators to pneumatic pumps to enable circuit wire attachment and lifecycle tracking, mirroring the pneumatic diverter proxy architecture.
+**Key Changes:**
+1. **Pump Circuit Proxy Prototype (`prototypes/pneumatic-pump-proxy.lua`):** Registered `pneumatic-pump-circuit-proxy` cloned from `constant-combinator` with matching pump icon, 0 collision/selection boxes, and hidden, non-selectable entity flags.
+2. **Proxy Lifecycle Linkage (`prototypes/pneumatic-pump-proxy-linkage.lua`):** Implemented lifecycle event listeners for build, rotation, and destruction of `pneumatic-pump` entities to automatically spawn, align orientation, and clean up proxy entities.
+3. **Data & Runtime Wiring (`data.lua` & `control.lua`):** Required `prototypes.pneumatic-pump-proxy` in `data.lua` and `prototypes.pneumatic-pump-proxy-linkage` in `control.lua` at top-level to integrate pump circuit proxies into mod startup and runtime execution.

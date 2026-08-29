@@ -10,8 +10,10 @@
 
 ~add use circuit network toggles for the enable/disable modes of the diverter entity
 
-improve hub packing dispatch port picking
+~improve hub packing dispatch port picking
 
-add pneumatic pump circuit proxy (like the diverter's)
+~add pneumatic pump circuit proxy (like the diverter's)
+
+~make a simple gui interface for the penumatic pump, with an enable/disable, and use circuit network condition, mirroring what we do for the diverter entity.
 
 

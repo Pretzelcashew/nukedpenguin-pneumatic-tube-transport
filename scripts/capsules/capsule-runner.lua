@@ -112,40 +112,8 @@ end
 
 function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     init_storage()
-    local ports = port_defs.get_ports(entity)
-    if not ports then return false end
 
-    local best_port_key = nil
-    local max_drop = -math.huge
-    local fallback_port_key = nil
-
-    for p_idx, _ in ipairs(ports) do
-        local key = entity.unit_number .. ":" .. p_idx
-        
-        if storage.networks and storage.networks.port_to_network then
-            local net_id = storage.networks.port_to_network[key]
-            if net_id then
-                if not fallback_port_key then fallback_port_key = key end
-                
-                local flow_map = networks.get_metadata(net_id, "flow_map")
-                local node = flow_map and flow_map[key]
-                
-                if node and node.outbound_hops then
-                    for _, hop_key in ipairs(node.outbound_hops) do
-                        local target_node = flow_map[hop_key]
-                        if target_node and target_node.unit_number ~= entity.unit_number then
-                            local drop = node.pressure - target_node.pressure
-                            if drop > max_drop then
-                                max_drop = drop
-                                best_port_key = key
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
+    local best_port_key, fallback_port_key = capsule_motion.find_best_hub_outbound_port(entity, capsule_id, nil)
     local target_port_key = best_port_key or fallback_port_key
     if not target_port_key then return false end
 

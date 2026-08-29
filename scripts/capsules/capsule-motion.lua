@@ -4,6 +4,7 @@ local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local diverter_settings = require("scripts.diverter-settings")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
+local port_defs = require("scripts.ports.port-definitions")
 
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 local BASE_SPEED_TILES_PER_SEC = 15
@@ -169,8 +170,70 @@ function capsule_motion.has_entity_network_capacity(from_port_key, target_port_k
     end
 end
 
+--- Evaluates all ports of a hub entity to find the optimal exit port with active outbound flow, valid capacity, and filter matching.
+--- @param hub_entity LuaEntity
+--- @param capsule_id number|nil
+--- @param current_port_key string|nil
+--- @return string|nil best_port_key
+--- @return string|nil fallback_port_key
+function capsule_motion.find_best_hub_outbound_port(hub_entity, capsule_id, current_port_key)
+    if not (hub_entity and hub_entity.valid) then return nil, nil end
+
+    local ports = port_defs.get_ports(hub_entity)
+    if not ports then return nil, nil end
+
+    local payload_item = capsule_renderer.get_dominant_item(capsule_id)
+    local best_port_key = nil
+    local max_drop = -math.huge
+    local fallback_port_key = nil
+
+    for p_idx, _ in ipairs(ports) do
+        local key = hub_entity.unit_number .. ":" .. p_idx
+        local node = capsule_motion.get_node(key)
+
+        if node then
+            if not fallback_port_key then fallback_port_key = key end
+
+            if node.outbound_hops then
+                for _, hop_key in ipairs(node.outbound_hops) do
+                    local target_node = capsule_motion.get_node(hop_key)
+                    if target_node and target_node.unit_number ~= hub_entity.unit_number then
+                        if capsule_motion.has_entity_network_capacity(key, hop_key)
+                           and is_hop_allowed_by_diverter_filters(key, hop_key, payload_item) then
+                            local drop = node.pressure - target_node.pressure
+                            if drop > max_drop or (drop == max_drop and key == current_port_key) then
+                                max_drop = drop
+                                best_port_key = key
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return best_port_key, fallback_port_key
+end
+
 function capsule_motion.select_next_target(capsule)
     local current_node = capsule_motion.get_node(capsule.from_port_key)
+    if not (current_node and current_node.entity and current_node.entity.valid) then
+        return nil
+    end
+
+    local entity = current_node.entity
+    local hub_def = hub_defs.types[entity.name]
+    local is_hub = (hub_def and hub_def.type == "hub")
+
+    -- Re-evaluate hub ports if parked/stationary at a hub entity when flow updates
+    if is_hub then
+        local best_hub_port = capsule_motion.find_best_hub_outbound_port(entity, capsule.capsule_id or capsule.id, capsule.from_port_key)
+        if best_hub_port and best_hub_port ~= capsule.from_port_key then
+            capsule.from_port_key = best_hub_port
+            current_node = capsule_motion.get_node(best_hub_port)
+        end
+    end
+
     if not (current_node and current_node.outbound_hops and #current_node.outbound_hops > 0) then
         return nil
     end
@@ -180,7 +243,16 @@ function capsule_motion.select_next_target(capsule)
     local hops = current_node.outbound_hops
     local candidates = {}
     for _, hop_key in ipairs(hops) do
-        if hop_key ~= capsule.last_port_key 
+        local is_internal_hub_hop = false
+        if is_hub then
+            local target_unit = tonumber(hop_key:match("^(%d+)"))
+            if target_unit == entity.unit_number then
+                is_internal_hub_hop = true
+            end
+        end
+
+        if not is_internal_hub_hop
+           and hop_key ~= capsule.last_port_key 
            and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
            and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
             table.insert(candidates, hop_key)
@@ -190,7 +262,16 @@ function capsule_motion.select_next_target(capsule)
     if #candidates == 0 then
         local backtrack_candidate = nil
         for _, hop_key in ipairs(hops) do
-            if hop_key == capsule.last_port_key 
+            local is_internal_hub_hop = false
+            if is_hub then
+                local target_unit = tonumber(hop_key:match("^(%d+)"))
+                if target_unit == entity.unit_number then
+                    is_internal_hub_hop = true
+                end
+            end
+
+            if not is_internal_hub_hop
+               and hop_key == capsule.last_port_key 
                and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
                and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
                 backtrack_candidate = hop_key
@@ -229,7 +310,7 @@ function capsule_motion.select_next_target(capsule)
             local is_internal = (target_node.unit_number == current_node.unit_number)
 
             if is_internal then
-                if target_node.pressure > current_node.pressure then
+                if current_node.entity and current_node.entity.name == "pneumatic-pump" and target_node.pressure > current_node.pressure then
                     drop = math.huge
                 else
                     local best_downstream = -math.huge

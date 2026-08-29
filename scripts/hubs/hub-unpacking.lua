@@ -5,7 +5,8 @@ local hub_unpacking = {}
 local function can_insert_all(holder_inv, hub_inv)
     local required_items = {}
 
-    for i = 1, #holder_inv do
+    local max_holder_slot = (holder_inv and holder_inv.supports_bar()) and math.min(#holder_inv, holder_inv.get_bar() - 1) or #holder_inv
+    for i = 1, max_holder_slot do
         local stack = holder_inv[i]
         if stack and stack.valid_for_read then
             local q_name = (stack.quality and stack.quality.name) or "normal"
@@ -138,7 +139,8 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
         return false
     end
 
-    for i = 1, #holder_inv do
+    local max_holder_slot = (holder_inv and holder_inv.supports_bar()) and math.min(#holder_inv, holder_inv.get_bar() - 1) or #holder_inv
+    for i = 1, max_holder_slot do
         local stack = holder_inv[i]
         if stack and stack.valid_for_read then
             hub_inv.insert(stack)

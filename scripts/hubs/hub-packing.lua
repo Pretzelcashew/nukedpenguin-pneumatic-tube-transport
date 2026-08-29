@@ -166,6 +166,13 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
+    -- Dynamically bound holder cargohold size to exact capsule capacity
+    local required_holder_slots = math.max(total_capacity, self_slot_cost)
+    if dest_inv and dest_inv.supports_bar() and required_holder_slots > 0 then
+        local bar_limit = math.min(#dest_inv + 1, required_holder_slots + 1)
+        dest_inv.set_bar(bar_limit)
+    end
+
     -- 1. Insert Cargo Extractions First
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
@@ -199,7 +206,8 @@ function hub_packing.evaluate_inventory(entity)
     if primary_stack and primary_stack.valid_for_read then
         if capsule_def.include_self and not capsule_def.destroy_self then
             local target_slot = nil
-            for i = 1, #dest_inv do
+            local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
+            for i = 1, max_search do
                 if not dest_inv[i].valid_for_read then
                     target_slot = i
                     break
@@ -234,7 +242,7 @@ function hub_packing.evaluate_inventory(entity)
             else
                 local inserted = dest_inv.insert(stack_spec)
                 if inserted > 0 then
-                    for i = 1, #dest_inv do
+                    for i = 1, max_search do
                         if dest_inv[i].valid_for_read and dest_inv[i].name == primary_stack.name then
                             primary_holder_slot = i
                         end

@@ -1,5 +1,3 @@
-
-
 data:extend({
   {
     type = "container",
@@ -91,7 +89,7 @@ data:extend({
     destructible = false,
     operable = false,
     collision_mask = {layers = {}},
-    inventory_size = 10,
+    inventory_size = 255,
     picture = util.empty_sprite()
   },
   {
@@ -112,7 +110,7 @@ data:extend({
     collision_mask = {layers = {}},
     collision_box = {{-0.2, -0.2}, {0.2, 0.2}},
     selection_box = {{-0.3, -0.3}, {0.3, 0.3}},
-    inventory_size = 10,
+    inventory_size = 255,
     inventory_type = "with_filters",
     picture = {
       layers = {

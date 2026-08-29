@@ -2,7 +2,7 @@
 
 ~make bio capsules minimum cargo increase by 1 to prevent instant packing when there is no cargo
 
-make the liminal item holder's cargohold larger or dynamic to account for larger capsule capacities
+~make the liminal item holder's cargohold larger or dynamic to account for larger capsule capacities
 
 make the spilled capsule container able to hold variable sized contents, and not be an exploit of free insertable cargo space after spill. (can take out but not put things in)
 

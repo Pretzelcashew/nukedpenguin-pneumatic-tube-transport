@@ -1,10 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.1
+Date: 2026-08-28
+  Features:
+    - Fixed thumbnail having two .png extensions.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.0
 Date: 2026-08-28
   Features:
     - Initial public testing build for pneumatic tube transport, dynamic flow, and diverters.
----------------------------------------------------------------------------------------------------
-Version: 0.1.1
-Date: 2026-08-28
-  Features:
-    - Fixed thumbail having two .png extensions.

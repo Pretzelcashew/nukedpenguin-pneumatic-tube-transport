@@ -111,7 +111,7 @@ data:extend({
     collision_box = {{-0.2, -0.2}, {0.2, 0.2}},
     selection_box = {{-0.3, -0.3}, {0.3, 0.3}},
     inventory_size = 255,
-    inventory_type = "with_filters",
+    inventory_type = "with_bar",
     picture = {
       layers = {
         {

@@ -1,3 +1,4 @@
+local events = require("scripts.events")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 
@@ -25,6 +26,67 @@ local function spill_and_mark_stack(surface, position, stack, mark_decon, force)
         end
     end
 end
+
+--- Scans and enforces anti-exploit rules on spilled containers every single tick (60Hz):
+--- 1. Re-enforces set_bar(1) on the exact tick if a player attempts to adjust the bar limit.
+--- 2. Immediately destroys the container entity the instant all contents have been extracted.
+local function process_spilled_containers()
+    if not storage.spilled_containers then return end
+
+    local has_active = false
+    for unit_number, entity in pairs(storage.spilled_containers) do
+        has_active = true
+        if not (entity and entity.valid) then
+            storage.spilled_containers[unit_number] = nil
+        else
+            local inv = entity.get_inventory(defines.inventory.chest)
+            if not inv or inv.is_empty() then
+                entity.destroy()
+                storage.spilled_containers[unit_number] = nil
+            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
+                inv.set_bar(1)
+            end
+        end
+    end
+
+    if not has_active then
+        storage.spilled_containers = nil
+    end
+end
+
+-- Enforce anti-exploit rules on EVERY tick (60Hz - 0 tick delay window)
+events.on_event(defines.events.on_tick, function(event)
+    process_spilled_containers()
+end)
+
+-- Instant enforcement on GUI open & close events
+events.on_event(defines.events.on_gui_opened, function(event)
+    local entity = event.entity
+    if entity and entity.valid and entity.name == "visible-capsule-holder" then
+        local inv = entity.get_inventory(defines.inventory.chest)
+        if inv then
+            if inv.is_empty() then
+                entity.destroy()
+            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
+                inv.set_bar(1)
+            end
+        end
+    end
+end)
+
+events.on_event(defines.events.on_gui_closed, function(event)
+    local entity = event.entity
+    if entity and entity.valid and entity.name == "visible-capsule-holder" then
+        local inv = entity.get_inventory(defines.inventory.chest)
+        if inv then
+            if inv.is_empty() then
+                entity.destroy()
+            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
+                inv.set_bar(1)
+            end
+        end
+    end
+end)
 
 --- Central hook for spilling a liminal capsule's contents and cleaning up all motion, render, and holder state
 --- @param capsule_id number The unit_number of the holder entity / capsule ID
@@ -101,6 +163,16 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                                     stack.clear()
                                 end
                             end
+                        end
+
+                        if container_inv.is_empty() then
+                            container_entity.destroy()
+                        else
+                            if container_inv.supports_bar() then
+                                container_inv.set_bar(1)
+                            end
+                            storage.spilled_containers = storage.spilled_containers or {}
+                            storage.spilled_containers[container_entity.unit_number] = container_entity
                         end
                     end
                 end

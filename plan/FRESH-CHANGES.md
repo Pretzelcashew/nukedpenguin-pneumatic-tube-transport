@@ -128,3 +128,13 @@
 1. **Pump Circuit Proxy Prototype (`prototypes/pneumatic-pump-proxy.lua`):** Registered `pneumatic-pump-circuit-proxy` cloned from `constant-combinator` with matching pump icon, 0 collision/selection boxes, and hidden, non-selectable entity flags.
 2. **Proxy Lifecycle Linkage (`prototypes/pneumatic-pump-proxy-linkage.lua`):** Implemented lifecycle event listeners for build, rotation, and destruction of `pneumatic-pump` entities to automatically spawn, align orientation, and clean up proxy entities.
 3. **Data & Runtime Wiring (`data.lua` & `control.lua`):** Required `prototypes.pneumatic-pump-proxy` in `data.lua` and `prototypes.pneumatic-pump-proxy-linkage` in `control.lua` at top-level to integrate pump circuit proxies into mod startup and runtime execution.
+
+
+### Revision: Pneumatic Pump GUI, Settings Storage & Control Integration
+**Date:** 2026-08-29 13:37 (EDT)
+**Context:** Add initial implementation for Pneumatic Pump configuration by creating dedicated settings storage, an interactive configuration overlay GUI with manual toggles and circuit condition rules, and hooking entity GUI opening events.
+**Key Changes:**
+1. **Pump Settings Storage (`scripts/pump-settings.lua`):** Created dedicated settings module creating unit-indexed `storage.pump_settings` to track manual enable states (`enabled`), circuit enable toggles (`use_circuit_enable`), comparator conditions (`enable_condition`), circuit signal evaluations (`evaluate_circuit_condition`), and red/green wire channel toggles (`read_red`, `read_green`).
+2. **Configuration GUI (`scripts/pump-gui.lua`):** Created configuration overlay frame (`pump_configuration_frame`) featuring global wire channel checkboxes, master enable toggle, circuit enable toggle, signal picker button (`elem_type = "signal"`), operator dropdown (`=`, `≥`, `≤`, `>`, `<`, `≠`), and numeric constant textfield. Connected all GUI interaction handlers to update persistent `storage.pump_settings` in real time.
+3. **Proxy Open Event Linkage (`prototypes/pneumatic-pump-proxy-linkage.lua`):** Added `defines.events.on_gui_opened` listener for `pneumatic-pump` entities to launch `pump_gui.open(player, entity)` when players open a pump.
+4. **Control Integration & Storage Initialization (`control.lua`):** Required `scripts/pump-settings` and `scripts/pump-gui` at top level and initialized `storage.pump_settings` inside `setup_storage()`.

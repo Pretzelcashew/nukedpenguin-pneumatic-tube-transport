@@ -15,5 +15,9 @@
 ~add pneumatic pump circuit proxy (like the diverter's)
 
 ~make a simple gui interface for the penumatic pump, with an enable/disable, and use circuit network condition, mirroring what we do for the diverter entity.
+(do not link it into any network updates yet thats for another gemini to worry about. your only task is making the gui and how it pops up like the diverter entity gui)
+
+link up the pump updates with the network updates (how diverter update when they change states via gui and via circuit network changes)
+
 
 

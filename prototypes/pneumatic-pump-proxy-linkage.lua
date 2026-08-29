@@ -1,4 +1,5 @@
 local events = require("scripts.events")
+local pump_gui = require("scripts.pump-gui")
 
 local pump_linkage = {}
 
@@ -16,7 +17,7 @@ local destroy_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
     defines.events.on_entity_died,
-    defines.events.script_raised_destroy
+    defines.script_raised_destroy
 }
 
 local rotate_events = {
@@ -79,6 +80,18 @@ local function on_rotated(event)
     end
 end
 
+local function on_gui_opened(event)
+    if event.gui_type ~= defines.gui_type.entity then return end
+    local entity = event.entity
+    if not (entity and entity.valid) then return end
+    if entity.name ~= PUMP_NAME then return end
+
+    local player = game.get_player(event.player_index)
+    if player and player.valid then
+        pump_gui.open(player, entity)
+    end
+end
+
 for _, id in ipairs(build_events) do
     events.on_event(id, on_created)
 end
@@ -90,5 +103,7 @@ end
 for _, id in ipairs(rotate_events) do
     events.on_event(id, on_rotated)
 end
+
+events.on_event(defines.events.on_gui_opened, on_gui_opened)
 
 return pump_linkage

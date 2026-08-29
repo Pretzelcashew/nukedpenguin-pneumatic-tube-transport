@@ -1,23 +1,16 @@
 (~ = marked as completed)
 
-~provide en locale for bio capsule tech
+~make bio capsules minimum cargo increase by 1 to prevent instant packing when there is no cargo
 
-~provide better grouping of the pneumatic items for easy access
+make the liminal item holder's cargohold larger or dynamic to account for larger capsule capacities
 
-~add on alt mode overlay for flow maps
+make the spilled capsule container able to hold variable sized contents, and not be an exploit of free insertable cargo space after spill. (can take out but not put things in)
 
-~make debug commands per player
+make the spilled capsule container go away when empty (like player bodies after looting, or crashed cargo capsules in space age do)
 
-~add use circuit network toggles for the enable/disable modes of the diverter entity
+make units spawned from spoilables while on the liminal surface of the liminal item holder, make those units spill out like spilled cargo items would (this doesnt mean crash the capsule, just spawn/move the units to where the capsule is in the real world like we do when it triggers spill)
 
-~improve hub packing dispatch port picking
 
-~add pneumatic pump circuit proxy (like the diverter's)
-
-~make a simple gui interface for the penumatic pump, with an enable/disable, and use circuit network condition, mirroring what we do for the diverter entity.
-(do not link it into any network updates yet thats for another gemini to worry about. your only task is making the gui and how it pops up like the diverter entity gui)
-
-~link up the pump updates with the network updates (how diverter update when they change states via gui and via circuit network changes)
 
 
 

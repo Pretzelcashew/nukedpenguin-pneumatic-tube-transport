@@ -138,3 +138,13 @@
 2. **Configuration GUI (`scripts/pump-gui.lua`):** Created configuration overlay frame (`pump_configuration_frame`) featuring global wire channel checkboxes, master enable toggle, circuit enable toggle, signal picker button (`elem_type = "signal"`), operator dropdown (`=`, `≥`, `≤`, `>`, `<`, `≠`), and numeric constant textfield. Connected all GUI interaction handlers to update persistent `storage.pump_settings` in real time.
 3. **Proxy Open Event Linkage (`prototypes/pneumatic-pump-proxy-linkage.lua`):** Added `defines.events.on_gui_opened` listener for `pneumatic-pump` entities to launch `pump_gui.open(player, entity)` when players open a pump.
 4. **Control Integration & Storage Initialization (`control.lua`):** Required `scripts/pump-settings` and `scripts/pump-gui` at top level and initialized `storage.pump_settings` inside `setup_storage()`.
+
+
+### Revision: Pneumatic Pump Circuit & GUI Dynamic Flow Rebuild Integration
+**Date:** 2026-08-29 13:57 (EDT)
+**Context:** Harmonize pneumatic pump runtime updates with pneumatic diverter behavior by linking manual GUI settings and circuit condition evaluations directly to dynamic port resolutions and immediate network flow map recalculations.
+
+**Key Changes:**
+1. **Dynamic Pump Port Resolution (`scripts/ports/port-definitions.lua`):** Updated `port_defs.get_ports()` for `pneumatic-pump` entities to dynamically evaluate `pump_settings.is_pump_enabled(entity)` at runtime, assigning port enabled states (`enabled`), directional flows (`"in"`/`"out"` vs `"none"`), and pressure levels (`-100`/`100` vs `nil`).
+2. **Pump Manager State Scanner & Rebuild API (`scripts/networks/pump-manager.lua`):** Implemented `pump_manager.notify_settings_changed(entity)` to trigger targeted flow map recalculations (`networks_flow.build`). Expanded the 15-tick scanner to poll both power availability (`storage.pump_power_states`) and circuit/manual enable states (`storage.pump_enabled_states`).
+3. **GUI Real-Time Flow Synchronization (`scripts/pump-gui.lua`):** Wired `pump_manager.notify_settings_changed()` into all configuration GUI event handlers (`on_gui_checked_state_changed`, `on_gui_elem_changed`, `on_gui_selection_state_changed`, `on_gui_text_changed`) via a `notify_change()` helper to trigger immediate network flow updates upon user interaction.

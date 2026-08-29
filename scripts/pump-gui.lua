@@ -1,5 +1,6 @@
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
+local pump_manager = require("scripts.networks.pump-manager")
 
 local pump_gui = {}
 
@@ -11,6 +12,13 @@ local function get_comparator_index(comp)
         if v == comp then return i end
     end
     return 1
+end
+
+local function notify_change(unit_number)
+    local entity = storage.active_pumps and storage.active_pumps[unit_number]
+    if entity and entity.valid then
+        pump_manager.notify_settings_changed(entity)
+    end
 end
 
 function pump_gui.close(player)
@@ -179,6 +187,8 @@ local function on_gui_checked_state_changed(event)
     elseif element.name == "pump_use_circuit_enable" then
         settings.use_circuit_enable = element.state
     end
+
+    notify_change(tags.unit_number)
 end
 
 local function on_gui_elem_changed(event)
@@ -191,6 +201,7 @@ local function on_gui_elem_changed(event)
 
     if element.name == "pump_circuit_signal" then
         settings.enable_condition.first_signal = element.elem_value
+        notify_change(tags.unit_number)
     end
 end
 
@@ -204,6 +215,7 @@ local function on_gui_selection_state_changed(event)
 
     if element.name == "pump_circuit_comparator" then
         settings.enable_condition.comparator = COMPARATORS[element.selected_index] or "="
+        notify_change(tags.unit_number)
     end
 end
 
@@ -217,6 +229,7 @@ local function on_gui_text_changed(event)
 
     if element.name == "pump_circuit_constant" then
         settings.enable_condition.constant = tonumber(element.text) or 0
+        notify_change(tags.unit_number)
     end
 end
 

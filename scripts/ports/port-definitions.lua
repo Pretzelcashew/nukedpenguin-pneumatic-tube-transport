@@ -1,4 +1,5 @@
 local diverter_settings = require("scripts.diverter-settings")
+local pump_settings = require("scripts.pump-settings")
 
 local port_defs = {}
 
@@ -162,6 +163,22 @@ function port_defs.get_ports(entity)
     local ports = entity_ports[entity.direction]
     if not ports then
         error(string.format("[Port Definitions] Missing direction definition '%s' for entity '%s'", tostring(entity.direction), entity.name))
+    end
+
+    if entity.name == "pneumatic-pump" and entity.unit_number then
+        local is_enabled = pump_settings.is_pump_enabled(entity)
+        local dynamic_ports = {}
+        for i, base_port in ipairs(ports) do
+            table.insert(dynamic_ports, {
+                group = base_port.group,
+                connection = base_port.connection,
+                offset = base_port.offset,
+                enabled = is_enabled,
+                flow = is_enabled and base_port.flow or "none",
+                pressure = is_enabled and base_port.pressure or nil
+            })
+        end
+        return dynamic_ports
     end
 
     if entity.name == "pneumatic-diverter" and entity.unit_number then

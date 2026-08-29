@@ -1,4 +1,15 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.2
+Date: 2026-08-29
+  Features:
+    - Added English locale strings for bio capsule technologies.
+    - Reorganized pneumatic items and structures into a dedicated inventory tab.
+    - Added native Alt Mode visual overlays for flow maps and pressure levels.
+    - Refactored debug console commands and visual overlays to work per-player.
+    - Added circuit network toggles for diverter enable/disable operational modes.
+    - Improved hub packing logic to dynamically select optimal, capacity-cleared dispatch ports.
+    - Added circuit proxies, custom GUI, and dynamic network updates for pneumatic pumps.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.1
 Date: 2026-08-28
   Features:

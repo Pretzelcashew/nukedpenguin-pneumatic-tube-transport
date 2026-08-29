@@ -1,6 +1,8 @@
-provide en locale for bio capsule tech
+(~ = marked as completed)
 
-provide better grouping of the pneumatic items for easy access
+~provide en locale for bio capsule tech
+
+~provide better grouping of the pneumatic items for easy access
 
 add on alt mode overlay for flow maps
 

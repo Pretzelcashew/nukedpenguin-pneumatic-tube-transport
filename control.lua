@@ -1,6 +1,6 @@
 local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
-require("scripts/debug-manager")
+require("scripts.debug-manager")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
 require("scripts.networks.network-connect")
@@ -16,7 +16,6 @@ require("scripts.networks.diverter-manager")
 require("scripts.capsules.capsule-inputs")
 
 require("prototypes.pneumatic-diverter-proxy-linkage")
-
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}

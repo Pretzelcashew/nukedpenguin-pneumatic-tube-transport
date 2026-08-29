@@ -22,79 +22,38 @@ local function icon(path, tint)
 end
 
 data:extend({
+  -- Dedicated Inventory Tab
   {
-    type = "item",
-    name = "item-capsule",
-    icons = icon("__base__/graphics/icons/iron-plate.png", palette.standard),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-a[standard]",
-    stack_size = 1
+    type = "item-group",
+    name = "pneumatics",
+    icon = "__base__/graphics/icons/pipe.png",
+    icon_size = 64,
+    order = "z-pneumatics"
   },
+
+  -- Dedicated Subgroup Row 1: Infrastructure
   {
-    type = "item",
-    name = "biodegradable-capsule",
-    icons = icon("__base__/graphics/icons/wood.png", palette.bio),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-b[biodegradable]",
-    stack_size = 1
+    type = "item-subgroup",
+    name = "pneumatic-transport",
+    group = "pneumatics",
+    order = "a"
   },
+
+  -- Dedicated Subgroup Row 2: Capsules
   {
-    type = "tool",
-    name = "refrigerated-capsule",
-    icons = icon("__space-age__/graphics/icons/ice.png", palette.refrigerated),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-c[refrigerated]",
-    stack_size = 1,
-    durability = 100
+    type = "item-subgroup",
+    name = "pneumatic-capsules",
+    group = "pneumatics",
+    order = "b"
   },
-  {
-    type = "item",
-    name = "spent-refrigerated-capsule",
-    icons = icon("__space-age__/graphics/icons/ice.png", palette.spent),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-c[refrigerated-spent]",
-    stack_size = 1
-  },
-  {
-    type = "item",
-    name = "reinforced-capsule",
-    icons = icon("__base__/graphics/icons/steel-plate.png", palette.reinforced),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-d[reinforced]",
-    stack_size = 1
-  },
-  {
-    type = "item",
-    name = "player-transit-capsule",
-    icons = icon("__base__/graphics/icons/car.png", palette.player),
-    subgroup = "intermediate-product",
-    order = "a[capsule]-e[player]",
-    stack_size = 1
-  },
-  {
-    type = "item",
-    name = "capsule-hub-horizontal",
-    icons = icon("__base__/graphics/icons/steel-chest.png", palette.hub_h),
-    subgroup = "storage",
-    order = "b[hub-horizontal]",
-    stack_size = 5,
-    place_result = "capsule-hub-horizontal"
-  },
-  {
-    type = "item",
-    name = "capsule-hub-vertical",
-    icons = icon("__base__/graphics/icons/steel-chest.png", palette.hub_v),
-    subgroup = "storage",
-    order = "b[hub-vertical]",
-    stack_size = 5,
-    place_result = "capsule-hub-vertical"
-  },
+
+  -- Infrastructure Line Items
   {
     type = "item",
     name = "pneumatic-tube",
     icons = icon("__base__/graphics/icons/pipe.png", palette.tube),
-    subgroup = "energy-pipe-distribution",
-    order = "a[pneumatic-tube]",
+    subgroup = "pneumatic-transport",
+    order = "a[tube]",
     stack_size = 50,
     place_result = "pneumatic-tube"
   },
@@ -102,8 +61,8 @@ data:extend({
     type = "item",
     name = "pneumatic-pump",
     icons = icon("__base__/graphics/icons/pump.png", palette.pump),
-    subgroup = "energy-pipe-distribution",
-    order = "b[pneumatic-pump]",
+    subgroup = "pneumatic-transport",
+    order = "b[pump]",
     stack_size = 20,
     place_result = "pneumatic-pump"
   },
@@ -111,8 +70,8 @@ data:extend({
     type = "item",
     name = "junction",
     icons = icon("__base__/graphics/icons/iron-chest.png", palette.junction),
-    subgroup = "storage",
-    order = "z[junction]",
+    subgroup = "pneumatic-transport",
+    order = "c[junction]",
     stack_size = 50,
     place_result = "junction"
   },
@@ -120,8 +79,8 @@ data:extend({
     type = "item",
     name = "crossflow-junction",
     icons = icon("__base__/graphics/icons/iron-chest.png", palette.crossflow),
-    subgroup = "storage",
-    order = "z[crossflow-junction]",
+    subgroup = "pneumatic-transport",
+    order = "d[crossflow-junction]",
     stack_size = 50,
     place_result = "crossflow-junction"
   },
@@ -129,9 +88,78 @@ data:extend({
     type = "item",
     name = "pneumatic-diverter",
     icons = icon("__base__/graphics/icons/assembling-machine-2.png", palette.diverter),
-    subgroup = "storage",
-    order = "z[pneumatic-diverter]",
+    subgroup = "pneumatic-transport",
+    order = "e[diverter]",
     stack_size = 10,
     place_result = "pneumatic-diverter"
+  },
+  {
+    type = "item",
+    name = "capsule-hub-horizontal",
+    icons = icon("__base__/graphics/icons/steel-chest.png", palette.hub_h),
+    subgroup = "pneumatic-transport",
+    order = "f[hub-horizontal]",
+    stack_size = 5,
+    place_result = "capsule-hub-horizontal"
+  },
+  {
+    type = "item",
+    name = "capsule-hub-vertical",
+    icons = icon("__base__/graphics/icons/steel-chest.png", palette.hub_v),
+    subgroup = "pneumatic-transport",
+    order = "g[hub-vertical]",
+    stack_size = 5,
+    place_result = "capsule-hub-vertical"
+  },
+
+  -- Capsule Vessels Line Items
+  {
+    type = "item",
+    name = "item-capsule",
+    icons = icon("__base__/graphics/icons/iron-plate.png", palette.standard),
+    subgroup = "pneumatic-capsules",
+    order = "a[standard]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "biodegradable-capsule",
+    icons = icon("__base__/graphics/icons/wood.png", palette.bio),
+    subgroup = "pneumatic-capsules",
+    order = "b[biodegradable]",
+    stack_size = 1
+  },
+  {
+    type = "tool",
+    name = "refrigerated-capsule",
+    icons = icon("__space-age__/graphics/icons/ice.png", palette.refrigerated),
+    subgroup = "pneumatic-capsules",
+    order = "c[refrigerated]",
+    stack_size = 1,
+    durability = 100
+  },
+  {
+    type = "item",
+    name = "spent-refrigerated-capsule",
+    icons = icon("__space-age__/graphics/icons/ice.png", palette.spent),
+    subgroup = "pneumatic-capsules",
+    order = "d[spent-refrigerated]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "reinforced-capsule",
+    icons = icon("__base__/graphics/icons/steel-plate.png", palette.reinforced),
+    subgroup = "pneumatic-capsules",
+    order = "e[reinforced]",
+    stack_size = 1
+  },
+  {
+    type = "item",
+    name = "player-transit-capsule",
+    icons = icon("__base__/graphics/icons/car.png", palette.player),
+    subgroup = "pneumatic-capsules",
+    order = "f[player]",
+    stack_size = 1
   }
 })

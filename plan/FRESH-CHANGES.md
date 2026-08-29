@@ -70,3 +70,12 @@
 **Key Changes:**
 1. **Mod Metadata Manifest (`info.json`):** Graduated mod version from `0.0.1` to `0.1.0`. Updated engine requirements to `base >= 2.1.0`, set a hard dependency for `space-age >= 2.1.0` to enforce expansion feature requirements, and retained `? quality` as an optional integration.
 2. **Engine Changelog (`changelog.txt`):** Created standard Factorio-formatted release log detailing initial public testing feature set for version 0.1.0.
+
+
+### Revision: Dedicated Inventory Group & Technology Localization Fixes
+**Date:** 2026-08-29 10:27 (EDT)
+**Context:** Added a dedicated inventory tab for pneumatic infrastructure and capsules to clear GUI clutter, and resolved tech tree localization rendering issues for multi-tier bio-capsule research nodes.
+**Key Changes:**
+1. **Custom Inventory Tab & Subgroups (`prototypes/item.lua`):** Registered a new `item-group` (`pneumatics`) alongside two `item-subgroup` rows (`pneumatic-transport` and `pneumatic-capsules`). Reassigned all structure entities and capsule vessel items to these subgroups, moving pneumatic content out of vanilla Logistics/Intermediates into its own dedicated UI tab.
+2. **Item Group Localization (`locale/en/config.cfg`):** Added `[item-group-name]` category containing `pneumatics=Pneumatic Transport` to properly render the tab tooltip name in player inventories.
+3. **Technology Level Localization Fix (`locale/en/config.cfg`):** Resolved the `Unknown key` error and literal `__1__` formatting bugs by standardizing `bio-capsule-integrity` as the base key under `[technology-name]`. This allows Factorio's locale engine to handle dynamic level appending automatically while rendering the matching `[technology-description]` string across all four tiers.

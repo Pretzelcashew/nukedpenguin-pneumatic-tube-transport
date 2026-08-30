@@ -13,6 +13,20 @@ local MAX_SPEED_TILES_PER_SEC = 60
 
 local capsule_motion = {}
 
+--- Efficiently retrieves the unit_number from a port_key ("unit_number:port_index")
+--- Uses node metadata if available, falling back to fast plain string sub without regex.
+--- @param port_key string|nil
+--- @return number|nil unit_number
+local function get_unit_number(port_key)
+    if not port_key then return nil end
+    local node = capsule_motion.get_node(port_key)
+    if node and node.unit_number then
+        return node.unit_number
+    end
+    local colon = string.find(port_key, ":", 1, true)
+    return colon and tonumber(string.sub(port_key, 1, colon - 1))
+end
+
 local function evaluate_filter_slot(slot, payload_item)
     if not slot then return nil end
     local filter_item = slot.item or slot.signal
@@ -76,11 +90,20 @@ end
 
 local function check_diverter_port_filter(port_key, payload_item)
     if not (port_key and storage.diverter_settings) then return true end
-    local unit_str, port_str = port_key:match("^(%d+):(%d+)$")
-    if not (unit_str and port_str) then return true end
 
-    local unit_number = tonumber(unit_str)
-    local port_index = tonumber(port_str)
+    local node = capsule_motion.get_node(port_key)
+    local unit_number, port_index
+    if node then
+        unit_number = node.unit_number
+        port_index = node.port_index
+    else
+        local colon = string.find(port_key, ":", 1, true)
+        if not colon then return true end
+        unit_number = tonumber(string.sub(port_key, 1, colon - 1))
+        port_index = tonumber(string.sub(port_key, colon + 1))
+    end
+    if not (unit_number and port_index) then return true end
+
     local d_settings = storage.diverter_settings[unit_number]
     if not (d_settings and d_settings.ports) then return true end
 
@@ -152,11 +175,11 @@ end
 function capsule_motion.has_entity_network_capacity(from_port_key, target_port_key)
     if not (storage.networks and storage.networks.port_to_network) then return false end
 
-    local target_unit = tonumber(target_port_key:match("^(%d+)"))
+    local target_unit = get_unit_number(target_port_key)
     local target_net_id = storage.networks.port_to_network[target_port_key]
     if not (target_unit and target_net_id) then return false end
 
-    local current_unit = tonumber(from_port_key:match("^(%d+)"))
+    local current_unit = get_unit_number(from_port_key)
     local current_net_id = storage.networks.port_to_network[from_port_key]
     local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id, target_port_key)
 
@@ -245,7 +268,7 @@ function capsule_motion.select_next_target(capsule)
     for _, hop_key in ipairs(hops) do
         local is_internal_hub_hop = false
         if is_hub then
-            local target_unit = tonumber(hop_key:match("^(%d+)"))
+            local target_unit = get_unit_number(hop_key)
             if target_unit == entity.unit_number then
                 is_internal_hub_hop = true
             end
@@ -264,7 +287,7 @@ function capsule_motion.select_next_target(capsule)
         for _, hop_key in ipairs(hops) do
             local is_internal_hub_hop = false
             if is_hub then
-                local target_unit = tonumber(hop_key:match("^(%d+)"))
+                local target_unit = get_unit_number(hop_key)
                 if target_unit == entity.unit_number then
                     is_internal_hub_hop = true
                 end
@@ -352,7 +375,7 @@ function capsule_motion.select_next_target(capsule)
 end
 
 function capsule_motion.handle_arrival(capsule, id)
-    local new_unit_num = tonumber(capsule.from_port_key:match("^(%d+)"))
+    local new_unit_num = get_unit_number(capsule.from_port_key)
     
     if capsule.source_hub and new_unit_num ~= capsule.source_hub then
         capsule.source_hub = nil

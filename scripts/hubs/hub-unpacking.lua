@@ -38,6 +38,16 @@ local function can_insert_all(holder_inv, hub_inv)
     end
 
     local supports_filters = hub_inv.supports_filters()
+
+    -- Fast-path for empty container without filters: calculate total slots needed directly
+    if hub_inv.is_empty() and not supports_filters then
+        local total_slots_needed = 0
+        for _, req in pairs(required_items) do
+            total_slots_needed = total_slots_needed + math.ceil(req.count / req.stack_size)
+        end
+        return total_slots_needed <= max_usable_slot
+    end
+
     local partial_capacities = {}
     local filtered_empty_slots = {}
     local unmapped_empty_slots = 0

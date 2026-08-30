@@ -1,5 +1,3 @@
--- FILE: scripts/capsules/capsule-runner.lua
-
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
@@ -10,12 +8,28 @@ local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 
+local PARKED_RETRY_INTERVAL = 10
+
 local capsule_runner = {}
 
 capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_at_entity
 capsule_runner.get_capsule_count_at_entity_network = capsule_queries.get_capsule_count_at_entity_network
-capsule_runner.remove_capsule = capsule_queries.remove_capsule
 capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
+
+--- Clears retry delay on all parked capsules, forcing an immediate pathfinding / unpacking retry.
+function capsule_runner.wake_parked_capsules()
+    if not storage.capsules then return end
+    for _, capsule in pairs(storage.capsules) do
+        if not capsule.to_port_key then
+            capsule.next_retry_tick = nil
+        end
+    end
+end
+
+function capsule_runner.remove_capsule(capsule_id)
+    capsule_queries.remove_capsule(capsule_id)
+    capsule_runner.wake_parked_capsules()
+end
 
 local function init_storage()
     storage.capsules = storage.capsules or {}
@@ -124,7 +138,7 @@ local function handle_liminal_entity_spawn(entity)
     end
 end
 
-local function update_capsules()
+local function update_capsules(current_tick)
     if not storage.capsules then return end
 
     for id, capsule in pairs(storage.capsules) do
@@ -138,19 +152,28 @@ local function update_capsules()
             safety_counter = safety_counter + 1
 
             if not capsule.to_port_key then
-                if capsule_motion.handle_arrival(capsule, id) then break end
-
-                capsule.to_port_key = capsule_motion.select_next_target(capsule)
-                capsule.progress = 0.0
-
-                if capsule.to_port_key then
-                    local new_speed = capsule_motion.calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
-                    if current_speed > 0 then
-                        tiles_this_tick = tiles_this_tick * (new_speed / current_speed)
-                    else
-                        tiles_this_tick = new_speed
+                local can_retry = not capsule.next_retry_tick or (current_tick and current_tick >= capsule.next_retry_tick)
+                if can_retry then
+                    if capsule_motion.handle_arrival(capsule, id) then
+                        capsule_runner.wake_parked_capsules()
+                        break
                     end
-                    current_speed = new_speed
+
+                    capsule.to_port_key = capsule_motion.select_next_target(capsule)
+                    capsule.progress = 0.0
+
+                    if capsule.to_port_key then
+                        capsule.next_retry_tick = nil
+                        local new_speed = capsule_motion.calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
+                        if current_speed > 0 then
+                            tiles_this_tick = tiles_this_tick * (new_speed / current_speed)
+                        else
+                            tiles_this_tick = new_speed
+                        end
+                        current_speed = new_speed
+                    else
+                        capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
+                    end
                 end
             end
 
@@ -158,6 +181,7 @@ local function update_capsules()
             if not from_pos then
                 capsule_queries.clear_capsule_render(capsule)
                 storage.capsules[id] = nil
+                capsule_runner.wake_parked_capsules()
                 break
             end
             
@@ -170,6 +194,7 @@ local function update_capsules()
             if not to_pos then
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
+                capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
                 break
             end
 
@@ -183,7 +208,10 @@ local function update_capsules()
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 
-                if capsule_motion.handle_arrival(capsule, id) then break end
+                if capsule_motion.handle_arrival(capsule, id) then
+                    capsule_runner.wake_parked_capsules()
+                    break
+                end
             else
                 local remaining_distance = distance * (1.0 - capsule.progress)
 
@@ -195,7 +223,10 @@ local function update_capsules()
                     capsule.progress = 0.0
                     curr_pos = { x = to_pos.x, y = to_pos.y }
                     
-                    if capsule_motion.handle_arrival(capsule, id) then break end
+                    if capsule_motion.handle_arrival(capsule, id) then
+                        capsule_runner.wake_parked_capsules()
+                        break
+                    end
                 else
                     capsule.progress = capsule.progress + (tiles_this_tick / distance)
                     curr_pos.x = from_pos.x + dx * capsule.progress
@@ -208,6 +239,7 @@ local function update_capsules()
         if storage.capsules[id] then
             if curr_pos and surface and capsule_lifecycle.update(capsule, id, curr_pos, surface) then
                 -- Capsule ruptured mid-transit
+                capsule_runner.wake_parked_capsules()
             else
                 capsule_renderer.render(capsule, id, curr_pos, surface)
             end
@@ -233,6 +265,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         source_hub = entity.unit_number,
         passenger = passenger
     }
+    capsule_runner.wake_parked_capsules()
     return true
 end
 
@@ -255,6 +288,7 @@ function capsule_runner.emergency_eject(player)
             capsule_queries.clear_capsule_render(capsule)
             capsule_manager.remove(capsule.capsule_id or id)
             storage.capsules[id] = nil
+            capsule_runner.wake_parked_capsules()
             break
         end
     end
@@ -278,7 +312,7 @@ events.on_event(defines.events.on_built_entity, function(event)
 end)
 
 events.on_event(defines.events.on_tick, function(event)
-    update_capsules()
+    update_capsules(event.tick)
 
     if event.tick % 60 == 0 then
         local liminal_surf = game.surfaces["liminal_surface"]

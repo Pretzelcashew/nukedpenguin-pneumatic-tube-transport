@@ -26,6 +26,8 @@
 
 ~fix flow rendering flag from not updating properly (seems tied to reflow), notably /toggle-flow states dont refresh when using the command unless forcing an update on a network segment by way of interaction
 
+~investigate this line from capsule lifecyle and its implications: local current_durability = stack.durability or 1000
+
 fix diverters from backing up if there's an open route![alt text](image.png)
 
 investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)
@@ -39,8 +41,3 @@ mark capsules that dont have spoilage to not be re-poll candidates for dominant 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
 make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
-
-investigate this line from capsule lifecyle and its implications: local current_durability = stack.durability or 1000
-
-
-

@@ -18,9 +18,11 @@
 
 ~add capsule peeking feature /capsule-peek lets you hover your mouse over a pneumatic entity and it will render capsules in any internal networks of this entity that are occupying this entity (so if its a merged network, you only see capsules on the tube you're hovering over) toggles off the capsule-debug for that player as they are mutually exclusive but can also be both off at the same time. (both only render during alt mode)
 
-fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules), I believe it has to do with caching.
+~fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules), I believe it has to do with caching.
 
 do the same wakeup update for diverters as done previously with hubs and pumps
+
+further fix the stale pump status in certain situations (like flipping the pump and toggling enable/disable didnt update the flow of the network, and flipping it back and toggling enable disable didnt update it either, as if flipping/rortating the pump caused the flow updates from enable/disable to be ineffective even though initially enable/disable was effective prior to messing with pump flip/rotation). I believe this also affect diverters the same way.
 
 fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
 

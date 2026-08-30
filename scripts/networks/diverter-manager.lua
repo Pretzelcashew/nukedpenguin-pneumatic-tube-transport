@@ -12,16 +12,31 @@ local function rebuild_diverter_networks(entity)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
+    local visited = {}
     for p_idx, _ in ipairs(ports) do
         local port_key = unit_number .. ":" .. p_idx
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-        if net_id then
+        if net_id and not visited[net_id] then
+            visited[net_id] = true
             networks_flow.build(net_id)
         end
     end
 end
 
 function diverter_manager.notify_settings_changed(entity)
+    if not (entity and entity.valid) then return end
+    storage.diverter_power_states = storage.diverter_power_states or {}
+    storage.diverter_port_states = storage.diverter_port_states or {}
+
+    local unit_number = entity.unit_number
+    storage.diverter_power_states[unit_number] = (entity.energy > 0)
+
+    local current_ports = {}
+    for i = 1, 4 do
+        current_ports[i] = diverter_settings.is_port_enabled(entity, i)
+    end
+    storage.diverter_port_states[unit_number] = current_ports
+
     rebuild_diverter_networks(entity)
 end
 

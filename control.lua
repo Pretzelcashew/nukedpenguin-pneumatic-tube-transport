@@ -31,6 +31,7 @@ local function setup_storage()
     storage.pump_settings = storage.pump_settings or {}
     storage.active_diverters = storage.active_diverters or {}
     storage.diverter_power_states = storage.diverter_power_states or {}
+    storage.bio_integrity_levels = storage.bio_integrity_levels or {}
     networks.init()
     liminal_surface.init_storage()
 

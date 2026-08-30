@@ -2,8 +2,70 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local hub_spill = require("scripts.hubs.hub-spill")
+local events = require("scripts.events")
 
 local capsule_lifecycle = {}
+
+--- Calculates the research tier for bio capsule integrity (0 to 4) for a force
+local function calculate_bio_integrity_level(force)
+    if not (force and force.valid) then return 0 end
+    if force.technologies["bio-capsule-integrity-4"] and force.technologies["bio-capsule-integrity-4"].researched then
+        return 4
+    elseif force.technologies["bio-capsule-integrity-3"] and force.technologies["bio-capsule-integrity-3"].researched then
+        return 3
+    elseif force.technologies["bio-capsule-integrity-2"] and force.technologies["bio-capsule-integrity-2"].researched then
+        return 2
+    elseif force.technologies["bio-capsule-integrity-1"] and force.technologies["bio-capsule-integrity-1"].researched then
+        return 1
+    end
+    return 0
+end
+
+--- Returns cached bio integrity research tier for force from storage, populating cache on demand
+function capsule_lifecycle.get_bio_integrity_level(force)
+    if not (force and force.valid) then return 0 end
+    storage.bio_integrity_levels = storage.bio_integrity_levels or {}
+    local f_idx = force.index
+    local cached = storage.bio_integrity_levels[f_idx]
+    if cached == nil then
+        cached = calculate_bio_integrity_level(force)
+        storage.bio_integrity_levels[f_idx] = cached
+    end
+    return cached
+end
+
+-- Event Listeners to invalidate/update cached technology research levels
+events.on_event(defines.events.on_research_finished, function(event)
+    local tech = event.research
+    if tech and tech.valid and string.sub(tech.name, 1, 22) == "bio-capsule-integrity-" then
+        local force = tech.force
+        if force and force.valid then
+            storage.bio_integrity_levels = storage.bio_integrity_levels or {}
+            storage.bio_integrity_levels[force.index] = calculate_bio_integrity_level(force)
+        end
+    end
+end)
+
+events.on_event(defines.events.on_research_reversed, function(event)
+    local tech = event.research
+    if tech and tech.valid and string.sub(tech.name, 1, 22) == "bio-capsule-integrity-" then
+        local force = tech.force
+        if force and force.valid then
+            storage.bio_integrity_levels = storage.bio_integrity_levels or {}
+            storage.bio_integrity_levels[force.index] = calculate_bio_integrity_level(force)
+        end
+    end
+end)
+
+events.on_event(defines.events.on_technology_effects_reset, function(event)
+    local force = event.force
+    if force and force.valid then
+        storage.bio_integrity_levels = storage.bio_integrity_levels or {}
+        storage.bio_integrity_levels[force.index] = calculate_bio_integrity_level(force)
+    else
+        storage.bio_integrity_levels = {}
+    end
+end)
 
 --- Handles per-tick passenger position synchronization, spill risk, and refrigerated mechanics
 function capsule_lifecycle.update(capsule, id, curr_pos, surface)
@@ -12,36 +74,31 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
 
     local def = phys_capsule.definition
 
-    -- 1. Player Transit Teleportation
+    -- 1. Player Transit Teleportation (Runs every tick for smooth player movement)
     if capsule.passenger and capsule.passenger.valid then
         capsule.passenger.teleport(curr_pos, surface)
     end
 
-    -- 2. Mid-Transit Structural Failure (Biodegradable / Fragile Spill Risk)
-    if def.spill_risk then
+    -- 2. Mid-Transit Structural Failure (Evaluated every 10 ticks, staggered per capsule)
+    if def.spill_risk and ((game.tick + id) % 10 == 0) then
         local effective_risk = def.spill_risk
         local holder = phys_capsule.holder
         local force = (holder and holder.valid and holder.force) or (capsule.passenger and capsule.passenger.valid and capsule.passenger.force)
 
         if force then
-            local tech_level = 0
-            if force.technologies["bio-capsule-integrity-4"] and force.technologies["bio-capsule-integrity-4"].researched then
-                tech_level = 4
-            elseif force.technologies["bio-capsule-integrity-3"] and force.technologies["bio-capsule-integrity-3"].researched then
-                tech_level = 3
-            elseif force.technologies["bio-capsule-integrity-2"] and force.technologies["bio-capsule-integrity-2"].researched then
-                tech_level = 2
-            elseif force.technologies["bio-capsule-integrity-1"] and force.technologies["bio-capsule-integrity-1"].researched then
-                tech_level = 1
-            end
+            local tech_level = capsule_lifecycle.get_bio_integrity_level(force)
 
             -- Reduces baseline spill risk by 25% per tier (100% at L0, 75% at L1, 50% at L2, 25% at L3, 0% at L4)
             effective_risk = math.max(0, effective_risk * (1.0 - (tech_level * 0.25)))
         end
 
-        if effective_risk > 0 and math.random() < effective_risk then
-            hub_spill.spill_capsule(capsule.capsule_id or id, surface, curr_pos, nil, true)
-            return true
+        if effective_risk > 0 then
+            -- Scale 1-tick risk over 10 ticks: R_10 = 1 - (1 - r)^10
+            local interval_risk = 1.0 - ((1.0 - effective_risk) ^ 10)
+            if math.random() < interval_risk then
+                hub_spill.spill_capsule(capsule.capsule_id or id, surface, curr_pos, nil, true)
+                return true
+            end
         end
     end
 

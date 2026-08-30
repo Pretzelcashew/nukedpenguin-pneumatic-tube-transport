@@ -79,3 +79,12 @@
 1. **Early-Exit Capacity Threshold (`scripts/capsules/capsule-queries.lua`):** Added an optional `max_threshold` parameter to `get_capsule_count_at_entity_network()`. Iteration over `storage.capsules` early-returns immediately once `count >= max_threshold`, converting $O(N)$ table scans into $O(1)$ early exits on occupied target segments.
 2. **Pre-Resolved Group Passing & Deferred Evaluation (`scripts/capsules/capsule-motion.lua`):** Refactored `has_entity_network_capacity()` to pre-calculate `target_group` once and pass it directly as a parameter to `get_capsule_count_at_entity_network()`. Deferred `current_group` query (`get_port_group(from_port_key)`) to execute strictly during same-entity/same-network hops.
 3. **Flow Map Node Group Caching (`scripts/capsules/capsule-queries.lua`):** Updated `get_port_group()` to cache resolved port group IDs directly on flow map nodes (`node.group = group or false`), ensuring subsequent group checks complete in $O(1)$ time without re-querying entity prototype port definitions.
+
+
+### Revision: Per-Force Bio-Integrity Tech Caching & Staggered Fragile Spill Evaluation
+**Date:** 2026-08-29 23:37 (EDT)
+**Context:** Eliminate per-tick `force.technologies` string indexing overhead and 60Hz `math.random()` RNG execution on fragile transit capsules by implementing event-driven technology level caching and staggered interval risk scaling.
+**Key Changes:**
+1. **Per-Force Technology Level Caching (`scripts/capsules/capsule-lifecycle.lua` & `control.lua`):** Replaced per-tick `force.technologies` string table lookups with an O(1) cached research tier lookup (`storage.bio_integrity_levels[force.index]`). Initialized `storage.bio_integrity_levels` in `control.lua` (`setup_storage`).
+2. **Event-Driven Research Sync (`scripts/capsules/capsule-lifecycle.lua`):** Registered event listeners for `on_research_finished`, `on_research_reversed`, and `on_technology_effects_reset` to automatically update cached `bio-capsule-integrity` research tiers upon technology state changes.
+3. **Staggered 10-Tick Spill Evaluation & Risk Compounding (`scripts/capsules/capsule-lifecycle.lua`):** Throttled fragile container spill risk checks to evaluate every 10 ticks (`(game.tick + id) % 10 == 0`), applying exact probability compounding ($R_{10} = 1 - (1 - r)^{10}$) to reduce RNG rolls by 90% while preserving mathematically exact failure rates.

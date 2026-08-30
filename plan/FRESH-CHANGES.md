@@ -122,3 +122,12 @@
 **Key Changes:**
 1. **Player-Scoped Flow Render Handle Cleanup (`scripts/networks/networks-flow.lua`):** Refactored `networks_flow.clear_all(player_index)` to properly unpack network entries under `storage.flow_render_ids[player_index]` keyed by player index, ensuring instant destruction of C++ line and text overlay handles upon command toggle without leaking objects.
 2. **Player-Scoped & Lazy Flow Map Rendering (`scripts/networks/networks-flow.lua`):** Updated `networks_flow.draw_all(player_index)` to accept an optional target player handle and lazily generate missing `flow_map` metadata via `build_single_network(net_id)`, guaranteeing immediate vector overlay drawing when `/toggle-flow` or `/toggle-debug` is executed without requiring physical network interaction.
+
+
+### Revision: Tool Durability Dynamic Prototype Resolution & Lifespan Engine Clamping Fix
+**Date:** 2026-08-30 12:27 (EDT)
+**Context:** Eliminate hardcoded numerical fallbacks during refrigerated capsule durability evaluation, resolving engine clamping reset loops and preventing artificial 10x refrigeration lifespan extensions while ensuring dynamic prototype compatibility across custom items and quality tiers.
+**Key Changes:**
+1. **Dynamic Prototype Durability Resolution (`scripts/capsules/capsule-lifecycle.lua`):** Replaced hardcoded `1000` fallback in `current_durability` calculation with dynamic fallback to `stack.prototype.durability`. Ensures exact alignment with item prototype definitions (`durability = 100` on `refrigerated-capsule`) without script-level magic numbers.
+2. **Engine Clamping & Lifespan Reset Elimination (`scripts/capsules/capsule-lifecycle.lua`):** Fixed C++ `LuaItemStack.durability` clamping behavior where uninitialized tool stacks assigned values above prototype max (e.g. 999 > 100) were clamped back to 100.0 every tick, which previously stuck durability at maximum and artificially inflated refrigeration lifespan by 10x.
+3. **Arithmetic Guarding & Exception Prevention (`scripts/capsules/capsule-lifecycle.lua`):** Wrapped durability decrement routines in a protective `if current_durability then` check, preventing Lua arithmetic runtime errors on non-tool or durability-less item stacks.

@@ -177,21 +177,23 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                         if stack and stack.valid_for_read and stack.is_tool then
                             local caps_def = capsule_defs.types[stack.name]
                             if caps_def and caps_def.spoilage_modifier and caps_def.spoilage_modifier < 1.0 then
-                                local current_durability = stack.durability or 1000
-                                local new_durability = current_durability - 1
+                                local current_durability = stack.durability or (stack.prototype and stack.prototype.durability)
+                                if current_durability then
+                                    local new_durability = current_durability - 1
 
-                                if new_durability <= 0 then
-                                    local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
-                                    local quality = stack.quality
-                                    inv[p_slot].clear()
-                                    inv[p_slot].set_stack({
-                                        name = spent_item_name,
-                                        count = 1,
-                                        quality = quality
-                                    })
-                                    phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
-                                else
-                                    stack.durability = new_durability
+                                    if new_durability <= 0 then
+                                        local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
+                                        local quality = stack.quality
+                                        inv[p_slot].clear()
+                                        inv[p_slot].set_stack({
+                                            name = spent_item_name,
+                                            count = 1,
+                                            quality = quality
+                                        })
+                                        phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
+                                    else
+                                        stack.durability = new_durability
+                                    end
                                 end
                             end
                         end

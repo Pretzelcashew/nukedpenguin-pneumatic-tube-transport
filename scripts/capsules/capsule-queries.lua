@@ -22,20 +22,23 @@ function capsule_queries.get_port_group(port_key)
     return port_def and port_def.group
 end
 
---- Destroys the visual rendering object(s) associated with a capsule
+--- Destroys the visual rendering object(s) associated with a capsule and clears cache metadata
 --- @param capsule table
 function capsule_queries.clear_capsule_render(capsule)
-    if capsule and capsule.render_id then
-        if type(capsule.render_id) == "table" then
-            for _, render_obj in ipairs(capsule.render_id) do
-                if render_obj and render_obj.valid then
-                    render_obj.destroy()
+    if capsule then
+        if capsule.render_id then
+            if type(capsule.render_id) == "table" then
+                for _, render_obj in ipairs(capsule.render_id) do
+                    if render_obj and render_obj.valid then
+                        render_obj.destroy()
+                    end
                 end
+            elseif capsule.render_id.valid then
+                capsule.render_id.destroy()
             end
-        elseif capsule.render_id.valid then
-            capsule.render_id.destroy()
+            capsule.render_id = nil
         end
-        capsule.render_id = nil
+        capsule.render_cache = nil
     end
 end
 

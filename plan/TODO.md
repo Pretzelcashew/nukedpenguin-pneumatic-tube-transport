@@ -16,5 +16,9 @@
 
 investigate why stalled capsules impact fps so greatly even in low quantities (a stalled capsule is one that isnt moving through the network, just parked, waiting for a spot)
 
+add capsule peeking feature /capsule-peek lets you hover your mouse over a pneumatic entity and it will render capsules in any internal networks of this entity that are occupying this entity (so if its a merged network, you only see capsules on the tube you're hovering over) toggles off the capsule-debug for that player as they are mutually exclusive but can also be both off at the same time. (both only render during alt mode)
+
+fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
+
 
 

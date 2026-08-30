@@ -262,6 +262,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         last_port_key = nil,
         progress = 0.0,
         render_id = nil,
+        render_cache = nil,
         source_hub = entity.unit_number,
         passenger = passenger
     }

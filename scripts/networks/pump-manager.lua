@@ -12,10 +12,12 @@ local function rebuild_pump_networks(entity)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
+    local visited = {}
     for p_idx, _ in ipairs(ports) do
         local port_key = unit_number .. ":" .. p_idx
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-        if net_id then
+        if net_id and not visited[net_id] then
+            visited[net_id] = true
             networks_flow.build(net_id)
         end
     end
@@ -109,6 +111,19 @@ local destroy_events = {
 for _, id in ipairs(destroy_events) do
     events.on_event(id, function(event)
         unregister_pump(event.entity)
+    end)
+end
+
+local rotate_events = {
+    defines.events.on_player_rotated_entity,
+    defines.events.on_player_flipped_entity
+}
+for _, id in ipairs(rotate_events) do
+    events.on_event(id, function(event)
+        local entity = event.entity
+        if entity and entity.valid and entity.name == "pneumatic-pump" then
+            pump_manager.notify_settings_changed(entity)
+        end
     end)
 end
 

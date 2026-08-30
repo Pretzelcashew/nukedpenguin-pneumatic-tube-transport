@@ -38,4 +38,6 @@ investigate this line from capsule lifecyle and its implications: local current_
 
 make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
 
+fix diverters from backing up if there's an open route![alt text](image.png)
 
+investigate why recently packed capsules are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)

@@ -105,3 +105,12 @@
 **Key Changes:**
 1. **Synchronous Diverter State Cache Sync (`scripts/networks/diverter-manager.lua`):** Updated `diverter_manager.notify_settings_changed()` to immediately synchronize `storage.diverter_power_states` and `storage.diverter_port_states` arrays upon GUI configuration events. This guarantees instant flow map updates and listener execution (`capsule_runner.wake_parked_capsules`) while preventing the 15-tick background scanner (`check_diverter_states`) from detecting stale mismatches and triggering duplicate flow rebuilds.
 2. **Network Rebuild Deduplication (`scripts/networks/diverter-manager.lua`):** Refactored `rebuild_diverter_networks()` to utilize a `visited` network ID lookup table across all 4 diverter ports, ensuring `networks_flow.build(net_id)` is executed at most once per connected network per update.
+
+
+### Revision: Topology-State Decoupling, Port Evaluator Cleanup & Orientation State Sync
+**Date:** 2026-08-30 10:28 (EDT)
+**Context:** Resolve stale flow map vectors on pneumatic pumps and diverters when rotated or flipped while disabled, and ensure enable/disable GUI toggles reliably update flow map state across orientation changes.
+**Key Changes:**
+1. **Physical Topology & Operational State Decoupling (`scripts/ports/port-evaluator.lua` & `scripts/ports/port-definitions.lua`):** Removed `enabled == false` connection rejection in `port_evaluator.are_compatible()`, allowing spatial graph topology (`storage.port_connections`) to form permanently based on physical directional compatibility (`"in"`, `"out"`, `"any"`). Dynamic pressure (`nil`) and flow vector suppression (`enabled = false`) remain active when disabled without corrupting graph links.
+2. **Synchronous Orientation Cache & Flow Rebuild (`scripts/networks/network-rotate.lua`, `scripts/networks/pump-manager.lua`, `scripts/networks/diverter-manager.lua`):** Hooked `on_player_rotated_entity` and `on_player_flipped_entity` across pump and diverter managers to immediately update power and port state caches upon rotation/flipping.
+3. **Pump Network Rebuild Deduplication (`scripts/networks/pump-manager.lua`):** Integrated a `visited` network ID lookup table into `rebuild_pump_networks()` to eliminate duplicate `networks_flow.build()` calls across multi-port pump sub-networks.

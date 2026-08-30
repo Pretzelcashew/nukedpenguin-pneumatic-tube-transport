@@ -31,11 +31,6 @@ function port_evaluator.are_compatible(entity_a, port_a_index, entity_b, port_b_
 
     if not (port_a and port_b) then return false end
 
-    -- Active state check: closed/disabled ports reject connection
-    if port_a.enabled == false or port_b.enabled == false then
-        return false
-    end
-
     -- Flow check
     local flow_valid = check_pair(compat_defs.flows, port_a.flow, port_b.flow)
     if not flow_valid then

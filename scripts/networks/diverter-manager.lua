@@ -130,4 +130,17 @@ for _, id in ipairs(destroy_events) do
     end)
 end
 
+local rotate_events = {
+    defines.events.on_player_rotated_entity,
+    defines.events.on_player_flipped_entity
+}
+for _, id in ipairs(rotate_events) do
+    events.on_event(id, function(event)
+        local entity = event.entity
+        if entity and entity.valid and entity.name == "pneumatic-diverter" then
+            diverter_manager.notify_settings_changed(entity)
+        end
+    end)
+end
+
 return diverter_manager

@@ -174,7 +174,7 @@ function port_defs.get_ports(entity)
                 connection = base_port.connection,
                 offset = base_port.offset,
                 enabled = is_enabled,
-                flow = is_enabled and base_port.flow or "none",
+                flow = base_port.flow,
                 pressure = is_enabled and base_port.pressure or nil
             })
         end
@@ -190,15 +190,13 @@ function port_defs.get_ports(entity)
                 local is_enabled = diverter_settings.is_port_enabled(entity, i)
                 local mode = p_setting and p_setting.mode or "input"
 
-                local flow = "none"
+                local flow = (mode == "input") and "in" or "out"
                 local pressure = nil
 
                 if is_enabled then
                     if mode == "input" then
-                        flow = "in"
                         pressure = -100
                     else
-                        flow = "out"
                         pressure = 100
                     end
                 end

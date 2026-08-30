@@ -54,7 +54,16 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                 capsule.slot_spoil_percents = capsule.slot_spoil_percents or {}
                 local actively_cooling = false
 
-                for i = 1, #inv do
+                -- Calculate active slot bound to avoid allocating C++ LuaItemStack userdata for red-locked slots
+                local max_slot = #inv
+                if inv.supports_bar() then
+                    local bar = inv.get_bar()
+                    if bar then
+                        max_slot = math.min(#inv, bar - 1)
+                    end
+                end
+
+                for i = 1, max_slot do
                     local stack = inv[i]
                     if stack and stack.valid_for_read and stack.spoil_percent > 0 then
                         local current_spoil = stack.spoil_percent
@@ -96,10 +105,17 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                     end
                 end
 
+                -- Purge any stale spoil percent tracking entries beyond current max active slot
+                for k in pairs(capsule.slot_spoil_percents) do
+                    if k > max_slot then
+                        capsule.slot_spoil_percents[k] = nil
+                    end
+                end
+
                 -- Deduct tool durability strictly from the primary capsule shell slot
                 if actively_cooling and phys_capsule.primary_slot then
                     local p_slot = phys_capsule.primary_slot
-                    if p_slot <= #inv then
+                    if p_slot <= max_slot then
                         local stack = inv[p_slot]
                         if stack and stack.valid_for_read and stack.is_tool then
                             local caps_def = capsule_defs.types[stack.name]

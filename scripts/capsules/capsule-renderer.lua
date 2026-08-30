@@ -21,7 +21,16 @@ function capsule_renderer.get_dominant_item(capsule_id)
     local dominant_vessel_item = nil
     local primary_slot = cap_data.primary_slot
 
-    for i = 1, #inventory do
+    -- Calculate active slot bound to avoid allocating C++ LuaItemStack userdata for red-locked slots
+    local max_slot = #inventory
+    if inventory.supports_bar() then
+        local bar = inventory.get_bar()
+        if bar then
+            max_slot = math.min(#inventory, bar - 1)
+        end
+    end
+
+    for i = 1, max_slot do
         local stack = inventory[i]
         if stack and stack.valid_for_read and stack.count > 0 then
             if primary_slot and i == primary_slot then
@@ -81,10 +90,13 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         render_objects_valid = false
     end
 
-    -- Evaluate dominant item lazily only when debug rendering is active and there is no passenger
+    -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules
     local dominant_item = nil
     if debug_key ~= "" and not passenger_valid then
-        if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid then
+        local tick_offset = capsule.capsule_id or id or 0
+        local recheck_spoilage = ((game.tick + tick_offset) % 60 == 0)
+
+        if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid and not recheck_spoilage then
             dominant_item = cache.dominant_item
         else
             dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
@@ -125,7 +137,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         return
     end
 
-    -- Case 3: State changed or handles invalid -> Destroy old render objects and re-create
+    -- Case 3: State changed, spoilage refreshed, or handles invalid -> Destroy old render objects and re-create
     capsule_queries.clear_capsule_render(capsule)
 
     if debug_key ~= "" and not passenger_valid and dominant_item == nil then

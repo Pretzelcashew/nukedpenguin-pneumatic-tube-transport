@@ -52,3 +52,12 @@
 1. **Render Object Caching Engine (`scripts/capsules/capsule-renderer.lua`):** Implemented a 3-state render evaluation state machine (`render_cache`) tracking `surface_index`, position coordinates (`pos_x`, `pos_y`), `passenger_index`, active debug player flags (`debug_key`), `dominant_item`, and render target offsets.
 2. **Stationary Capsule NO-OP & In-Place Vector Updates (`scripts/capsules/capsule-renderer.lua`):** Configured immediate early-return (NO-OP) execution for stationary/parked capsules when position and state remain unchanged frame-to-frame. Implemented in-place `render_obj.target` vector updates for moving capsules to reuse existing C++ render handles without object destruction or re-allocation.
 3. **Lazy Dominant Item Evaluation & Unified Cache Lifetime (`scripts/capsules/capsule-renderer.lua`, `scripts/capsules/capsule-queries.lua`, `scripts/capsules/capsule-runner.lua`):** Deferred holder inventory scanning (`get_dominant_item`) to execute only when capsule debug overlays are active without a passenger. Updated `clear_capsule_render()` to purge `render_cache = nil` upon entity capture, removal, eject, or spill events.
+
+
+### Revision: Inventory Bar Slot Bounding & Periodic Spoilage Render Refresh
+**Date:** 2026-08-29 22:13 (EDT)
+**Context:** Eliminate unnecessary C++ `LuaItemStack` userdata allocations on red-locked inventory slots during lifecycle and rendering iterations, purge stale spoilage tracking data, and update parked capsule debug overlays when stored cargo spoils naturally.
+**Key Changes:**
+1. **Active Inventory Slot Bounding (`scripts/capsules/capsule-lifecycle.lua` & `scripts/capsules/capsule-renderer.lua`):** Integrated `supports_bar()` and `get_bar()` bounds checking (`max_slot`) across spoilage processing and dominant item queries. Restricts inventory iteration strictly to unlocked chest slots, preventing expensive engine allocations on locked slots.
+2. **Stale Spoilage Tracking Cleanup (`scripts/capsules/capsule-lifecycle.lua`):** Added a post-loop purge clearing `capsule.slot_spoil_percents` tracking entries for slot indices greater than `max_slot` to prevent stale memory state when inventory bar boundaries shift.
+3. **Parked Capsule Spoilage Sprite Refresh (`scripts/capsules/capsule-renderer.lua`):** Added a 60-tick periodic re-evaluation (`((game.tick + tick_offset) % 60 == 0)`) to render cache validation. Forces stationary or parked capsules to re-query their dominant item so visual debug overlays update dynamically as cargo spoils.

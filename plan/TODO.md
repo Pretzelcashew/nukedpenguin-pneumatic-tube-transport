@@ -30,15 +30,17 @@ fix diverters from backing up if there's an open route![alt text](image.png)
 
 investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)
 
+improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+
 fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
 
 mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
-improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
 
 investigate this line from capsule lifecyle and its implications: local current_durability = stack.durability or 1000
 
-make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
+
 

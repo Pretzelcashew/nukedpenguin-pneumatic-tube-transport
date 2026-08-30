@@ -7,6 +7,7 @@ local capsule_motion = require("scripts.capsules.capsule-motion")
 local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
+local networks_flow = require("scripts.networks.networks-flow")
 
 local PARKED_RETRY_INTERVAL = 10
 
@@ -327,5 +328,8 @@ events.on_event(defines.events.on_tick, function(event)
         end
     end
 end)
+
+-- Register flow update listener to wake parked capsules when network flow changes
+networks_flow.register_listener(capsule_runner.wake_parked_capsules)
 
 return capsule_runner

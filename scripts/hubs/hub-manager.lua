@@ -3,8 +3,17 @@ local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_spill = require("scripts.hubs.hub-spill")
 local hub_packing = require("scripts.hubs.hub-packing")
 local hub_settings = require("scripts.hubs.hub-settings")
+local capsule_runner = require("scripts.capsules.capsule-runner")
 
 local hub_manager = {}
+
+function hub_manager.notify_settings_changed(entity)
+    if not (entity and entity.valid) then return end
+    capsule_runner.wake_parked_capsules()
+    if hub_settings.can_send(entity) then
+        hub_packing.evaluate_inventory(entity)
+    end
+end
 
 -- Add a new hub to the active registry
 local function on_hub_built(event)

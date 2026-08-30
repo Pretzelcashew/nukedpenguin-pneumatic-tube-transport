@@ -1,6 +1,7 @@
 local events = require("scripts.events")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_settings = require("scripts.hubs.hub-settings")
+local hub_manager = require("scripts.hubs.hub-manager")
 
 local hub_gui = {}
 
@@ -12,6 +13,13 @@ local function get_operator_index(op)
         if v == op then return i end
     end
     return 1
+end
+
+local function notify_change(unit_number)
+    local entity = storage.active_hubs and storage.active_hubs[unit_number]
+    if entity and entity.valid then
+        hub_manager.notify_settings_changed(entity)
+    end
 end
 
 local function close_hub_gui(player)
@@ -248,6 +256,8 @@ local function on_gui_checked_state_changed(event)
     elseif element.name == "hub_use_receive_lock" then
         settings.use_receive_lock = element.state
     end
+
+    notify_change(unit_number)
 end
 
 local function on_gui_elem_changed(event)
@@ -264,6 +274,8 @@ local function on_gui_elem_changed(event)
     elseif element.name == "hub_receive_signal" then
         settings.receive_condition.first_signal = element.elem_value
     end
+
+    notify_change(unit_number)
 end
 
 local function on_gui_selection_state_changed(event)
@@ -280,6 +292,8 @@ local function on_gui_selection_state_changed(event)
     elseif element.name == "hub_receive_operator" then
         settings.receive_condition.comparator = OPERATORS[element.selected_index] or "<"
     end
+
+    notify_change(unit_number)
 end
 
 local function on_gui_text_changed(event)
@@ -296,6 +310,8 @@ local function on_gui_text_changed(event)
     elseif element.name == "hub_receive_constant" then
         settings.receive_condition.constant = tonumber(element.text) or 0
     end
+
+    notify_change(unit_number)
 end
 
 local function on_gui_closed(event)

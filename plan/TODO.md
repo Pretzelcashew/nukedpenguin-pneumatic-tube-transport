@@ -18,18 +18,22 @@
 
 ~add capsule peeking feature /capsule-peek lets you hover your mouse over a pneumatic entity and it will render capsules in any internal networks of this entity that are occupying this entity (so if its a merged network, you only see capsules on the tube you're hovering over) toggles off the capsule-debug for that player as they are mutually exclusive but can also be both off at the same time. (both only render during alt mode)
 
+fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules), I believe it has to do with caching.
+
+do the same wakeup update for diverters as done previously with hubs and pumps
+
 fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
 
 mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
 
-fix flow rendering flag from not updating properly (seems tied to reflow)
+fix flow rendering flag from not updating properly (seems tied to reflow), notably /toggle-flow states dont refresh when using the command unless forcing an update on a network segement by way of interaction
 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
 improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
-fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules)
-
 investigate this line from capsule lifecyle and its implications: local current_durability = stack.durability or 1000
+
+make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
 
 

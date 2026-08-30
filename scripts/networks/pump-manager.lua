@@ -22,6 +22,14 @@ local function rebuild_pump_networks(entity)
 end
 
 function pump_manager.notify_settings_changed(entity)
+    if not (entity and entity.valid) then return end
+    local unit_number = entity.unit_number
+    if storage.pump_enabled_states then
+        storage.pump_enabled_states[unit_number] = pump_settings.is_pump_enabled(entity)
+    end
+    if storage.pump_power_states then
+        storage.pump_power_states[unit_number] = (entity.energy > 0)
+    end
     rebuild_pump_networks(entity)
 end
 

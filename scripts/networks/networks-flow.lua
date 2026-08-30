@@ -3,10 +3,27 @@ local port_defs = require("scripts.ports.port-definitions")
 local flow_renderer = require("scripts.networks.networks-flow-renderer")
 local flow_cull = require("scripts.networks.flow-cull")
 local networks_pressure = require("scripts.networks.networks-pressure")
+local pump_settings = require("scripts.pump-settings")
 
 local networks_flow = {}
 
 networks_flow.DEBUG_RENDER = true
+
+local flow_listeners = {}
+
+--- Registers a callback function to execute whenever network flow maps are rebuilt
+--- @param fn function
+function networks_flow.register_listener(fn)
+    if type(fn) == "function" then
+        table.insert(flow_listeners, fn)
+    end
+end
+
+local function notify_listeners()
+    for _, fn in ipairs(flow_listeners) do
+        fn()
+    end
+end
 
 local function get_port_key(unit_number, port_index)
     return unit_number .. ":" .. port_index
@@ -36,7 +53,9 @@ end
 
 local function is_powered(entity)
     if not (entity and entity.valid) then return false end
-    if entity.name == "pneumatic-pump" or entity.name == "pneumatic-diverter" then
+    if entity.name == "pneumatic-pump" then
+        return (entity.energy > 0) and pump_settings.is_pump_enabled(entity)
+    elseif entity.name == "pneumatic-diverter" then
         return entity.energy > 0
     end
     return true
@@ -181,6 +200,7 @@ function networks_flow.build(net_id)
     for id in pairs(affected_nets) do
         build_single_network(id)
     end
+    notify_listeners()
 end
 
 return networks_flow

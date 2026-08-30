@@ -20,15 +20,19 @@
 
 ~fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules), I believe it has to do with caching.
 
-do the same wakeup update for diverters as done previously with hubs and pumps
+~do the same wakeup update for diverters as done previously with hubs and pumps
 
-further fix the stale pump status in certain situations (like flipping the pump and toggling enable/disable didnt update the flow of the network, and flipping it back and toggling enable disable didnt update it either, as if flipping/rortating the pump caused the flow updates from enable/disable to be ineffective even though initially enable/disable was effective prior to messing with pump flip/rotation). I believe this also affect diverters the same way.
+~further fix the stale pump status in certain situations (like flipping the pump and toggling enable/disable didnt update the flow of the network, and flipping it back and toggling enable disable didnt update it either, as if flipping/rortating the pump caused the flow updates from enable/disable to be ineffective even though initially enable/disable was effective prior to messing with pump flip/rotation). I believe this also affect diverters the same way.
+
+~fix flow rendering flag from not updating properly (seems tied to reflow), notably /toggle-flow states dont refresh when using the command unless forcing an update on a network segment by way of interaction
+
+fix diverters from backing up if there's an open route![alt text](image.png)
+
+investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)
 
 fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
 
 mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
-
-fix flow rendering flag from not updating properly (seems tied to reflow), notably /toggle-flow states dont refresh when using the command unless forcing an update on a network segement by way of interaction
 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
@@ -38,6 +42,3 @@ investigate this line from capsule lifecyle and its implications: local current_
 
 make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
 
-fix diverters from backing up if there's an open route![alt text](image.png)
-
-investigate why recently packed capsules are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)

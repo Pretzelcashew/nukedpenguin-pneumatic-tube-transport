@@ -1,3 +1,5 @@
+-- FILE: scripts/networks/networks-flow.lua
+
 local networks = require("scripts.networks.networks")
 local port_defs = require("scripts.ports.port-definitions")
 local flow_renderer = require("scripts.networks.networks-flow-renderer")
@@ -181,15 +183,35 @@ local function build_single_network(net_id)
     end
 end
 
-function networks_flow.draw_all()
+--- Draws flow map visual debug vectors across all networks, optionally targeting a specific player
+--- @param player_index? uint
+function networks_flow.draw_all(player_index)
     for net_id, _ in pairs(storage.networks and storage.networks.list or {}) do
-        flow_renderer.draw(net_id)
+        local flow_map = networks.get_metadata(net_id, "flow_map")
+        if not flow_map then
+            build_single_network(net_id)
+        else
+            flow_renderer.draw(net_id, player_index)
+        end
     end
 end
 
-function networks_flow.clear_all()
-    for net_id, _ in pairs(storage.flow_render_ids or {}) do
-        flow_renderer.clear(net_id)
+--- Clears flow map visual debug overlays across all networks, optionally targeting a specific player
+--- @param player_index? uint
+function networks_flow.clear_all(player_index)
+    if player_index then
+        local p_renders = storage.flow_render_ids and storage.flow_render_ids[player_index]
+        if p_renders then
+            for net_id, _ in pairs(p_renders) do
+                flow_renderer.clear(net_id, player_index)
+            end
+        end
+    else
+        for p_idx, p_renders in pairs(storage.flow_render_ids or {}) do
+            for net_id, _ in pairs(p_renders) do
+                flow_renderer.clear(net_id, p_idx)
+            end
+        end
     end
 end
 

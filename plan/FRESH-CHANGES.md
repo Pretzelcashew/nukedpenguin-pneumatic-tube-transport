@@ -114,3 +114,11 @@
 1. **Physical Topology & Operational State Decoupling (`scripts/ports/port-evaluator.lua` & `scripts/ports/port-definitions.lua`):** Removed `enabled == false` connection rejection in `port_evaluator.are_compatible()`, allowing spatial graph topology (`storage.port_connections`) to form permanently based on physical directional compatibility (`"in"`, `"out"`, `"any"`). Dynamic pressure (`nil`) and flow vector suppression (`enabled = false`) remain active when disabled without corrupting graph links.
 2. **Synchronous Orientation Cache & Flow Rebuild (`scripts/networks/network-rotate.lua`, `scripts/networks/pump-manager.lua`, `scripts/networks/diverter-manager.lua`):** Hooked `on_player_rotated_entity` and `on_player_flipped_entity` across pump and diverter managers to immediately update power and port state caches upon rotation/flipping.
 3. **Pump Network Rebuild Deduplication (`scripts/networks/pump-manager.lua`):** Integrated a `visited` network ID lookup table into `rebuild_pump_networks()` to eliminate duplicate `networks_flow.build()` calls across multi-port pump sub-networks.
+
+
+### Revision: Player-Scoped Flow Overlay Command Refresh & Render Handle Cleanup
+**Date:** 2026-08-30 12:15 (EDT)
+**Context:** Resolve `/toggle-flow` debug overlay state failing to refresh or clear immediately upon command execution by fixing top-level render storage key resolution and implementing lazy flow map generation.
+**Key Changes:**
+1. **Player-Scoped Flow Render Handle Cleanup (`scripts/networks/networks-flow.lua`):** Refactored `networks_flow.clear_all(player_index)` to properly unpack network entries under `storage.flow_render_ids[player_index]` keyed by player index, ensuring instant destruction of C++ line and text overlay handles upon command toggle without leaking objects.
+2. **Player-Scoped & Lazy Flow Map Rendering (`scripts/networks/networks-flow.lua`):** Updated `networks_flow.draw_all(player_index)` to accept an optional target player handle and lazily generate missing `flow_map` metadata via `build_single_network(net_id)`, guaranteeing immediate vector overlay drawing when `/toggle-flow` or `/toggle-debug` is executed without requiring physical network interaction.

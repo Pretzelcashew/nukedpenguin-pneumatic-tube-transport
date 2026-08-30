@@ -79,7 +79,6 @@ data:extend({
     flags = {
       "not-on-map",
       "placeable-off-grid",
-      "not-selectable-in-game",
       "no-automated-item-removal",
       "no-automated-item-insertion"
     },
@@ -87,7 +86,8 @@ data:extend({
     hidden_in_factoriopedia = true,
     max_health = 1,
     destructible = false,
-    operable = false,
+    operable = true,
+    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
     collision_mask = {layers = {}},
     inventory_size = 255,
     picture = util.empty_sprite()

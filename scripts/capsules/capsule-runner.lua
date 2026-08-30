@@ -1,3 +1,5 @@
+-- FILE: scripts/capsules/capsule-runner.lua
+
 local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local networks = require("scripts.networks.networks")
@@ -6,6 +8,7 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_motion = require("scripts.capsules.capsule-motion")
 local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
+local liminal_surface = require("scripts.surfaces.liminal-surface")
 
 local capsule_runner = {}
 
@@ -17,6 +20,108 @@ capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 local function init_storage()
     storage.capsules = storage.capsules or {}
     storage.next_capsule_id = storage.next_capsule_id or 1
+end
+
+--- Retrieves the current physical world position and surface of a transit capsule counterpart
+--- @param capsule_id number
+--- @return MapPosition|nil position
+--- @return LuaSurface|nil surface
+function capsule_runner.get_capsule_location(capsule_id)
+    if not storage.capsules then return nil, nil end
+    local capsule = storage.capsules[capsule_id]
+    if not capsule then return nil, nil end
+
+    local from_pos, surf = capsule_motion.get_port_world_pos(capsule.from_port_key)
+    if not (from_pos and surf) then return nil, nil end
+
+    if capsule.to_port_key then
+        local to_pos = capsule_motion.get_port_world_pos(capsule.to_port_key)
+        if to_pos then
+            local progress = capsule.progress or 0.0
+            local dx = to_pos.x - from_pos.x
+            local dy = to_pos.y - from_pos.y
+            return {
+                x = from_pos.x + dx * progress,
+                y = from_pos.y + dy * progress
+            }, surf
+        end
+    end
+
+    return { x = from_pos.x, y = from_pos.y }, surf
+end
+
+--- Handles an entity created or spawned on liminal_surface (e.g. from item spoilage)
+--- Recreates spoiled units on the real-world transit capsule surface preserving quality and health.
+--- @param entity LuaEntity
+local function handle_liminal_entity_spawn(entity)
+    if not (entity and entity.valid) then return end
+
+    local surface = entity.surface
+    if not (surface and surface.valid and surface.name == "liminal_surface") then return end
+
+    -- Ignore container holder entities
+    if entity.name == "invisible-capsule-holder" or entity.name == "visible-capsule-holder" then
+        return
+    end
+
+    local holder = liminal_surface.find_holder_near(entity.position, 3.5)
+    if not (holder and holder.valid) then
+        entity.destroy()
+        return
+    end
+
+    local capsule_id = holder.unit_number
+    local capsule_data = capsule_manager.get(capsule_id)
+    if not capsule_data then
+        entity.destroy()
+        return
+    end
+
+    local def = capsule_data.definition
+    local spill_contents = def and def.spill_contents
+    local units_allowed = true
+    if type(spill_contents) == "table" and spill_contents.units == false then
+        units_allowed = false
+    elseif spill_contents == false then
+        units_allowed = false
+    end
+
+    if not units_allowed then
+        entity.destroy()
+        return
+    end
+
+    local target_pos, target_surface = capsule_runner.get_capsule_location(capsule_id)
+    if target_pos and target_surface and target_surface.valid then
+        local safe_pos = target_surface.find_non_colliding_position(entity.name, target_pos, 6, 0.5) or target_pos
+        local entity_name = entity.name
+        local entity_force = entity.force
+        local entity_quality = entity.quality
+        local entity_health = entity.health
+
+        local params = {
+            name = entity_name,
+            position = safe_pos,
+            force = entity_force
+        }
+
+        -- Preserve Factorio 2.0 item/unit Quality
+        if entity_quality then
+            params.quality = entity_quality
+        end
+
+        local created = target_surface.create_entity(params)
+        if created and created.valid then
+            -- Preserve current health (naturally preserves negative health regen decay)
+            if entity_health and created.health then
+                created.health = entity_health
+            end
+        end
+
+        entity.destroy()
+    else
+        entity.destroy()
+    end
 end
 
 local function update_capsules()
@@ -155,8 +260,37 @@ function capsule_runner.emergency_eject(player)
     end
 end
 
+-- Hook entity creation events for instant spoilage handling
+events.on_event(defines.events.on_trigger_created_entity, function(event)
+    handle_liminal_entity_spawn(event.entity)
+end)
+
+events.on_event(defines.events.on_entity_spawned, function(event)
+    handle_liminal_entity_spawn(event.entity)
+end)
+
+events.on_event(defines.events.script_raised_built, function(event)
+    handle_liminal_entity_spawn(event.entity)
+end)
+
+events.on_event(defines.events.on_built_entity, function(event)
+    handle_liminal_entity_spawn(event.entity)
+end)
+
 events.on_event(defines.events.on_tick, function(event)
     update_capsules()
+
+    if event.tick % 60 == 0 then
+        local liminal_surf = game.surfaces["liminal_surface"]
+        if liminal_surf and liminal_surf.valid then
+            local entities = liminal_surf.find_entities_filtered{
+                type = {"unit", "turret"}
+            }
+            for _, entity in ipairs(entities) do
+                handle_liminal_entity_spawn(entity)
+            end
+        end
+    end
 end)
 
 return capsule_runner

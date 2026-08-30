@@ -61,3 +61,12 @@
 1. **Active Inventory Slot Bounding (`scripts/capsules/capsule-lifecycle.lua` & `scripts/capsules/capsule-renderer.lua`):** Integrated `supports_bar()` and `get_bar()` bounds checking (`max_slot`) across spoilage processing and dominant item queries. Restricts inventory iteration strictly to unlocked chest slots, preventing expensive engine allocations on locked slots.
 2. **Stale Spoilage Tracking Cleanup (`scripts/capsules/capsule-lifecycle.lua`):** Added a post-loop purge clearing `capsule.slot_spoil_percents` tracking entries for slot indices greater than `max_slot` to prevent stale memory state when inventory bar boundaries shift.
 3. **Parked Capsule Spoilage Sprite Refresh (`scripts/capsules/capsule-renderer.lua`):** Added a 60-tick periodic re-evaluation (`((game.tick + tick_offset) % 60 == 0)`) to render cache validation. Forces stationary or parked capsules to re-query their dominant item so visual debug overlays update dynamically as cargo spoils.
+
+
+### Revision: Alt Mode Capsule Peeking Overlay & Debug Flag Mutual Exclusion
+**Date:** 2026-08-29 22:34 (EDT)
+**Context:** Implement entity-hover capsule peeking (`/capsule-peek`) in Alt Mode to visually inspect capsules occupying targeted pneumatic entities without enabling global capsule overlays, while enforcing mutual exclusion between capsule debug modes.
+**Key Changes:**
+1. **Capsule Peeking Console Command (`scripts/debug-manager.lua`):** Registered `/capsule-peek` command to toggle `storage.debug[player_index].peek`. Enforced mutual exclusion between `peek` and `capsules` debug toggles so enabling one automatically disables the other while allowing both to be turned off.
+2. **Alt Mode & Hover Occupancy Filtering (`scripts/capsules/capsule-renderer.lua`):** Updated visual overlay evaluation to require active Alt Mode (`player.game_view_settings.show_entity_info`). Implemented entity unit number matching (`player.selected.unit_number`) against capsule port keys (`from_port_key` / `to_port_key`) when peeking, isolating rendered overlay sprites strictly to capsules occupying the hovered structure.
+3. **Render Cache Dynamic Player Keying (`scripts/capsules/capsule-renderer.lua`):** Integrated `wants_peek` state into `debug_key` render cache validation, seamlessly updating visual overlay objects on mouse movement across entities without breaking frame-by-frame stationary capsule caching optimizations.

@@ -61,13 +61,39 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     local passenger_index = passenger_valid and passenger.index or nil
     local surface_index = surface.index
 
-    -- Build a player debug active key for capsule rendering overlay
+    -- Build list of players eligible to view capsule visual overlay for this frame
+    local debug_players = {}
     local debug_key_tbl = {}
+
     for _, player in pairs(game.players) do
-        if is_debug_active("capsules", player.index) then
-            table.insert(debug_key_tbl, player.index)
+        if player and player.valid then
+            local p_idx = player.index
+            local alt_mode = player.game_view_settings and player.game_view_settings.show_entity_info
+
+            local wants_debug = alt_mode and is_debug_active("capsules", p_idx)
+
+            local wants_peek = false
+            if alt_mode and is_debug_active("peek", p_idx) then
+                local selected = player.selected
+                if selected and selected.valid and selected.unit_number then
+                    local unit_number = selected.unit_number
+                    local prefix = tostring(unit_number) .. ":"
+                    local prefix_len = #prefix
+                    local at_from = capsule.from_port_key and string.sub(capsule.from_port_key, 1, prefix_len) == prefix
+                    local at_to = capsule.to_port_key and string.sub(capsule.to_port_key, 1, prefix_len) == prefix
+                    if at_from or at_to then
+                        wants_peek = true
+                    end
+                end
+            end
+
+            if wants_debug or wants_peek then
+                table.insert(debug_players, player)
+                table.insert(debug_key_tbl, p_idx)
+            end
         end
     end
+
     local debug_key = table.concat(debug_key_tbl, ",")
 
     local cache = capsule.render_cache
@@ -161,56 +187,54 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         table.insert(target_offsets, 0.8)
     end
 
-    for _, player in pairs(game.players) do
-        if is_debug_active("capsules", player.index) then
-            if passenger_valid then
+    for _, player in ipairs(debug_players) do
+        if passenger_valid then
+            local ring = rendering.draw_circle{
+                color = { r = 0, g = 0.8, b = 1, a = 0.9 },
+                radius = 0.45,
+                filled = false,
+                width = 3,
+                target = curr_pos,
+                surface = surface,
+                players = { player }
+            }
+            table.insert(render_objects, ring)
+            table.insert(target_offsets, 0)
+        else
+            if dominant_item then
                 local ring = rendering.draw_circle{
-                    color = { r = 0, g = 0.8, b = 1, a = 0.9 },
-                    radius = 0.45,
+                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                    radius = 0.35,
                     filled = false,
-                    width = 3,
+                    width = 2,
                     target = curr_pos,
                     surface = surface,
                     players = { player }
                 }
                 table.insert(render_objects, ring)
                 table.insert(target_offsets, 0)
-            else
-                if dominant_item then
-                    local ring = rendering.draw_circle{
-                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                        radius = 0.35,
-                        filled = false,
-                        width = 2,
-                        target = curr_pos,
-                        surface = surface,
-                        players = { player }
-                    }
-                    table.insert(render_objects, ring)
-                    table.insert(target_offsets, 0)
 
-                    local sprite = rendering.draw_sprite{
-                        sprite = "item/" .. dominant_item,
-                        target = curr_pos,
-                        surface = surface,
-                        x_scale = 0.55,
-                        y_scale = 0.55,
-                        players = { player }
-                    }
-                    table.insert(render_objects, sprite)
-                    table.insert(target_offsets, 0)
-                else
-                    local dot = rendering.draw_circle{
-                        color = { r = 1, g = 0.84, b = 0, a = 0.9 },
-                        radius = 0.25,
-                        filled = true,
-                        target = curr_pos,
-                        surface = surface,
-                        players = { player }
-                    }
-                    table.insert(render_objects, dot)
-                    table.insert(target_offsets, 0)
-                end
+                local sprite = rendering.draw_sprite{
+                    sprite = "item/" .. dominant_item,
+                    target = curr_pos,
+                    surface = surface,
+                    x_scale = 0.55,
+                    y_scale = 0.55,
+                    players = { player }
+                }
+                table.insert(render_objects, sprite)
+                table.insert(target_offsets, 0)
+            else
+                local dot = rendering.draw_circle{
+                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                    radius = 0.25,
+                    filled = true,
+                    target = curr_pos,
+                    surface = surface,
+                    players = { player }
+                }
+                table.insert(render_objects, dot)
+                table.insert(target_offsets, 0)
             end
         end
     end

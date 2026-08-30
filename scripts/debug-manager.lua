@@ -13,8 +13,13 @@ local function get_debug(player_index)
             ports = false,
             flow = true,
             capsules = true,
+            peek = false,
             prints = false,
         }
+    else
+        if storage.debug[player_index].peek == nil then
+            storage.debug[player_index].peek = false
+        end
     end
     return storage.debug[player_index]
 end
@@ -107,7 +112,7 @@ commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", fun
     player.print("[Debug] Flow Overlay: " .. (dbg.flow and "[ENABLED]" or "[DISABLED]"))
 end)
 
-commands.add_command("toggle-capsules", "Toggle capsule overlay", function(command)
+commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(command)
     local player_index = command.player_index
     if not player_index then return end
 
@@ -116,7 +121,25 @@ commands.add_command("toggle-capsules", "Toggle capsule overlay", function(comma
 
     local dbg = get_debug(player_index)
     dbg.capsules = not dbg.capsules
+    if dbg.capsules then
+        dbg.peek = false
+    end
     player.print("[Debug] Capsules: " .. (dbg.capsules and "[ENABLED]" or "[DISABLED]"))
+end)
+
+commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(command)
+    local player_index = command.player_index
+    if not player_index then return end
+
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.peek = not dbg.peek
+    if dbg.peek then
+        dbg.capsules = false
+    end
+    player.print("[Debug] Capsule Peek: " .. (dbg.peek and "[ENABLED]" or "[DISABLED]"))
 end)
 
 return debug_manager

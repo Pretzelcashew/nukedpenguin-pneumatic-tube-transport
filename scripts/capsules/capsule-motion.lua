@@ -200,6 +200,51 @@ function capsule_motion.has_entity_network_capacity(from_port_key, target_port_k
     return count <= max_allowed
 end
 
+--- Recursively validates whether a candidate hop has entity capacity, filter permission,
+--- and (for internal hops on multi-port entities) at least one open downstream path.
+--- @param from_port_key string
+--- @param target_port_key string
+--- @param payload_item table|nil
+--- @param depth number|nil
+--- @return boolean
+local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
+    depth = depth or 1
+    if depth > 3 then return false end
+
+    if not capsule_motion.has_entity_network_capacity(from_port_key, target_port_key) then
+        return false
+    end
+
+    if not is_hop_allowed_by_diverter_filters(from_port_key, target_port_key, payload_item) then
+        return false
+    end
+
+    local current_node = capsule_motion.get_node(from_port_key)
+    local target_node = capsule_motion.get_node(target_port_key)
+    if not (current_node and target_node) then return false end
+
+    local is_internal = (current_node.unit_number == target_node.unit_number)
+    if is_internal then
+        if not (target_node.outbound_hops and #target_node.outbound_hops > 0) then
+            return false
+        end
+
+        local has_valid_downstream = false
+        for _, next_hop in ipairs(target_node.outbound_hops) do
+            if is_hop_valid(target_port_key, next_hop, payload_item, depth + 1) then
+                has_valid_downstream = true
+                break
+            end
+        end
+
+        if not has_valid_downstream then
+            return false
+        end
+    end
+
+    return true
+end
+
 --- Evaluates all ports of a hub entity to find the optimal exit port with active outbound flow, valid capacity, and filter matching.
 --- @param hub_entity LuaEntity
 --- @param capsule_id number|nil
@@ -228,8 +273,7 @@ function capsule_motion.find_best_hub_outbound_port(hub_entity, capsule_id, curr
                 for _, hop_key in ipairs(node.outbound_hops) do
                     local target_node = capsule_motion.get_node(hop_key)
                     if target_node and target_node.unit_number ~= hub_entity.unit_number then
-                        if capsule_motion.has_entity_network_capacity(key, hop_key)
-                           and is_hop_allowed_by_diverter_filters(key, hop_key, payload_item) then
+                        if is_hop_valid(key, hop_key, payload_item) then
                             local drop = node.pressure - target_node.pressure
                             if drop > max_drop or (drop == max_drop and key == current_port_key) then
                                 max_drop = drop
@@ -283,8 +327,7 @@ function capsule_motion.select_next_target(capsule)
 
         if not is_internal_hub_hop
            and hop_key ~= capsule.last_port_key 
-           and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
-           and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
+           and is_hop_valid(capsule.from_port_key, hop_key, payload_item) then
             table.insert(candidates, hop_key)
         end
     end
@@ -302,8 +345,7 @@ function capsule_motion.select_next_target(capsule)
 
             if not is_internal_hub_hop
                and hop_key == capsule.last_port_key 
-               and capsule_motion.has_entity_network_capacity(capsule.from_port_key, hop_key)
-               and is_hop_allowed_by_diverter_filters(capsule.from_port_key, hop_key, payload_item) then
+               and is_hop_valid(capsule.from_port_key, hop_key, payload_item) then
                 backtrack_candidate = hop_key
                 break
             end
@@ -347,9 +389,11 @@ function capsule_motion.select_next_target(capsule)
                     for _, next_hop in ipairs(target_node.outbound_hops) do
                         local next_node = capsule_motion.get_node(next_hop)
                         if next_node and next_node.unit_number ~= target_node.unit_number then
-                            local d = current_node.pressure - next_node.pressure
-                            if d > best_downstream then 
-                                best_downstream = d 
+                            if is_hop_valid(hop_key, next_hop, payload_item) then
+                                local d = current_node.pressure - next_node.pressure
+                                if d > best_downstream then 
+                                    best_downstream = d 
+                                end
                             end
                         end
                     end

@@ -196,6 +196,7 @@ local function update_capsules(current_tick)
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
+                capsule_runner.wake_parked_capsules()
                 break
             end
 
@@ -209,10 +210,9 @@ local function update_capsules(current_tick)
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 
-                if capsule_motion.handle_arrival(capsule, id) then
-                    capsule_runner.wake_parked_capsules()
-                    break
-                end
+                capsule_motion.handle_arrival(capsule, id)
+                capsule_runner.wake_parked_capsules()
+                if not storage.capsules[id] then break end
             else
                 local remaining_distance = distance * (1.0 - capsule.progress)
 
@@ -224,10 +224,9 @@ local function update_capsules(current_tick)
                     capsule.progress = 0.0
                     curr_pos = { x = to_pos.x, y = to_pos.y }
                     
-                    if capsule_motion.handle_arrival(capsule, id) then
-                        capsule_runner.wake_parked_capsules()
-                        break
-                    end
+                    capsule_motion.handle_arrival(capsule, id)
+                    capsule_runner.wake_parked_capsules()
+                    if not storage.capsules[id] then break end
                 else
                     capsule.progress = capsule.progress + (tiles_this_tick / distance)
                     curr_pos.x = from_pos.x + dx * capsule.progress

@@ -24,5 +24,10 @@ mark capsules that dont have spoilage to not be re-poll candidates for dominant 
 
 fix flow rendering flag from not updating properly (seems tied to reflow)
 
+clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
+
+improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+
+fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks
 
 

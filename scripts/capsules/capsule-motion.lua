@@ -181,16 +181,23 @@ function capsule_motion.has_entity_network_capacity(from_port_key, target_port_k
 
     local current_unit = get_unit_number(from_port_key)
     local current_net_id = storage.networks.port_to_network[from_port_key]
-    local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id, target_port_key)
 
-    local target_group = capsule_queries.get_port_group(target_port_key)
-    local current_group = capsule_queries.get_port_group(from_port_key)
-
-    if current_unit == target_unit and current_net_id == target_net_id and current_group == target_group then
-        return count <= MAX_CAPSULES_PER_ENTITY_NETWORK
+    local same_segment = false
+    local target_group = nil
+    if current_unit == target_unit and current_net_id == target_net_id then
+        target_group = capsule_queries.get_port_group(target_port_key)
+        local current_group = capsule_queries.get_port_group(from_port_key)
+        same_segment = (target_group == current_group)
     else
-        return count < MAX_CAPSULES_PER_ENTITY_NETWORK
+        target_group = capsule_queries.get_port_group(target_port_key)
     end
+
+    local max_allowed = same_segment and MAX_CAPSULES_PER_ENTITY_NETWORK or (MAX_CAPSULES_PER_ENTITY_NETWORK - 1)
+    local max_threshold = max_allowed + 1
+
+    local count = capsule_queries.get_capsule_count_at_entity_network(target_unit, target_net_id, target_group, max_threshold)
+
+    return count <= max_allowed
 end
 
 --- Evaluates all ports of a hub entity to find the optimal exit port with active outbound flow, valid capacity, and filter matching.

@@ -15,11 +15,19 @@ function capsule_queries.get_port_group(port_key)
 
     local flow_map = networks.get_metadata(net_id, "flow_map")
     local node = flow_map and flow_map[port_key]
-    if not (node and node.entity and node.entity.valid and node.port_index) then return nil end
+    if not node then return nil end
+
+    if node.group ~= nil then
+        return node.group ~= false and node.group or nil
+    end
+
+    if not (node.entity and node.entity.valid and node.port_index) then return nil end
 
     local ports = port_defs.get_ports(node.entity)
     local port_def = ports and ports[node.port_index]
-    return port_def and port_def.group
+    local group = port_def and port_def.group
+    node.group = (group ~= nil) and group or false
+    return group
 end
 
 --- Destroys the visual rendering object(s) associated with a capsule and clears cache metadata
@@ -94,8 +102,9 @@ end
 --- @param unit_number number
 --- @param net_id number
 --- @param target_port_key_or_group string|number|nil
+--- @param max_threshold number|nil Optional threshold limit for early exit once count reaches max_threshold
 --- @return number
-function capsule_queries.get_capsule_count_at_entity_network(unit_number, net_id, target_port_key_or_group)
+function capsule_queries.get_capsule_count_at_entity_network(unit_number, net_id, target_port_key_or_group, max_threshold)
     if not (unit_number and net_id and storage.capsules and storage.networks and storage.networks.port_to_network) then
         return 0
     end
@@ -125,6 +134,9 @@ function capsule_queries.get_capsule_count_at_entity_network(unit_number, net_id
 
         if is_at_from or is_at_to then
             count = count + 1
+            if max_threshold and count >= max_threshold then
+                return count
+            end
         end
     end
     return count

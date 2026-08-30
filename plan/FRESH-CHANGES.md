@@ -70,3 +70,12 @@
 1. **Capsule Peeking Console Command (`scripts/debug-manager.lua`):** Registered `/capsule-peek` command to toggle `storage.debug[player_index].peek`. Enforced mutual exclusion between `peek` and `capsules` debug toggles so enabling one automatically disables the other while allowing both to be turned off.
 2. **Alt Mode & Hover Occupancy Filtering (`scripts/capsules/capsule-renderer.lua`):** Updated visual overlay evaluation to require active Alt Mode (`player.game_view_settings.show_entity_info`). Implemented entity unit number matching (`player.selected.unit_number`) against capsule port keys (`from_port_key` / `to_port_key`) when peeking, isolating rendered overlay sprites strictly to capsules occupying the hovered structure.
 3. **Render Cache Dynamic Player Keying (`scripts/capsules/capsule-renderer.lua`):** Integrated `wants_peek` state into `debug_key` render cache validation, seamlessly updating visual overlay objects on mouse movement across entities without breaking frame-by-frame stationary capsule caching optimizations.
+
+
+### Revision: Short-Circuited O(1) Network Capacity Queries & Node Group Caching
+**Date:** 2026-08-29 23:13 (EDT)
+**Context:** Eliminate $O(N^2)$ entity-network capacity query overhead during segment pathfinding and backpressure bottlenecks by implementing early-exit threshold limits, deferred origin group evaluation, pre-resolved parameter passing, and flow map node group caching.
+**Key Changes:**
+1. **Early-Exit Capacity Threshold (`scripts/capsules/capsule-queries.lua`):** Added an optional `max_threshold` parameter to `get_capsule_count_at_entity_network()`. Iteration over `storage.capsules` early-returns immediately once `count >= max_threshold`, converting $O(N)$ table scans into $O(1)$ early exits on occupied target segments.
+2. **Pre-Resolved Group Passing & Deferred Evaluation (`scripts/capsules/capsule-motion.lua`):** Refactored `has_entity_network_capacity()` to pre-calculate `target_group` once and pass it directly as a parameter to `get_capsule_count_at_entity_network()`. Deferred `current_group` query (`get_port_group(from_port_key)`) to execute strictly during same-entity/same-network hops.
+3. **Flow Map Node Group Caching (`scripts/capsules/capsule-queries.lua`):** Updated `get_port_group()` to cache resolved port group IDs directly on flow map nodes (`node.group = group or false`), ensuring subsequent group checks complete in $O(1)$ time without re-querying entity prototype port definitions.

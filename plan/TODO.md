@@ -28,6 +28,6 @@ clean up command naming, explore adding in some toggles in the hotbar toggles se
 
 improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
-fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks
+fix small flow update bug in light of the recent stage 4 fix of the performance plan involving short circuiting checks (state changes in pump and hubs dont wake up the network or capsules, such as enable on pump or toggle on receive capsules)
 
 

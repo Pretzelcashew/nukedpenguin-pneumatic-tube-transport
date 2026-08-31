@@ -10,6 +10,25 @@ local hub_settings = require("scripts.hubs.hub-settings")
 
 local hub_packing = {}
 
+--- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
+local function is_stack_spoilable(stack)
+    if not (stack and stack.valid_for_read) then return false end
+    local proto = stack.prototype
+    if proto and proto.get_spoil_ticks then
+        local ticks = proto.get_spoil_ticks()
+        if ticks and ticks > 0 then
+            return true
+        end
+    end
+    if stack.spoil_tick and stack.spoil_tick > 0 then
+        return true
+    end
+    if stack.spoil_percent and stack.spoil_percent > 0 then
+        return true
+    end
+    return false
+end
+
 function hub_packing.evaluate_inventory(entity)
     if not (entity and entity.valid) then return end
 
@@ -178,10 +197,11 @@ function hub_packing.evaluate_inventory(entity)
         dest_inv.set_bar(bar_limit)
     end
 
-    -- 1. Insert Cargo Extractions First & track dominant payload item name
+    -- 1. Insert Cargo Extractions First, track dominant payload item name & evaluate spoilability
     local dominant_cargo_item = nil
     local max_cargo_count = 0
     local cargo_counts = {}
+    local has_spoilable_items = false
 
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
@@ -189,6 +209,10 @@ function hub_packing.evaluate_inventory(entity)
             local item_name = stack.name
             local original_count = stack.count
             local amount_to_transfer = math.min(ext.count, original_count)
+
+            if is_stack_spoilable(stack) then
+                has_spoilable_items = true
+            end
 
             cargo_counts[item_name] = (cargo_counts[item_name] or 0) + amount_to_transfer
             if cargo_counts[item_name] > max_cargo_count then
@@ -222,6 +246,10 @@ function hub_packing.evaluate_inventory(entity)
     local primary_holder_slot = nil
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
+        if is_stack_spoilable(primary_stack) then
+            has_spoilable_items = true
+        end
+
         if capsule_def.include_self and not capsule_def.destroy_self then
             local target_slot = nil
             local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
@@ -283,7 +311,7 @@ function hub_packing.evaluate_inventory(entity)
         return
     end
 
-    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, has_spoilable_items)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

@@ -12,7 +12,8 @@ end
 --- @param capsule_item_name string Name of the capsule prototype
 --- @param primary_slot number|nil Index of the slot containing the primary capsule item in holder inventory
 --- @param dominant_item string|nil Name of the dominant payload item
-function capsule_manager.register(holder_entity, capsule_item_name, primary_slot, dominant_item)
+--- @param has_spoilable_items boolean|nil Whether any item in the capsule can spoil
+function capsule_manager.register(holder_entity, capsule_item_name, primary_slot, dominant_item, has_spoilable_items)
     if not (holder_entity and holder_entity.valid) then return nil end
     
     local def = capsule_defs.types[capsule_item_name]
@@ -28,7 +29,8 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
         definition = def,
         primary_slot = primary_slot,
         position = { x = pos.x, y = pos.y },
-        dominant_item = dominant_item or capsule_item_name
+        dominant_item = dominant_item or capsule_item_name,
+        has_spoilable_items = has_spoilable_items == true
     }
     
     return capsule_id

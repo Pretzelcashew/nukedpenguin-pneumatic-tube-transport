@@ -68,6 +68,7 @@ end
 
 --- Returns the dominant item string for a capsule.
 --- Serves cached payload metadata instantly unless force_refresh is true.
+--- Short-circuits force_refresh for capsules marked with no spoilable items.
 --- @param capsule_id number
 --- @param force_refresh boolean|nil
 --- @return string|nil
@@ -75,8 +76,12 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
     if not capsule_id then return nil end
     local cap_data = capsule_manager.get(capsule_id)
 
-    if not force_refresh and cap_data and cap_data.dominant_item then
-        return cap_data.dominant_item
+    if cap_data then
+        if not force_refresh or (cap_data.has_spoilable_items == false and cap_data.dominant_item) then
+            if cap_data.dominant_item then
+                return cap_data.dominant_item
+            end
+        end
     end
 
     if not (cap_data and cap_data.holder and cap_data.holder.valid) then
@@ -212,16 +217,20 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         render_objects_valid = false
     end
 
-    -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules
+    -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules containing spoilable items
     local dominant_item = nil
     if debug_key ~= 0 and debug_key ~= "" and not passenger_valid then
-        local tick_offset = capsule.capsule_id or id or 0
-        local recheck_spoilage = ((game.tick + tick_offset) % 60 == 0)
+        local cap_id = capsule.capsule_id or id
+        local cap_data = capsule_manager.get(cap_id)
+        local has_spoilable = cap_data and (cap_data.has_spoilable_items ~= false)
+
+        local tick_offset = cap_id or 0
+        local recheck_spoilage = has_spoilable and ((game.tick + tick_offset) % 60 == 0)
 
         if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid and not recheck_spoilage then
             dominant_item = cache.dominant_item
         else
-            dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id, recheck_spoilage)
+            dominant_item = capsule_renderer.get_dominant_item(cap_id, recheck_spoilage)
         end
     end
 

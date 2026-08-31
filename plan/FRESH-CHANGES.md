@@ -85,3 +85,12 @@
 **Key Changes:**
 1. **Scripted Destruction Event Registration (`prototypes/pneumatic-pump-proxy-linkage.lua` & `prototypes/pneumatic-diverter-proxy-linkage.lua`):** Corrected `destroy_events` indexing from `defines.script_raised_destroy` to `defines.events.script_raised_destroy` in pump proxy linkage, resolving orphaned proxies during sandbox/editor instant deconstruction and scripted removals. Added Factorio 2.0 space platform build and mine event handlers (`on_space_platform_built_entity`, `on_space_platform_mined_entity`).
 2. **Proxy Sprite Suppression (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Configured `sprites` and `activity_led_sprites` across all four cardinal orientations to `util.empty_sprite()` on `pneumatic-pump-circuit-proxy` and `pneumatic-diverter-circuit-proxy`, rendering proxy constant combinators visually invisible while retaining full circuit wire connection and logic functionality.
+
+
+### Revision: Non-Spoilable Render Polling Optimization & Factorio 2.0 Spoil API Guard
+**Date:** 2026-08-31 08:23 (EDT)
+**Context:** Eliminate redundant 60-tick physical container inventory scans during render overlay execution for capsules transporting non-spoilable cargo, and fix a Factorio 2.0 `LuaItemPrototype` property indexing crash during hub packing.
+**Key Changes:**
+1. **Spoilability Detection at Hub Packing (`scripts/hubs/hub-packing.lua`):** Implemented `is_stack_spoilable()` to safely inspect item prototypes and stacks via `get_spoil_ticks()`, `spoil_tick`, and `spoil_percent`. Evaluates cargo extractions and primary vessel stacks during packing to compute a `has_spoilable_items` flag passed to `capsule_manager.register()`.
+2. **Active Capsule Spoilability Tracking (`scripts/capsules/capsule-manager.lua`):** Updated `capsule_manager.register()` to persist `has_spoilable_items` on active capsule tracker objects within `storage.active_capsules`.
+3. **Guarded Render Polling & Inventory Scan Short-Circuiting (`scripts/capsules/capsule-renderer.lua`):** Refactored `render()` to suppress 60-tick periodic spoilage re-checks for non-spoilable capsules (`has_spoilable_items == false`). Updated `get_dominant_item()` to short-circuit and instantly serve cached dominant item strings without opening liminal container inventories.

@@ -38,7 +38,7 @@
 
 ~fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters, test with diverters, it doesnt affect diverters.), also see about making the pump circuit proxy not visible like the diverter's (cross ref how its handled, and copy)
 
-mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
+~mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
@@ -57,3 +57,7 @@ make circuit proxys no longer block building (so build over upgrades can functio
 see about adding bar inventory clamp to hubs
 
 explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior
+
+see about making sure all bio items are included in the list for bonus capacity in bio capsules
+
+see about making capsules with spoilable items turn off dominant item polling once there are no spoilable items left

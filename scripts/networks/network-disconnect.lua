@@ -1,4 +1,3 @@
--- scripts/networks/network-disconnect.lua
 local events = require("scripts.events")
 local network_invalidate = require("scripts.networks.network-invalidate")
 local hub_spill = require("scripts.hubs.hub-spill")

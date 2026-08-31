@@ -222,3 +222,12 @@
 1. **Fast-Looting Operability & Bar Clamping (`prototypes/entity.lua` & `scripts/hubs/hub-spill.lua`):** Re-enabled `operable = true` on `visible-capsule-holder` to permit native Ctrl+Click fast entity transfer. Applied `container_inv.set_bar(1)` upon container creation, red-locking all inventory slots against manual item insertion while permitting native engine item extraction.
 2. **Instant GUI Dismissal (`scripts/hubs/hub-spill.lua`):** Registered an `on_gui_opened` listener that sets `player.opened = nil` on the exact tick a spilled container is clicked, preventing access to the inventory GUI window and hiding the red bar slider.
 3. **Copy-Paste & Pipette Setting Protection (`prototypes/entity.lua` & `scripts/hubs/hub-spill.lua`):** Added `"no-copy-paste"` to `visible-capsule-holder` prototype flags and registered an `on_entity_settings_pasted` listener to re-enforce `set_bar(1)` if chest settings are pasted onto a spilled container.
+
+
+### Revision: Staged Time-Sliced Network Rebuild Engine & Batched Flow Updates
+**Date:** 2026-08-31 19:09 (EDT)
+**Context:** Eliminate tick spikes and frame drops during large network deconstructions and entity mining by replacing synchronous BFS graph traversals and immediate flow/pressure recalculations with a staged, time-sliced background rebuild engine.
+**Key Changes:**
+1. **Staged Rebuild Engine (`scripts/networks/network-rebuild-engine.lua`):** Created a background job processor managing `storage.network_rebuild_queue`, executing graph split checks incrementally under a per-tick node budget (350 nodes/tick) and coalescing network updates across ticks.
+2. **Instant $O(1)$ Edge Severing (`scripts/networks/network-unmerge.lua` & `scripts/networks/network-invalidate.lua`):** Refactored entity removal and unmerge workflows to sever physical graph edges (`storage.port_connections`) and purge port definitions in constant time, delegating split checks to the rebuild engine queue.
+3. **Coalesced Batched Rebuild Engine (`scripts/networks/networks-flow.lua`):** Added `networks_flow.build_batch()` to run multi-source pressure BFS calculations (`networks_pressure.process`), flow map updates (`build_single_network`), and spatial occupancy index updates (`capsule_queries.rebuild_occupancy_index()`) in a single consolidated pass across dirty networks.

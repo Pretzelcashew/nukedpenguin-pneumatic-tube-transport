@@ -63,8 +63,8 @@ local function is_powered(entity)
 end
 
 --- Rebuilds flow map, vector hops, culling, and renders for a single network ID
-local function build_single_network(net_id)
-    local net = storage.networks.list[net_id]
+function networks_flow.build_single_network(net_id)
+    local net = storage.networks.list and storage.networks.list[net_id]
     if not (net and net.members) then 
         if networks_flow.DEBUG_RENDER then
             flow_renderer.clear(net_id)
@@ -150,12 +150,10 @@ local function build_single_network(net_id)
                         local is_internal = (node.unit_number == neighbor_node.unit_number)
 
                         if is_internal then
-                            -- Mechanical machine transfer: route internal ports if directions permit and entity is powered
                             if is_powered(node.entity) and node.flow_dir ~= "out" and neighbor_node.flow_dir ~= "in" then
                                 table.insert(node.outbound_hops, neighbor_key)
                             end
                         else
-                            -- External network hop: STRICT pressure gradient required (P_from > P_to) and powered endpoints
                             local p_delta = node.pressure - neighbor_node.pressure
                             local flow_valid = (node.flow_dir ~= "in" and neighbor_node.flow_dir ~= "out")
 
@@ -174,12 +172,38 @@ local function build_single_network(net_id)
 
     -- 5. Store metadata and refresh render overlays
     networks.set_metadata(net_id, "flow_map", flow_map)
-    
+
     if is_debug_active("flow") then
         flow_renderer.draw(net_id)
     else
         flow_renderer.clear(net_id)
     end
+end
+
+--- Executes a batched pressure calculation and flow rebuild across multiple dirty network IDs
+--- @param dirty_networks table<uint, boolean> Map of dirty network IDs
+function networks_flow.build_batch(dirty_networks)
+    networks.init()
+    local all_affected = {}
+
+    for net_id in pairs(dirty_networks) do
+        local affected = networks_pressure.process(net_id)
+        for aff_id in pairs(affected) do
+            all_affected[aff_id] = true
+        end
+    end
+
+    for aff_id in pairs(all_affected) do
+        networks_flow.build_single_network(aff_id)
+    end
+
+    capsule_queries.rebuild_occupancy_index()
+    notify_listeners(all_affected)
+end
+
+--- Recalculates pressure and refreshes ONLY networks physically connected to net_ids
+function networks_flow.build(net_id)
+    networks_flow.build_batch({ [net_id] = true })
 end
 
 --- Draws flow map visual debug vectors across all networks, optionally targeting a specific player
@@ -188,7 +212,7 @@ function networks_flow.draw_all(player_index)
     for net_id, _ in pairs(storage.networks and storage.networks.list or {}) do
         local flow_map = networks.get_metadata(net_id, "flow_map")
         if not flow_map then
-            build_single_network(net_id)
+            networks_flow.build_single_network(net_id)
         else
             flow_renderer.draw(net_id, player_index)
         end
@@ -212,17 +236,6 @@ function networks_flow.clear_all(player_index)
             end
         end
     end
-end
-
---- Recalculates pressure and refreshes ONLY networks physically connected to net_ids
-function networks_flow.build(net_id)
-    networks.init()
-    local affected_nets = networks_pressure.process(net_id)
-    for id in pairs(affected_nets) do
-        build_single_network(id)
-    end
-    capsule_queries.rebuild_occupancy_index()
-    notify_listeners(affected_nets)
 end
 
 return networks_flow

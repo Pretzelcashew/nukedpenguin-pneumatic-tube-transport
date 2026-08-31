@@ -1,8 +1,7 @@
--- scripts/networks/network-invalidate.lua
 local port_defs = require("scripts.ports.port-definitions")
 local connection_defs = require("scripts.ports.port-connection-definitions")
 local networks = require("scripts.networks.networks")
-local networks_flow = require("scripts.networks.networks-flow")
+local network_rebuild_engine = require("scripts.networks.network-rebuild-engine")
 
 local network_invalidate = {}
 
@@ -34,7 +33,7 @@ function network_invalidate.execute(entity)
         end
     end
 
-    -- 2. Execute unoutcome handlers (this splits graphs and provisions new network IDs)
+    -- 2. Execute unoutcome handlers (severs edges instantly and queues split jobs)
     for _, edge in ipairs(external_edges) do
         local unoutcome = connection_defs.inverses[edge.type]
         local def = connection_defs.types[unoutcome]
@@ -50,19 +49,11 @@ function network_invalidate.execute(entity)
         networks.purge_port(port_key)
     end
 
-    -- 4. Gather network IDs AFTER unmerge handlers have assigned new IDs to subgraphs
-    local networks_to_rebuild = {}
+    -- 4. Mark surviving neighbor networks as dirty for batched flow/pressure updates
     for _, edge in ipairs(external_edges) do
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[edge.neighbor_key]
         if net_id then
-            networks_to_rebuild[net_id] = true
-        end
-    end
-
-    -- 5. Rebuild flow overlays for all surviving subgraphs (old and new)
-    for net_id in pairs(networks_to_rebuild) do
-        if storage.networks and storage.networks.list and storage.networks.list[net_id] then
-            networks_flow.build(net_id)
+            network_rebuild_engine.mark_dirty(net_id)
         end
     end
 end

@@ -89,3 +89,5 @@ improve deconstruction/removal of pnuematic networks (particularly regarding mer
 
 ~with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
 
+investigate the capsule visually jumping across hubs rather than pathing through
+

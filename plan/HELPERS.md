@@ -53,6 +53,9 @@ Please sync our documentation with the latest changelog updates by following the
 /c local p = game.player p.set_controller{type=defines.controllers.character, character=p.surface.create_entity{name='character', force=p.force, position=p.position}}
 
 
+/c local player = game.player for i=1, 500 do player.insert{name="biter-egg", count=1, spoil_percent=0.95} end
+
+
 what changed, and in what situations will it help?
 
 

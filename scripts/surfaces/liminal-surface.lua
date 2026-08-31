@@ -1,15 +1,26 @@
 local liminal_surface = {}
 
 local SURFACE_NAME = "liminal_surface"
-local GRID_SPACING = 8
-local GRID_WIDTH = 50
+
+-- Dual Grid Spacing & Domain Configuration
+local WIDE_SPACING = 8
+local WIDE_GRID_WIDTH = 50
+
+local TIGHT_SPACING = 2
+local TIGHT_GRID_WIDTH = 100
+local TIGHT_BASE_Y = -100
 
 --- Initializes persistent storage for the liminal surface grid allocation system.
 function liminal_surface.init_storage()
-    storage.liminal_grid = storage.liminal_grid or {
-        next_index = 0,
-        free_slots = {}
-    }
+    storage.liminal_grid = storage.liminal_grid or {}
+    local grid = storage.liminal_grid
+
+    if grid.wide_next_index == nil then
+        grid.wide_next_index = grid.next_index or 0
+        grid.wide_free_slots = grid.free_slots or {}
+        grid.tight_next_index = 0
+        grid.tight_free_slots = {}
+    end
 end
 
 --- Retrieves the liminal surface, creating it as an unconstrained surface if it doesn't exist.
@@ -38,46 +49,111 @@ function liminal_surface.get()
     return surface
 end
 
---- Ensures the chunk containing a position is synchronously generated on the surface.
+--- Paints cell platform and moat perimeter tiles for a liminal grid position.
 --- @param surface LuaSurface
 --- @param pos MapPosition
-function liminal_surface.ensure_chunk_at(surface, pos)
+--- @param is_wide boolean
+local function paint_cell_tiles(surface, pos, is_wide)
+    if not (surface and surface.valid and pos) then return end
+
+    local cx = math.floor(pos.x)
+    local cy = math.floor(pos.y)
+
+    local tiles = {}
+    if is_wide then
+        -- 7x7 block: 3x3 island platform centered at (cx, cy) surrounded by a 2-tile thick water moat
+        for dx = -3, 3 do
+            for dy = -3, 3 do
+                local tx = cx + dx
+                local ty = cy + dy
+                if math.abs(dx) <= 1 and math.abs(dy) <= 1 then
+                    table.insert(tiles, { name = "lab-dark-1", position = { tx, ty } })
+                else
+                    table.insert(tiles, { name = "water", position = { tx, ty } })
+                end
+            end
+        end
+    else
+        table.insert(tiles, { name = "lab-dark-1", position = { cx, cy } })
+    end
+
+    surface.set_tiles(tiles, true)
+end
+
+--- Ensures the chunk containing a position is synchronously generated on the surface and tiles painted.
+--- @param surface LuaSurface
+--- @param pos MapPosition
+--- @param is_wide boolean|nil
+function liminal_surface.ensure_chunk_at(surface, pos, is_wide)
     if not (surface and surface.valid and pos and pos.x and pos.y) then return end
     local chunk_pos = { math.floor(pos.x / 32), math.floor(pos.y / 32) }
     if not surface.is_chunk_generated(chunk_pos) then
         surface.request_to_generate_chunks(pos, 0)
         surface.force_generate_chunk_requests()
     end
+    paint_cell_tiles(surface, pos, is_wide == true)
 end
 
---- Allocates a spaced grid position on liminal_surface, reusing freed positions when available.
+--- Allocates a position on liminal_surface, reusing freed positions when available.
+--- Selectively uses wide 8-tile cells for unit-spoilable cargo and tight 2-tile slots for non-unit cargo.
+--- Position coordinates are offset by +0.5 to align entity centers perfectly with tile centers.
+--- @param is_wide boolean|nil
 --- @return MapPosition position {x = number, y = number}
-function liminal_surface.allocate_position()
+--- @return boolean is_wide
+function liminal_surface.allocate_position(is_wide)
     liminal_surface.init_storage()
     local grid = storage.liminal_grid
 
-    if #grid.free_slots > 0 then
-        return table.remove(grid.free_slots)
+    if is_wide then
+        if #grid.wide_free_slots > 0 then
+            return table.remove(grid.wide_free_slots), true
+        end
+
+        local idx = grid.wide_next_index
+        grid.wide_next_index = idx + 1
+
+        local col = idx % WIDE_GRID_WIDTH
+        local row = math.floor(idx / WIDE_GRID_WIDTH)
+
+        return {
+            x = col * WIDE_SPACING + 0.5,
+            y = row * WIDE_SPACING + 0.5
+        }, true
+    else
+        if #grid.tight_free_slots > 0 then
+            return table.remove(grid.tight_free_slots), false
+        end
+
+        local idx = grid.tight_next_index
+        grid.tight_next_index = idx + 1
+
+        local col = idx % TIGHT_GRID_WIDTH
+        local row = math.floor(idx / TIGHT_GRID_WIDTH)
+
+        return {
+            x = col * TIGHT_SPACING + 0.5,
+            y = (TIGHT_BASE_Y - (row * TIGHT_SPACING)) + 0.5
+        }, false
     end
-
-    local idx = grid.next_index
-    grid.next_index = idx + 1
-
-    local col = idx % GRID_WIDTH
-    local row = math.floor(idx / GRID_WIDTH)
-
-    return {
-        x = col * GRID_SPACING,
-        y = row * GRID_SPACING
-    }
 end
 
---- Releases a grid position back into the free_slots pool for future reuse.
+--- Releases a grid position back into the appropriate free_slots pool for future reuse.
 --- @param pos MapPosition|table
-function liminal_surface.release_position(pos)
+--- @param is_wide boolean|nil
+function liminal_surface.release_position(pos, is_wide)
     if not (pos and pos.x and pos.y) then return end
     liminal_surface.init_storage()
-    table.insert(storage.liminal_grid.free_slots, { x = pos.x, y = pos.y })
+
+    local wide_slot = is_wide
+    if wide_slot == nil then
+        wide_slot = (pos.y >= 0)
+    end
+
+    if wide_slot then
+        table.insert(storage.liminal_grid.wide_free_slots, { x = pos.x, y = pos.y })
+    else
+        table.insert(storage.liminal_grid.tight_free_slots, { x = pos.x, y = pos.y })
+    end
 end
 
 --- Finds a liminal capsule holder entity near a given surface position by proximity.

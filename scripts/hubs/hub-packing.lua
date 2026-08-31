@@ -94,6 +94,24 @@ local function is_stack_spoilable(stack)
     return false
 end
 
+--- Evaluates if an item stack is spoilable into physical units (biters, pentapods, etc.)
+--- Uses strict C++ prototype property inspection and exact matrix lookups (zero fuzzy string matching).
+local function is_unit_spoilable(stack)
+    if not (stack and stack.valid_for_read) then return false end
+    if not is_stack_spoilable(stack) then return false end
+
+    local proto = stack.prototype
+    if proto and proto.spoil_to_trigger_result then
+        return true
+    end
+
+    if capsule_defs.is_unit_spoilable and capsule_defs.is_unit_spoilable(stack.name) then
+        return true
+    end
+
+    return false
+end
+
 function hub_packing.evaluate_inventory(entity)
     if not (entity and entity.valid) then return end
 
@@ -241,12 +259,39 @@ function hub_packing.evaluate_inventory(entity)
     local total_slots_processed = #packing_plan.insertions + self_slot_cost
     if total_slots_processed < required_min_slots and not capsule_def.is_player_transit then return end
 
+    -- Evaluate whether cargo or primary vessel can spoil into physical units
+    local spill_contents = capsule_def.spill_contents
+    local units_allowed = true
+    if type(spill_contents) == "table" and spill_contents.units == false then
+        units_allowed = false
+    elseif spill_contents == false then
+        units_allowed = false
+    end
+
+    local is_unit_cargo = false
+    if units_allowed then
+        if is_unit_spoilable(inventory[primary_slot]) then
+            is_unit_cargo = true
+        end
+        if not is_unit_cargo then
+            for i = 1, #inventory do
+                local stack = inventory[i]
+                if stack and stack.valid_for_read and is_unit_spoilable(stack) then
+                    is_unit_cargo = true
+                    break
+                end
+            end
+        end
+    end
+
+    local requires_wide_cell = is_unit_cargo and units_allowed
+
     local liminal_surface = liminal_surface_mgr.get()
     local holder_prototype = capsule_def.holder_type or "invisible-capsule-holder"
-    local holder_pos = liminal_surface_mgr.allocate_position()
+    local holder_pos, allocated_is_wide = liminal_surface_mgr.allocate_position(requires_wide_cell)
 
-    -- Synchronously ensure target chunk exists before entity creation
-    liminal_surface_mgr.ensure_chunk_at(liminal_surface, holder_pos)
+    -- Synchronously ensure target chunk exists and cell tiles/moat are painted before entity creation
+    liminal_surface_mgr.ensure_chunk_at(liminal_surface, holder_pos, allocated_is_wide)
 
     local holder = liminal_surface.create_entity{
         name = holder_prototype,
@@ -391,11 +436,11 @@ function hub_packing.evaluate_inventory(entity)
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() and not passenger then
         local pos = holder.position
         holder.destroy()
-        liminal_surface_mgr.release_position(pos)
+        liminal_surface_mgr.release_position(pos, allocated_is_wide)
         return
     end
 
-    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, has_spoilable_items)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, has_spoilable_items, allocated_is_wide)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

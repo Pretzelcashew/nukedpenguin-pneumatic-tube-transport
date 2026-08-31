@@ -60,16 +60,18 @@
 
 ~consider adding one ui panel for pneumatic toggles instead of many toggles, it would be one time panel you open for changing each toggle.
 
-
-improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
-
-explore having motes around liminal capsule cells for as a guard against possible wrong unit spill
-
-explore only spacing out liminal capsules with spoilables that can spoil into units
-
 ~see about adding bar inventory clamp to hubs
 
 ~explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior
+
+
+improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+
+~explore having motes around liminal capsule cells for as a guard against possible wrong unit spill
+
+~explore only spacing out liminal capsules with spoilables that can spoil into units
+
+
 
 
 ====
@@ -87,3 +89,4 @@ consider a distinct capsule color circle for the render overlay of moving capsul
 investigate render order of debug overlays (capsule should be in front of flow overlay)
 
 with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
+

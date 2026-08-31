@@ -42,7 +42,7 @@
 
 ~clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
-make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
+~make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage (ended up just making the thing not operable)
 
 improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
@@ -65,3 +65,9 @@ see about making capsules with spoilable items turn off dominant item polling on
 add en locale for the new hotbar toggles
 
 consider adding one ui panel for pneumatic toggles instead of many toggles, it would be one time panel you open for changing each toggle.
+
+
+
+
+
+with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives

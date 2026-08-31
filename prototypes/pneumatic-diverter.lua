@@ -30,9 +30,11 @@ proxy.flags = {
   "not-deconstructable",
   "not-blueprintable",
   "hide-alt-info",
-  "not-selectable-in-game"
+  "no-copy-paste"
 }
 proxy.collision_box = {{0, 0}, {0, 0}}
+proxy.collision_mask = {layers = {}}
+proxy.selection_box = am2.selection_box or cc.selection_box
 proxy.selection_priority = 0
 proxy.item_slot_count = 10
 proxy.minable = nil

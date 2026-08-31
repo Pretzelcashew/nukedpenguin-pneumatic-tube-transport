@@ -130,3 +130,12 @@
 1. **Strict $O(1)$ Bio Item Matrix (`scripts/capsules/capsule-definitions.lua`):** Replaced fuzzy string pattern searches (`string.find`) with an explicit lookup table (`capsule_definitions.bio_items`) containing all vanilla and Space Age organic items (`yumako`, `jellynut`, seeds, slumps, bioflux, spoilage, nutrients, eggs, bacteria, fish, wood) and the `biodegradable-capsule` item shell.
 2. **Bio Slot Cost Planner Integration (`scripts/hubs/packing/cargo-planner.lua`):** Updated `cargo_planner.get_item_slot_cost()` to delegate directly to `capsule_defs.is_bio_item()`, ensuring all biological items reliably receive the `0.5` slot cost factor (2× stack capacity bonus) inside biodegradable capsules.
 3. **Top-Level Module Loading Standard (`scripts/hubs/packing/cargo-planner.lua` & `scripts/hubs/hub-packing.lua`):** Enforced top-level scope for `require("scripts.capsules.capsule-definitions")` and verified strict top-level import compliance across capsule packing modules.
+
+
+### Revision: Zero-Collision Circuit Proxies & Wire Selection Fix
+**Date:** 2026-08-31 11:02 (EDT)
+**Context:** Resolve fast-replace upgrades and building placement overlays being blocked by circuit proxy entities while preserving circuit wire network connectivity.
+**Key Changes:**
+1. **Empty Collision Mask (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Configured `collision_mask = {layers = {}}` on proxy prototypes to eliminate all spatial collision layers, allowing fast-replace upgrades and building placement overlays to function seamlessly without proxy collision interference.
+2. **Wire Selection & Flag Tuning (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Removed `"not-selectable-in-game"` from `flags`, added `"no-copy-paste"`, set `selection_priority = 0`, and mapped `selection_box` to host structures, restoring red/green circuit network wire targeting.
+3. **Top-Level Require Compliance (`prototypes/pneumatic-pump-proxy-linkage.lua` & `prototypes/pneumatic-diverter-proxy-linkage.lua`):** Verified strict top-level module import standards across proxy lifecycle linkage scripts.

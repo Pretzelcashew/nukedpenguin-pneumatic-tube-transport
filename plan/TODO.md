@@ -30,6 +30,8 @@
 
 ~fix diverters from backing up if there's an open route![alt text](image.png)
 
+address the fact that waking up capsules after a network stoppaged and rebuild is virtually nonexistent beyond the direct entity touching (leading to an entire stalled network that can't wake up except one by manually intervention), i believe this has to do with the last couple revisions. Those revisions helped the performance a lot, but having an entire system that once stopped, destroy a segment and rebuild, doesnt wake them up except one by one is not going to fly. but also a brute force wake will not fly either
+
 explore ways to make capsule movement much more performant (right now it's extremely laggy with only 150 moving capsules, down to 30 ups!)
 
 investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)

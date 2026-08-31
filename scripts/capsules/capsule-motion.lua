@@ -168,6 +168,106 @@ function capsule_motion.calculate_segment_speed(from_port_key, to_port_key)
     return tiles_per_sec / 60.0
 end
 
+--- Pre-computes and caches segment parameters (positions, distance, speed, entities) on capsule
+--- to eliminate tick-by-tick node lookups, physical entity coordinate queries, and math calculations mid-segment.
+--- @param capsule table
+--- @return boolean success
+function capsule_motion.setup_segment(capsule)
+    if not capsule then return false end
+
+    local from_key = capsule.from_port_key
+    if not from_key then
+        capsule.seg_from_key = nil
+        capsule.seg_to_key = nil
+        capsule.entity_from = nil
+        capsule.entity_to = nil
+        return false
+    end
+
+    local node_from = capsule_motion.get_node(from_key)
+    if not (node_from and node_from.entity and node_from.entity.valid) then
+        capsule.seg_from_key = nil
+        capsule.seg_to_key = nil
+        capsule.entity_from = nil
+        capsule.entity_to = nil
+        return false
+    end
+
+    local ent_from = node_from.entity
+    local from_x = ent_from.position.x + node_from.offset.x
+    local from_y = ent_from.position.y + node_from.offset.y
+    local surf = ent_from.surface
+
+    local to_key = capsule.to_port_key
+    if not to_key then
+        -- Parked state setup
+        capsule.seg_from_key = from_key
+        capsule.seg_to_key = nil
+        capsule.entity_from = ent_from
+        capsule.entity_to = nil
+        capsule.seg_from_x = from_x
+        capsule.seg_from_y = from_y
+        capsule.seg_to_x = from_x
+        capsule.seg_to_y = from_y
+        capsule.seg_dx = 0.0
+        capsule.seg_dy = 0.0
+        capsule.seg_dist = 0.0
+        capsule.seg_speed = MIN_SPEED_TILES_PER_SEC / 60.0
+        capsule.surface = surf
+        return true
+    end
+
+    local node_to = capsule_motion.get_node(to_key)
+    if not (node_to and node_to.entity and node_to.entity.valid) then
+        capsule.seg_from_key = from_key
+        capsule.seg_to_key = nil
+        capsule.entity_from = ent_from
+        capsule.entity_to = nil
+        return false
+    end
+
+    local ent_to = node_to.entity
+    local to_x = ent_to.position.x + node_to.offset.x
+    local to_y = ent_to.position.y + node_to.offset.y
+
+    local dx = to_x - from_x
+    local dy = to_y - from_y
+    local dist = math.sqrt(dx * dx + dy * dy)
+
+    -- Speed calculation using already retrieved nodes
+    local p_from = (storage.port_pressures and storage.port_pressures[from_key]) or node_from.pressure or 0
+    local p_to = (storage.port_pressures and storage.port_pressures[to_key]) or node_to.pressure or 0
+    local is_internal = (node_from.unit_number == node_to.unit_number)
+
+    local delta_p = 0
+    if is_internal then
+        delta_p = math.max(1.0, math.abs(p_from) * 0.10)
+    else
+        delta_p = math.max(0.1, math.abs(p_from - p_to))
+    end
+
+    local speed_multiplier = math.sqrt(delta_p)
+    local tiles_per_sec = BASE_SPEED_TILES_PER_SEC * speed_multiplier
+    tiles_per_sec = math.max(MIN_SPEED_TILES_PER_SEC, math.min(MAX_SPEED_TILES_PER_SEC, tiles_per_sec))
+    local speed = tiles_per_sec / 60.0
+
+    capsule.seg_from_key = from_key
+    capsule.seg_to_key = to_key
+    capsule.entity_from = ent_from
+    capsule.entity_to = ent_to
+    capsule.seg_from_x = from_x
+    capsule.seg_from_y = from_y
+    capsule.seg_to_x = to_x
+    capsule.seg_to_y = to_y
+    capsule.seg_dx = dx
+    capsule.seg_dy = dy
+    capsule.seg_dist = dist
+    capsule.seg_speed = speed
+    capsule.surface = surf
+
+    return true
+end
+
 function capsule_motion.has_entity_network_capacity(from_port_key, target_port_key)
     if not (storage.networks and storage.networks.port_to_network) then return false end
 

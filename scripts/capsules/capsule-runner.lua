@@ -10,6 +10,9 @@ local liminal_surface = require("scripts.surfaces.liminal-surface")
 local networks_flow = require("scripts.networks.networks-flow")
 
 local PARKED_RETRY_INTERVAL = 10
+local DEFAULT_MIN_SPEED = 4.0 / 60.0
+
+local scratch_pos = { x = 0, y = 0 }
 
 local capsule_runner = {}
 
@@ -97,6 +100,18 @@ function capsule_runner.get_capsule_location(capsule_id)
     if not storage.capsules then return nil, nil end
     local capsule = storage.capsules[capsule_id]
     if not capsule then return nil, nil end
+
+    if capsule.seg_from_x and capsule.surface and capsule.surface.valid then
+        if capsule.to_port_key and capsule.seg_to_key == capsule.to_port_key then
+            local progress = capsule.progress or 0.0
+            return {
+                x = capsule.seg_from_x + capsule.seg_dx * progress,
+                y = capsule.seg_from_y + capsule.seg_dy * progress
+            }, capsule.surface
+        else
+            return { x = capsule.seg_from_x, y = capsule.seg_from_y }, capsule.surface
+        end
+    end
 
     local from_pos, surf = capsule_motion.get_port_world_pos(capsule.from_port_key)
     if not (from_pos and surf) then return nil, nil end
@@ -198,9 +213,13 @@ local function update_capsules(current_tick)
     capsule_renderer.prepare_frame()
 
     for id, capsule in pairs(storage.capsules) do
-        local current_speed = capsule_motion.calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
+        if capsule.seg_from_key ~= capsule.from_port_key or capsule.seg_to_key ~= capsule.to_port_key then
+            capsule_motion.setup_segment(capsule)
+        end
+
+        local current_speed = capsule.seg_speed or DEFAULT_MIN_SPEED
         local tiles_this_tick = current_speed
-        local surface = nil
+        local surface = capsule.surface
         local curr_pos = nil
         local safety_counter = 0
 
@@ -222,7 +241,8 @@ local function update_capsules(current_tick)
 
                     if capsule.to_port_key then
                         capsule.next_retry_tick = nil
-                        local new_speed = capsule_motion.calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
+                        capsule_motion.setup_segment(capsule)
+                        local new_speed = capsule.seg_speed or DEFAULT_MIN_SPEED
                         if current_speed > 0 then
                             tiles_this_tick = tiles_this_tick * (new_speed / current_speed)
                         else
@@ -235,34 +255,31 @@ local function update_capsules(current_tick)
                 end
             end
 
-            local from_pos, surf = capsule_motion.get_port_world_pos(capsule.from_port_key)
-            if not from_pos then
+            if not (capsule.entity_from and capsule.entity_from.valid) then
                 local bad_port = capsule.from_port_key
                 capsule_queries.remove_capsule(id)
                 capsule_runner.wake_parked_capsules(bad_port)
                 break
             end
-            
-            surface = surf
-            curr_pos = { x = from_pos.x, y = from_pos.y }
+
+            surface = capsule.surface
+            scratch_pos.x = capsule.seg_from_x
+            scratch_pos.y = capsule.seg_from_y
+            curr_pos = scratch_pos
 
             if not capsule.to_port_key then break end
 
-            local to_pos = capsule_motion.get_port_world_pos(capsule.to_port_key)
-            if not to_pos then
+            if not (capsule.entity_to and capsule.entity_to.valid) then
                 local bad_to = capsule.to_port_key
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
-                capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
                 capsule_queries.update_capsule_occupancy(capsule)
+                capsule_motion.setup_segment(capsule)
                 capsule_runner.wake_parked_capsules(bad_to)
                 break
             end
 
-            local dx = to_pos.x - from_pos.x
-            local dy = to_pos.y - from_pos.y
-            local distance = math.sqrt(dx * dx + dy * dy)
-
+            local distance = capsule.seg_dist
             if distance <= 0.001 then
                 local vacated_port = capsule.last_port_key or capsule.from_port_key
                 capsule.last_port_key = capsule.from_port_key
@@ -270,7 +287,8 @@ local function update_capsules(current_tick)
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 capsule_queries.update_capsule_occupancy(capsule)
-                
+                capsule_motion.setup_segment(capsule)
+
                 local arr_port = capsule.from_port_key
                 if capsule_motion.handle_arrival(capsule, id) then
                     capsule_runner.wake_parked_capsules(arr_port)
@@ -290,9 +308,12 @@ local function update_capsules(current_tick)
                     capsule.from_port_key = capsule.to_port_key
                     capsule.to_port_key = nil
                     capsule.progress = 0.0
-                    curr_pos = { x = to_pos.x, y = to_pos.y }
+                    scratch_pos.x = capsule.seg_to_x
+                    scratch_pos.y = capsule.seg_to_y
+                    curr_pos = scratch_pos
                     capsule_queries.update_capsule_occupancy(capsule)
-                    
+                    capsule_motion.setup_segment(capsule)
+
                     local arr_port = capsule.from_port_key
                     if capsule_motion.handle_arrival(capsule, id) then
                         capsule_runner.wake_parked_capsules(arr_port)
@@ -304,8 +325,9 @@ local function update_capsules(current_tick)
                     end
                 else
                     capsule.progress = capsule.progress + (tiles_this_tick / distance)
-                    curr_pos.x = from_pos.x + dx * capsule.progress
-                    curr_pos.y = from_pos.y + dy * capsule.progress
+                    scratch_pos.x = capsule.seg_from_x + capsule.seg_dx * capsule.progress
+                    scratch_pos.y = capsule.seg_from_y + capsule.seg_dy * capsule.progress
+                    curr_pos = scratch_pos
                     tiles_this_tick = 0
                 end
             end
@@ -344,6 +366,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
 
     storage.capsules[capsule_id] = new_capsule
     capsule_queries.update_capsule_occupancy(new_capsule)
+    capsule_motion.setup_segment(new_capsule)
     capsule_runner.wake_parked_capsules(target_port_key)
     return true
 end

@@ -106,7 +106,7 @@ data:extend({
     minable = {mining_time = 0.2},
     max_health = 150,
     destructible = true,
-    operable = true,
+    operable = false, -- Non-operable: Prevents players from opening container GUI to manually insert items
     collision_mask = {layers = {}},
     collision_box = {{-0.2, -0.2}, {0.2, 0.2}},
     selection_box = {{-0.3, -0.3}, {0.3, 0.3}},

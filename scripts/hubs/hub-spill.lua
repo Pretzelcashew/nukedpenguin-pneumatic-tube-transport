@@ -27,9 +27,8 @@ local function spill_and_mark_stack(surface, position, stack, mark_decon, force)
     end
 end
 
---- Scans and enforces anti-exploit rules on spilled containers every single tick (60Hz):
---- 1. Re-enforces set_bar(1) on the exact tick if a player attempts to adjust the bar limit.
---- 2. Immediately destroys the container entity the instant all contents have been extracted.
+--- Scans and cleans up spilled container entities:
+--- Immediately destroys the container entity if all contents have been extracted or mined.
 local function process_spilled_containers()
     if not storage.spilled_containers then return end
 
@@ -43,8 +42,6 @@ local function process_spilled_containers()
             if not inv or inv.is_empty() then
                 entity.destroy()
                 storage.spilled_containers[unit_number] = nil
-            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
-                inv.set_bar(1)
             end
         end
     end
@@ -54,37 +51,10 @@ local function process_spilled_containers()
     end
 end
 
--- Enforce anti-exploit rules on EVERY tick (60Hz - 0 tick delay window)
+-- Periodically check spilled containers for auto-cleanup (60-tick / 1s interval)
 events.on_event(defines.events.on_tick, function(event)
-    process_spilled_containers()
-end)
-
--- Instant enforcement on GUI open & close events
-events.on_event(defines.events.on_gui_opened, function(event)
-    local entity = event.entity
-    if entity and entity.valid and entity.name == "visible-capsule-holder" then
-        local inv = entity.get_inventory(defines.inventory.chest)
-        if inv then
-            if inv.is_empty() then
-                entity.destroy()
-            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
-                inv.set_bar(1)
-            end
-        end
-    end
-end)
-
-events.on_event(defines.events.on_gui_closed, function(event)
-    local entity = event.entity
-    if entity and entity.valid and entity.name == "visible-capsule-holder" then
-        local inv = entity.get_inventory(defines.inventory.chest)
-        if inv then
-            if inv.is_empty() then
-                entity.destroy()
-            elseif inv.supports_bar() and inv.get_bar() ~= 1 then
-                inv.set_bar(1)
-            end
-        end
+    if storage.spilled_containers and (event.tick % 60 == 0) then
+        process_spilled_containers()
     end
 end)
 
@@ -144,6 +114,8 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                 }
 
                 if container_entity and container_entity.valid then
+                    container_entity.operable = false -- Non-operable: Prevents opening container GUI to insert items by hand
+
                     if mark_decon then
                         container_entity.order_deconstruction(effective_force)
                     end
@@ -168,9 +140,6 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                         if container_inv.is_empty() then
                             container_entity.destroy()
                         else
-                            if container_inv.supports_bar() then
-                                container_inv.set_bar(1)
-                            end
                             storage.spilled_containers = storage.spilled_containers or {}
                             storage.spilled_containers[container_entity.unit_number] = container_entity
                         end

@@ -104,3 +104,12 @@
 2. **Standardized Command Naming & Aliases (`scripts/debug-manager.lua`):** Renamed `/capsule-peek` to `/toggle-capsule-peek` for naming alignment across all debug toggles (`/toggle-debug`, `/toggle-prints`, `/toggle-ports`, `/toggle-flow`, `/toggle-capsules`). Retained `/capsule-peek` as a backward-compatible alias alongside `pt-toggle-*` command aliases.
 3. **Bidirectional Shortcut Sync & Event Handler (`scripts/debug-manager.lua` & `control.lua`):** Bound `defines.events.on_lua_shortcut` to toggle debug overlays dynamically on hotbar shortcut clicks. Implemented `debug_manager.sync_shortcuts()` with guarded `player.set_shortcut_toggled()` calls to maintain 1:1 state synchronization across GUI clicks, chat commands, and player initialization.
 4. **Top-Level Module Loading Enforcement (`control.lua`):** Standardized module imports strictly to file top-levels, ensuring `debug_manager` and dependent scripts load cleanly without dynamic inline `require` calls during tick handlers or events.
+
+
+### Revision: Inoperable Spilled Containers & Zero-Overhead Cleanup Engine
+**Date:** 2026-08-31 09:33 (EDT)
+**Context:** Prevent players from manually placing items back into spilled capsule containers by hand, eliminate tick-by-tick inventory bar enforcement loops, and restore UPS performance during network deconstructions and container spills.
+**Key Changes:**
+1. **Inoperable Spilled Container Prototype (`prototypes/entity.lua`):** Configured `operable = false` on the `visible-capsule-holder` prototype definition, preventing players from opening container GUIs to enforce a strict one-way spill retrieval model.
+2. **Spilled Entity Lifecycle Enforcement (`scripts/hubs/hub-spill.lua`):** Updated `hub_spill.spill_capsule` to explicitly set `container_entity.operable = false` upon creation, guaranteeing non-operability across all physical surface container spills.
+3. **GUI Event & Bar Scan Elimination (`scripts/hubs/hub-spill.lua`):** Removed `on_gui_opened` and `on_gui_closed` event listeners and purged tick-by-tick `set_bar(1)` GUI fighting loops. Throttled `process_spilled_containers` to evaluate empty container cleanup at a 60-tick (1-second) interval, eliminating per-tick UPS churn.

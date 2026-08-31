@@ -1,5 +1,6 @@
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_queries = require("scripts.capsules.capsule-queries")
+local capsule_defs = require("scripts.capsules.capsule-definitions")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -187,6 +188,11 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     local passenger_index = passenger_valid and passenger.index or nil
     local surface_index = surface.index
 
+    local cap_id = capsule.capsule_id or id
+    local cap_data = capsule_manager.get(cap_id)
+    local def = cap_data and cap_data.definition
+    local ring_color = capsule_defs.get_debug_color(def or (cap_data and cap_data.type))
+
     local debug_player_count = 0
 
     if active_debug_count > 0 then
@@ -254,10 +260,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules containing spoilable items
     local dominant_item = nil
     if debug_key ~= 0 and debug_key ~= "" and not passenger_valid then
-        local cap_id = capsule.capsule_id or id
-        local cap_data = capsule_manager.get(cap_id)
         local has_spoilable = cap_data and (cap_data.has_spoilable_items ~= false)
-
         local tick_offset = cap_id or 0
         local recheck_spoilage = has_spoilable and ((game.tick + tick_offset) % 60 == 0)
 
@@ -275,6 +278,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         and cache.passenger_index == passenger_index
         and cache.debug_key == debug_key
         and cache.dominant_item == dominant_item
+        and cache.ring_color == ring_color
 
     if state_matches then
         local pos_changed = (cache.pos_x ~= curr_pos.x or cache.pos_y ~= curr_pos.y)
@@ -319,7 +323,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     capsule_queries.clear_capsule_render(capsule)
 
     if debug_key ~= 0 and debug_key ~= "" and not passenger_valid and dominant_item == nil then
-        dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
+        dominant_item = capsule_renderer.get_dominant_item(cap_id)
     end
 
     local render_objects = {}
@@ -333,7 +337,8 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
             color = { r = 1, g = 0.9, b = 0.3, a = 1.0 },
             players = { passenger },
             alignment = "center",
-            scale = 0.9
+            scale = 0.9,
+            render_layer = "light-effect"
         }
         table.insert(render_objects, eject_text)
         table.insert(target_offsets, 0.8)
@@ -349,6 +354,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 width = 3,
                 target = curr_pos,
                 surface = surface,
+                render_layer = "entity-info-icon-above",
                 players = { player }
             }
             table.insert(render_objects, ring)
@@ -356,12 +362,13 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         else
             if dominant_item then
                 local ring = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                    color = ring_color,
                     radius = 0.35,
                     filled = false,
                     width = 2,
                     target = curr_pos,
                     surface = surface,
+                    render_layer = "entity-info-icon-above",
                     players = { player }
                 }
                 table.insert(render_objects, ring)
@@ -373,17 +380,19 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                     surface = surface,
                     x_scale = 0.55,
                     y_scale = 0.55,
+                    render_layer = "entity-info-icon-above",
                     players = { player }
                 }
                 table.insert(render_objects, sprite)
                 table.insert(target_offsets, 0)
             else
                 local dot = rendering.draw_circle{
-                    color = { r = 1, g = 0.84, b = 0, a = 0.9 },
+                    color = ring_color,
                     radius = 0.25,
                     filled = true,
                     target = curr_pos,
                     surface = surface,
+                    render_layer = "entity-info-icon-above",
                     players = { player }
                 }
                 table.insert(render_objects, dot)
@@ -407,6 +416,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
             passenger_index = passenger_index,
             debug_key = debug_key,
             dominant_item = dominant_item,
+            ring_color = ring_color,
             target_offsets = target_offsets
         }
     else
@@ -418,6 +428,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
             passenger_index = passenger_index,
             debug_key = debug_key,
             dominant_item = dominant_item,
+            ring_color = ring_color,
             target_offsets = nil
         }
     end

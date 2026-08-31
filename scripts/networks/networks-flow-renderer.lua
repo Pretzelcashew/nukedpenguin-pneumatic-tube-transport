@@ -81,6 +81,7 @@ function flow_renderer.draw(net_id, target_player_index)
                     scale = 0.8,
                     alignment = "center",
                     only_in_alt_mode = true,
+                    render_layer = "lower-object-above-shadow",
                     players = { player }
                 }
                 table.insert(render_objects, text_obj)
@@ -98,6 +99,7 @@ function flow_renderer.draw(net_id, target_player_index)
                             width = 2,
                             draw_on_ground = false,
                             only_in_alt_mode = true,
+                            render_layer = "lower-object-above-shadow",
                             players = { player }
                         }
                         table.insert(render_objects, line_obj)

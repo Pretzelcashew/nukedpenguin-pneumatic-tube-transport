@@ -36,6 +36,7 @@ end
 capsule_definitions.types = {
     ["item-capsule"] = {
         type = "capsule",
+        debug_color = { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }, -- Metallic Gold
         base_capacity = 2,
         quality_affected_capacity = 1,
         mixed_cargo = false,
@@ -58,6 +59,7 @@ capsule_definitions.types = {
     },
     ["biodegradable-capsule"] = {
         type = "capsule",
+        debug_color = { r = 0.2, g = 0.9, b = 0.2, a = 0.9 }, -- Emerald Green
         base_capacity = 2,
         quality_affected_capacity = 1,
         mixed_cargo = false,
@@ -83,6 +85,7 @@ capsule_definitions.types = {
     },
     ["refrigerated-capsule"] = {
         type = "capsule",
+        debug_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.9 }, -- Frost Cyan
         base_capacity = 3,
         quality_affected_capacity = 1,
         mixed_cargo = true,
@@ -106,6 +109,7 @@ capsule_definitions.types = {
     },
     ["spent-refrigerated-capsule"] = {
         type = "capsule",
+        debug_color = { r = 0.6, g = 0.65, b = 0.7, a = 0.9 }, -- Slate Grey
         base_capacity = 3,
         quality_affected_capacity = 1,
         mixed_cargo = true,
@@ -128,6 +132,7 @@ capsule_definitions.types = {
     },
     ["reinforced-capsule"] = {
         type = "capsule",
+        debug_color = { r = 0.8, g = 0.3, b = 1.0, a = 0.9 }, -- Violet Purple
         base_capacity = 6,
         quality_affected_capacity = 2,
         mixed_cargo = true,
@@ -150,6 +155,7 @@ capsule_definitions.types = {
     ["player-transit-capsule"] = {
         type = "capsule",
         is_player_transit = true,
+        debug_color = { r = 1.0, g = 0.4, b = 0.1, a = 0.9 }, -- Crimson Orange
         base_capacity = 0,
         quality_affected_capacity = 0,
         mixed_cargo = false,
@@ -169,5 +175,19 @@ capsule_definitions.types = {
         }
     }
 }
+
+local DEFAULT_DEBUG_COLOR = { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }
+
+--- Evaluates and returns the debug overlay color for a capsule type or definition
+--- @param def_or_name string|table|nil
+--- @return table color RGBA color table
+function capsule_definitions.get_debug_color(def_or_name)
+    if not def_or_name then return DEFAULT_DEBUG_COLOR end
+    local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
+    if def and def.debug_color then
+        return def.debug_color
+    end
+    return DEFAULT_DEBUG_COLOR
+end
 
 return capsule_definitions

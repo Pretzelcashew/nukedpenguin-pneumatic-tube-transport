@@ -26,6 +26,7 @@ function port_renderer.draw_ports_for_entity(entity, player)
             filled = true,
             target = { entity = entity, offset = port.offset },
             surface = entity.surface,
+            render_layer = "wires-above",
             players = { player }
         }
         table.insert(storage.port_render_objects[player.index], circle)

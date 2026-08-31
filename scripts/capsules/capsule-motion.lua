@@ -15,101 +15,141 @@ local MAX_SPEED_TILES_PER_SEC = 60
 local capsule_motion = {}
 
 --- Efficiently retrieves the unit_number from a port_key ("unit_number:port_index")
---- Uses node metadata if available, falling back to memoized port string info lookup.
+--- Uses memoized port key parsing to avoid flow map lookups and string allocations.
 --- @param port_key string|nil
 --- @return number|nil unit_number
 local function get_unit_number(port_key)
     if not port_key then return nil end
-    local node = capsule_motion.get_node(port_key)
-    if node and node.unit_number then
-        return node.unit_number
-    end
     return capsule_queries.get_port_info(port_key)
 end
 
-local function evaluate_filter_slot(slot, payload_item)
-    if not slot then return nil end
-    local filter_item = slot.item or slot.signal
-    if not filter_item then return nil end
-
-    local item_match = (payload_item == filter_item)
-    local comp = slot.comparator or "="
-
-    if comp == "=" then
-        return item_match
-    elseif comp == "≠" or comp == "!=" then
-        return not item_match
-    elseif comp == ">" or comp == "≥" or comp == ">=" then
-        return item_match
-    elseif comp == "<" then
-        return not item_match
-    elseif comp == "≤" or comp == "<=" then
-        return true
+--- Lazily compiles and memoizes diverter port filter structures on port_setting._compiled
+--- @param port_setting table
+--- @return table|false compiled_filter
+local function get_compiled_filter(port_setting)
+    local compiled = port_setting._compiled
+    if compiled ~= nil then
+        return compiled
     end
 
-    return item_match
-end
-
-local function evaluates_port_filter(port_setting, payload_item)
-    if not (port_setting and port_setting.use_filters) then
-        return true
-    end
-
-    if not payload_item then
-        return port_setting.filter_mode == "blacklist"
+    if not port_setting.use_filters then
+        compiled = false
+        port_setting._compiled = compiled
+        return compiled
     end
 
     local filter_mode = port_setting.filter_mode or "whitelist"
+    local is_blacklist = (filter_mode == "blacklist")
     local filters = port_setting.filters
-    if not filters then return true end
 
-    local has_configured_slots = false
-    local any_slot_matched = false
-
-    for i = 1, 5 do
-        local slot = filters[i]
-        local match_res = evaluate_filter_slot(slot, payload_item)
-        if match_res ~= nil then
-            has_configured_slots = true
-            if match_res == true then
-                any_slot_matched = true
+    local active_slots = {}
+    if filters then
+        for i = 1, 5 do
+            local slot = filters[i]
+            if slot then
+                local item = slot.item or slot.signal
+                if item then
+                    local comp = slot.comparator or "="
+                    table.insert(active_slots, { item = item, comp = comp })
+                end
             end
         end
     end
 
-    if not has_configured_slots then
-        return filter_mode == "blacklist"
+    compiled = {
+        is_blacklist = is_blacklist,
+        active_slots = active_slots
+    }
+    port_setting._compiled = compiled
+    return compiled
+end
+
+--- Evaluates payload item against memoized compiled port filter configuration
+--- @param port_setting table|nil
+--- @param payload_item string|nil
+--- @return boolean
+local function evaluates_port_filter(port_setting, payload_item)
+    if not port_setting then return true end
+
+    local compiled = get_compiled_filter(port_setting)
+    if compiled == false then
+        return true
     end
 
-    if filter_mode == "whitelist" then
-        return any_slot_matched
-    else
+    if not payload_item then
+        return compiled.is_blacklist
+    end
+
+    local active_slots = compiled.active_slots
+    local num_active = #active_slots
+
+    if num_active == 0 then
+        return compiled.is_blacklist
+    end
+
+    local any_slot_matched = false
+    for i = 1, num_active do
+        local slot = active_slots[i]
+        local item_match = (payload_item == slot.item)
+        local comp = slot.comp
+
+        local match_res = false
+        if comp == "=" then
+            match_res = item_match
+        elseif comp == "≠" or comp == "!=" then
+            match_res = not item_match
+        elseif comp == ">" or comp == "≥" or comp == ">=" then
+            match_res = item_match
+        elseif comp == "<" then
+            match_res = not item_match
+        elseif comp == "≤" or comp == "<=" then
+            match_res = true
+        else
+            match_res = item_match
+        end
+
+        if match_res then
+            any_slot_matched = true
+            if not compiled.is_blacklist then
+                return true
+            end
+        end
+    end
+
+    if compiled.is_blacklist then
         return not any_slot_matched
+    else
+        return any_slot_matched
     end
 end
 
+--- Fast-path diverter port filter validator
+--- Short-circuits non-diverter entities in O(1) time before settings traversal
+--- @param port_key string|nil
+--- @param payload_item string|nil
+--- @return boolean
 local function check_diverter_port_filter(port_key, payload_item)
-    if not (port_key and storage.diverter_settings) then return true end
+    if not port_key then return true end
+    local diverter_settings_store = storage.diverter_settings
+    if not diverter_settings_store then return true end
 
-    local node = capsule_motion.get_node(port_key)
-    local unit_number, port_index
-    if node then
-        unit_number = node.unit_number
-        port_index = node.port_index
-    else
-        unit_number, port_index = capsule_queries.get_port_info(port_key)
-    end
-    if not (unit_number and port_index) then return true end
+    local unit_number, port_index = capsule_queries.get_port_info(port_key)
+    if not unit_number then return true end
 
-    local d_settings = storage.diverter_settings[unit_number]
-    if not (d_settings and d_settings.ports) then return true end
+    local d_settings = diverter_settings_store[unit_number]
+    if not d_settings then return true end
 
-    local port_setting = d_settings.ports[port_index]
+    local port_setting = d_settings.ports and d_settings.ports[port_index]
     if not port_setting then return true end
 
     return evaluates_port_filter(port_setting, payload_item)
 end
 
+--- Checks whether hop movement is allowed by diverter filters at origin and target ports
+--- @param from_port_key string
+--- @param hop_key string
+--- @param payload_item string|nil
+--- @return boolean
 local function is_hop_allowed_by_diverter_filters(from_port_key, hop_key, payload_item)
     if not check_diverter_port_filter(hop_key, payload_item) then
         return false

@@ -59,3 +59,12 @@
 1. **Payload Metadata Caching at Packing (`scripts/hubs/hub-packing.lua` & `scripts/capsules/capsule-manager.lua`):** Updated hub packing logic to compute the dominant payload item during extraction plan generation and pass it directly to `capsule_manager.register()`, persisting it in `storage.active_capsules[capsule_id].dominant_item`.
 2. **$O(1)$ Motion Pathfinding & Filter Evaluation (`scripts/capsules/capsule-motion.lua` & `scripts/capsules/capsule-runner.lua`):** Refactored `select_next_target()` and `find_best_hub_outbound_port()` to read `capsule.dominant_item` directly from memory in constant time, bypassing C++ container inventory queries on `liminal_surface` during tick-by-tick motion execution and diverter filter evaluations.
 3. **Guarded Renderer Inventory Scans (`scripts/capsules/capsule-renderer.lua`):** Updated `capsule_renderer.get_dominant_item(capsule_id, force_refresh)` to return cached payload strings instantly, restricting physical container inventory scans to explicit force-refresh calls (e.g., 60-tick spoilage re-checks for active Alt Mode debug overlays).
+
+
+### Revision: Diverter Filter Validation & O(1) Key Parsing Optimization
+**Date:** 2026-08-30 22:54 (EDT)
+**Context:** Eliminate redundant string key parsing, deep network graph flow-map lookups, and uncompiled settings table traversals during tick-by-tick diverter filter evaluation and recursive lookahead pathfinding.
+**Key Changes:**
+1. **$O(1)$ Non-Diverter Filter Short-Circuiting (`scripts/capsules/capsule-motion.lua`):** Refactored `check_diverter_port_filter()` to query `capsule_queries.get_port_info()` directly, extracting integer unit numbers and port indices without flow-map metadata traversals or string allocations, instantly short-circuiting non-diverter entities in 2 table lookups.
+2. **Memoized Filter Compilation & Active Slot Traversal (`scripts/capsules/capsule-motion.lua`):** Implemented `get_compiled_filter()` to lazily compile active filter slots and blacklist modes onto `port_setting._compiled`, bypassing unconfigured slots (slots 2..5) and enabling instant early-exit evaluation on whitelist matches.
+3. **Graph-Free Unit Key Parsing & Filter Cache Invalidation (`scripts/capsules/capsule-motion.lua` & `scripts/networks/diverter-manager.lua`):** Refactored `get_unit_number()` to delegate directly to memoized port info lookups, and updated `diverter_manager` (`notify_settings_changed`, `check_diverter_states`) to clear `_compiled` caches on modified diverter ports when settings, orientation, or power states change.

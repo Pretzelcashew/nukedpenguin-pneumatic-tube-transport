@@ -6,6 +6,17 @@ local diverter_settings = require("scripts.diverter-settings")
 local diverter_manager = {}
 local SCAN_INTERVAL = 15
 
+local function clear_diverter_compiled_filters(unit_number)
+    local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
+    if d_settings and d_settings.ports then
+        for i = 1, 4 do
+            if d_settings.ports[i] then
+                d_settings.ports[i]._compiled = nil
+            end
+        end
+    end
+end
+
 local function rebuild_diverter_networks(entity)
     if not (entity and entity.valid) then return end
     local unit_number = entity.unit_number
@@ -37,6 +48,7 @@ function diverter_manager.notify_settings_changed(entity)
     end
     storage.diverter_port_states[unit_number] = current_ports
 
+    clear_diverter_compiled_filters(unit_number)
     rebuild_diverter_networks(entity)
 end
 
@@ -91,6 +103,7 @@ local function check_diverter_states()
             if is_powered ~= last_power or port_changed then
                 storage.diverter_power_states[unit_number] = is_powered
                 storage.diverter_port_states[unit_number] = current_ports
+                clear_diverter_compiled_filters(unit_number)
                 rebuild_diverter_networks(entity)
             end
         else

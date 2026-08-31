@@ -7,73 +7,9 @@ local quality_filter = require("scripts.hubs.packing.quality-filter")
 local cargo_planner = require("scripts.hubs.packing.cargo-planner")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local hub_settings = require("scripts.hubs.hub-settings")
+local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 
 local hub_packing = {}
-
---- Copies equipment grid contents from a source item stack (or grid object) to a destination item stack
---- @param src_stack_or_grid LuaItemStack|LuaEquipmentGrid
---- @param dest_stack LuaItemStack
-local function copy_equipment_grid(src_stack_or_grid, dest_stack)
-    if not (src_stack_or_grid and dest_stack and dest_stack.valid_for_read) then return end
-
-    local src_grid = nil
-    if src_stack_or_grid.object_name == "LuaEquipmentGrid" then
-        src_grid = src_stack_or_grid
-    elseif src_stack_or_grid.grid and src_stack_or_grid.grid.valid then
-        src_grid = src_stack_or_grid.grid
-    end
-
-    if not (src_grid and src_grid.valid) then return end
-
-    local equipment_list = src_grid.equipment
-    if not (equipment_list and #equipment_list > 0) then return end
-
-    local dest_grid = dest_stack.grid or dest_stack.create_grid()
-    if not (dest_grid and dest_grid.valid) then return end
-
-    for _, eq in ipairs(equipment_list) do
-        if eq and eq.valid then
-            local placed = dest_grid.put{
-                name = eq.name,
-                position = eq.position,
-                quality = eq.quality
-            }
-            if placed and placed.valid then
-                if eq.energy then placed.energy = eq.energy end
-                if eq.shield and eq.shield > 0 then placed.shield = eq.shield end
-            end
-        end
-    end
-end
-
---- Builds a complete SimpleItemStack specification table preserving all vanilla Factorio 2.0 metadata
---- @param stack LuaItemStack
---- @param count number|nil Optional explicit stack count
---- @return table SimpleItemStack spec
-local function build_stack_spec(stack, count)
-    local spec = {
-        name = stack.name,
-        count = count or stack.count,
-        quality = stack.quality
-    }
-    if stack.health and stack.health < 1.0 then
-        spec.health = stack.health
-    end
-    if stack.spoil_percent and stack.spoil_percent > 0 then
-        spec.spoil_percent = stack.spoil_percent
-    end
-    if stack.is_tool and stack.durability then
-        spec.durability = stack.durability
-    end
-    if stack.is_ammo and stack.ammo then
-        spec.ammo = stack.ammo
-    end
-    if stack.is_item_with_tags then
-        spec.tags = stack.tags
-        spec.custom_description = stack.custom_description
-    end
-    return spec
-end
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
@@ -332,37 +268,7 @@ function hub_packing.evaluate_inventory(entity)
                 dominant_cargo_item = item_name
             end
 
-            local transferred = false
-            for i = 1, max_search do
-                local dest_slot = dest_inv[i]
-                if dest_slot and dest_slot.valid then
-                    if not dest_slot.valid_for_read or (dest_slot.name == item_name and dest_slot.quality == stack.quality) then
-                        if dest_slot.transfer_stack(stack, amount_to_transfer) then
-                            transferred = true
-                            break
-                        end
-                    end
-                end
-            end
-
-            if not transferred and stack.valid_for_read then
-                local stack_spec = build_stack_spec(stack, amount_to_transfer)
-                local src_grid = stack.grid
-                local inserted = dest_inv.insert(stack_spec)
-                if inserted >= original_count then
-                    stack.clear()
-                else
-                    stack.count = original_count - inserted
-                end
-                if src_grid and src_grid.valid then
-                    for i = 1, max_search do
-                        if dest_inv[i].valid_for_read and dest_inv[i].name == item_name then
-                            copy_equipment_grid(src_grid, dest_inv[i])
-                            break
-                        end
-                    end
-                end
-            end
+            item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
         end
     end
 
@@ -395,7 +301,7 @@ function hub_packing.evaluate_inventory(entity)
 
             if not transferred then
                 local src_grid = primary_stack.grid
-                local stack_spec = build_stack_spec(primary_stack, 1)
+                local stack_spec = item_transfer_handler.build_stack_spec(primary_stack, 1)
 
                 if primary_stack.count > 1 then
                     primary_stack.count = primary_stack.count - 1
@@ -407,7 +313,7 @@ function hub_packing.evaluate_inventory(entity)
                     dest_inv[target_slot].set_stack(stack_spec)
                     primary_holder_slot = target_slot
                     if src_grid and src_grid.valid then
-                        copy_equipment_grid(src_grid, dest_inv[target_slot])
+                        item_transfer_handler.copy_equipment_grid(src_grid, dest_inv[target_slot])
                     end
                 else
                     local inserted = dest_inv.insert(stack_spec)
@@ -416,7 +322,7 @@ function hub_packing.evaluate_inventory(entity)
                             if dest_inv[i].valid_for_read and dest_inv[i].name == primary_stack.name then
                                 primary_holder_slot = i
                                 if src_grid and src_grid.valid then
-                                    copy_equipment_grid(src_grid, dest_inv[i])
+                                    item_transfer_handler.copy_equipment_grid(src_grid, dest_inv[i])
                                 end
                                 break
                             end

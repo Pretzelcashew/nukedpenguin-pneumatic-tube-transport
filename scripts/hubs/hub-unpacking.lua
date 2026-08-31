@@ -1,5 +1,6 @@
 local hub_settings = require("scripts.hubs.hub-settings")
 local capsule_manager = require("scripts.capsules.capsule-manager")
+local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 
 local hub_unpacking = {}
 
@@ -11,71 +12,6 @@ local scratch_req_keys = {}
 
 local scratch_partial = {}
 local scratch_filtered = {}
-
---- Copies equipment grid contents from a source item stack (or grid object) to a destination item stack
---- @param src_stack_or_grid LuaItemStack|LuaEquipmentGrid
---- @param dest_stack LuaItemStack
-local function copy_equipment_grid(src_stack_or_grid, dest_stack)
-    if not (src_stack_or_grid and dest_stack and dest_stack.valid_for_read) then return end
-
-    local src_grid = nil
-    if src_stack_or_grid.object_name == "LuaEquipmentGrid" then
-        src_grid = src_stack_or_grid
-    elseif src_stack_or_grid.grid and src_stack_or_grid.grid.valid then
-        src_grid = src_stack_or_grid.grid
-    end
-
-    if not (src_grid and src_grid.valid) then return end
-
-    local equipment_list = src_grid.equipment
-    if not (equipment_list and #equipment_list > 0) then return end
-
-    local dest_grid = dest_stack.grid or dest_stack.create_grid()
-    if not (dest_grid and dest_grid.valid) then return end
-
-    for _, eq in ipairs(equipment_list) do
-        if eq and eq.valid then
-            local placed = dest_grid.put{
-                name = eq.name,
-                position = eq.position,
-                quality = eq.quality
-            }
-            if placed and placed.valid then
-                if eq.energy then placed.energy = eq.energy end
-                if eq.shield and eq.shield > 0 then placed.shield = eq.shield end
-            end
-        end
-    end
-end
-
---- Builds a complete SimpleItemStack specification table preserving all vanilla Factorio 2.0 metadata
---- @param stack LuaItemStack
---- @param count number|nil Optional explicit stack count
---- @return table SimpleItemStack spec
-local function build_stack_spec(stack, count)
-    local spec = {
-        name = stack.name,
-        count = count or stack.count,
-        quality = stack.quality
-    }
-    if stack.health and stack.health < 1.0 then
-        spec.health = stack.health
-    end
-    if stack.spoil_percent and stack.spoil_percent > 0 then
-        spec.spoil_percent = stack.spoil_percent
-    end
-    if stack.is_tool and stack.durability then
-        spec.durability = stack.durability
-    end
-    if stack.is_ammo and stack.ammo then
-        spec.ammo = stack.ammo
-    end
-    if stack.is_item_with_tags then
-        spec.tags = stack.tags
-        spec.custom_description = stack.custom_description
-    end
-    return spec
-end
 
 local function clear_scratch()
     for i = 1, #scratch_req_keys do
@@ -274,38 +210,7 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
     local max_holder_slot = (holder_inv and holder_inv.supports_bar()) and math.min(#holder_inv, holder_inv.get_bar() - 1) or #holder_inv
     local max_hub_slot = (hub_inv and hub_inv.supports_bar()) and math.min(#hub_inv, hub_inv.get_bar() - 1) or #hub_inv
 
-    for i = 1, max_holder_slot do
-        local stack = holder_inv[i]
-        if stack and stack.valid_for_read then
-            local transferred = false
-            for j = 1, max_hub_slot do
-                local dest_slot = hub_inv[j]
-                if dest_slot and dest_slot.valid then
-                    if not dest_slot.valid_for_read or (dest_slot.name == stack.name and dest_slot.quality == stack.quality) then
-                        if dest_slot.transfer_stack(stack) then
-                            transferred = true
-                            break
-                        end
-                    end
-                end
-            end
-
-            if not transferred and stack.valid_for_read then
-                local stack_spec = build_stack_spec(stack)
-                local src_grid = stack.grid
-                local inserted = hub_inv.insert(stack_spec)
-                if inserted > 0 and src_grid and src_grid.valid then
-                    for j = 1, max_hub_slot do
-                        if hub_inv[j].valid_for_read and hub_inv[j].name == stack.name then
-                            copy_equipment_grid(src_grid, hub_inv[j])
-                            break
-                        end
-                    end
-                end
-                stack.clear()
-            end
-        end
-    end
+    item_transfer_handler.transfer_inventory(holder_inv, hub_inv, max_holder_slot, max_hub_slot)
 
     -- Safely exit player passenger adjacent to receiving hub entity
     if capsule_tracker.passenger and capsule_tracker.passenger.valid then

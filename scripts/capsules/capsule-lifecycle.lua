@@ -3,44 +3,9 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local hub_spill = require("scripts.hubs.hub-spill")
 local events = require("scripts.events")
+local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 
 local capsule_lifecycle = {}
-
---- Copies equipment grid contents from a source item stack (or grid object) to a destination item stack
---- @param src_stack_or_grid LuaItemStack|LuaEquipmentGrid
---- @param dest_stack LuaItemStack
-local function copy_equipment_grid(src_stack_or_grid, dest_stack)
-    if not (src_stack_or_grid and dest_stack and dest_stack.valid_for_read) then return end
-
-    local src_grid = nil
-    if src_stack_or_grid.object_name == "LuaEquipmentGrid" then
-        src_grid = src_stack_or_grid
-    elseif src_stack_or_grid.grid and src_stack_or_grid.grid.valid then
-        src_grid = src_stack_or_grid.grid
-    end
-
-    if not (src_grid and src_grid.valid) then return end
-
-    local equipment_list = src_grid.equipment
-    if not (equipment_list and #equipment_list > 0) then return end
-
-    local dest_grid = dest_stack.grid or dest_stack.create_grid()
-    if not (dest_grid and dest_grid.valid) then return end
-
-    for _, eq in ipairs(equipment_list) do
-        if eq and eq.valid then
-            local placed = dest_grid.put{
-                name = eq.name,
-                position = eq.position,
-                quality = eq.quality
-            }
-            if placed and placed.valid then
-                if eq.energy then placed.energy = eq.energy end
-                if eq.shield and eq.shield > 0 then placed.shield = eq.shield end
-            end
-        end
-    end
-end
 
 --- Calculates the research tier for bio capsule integrity (0 to 4) for a force
 local function calculate_bio_integrity_level(force)
@@ -168,35 +133,14 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                             local target_spoil = math.max(0.0, last_spoil + (raw_delta * modifier))
 
                             local src_grid = stack.grid
-                            local stack_spec = {
-                                name = stack.name,
-                                count = stack.count,
-                                quality = stack.quality,
-                                spoil_percent = target_spoil
-                            }
-
-                            if stack.health and stack.health < 1.0 then
-                                stack_spec.health = stack.health
-                            end
-
-                            if stack.is_tool then
-                                stack_spec.durability = stack.durability
-                            end
-
-                            if stack.is_ammo then
-                                stack_spec.ammo = stack.ammo
-                            end
-
-                            if stack.is_item_with_tags then
-                                stack_spec.tags = stack.tags
-                                stack_spec.custom_description = stack.custom_description
-                            end
+                            local stack_spec = item_transfer_handler.build_stack_spec(stack)
+                            stack_spec.spoil_percent = target_spoil
 
                             inv[i].clear()
                             inv[i].set_stack(stack_spec)
 
                             if src_grid and src_grid.valid and inv[i].valid_for_read then
-                                copy_equipment_grid(src_grid, inv[i])
+                                item_transfer_handler.copy_equipment_grid(src_grid, inv[i])
                             end
 
                             capsule.slot_spoil_percents[i] = target_spoil
@@ -238,7 +182,7 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                                             quality = quality
                                         })
                                         if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
-                                            copy_equipment_grid(src_grid, inv[p_slot])
+                                            item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])
                                         end
                                         phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
                                     else

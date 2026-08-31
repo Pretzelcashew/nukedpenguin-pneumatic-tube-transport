@@ -64,12 +64,12 @@
 
 ~explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior
 
-
-improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
-
 ~explore having motes around liminal capsule cells for as a guard against possible wrong unit spill
 
 ~explore only spacing out liminal capsules with spoilables that can spoil into units
+
+
+improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
 
 
@@ -81,12 +81,12 @@ improve deconstruction/removal of pnuematic networks (particularly regarding mer
 
 ~major packing issue regarding spoilables, spoil percent is not being transferred, its creating completely fresh items.
 
+~consider a distinct capsule color circle for the render overlay of moving capsules
+
+~investigate render order of debug overlays (capsule should be in front of flow overlay)
+
 
 consider making an item transfer handler for various parts of the project to utilize, and make sure equipment is preserved as well
-
-consider a distinct capsule color circle for the render overlay of moving capsules
-
-investigate render order of debug overlays (capsule should be in front of flow overlay)
 
 with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
 

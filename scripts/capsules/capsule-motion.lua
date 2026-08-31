@@ -2,6 +2,7 @@ local networks = require("scripts.networks.networks")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local capsule_queries = require("scripts.capsules.capsule-queries")
+local capsule_manager = require("scripts.capsules.capsule-manager")
 local diverter_settings = require("scripts.diverter-settings")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local port_defs = require("scripts.ports.port-definitions")
@@ -300,7 +301,7 @@ end
 --- and (for internal hops on multi-port entities) at least one open downstream path.
 --- @param from_port_key string
 --- @param target_port_key string
---- @param payload_item table|nil
+--- @param payload_item string|nil
 --- @param depth number|nil
 --- @return boolean
 local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
@@ -342,6 +343,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
 end
 
 --- Evaluates all ports of a hub entity to find the optimal exit port with active outbound flow, valid capacity, and filter matching.
+--- Evaluates payload characteristics from memory metadata without querying physical C++ inventories.
 --- @param hub_entity LuaEntity
 --- @param capsule_id number|nil
 --- @param current_port_key string|nil
@@ -353,7 +355,16 @@ function capsule_motion.find_best_hub_outbound_port(hub_entity, capsule_id, curr
     local ports = port_defs.get_ports(hub_entity)
     if not ports then return nil, nil end
 
-    local payload_item = capsule_renderer.get_dominant_item(capsule_id)
+    local cap_data = capsule_id and capsule_manager.get(capsule_id)
+    local payload_item = cap_data and cap_data.dominant_item
+    if not payload_item and capsule_id then
+        local cap = storage.capsules and storage.capsules[capsule_id]
+        payload_item = cap and cap.dominant_item
+    end
+    if not payload_item and capsule_id then
+        payload_item = capsule_renderer.get_dominant_item(capsule_id)
+    end
+
     local best_port_key = nil
     local max_drop = -math.huge
     local fallback_port_key = nil
@@ -409,7 +420,19 @@ function capsule_motion.select_next_target(capsule)
         return nil
     end
 
-    local payload_item = capsule_renderer.get_dominant_item(capsule.capsule_id or capsule.id)
+    -- Fast-path payload evaluation directly from cached primitive property on capsule object
+    local payload_item = capsule.dominant_item
+    if not payload_item then
+        local cap_id = capsule.capsule_id or capsule.id
+        local cap_data = cap_id and capsule_manager.get(cap_id)
+        payload_item = cap_data and cap_data.dominant_item
+        if not payload_item and cap_id then
+            payload_item = capsule_renderer.get_dominant_item(cap_id)
+            if payload_item then
+                capsule.dominant_item = payload_item
+            end
+        end
+    end
 
     local hops = current_node.outbound_hops
     local candidates = {}

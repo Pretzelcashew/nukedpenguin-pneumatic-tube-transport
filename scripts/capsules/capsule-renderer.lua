@@ -66,15 +66,26 @@ function capsule_renderer.prepare_frame()
     end
 end
 
-function capsule_renderer.get_dominant_item(capsule_id)
+--- Returns the dominant item string for a capsule.
+--- Serves cached payload metadata instantly unless force_refresh is true.
+--- @param capsule_id number
+--- @param force_refresh boolean|nil
+--- @return string|nil
+function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
+    if not capsule_id then return nil end
     local cap_data = capsule_manager.get(capsule_id)
+
+    if not force_refresh and cap_data and cap_data.dominant_item then
+        return cap_data.dominant_item
+    end
+
     if not (cap_data and cap_data.holder and cap_data.holder.valid) then
-        return nil
+        return cap_data and cap_data.dominant_item
     end
 
     local inventory = cap_data.holder.get_inventory(defines.inventory.chest)
     if not (inventory and inventory.valid and not inventory.is_empty()) then
-        return nil
+        return cap_data.dominant_item or (cap_data.definition and cap_data.definition.name)
     end
 
     local max_cargo_count = 0
@@ -109,7 +120,16 @@ function capsule_renderer.get_dominant_item(capsule_id)
         end
     end
 
-    return dominant_cargo_item or dominant_vessel_item or (cap_data.definition and cap_data.definition.name)
+    local dominant_item = dominant_cargo_item or dominant_vessel_item or (cap_data.definition and cap_data.definition.name)
+
+    if cap_data then
+        cap_data.dominant_item = dominant_item
+    end
+    if storage.capsules and storage.capsules[capsule_id] then
+        storage.capsules[capsule_id].dominant_item = dominant_item
+    end
+
+    return dominant_item
 end
 
 function capsule_renderer.render(capsule, id, curr_pos, surface)
@@ -201,7 +221,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid and not recheck_spoilage then
             dominant_item = cache.dominant_item
         else
-            dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
+            dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id, recheck_spoilage)
         end
     end
 

@@ -178,12 +178,23 @@ function hub_packing.evaluate_inventory(entity)
         dest_inv.set_bar(bar_limit)
     end
 
-    -- 1. Insert Cargo Extractions First
+    -- 1. Insert Cargo Extractions First & track dominant payload item name
+    local dominant_cargo_item = nil
+    local max_cargo_count = 0
+    local cargo_counts = {}
+
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
+            local item_name = stack.name
             local original_count = stack.count
             local amount_to_transfer = math.min(ext.count, original_count)
+
+            cargo_counts[item_name] = (cargo_counts[item_name] or 0) + amount_to_transfer
+            if cargo_counts[item_name] > max_cargo_count then
+                max_cargo_count = cargo_counts[item_name]
+                dominant_cargo_item = item_name
+            end
 
             if amount_to_transfer < original_count then
                 stack.count = amount_to_transfer
@@ -204,6 +215,8 @@ function hub_packing.evaluate_inventory(entity)
             end
         end
     end
+
+    local dominant_payload_item = dominant_cargo_item or capsule_name
 
     -- 2. Insert and Track Primary Capsule Shell Slot
     local primary_holder_slot = nil
@@ -270,7 +283,7 @@ function hub_packing.evaluate_inventory(entity)
         return
     end
 
-    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

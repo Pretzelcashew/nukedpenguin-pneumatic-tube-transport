@@ -11,7 +11,8 @@ end
 --- @param holder_entity LuaEntity The liminal holder entity
 --- @param capsule_item_name string Name of the capsule prototype
 --- @param primary_slot number|nil Index of the slot containing the primary capsule item in holder inventory
-function capsule_manager.register(holder_entity, capsule_item_name, primary_slot)
+--- @param dominant_item string|nil Name of the dominant payload item
+function capsule_manager.register(holder_entity, capsule_item_name, primary_slot, dominant_item)
     if not (holder_entity and holder_entity.valid) then return nil end
     
     local def = capsule_defs.types[capsule_item_name]
@@ -26,7 +27,8 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
         type = def.type,
         definition = def,
         primary_slot = primary_slot,
-        position = { x = pos.x, y = pos.y }
+        position = { x = pos.x, y = pos.y },
+        dominant_item = dominant_item or capsule_item_name
     }
     
     return capsule_id

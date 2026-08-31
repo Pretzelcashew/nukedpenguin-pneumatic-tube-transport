@@ -356,6 +356,9 @@ end
 function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     init_storage()
 
+    local cap_data = capsule_manager.get(capsule_id)
+    local dominant_item = (cap_data and cap_data.dominant_item) or capsule_renderer.get_dominant_item(capsule_id)
+
     local best_port_key, fallback_port_key = capsule_motion.find_best_hub_outbound_port(entity, capsule_id, nil)
     local target_port_key = best_port_key or fallback_port_key
     if not target_port_key then return false end
@@ -363,6 +366,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     local new_capsule = {
         id = capsule_id,
         capsule_id = capsule_id,
+        dominant_item = dominant_item,
         from_port_key = target_port_key,
         to_port_key = nil,
         last_port_key = nil,

@@ -108,13 +108,6 @@ local function add_occupancy_entry(id, unit_num, net_id, group)
             slot.count = slot.count + 1
         end
     end
-
-    local all_map = storage.occupancy.by_entity_all[unit_num]
-    if not all_map then
-        all_map = {}
-        storage.occupancy.by_entity_all[unit_num] = all_map
-    end
-    all_map[id] = true
 end
 
 --- Internal helper to remove a capsule from a specific (unit_number, net_id, group) occupancy bucket
@@ -147,14 +140,20 @@ function capsule_queries.unregister_capsule_occupancy(id)
     if not (id and storage.capsules and storage.occupancy) then return end
     local capsule = storage.capsules[id]
     
+    local old_block_key = capsule and capsule._occ_block_key
     local old_from_key = capsule and capsule._occ_from_key
     local old_to_key = capsule and capsule._occ_to_key
 
-    if old_from_key then
-        local f_unit, f_net, f_group = get_port_descriptor(old_from_key)
-        if f_unit then
-            remove_occupancy_entry(id, f_unit, f_net, f_group)
+    if old_block_key then
+        local b_unit, b_net, b_group = get_port_descriptor(old_block_key)
+        if b_unit then
+            remove_occupancy_entry(id, b_unit, b_net, b_group)
+        end
+    end
 
+    if old_from_key then
+        local f_unit = capsule_queries.get_port_info(old_from_key)
+        if f_unit then
             local from_slot = storage.occupancy.by_entity_from[f_unit]
             if from_slot and from_slot.caps[id] then
                 from_slot.caps[id] = nil
@@ -175,10 +174,8 @@ function capsule_queries.unregister_capsule_occupancy(id)
     end
 
     if old_to_key then
-        local t_unit, t_net, t_group = get_port_descriptor(old_to_key)
+        local t_unit = capsule_queries.get_port_info(old_to_key)
         if t_unit then
-            remove_occupancy_entry(id, t_unit, t_net, t_group)
-
             local all_map = storage.occupancy.by_entity_all[t_unit]
             if all_map then
                 all_map[id] = nil
@@ -190,12 +187,15 @@ function capsule_queries.unregister_capsule_occupancy(id)
     end
 
     if capsule then
+        capsule._occ_block_key = nil
         capsule._occ_from_key = nil
         capsule._occ_to_key = nil
     end
 end
 
---- Updates the O(1) occupancy tracking index for a capsule
+--- Updates the O(1) occupancy tracking index for a capsule.
+--- When in transit, the capsule blocks its destination target key (`to_port_key`), freeing its starting node.
+--- When parked, it blocks its current position key (`from_port_key`).
 --- @param capsule table
 function capsule_queries.update_capsule_occupancy(capsule)
     if not capsule then return end
@@ -206,9 +206,12 @@ function capsule_queries.update_capsule_occupancy(capsule)
 
     local new_from_key = capsule.from_port_key
     local new_to_key = capsule.to_port_key
+    local new_block_key = new_to_key or new_from_key
 
-    -- Fast-path return if port keys haven't changed
-    if capsule._occ_from_key == new_from_key and capsule._occ_to_key == new_to_key then
+    -- Fast-path return if port keys and blocking state haven't changed
+    if capsule._occ_from_key == new_from_key 
+       and capsule._occ_to_key == new_to_key 
+       and capsule._occ_block_key == new_block_key then
         return
     end
 
@@ -216,28 +219,40 @@ function capsule_queries.update_capsule_occupancy(capsule)
 
     capsule._occ_from_key = new_from_key
     capsule._occ_to_key = new_to_key
+    capsule._occ_block_key = new_block_key
 
-    local f_unit, f_net, f_group = get_port_descriptor(new_from_key)
-    local t_unit, t_net, t_group = get_port_descriptor(new_to_key)
-
-    if f_unit then
-        add_occupancy_entry(id, f_unit, f_net, f_group)
-
-        local from_slot = storage.occupancy.by_entity_from[f_unit]
-        if not from_slot then
-            from_slot = { caps = {}, count = 0 }
-            storage.occupancy.by_entity_from[f_unit] = from_slot
-        end
-        if not from_slot.caps[id] then
-            from_slot.caps[id] = true
-            from_slot.count = from_slot.count + 1
+    if new_block_key then
+        local b_unit, b_net, b_group = get_port_descriptor(new_block_key)
+        if b_unit then
+            add_occupancy_entry(id, b_unit, b_net, b_group)
         end
     end
 
-    if t_unit then
-        if not (t_unit == f_unit and t_net == f_net and t_group == f_group) then
-            add_occupancy_entry(id, t_unit, t_net, t_group)
-        else
+    if new_from_key then
+        local f_unit = capsule_queries.get_port_info(new_from_key)
+        if f_unit then
+            local from_slot = storage.occupancy.by_entity_from[f_unit]
+            if not from_slot then
+                from_slot = { caps = {}, count = 0 }
+                storage.occupancy.by_entity_from[f_unit] = from_slot
+            end
+            if not from_slot.caps[id] then
+                from_slot.caps[id] = true
+                from_slot.count = from_slot.count + 1
+            end
+
+            local all_map = storage.occupancy.by_entity_all[f_unit]
+            if not all_map then
+                all_map = {}
+                storage.occupancy.by_entity_all[f_unit] = all_map
+            end
+            all_map[id] = true
+        end
+    end
+
+    if new_to_key then
+        local t_unit = capsule_queries.get_port_info(new_to_key)
+        if t_unit then
             local all_map = storage.occupancy.by_entity_all[t_unit]
             if not all_map then
                 all_map = {}
@@ -259,6 +274,7 @@ function capsule_queries.rebuild_occupancy_index()
     for id, capsule in pairs(storage.capsules) do
         capsule._occ_from_key = nil
         capsule._occ_to_key = nil
+        capsule._occ_block_key = nil
         capsule_queries.update_capsule_occupancy(capsule)
     end
 end

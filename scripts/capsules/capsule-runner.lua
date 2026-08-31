@@ -22,7 +22,7 @@ capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
 --- Clears retry delay on parked capsules affected by a freed port, entity, or network state change.
 --- If no target is specified, wakes all parked capsules as a global fallback.
---- @param target string|number|nil port_key ("101:1"), unit_number, net_id, or nil
+--- @param target string|number|table|nil port_key ("101:1"), unit_number, net_id, affected_nets table, or nil
 function capsule_runner.wake_parked_capsules(target)
     if not storage.capsules then return end
 
@@ -63,7 +63,14 @@ function capsule_runner.wake_parked_capsules(target)
         end
     end
 
-    if type(target) == "string" then
+    if type(target) == "table" then
+        for k, v in pairs(target) do
+            local net_id = (type(k) == "number" and k) or (type(v) == "number" and v)
+            if net_id then
+                wake_network_capsules(net_id)
+            end
+        end
+    elseif type(target) == "string" then
         local u_num = capsule_queries.get_port_info(target)
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[target]
         if net_id then
@@ -235,6 +242,7 @@ local function update_capsules(current_tick)
                         break
                     end
 
+                    local prev_from = capsule.from_port_key
                     capsule.to_port_key = capsule_motion.select_next_target(capsule)
                     capsule.progress = 0.0
                     capsule_queries.update_capsule_occupancy(capsule)
@@ -242,6 +250,7 @@ local function update_capsules(current_tick)
                     if capsule.to_port_key then
                         capsule.next_retry_tick = nil
                         capsule_motion.setup_segment(capsule)
+                        capsule_runner.wake_parked_capsules(prev_from)
                         local new_speed = capsule.seg_speed or DEFAULT_MIN_SPEED
                         if current_speed > 0 then
                             tiles_this_tick = tiles_this_tick * (new_speed / current_speed)

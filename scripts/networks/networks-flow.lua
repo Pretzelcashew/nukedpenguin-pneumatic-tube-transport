@@ -1,11 +1,10 @@
--- FILE: scripts/networks/networks-flow.lua
-
 local networks = require("scripts.networks.networks")
 local port_defs = require("scripts.ports.port-definitions")
 local flow_renderer = require("scripts.networks.networks-flow-renderer")
 local flow_cull = require("scripts.networks.flow-cull")
 local networks_pressure = require("scripts.networks.networks-pressure")
 local pump_settings = require("scripts.pump-settings")
+local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local networks_flow = {}
 
@@ -21,9 +20,9 @@ function networks_flow.register_listener(fn)
     end
 end
 
-local function notify_listeners()
+local function notify_listeners(affected_nets)
     for _, fn in ipairs(flow_listeners) do
-        fn()
+        fn(affected_nets)
     end
 end
 
@@ -222,7 +221,8 @@ function networks_flow.build(net_id)
     for id in pairs(affected_nets) do
         build_single_network(id)
     end
-    notify_listeners()
+    capsule_queries.rebuild_occupancy_index()
+    notify_listeners(affected_nets)
 end
 
 return networks_flow

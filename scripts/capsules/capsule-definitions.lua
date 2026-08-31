@@ -1,5 +1,38 @@
 local capsule_definitions = {}
 
+--- Exact lookup dictionary for biological items in Factorio 2.0 & Space Age
+capsule_definitions.bio_items = {
+    ["yumako"] = true,
+    ["yumako-seed"] = true,
+    ["yumako-mash"] = true,
+    ["jellynut"] = true,
+    ["jellynut-seed"] = true,
+    ["jellynut-slump"] = true,
+    ["bioflux"] = true,
+    ["jelly"] = true,
+    ["spoilage"] = true,
+    ["nutrients"] = true,
+    ["agricultural-science-pack"] = true,
+    ["tree-seed"] = true,
+    ["wood"] = true,
+    ["raw-fish"] = true,
+    ["fish"] = true,
+    ["biter-egg"] = true,
+    ["pentapod-egg"] = true,
+    ["copper-bacteria"] = true,
+    ["iron-bacteria"] = true,
+    ["captive-biter-spawner"] = true,
+    ["biodegradable-capsule"] = true
+}
+
+--- Evaluates whether an item is considered a biological item for slot cost calculations
+--- @param item_name string
+--- @return boolean
+function capsule_definitions.is_bio_item(item_name)
+    if not item_name then return false end
+    return capsule_definitions.bio_items[item_name] == true
+end
+
 capsule_definitions.types = {
     ["item-capsule"] = {
         type = "capsule",

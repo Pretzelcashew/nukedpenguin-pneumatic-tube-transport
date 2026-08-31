@@ -1,19 +1,8 @@
-local cargo_planner = {}
+-- FILE: scripts/hubs/packing/cargo-planner.lua
 
-local BIO_ITEMS = {
-    ["yumako"] = true,
-    ["jellynut"] = true,
-    ["bioflux"] = true,
-    ["jelly"] = true,
-    ["yumako-mash"] = true,
-    ["jellynut-slump"] = true,
-    ["spoilage"] = true,
-    ["nutrients"] = true,
-    ["agricultural-science-pack"] = true,
-    ["tree-seed"] = true,
-    ["yumako-seed"] = true,
-    ["jellynut-seed"] = true
-}
+local capsule_defs = require("scripts.capsules.capsule-definitions")
+
+local cargo_planner = {}
 
 --- Evaluates the slot cost factor for a given item type based on capsule slot cost definitions
 --- @param item_name string
@@ -23,8 +12,7 @@ function cargo_planner.get_item_slot_cost(item_name, capsule_def)
     if not (capsule_def and capsule_def.slot_costs) then
         return 1.0
     end
-    local is_bio = BIO_ITEMS[item_name] or item_name:find("yumako") or item_name:find("jelly") or item_name:find("spoilage") or item_name:find("bio")
-    if is_bio then
+    if capsule_defs.is_bio_item(item_name) then
         return capsule_def.slot_costs.bio_item or 0.5
     end
     return capsule_def.slot_costs.inorganic or 1.0

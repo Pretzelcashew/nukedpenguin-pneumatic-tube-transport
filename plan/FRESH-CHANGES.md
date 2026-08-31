@@ -121,3 +121,12 @@
 **Key Changes:**
 1. **Circuit Proxy Entity Localization (`locale/en/config.cfg`):** Added `pneumatic-pump-circuit-proxy` entry under `[entity-name]` matching `pneumatic-diverter-circuit-proxy` to ensure pump proxy combinators display clean localized entity names.
 2. **Shortcut Bar Toggle Localization (`locale/en/config.cfg`):** Added `[shortcut-name]` section registering localized display names for all five hotbar toggle shortcuts (`pt-toggle-flow`, `pt-toggle-capsules`, `pt-toggle-capsule-peek`, `pt-toggle-ports`, `pt-toggle-debug`).
+
+
+### Revision: Exact O(1) Biological Item Lookup Matrix & Top-Level Require Enforcement
+**Date:** 2026-08-31 10:21 (EDT)
+**Context:** Expand biological item support for bio capsules across all Factorio 2.0 / Space Age organic items, eliminate fuzzy string matching risks, and enforce top-level script require loading.
+**Key Changes:**
+1. **Strict $O(1)$ Bio Item Matrix (`scripts/capsules/capsule-definitions.lua`):** Replaced fuzzy string pattern searches (`string.find`) with an explicit lookup table (`capsule_definitions.bio_items`) containing all vanilla and Space Age organic items (`yumako`, `jellynut`, seeds, slumps, bioflux, spoilage, nutrients, eggs, bacteria, fish, wood) and the `biodegradable-capsule` item shell.
+2. **Bio Slot Cost Planner Integration (`scripts/hubs/packing/cargo-planner.lua`):** Updated `cargo_planner.get_item_slot_cost()` to delegate directly to `capsule_defs.is_bio_item()`, ensuring all biological items reliably receive the `0.5` slot cost factor (2× stack capacity bonus) inside biodegradable capsules.
+3. **Top-Level Module Loading Standard (`scripts/hubs/packing/cargo-planner.lua` & `scripts/hubs/hub-packing.lua`):** Enforced top-level scope for `require("scripts.capsules.capsule-definitions")` and verified strict top-level import compliance across capsule packing modules.

@@ -53,4 +53,7 @@ Please sync our documentation with the latest changelog updates by following the
 /c local p = game.player p.set_controller{type=defines.controllers.character, character=p.surface.create_entity{name='character', force=p.force, position=p.position}}
 
 
+what changed, and in what situations will it help?
+
+
 

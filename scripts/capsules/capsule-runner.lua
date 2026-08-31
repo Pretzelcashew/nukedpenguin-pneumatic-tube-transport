@@ -17,19 +17,71 @@ capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_a
 capsule_runner.get_capsule_count_at_entity_network = capsule_queries.get_capsule_count_at_entity_network
 capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
---- Clears retry delay on all parked capsules, forcing an immediate pathfinding / unpacking retry.
-function capsule_runner.wake_parked_capsules()
+--- Clears retry delay on parked capsules affected by a freed port, entity, or network state change.
+--- If no target is specified, wakes all parked capsules as a global fallback.
+--- @param target string|number|nil port_key ("101:1"), unit_number, net_id, or nil
+function capsule_runner.wake_parked_capsules(target)
     if not storage.capsules then return end
-    for _, capsule in pairs(storage.capsules) do
-        if not capsule.to_port_key then
-            capsule.next_retry_tick = nil
+
+    if not target then
+        for _, capsule in pairs(storage.capsules) do
+            if not capsule.to_port_key then
+                capsule.next_retry_tick = nil
+            end
         end
+        return
+    end
+
+    local woke_capsules = {}
+
+    local function wake_entity_capsules(u_num)
+        if not (u_num and storage.occupancy and storage.occupancy.by_entity_from) then return end
+        local from_slot = storage.occupancy.by_entity_from[u_num]
+        if from_slot and from_slot.caps then
+            for cap_id in pairs(from_slot.caps) do
+                if not woke_capsules[cap_id] then
+                    local cap = storage.capsules[cap_id]
+                    if cap and not cap.to_port_key then
+                        cap.next_retry_tick = nil
+                        woke_capsules[cap_id] = true
+                    end
+                end
+            end
+        end
+    end
+
+    local function wake_network_capsules(net_id)
+        if not (net_id and storage.networks and storage.networks.list) then return end
+        local net = storage.networks.list[net_id]
+        if net and net.members then
+            for _, member in ipairs(net.members) do
+                wake_entity_capsules(member.unit_number)
+            end
+        end
+    end
+
+    if type(target) == "string" then
+        local u_num = capsule_queries.get_port_info(target)
+        local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[target]
+        if net_id then
+            wake_network_capsules(net_id)
+        end
+        if u_num then
+            wake_entity_capsules(u_num)
+        end
+    elseif type(target) == "number" then
+        if storage.networks and storage.networks.list and storage.networks.list[target] then
+            wake_network_capsules(target)
+        end
+        wake_entity_capsules(target)
     end
 end
 
 function capsule_runner.remove_capsule(capsule_id)
+    local capsule = storage.capsules and storage.capsules[capsule_id]
+    local target_key = capsule and (capsule.from_port_key or capsule.to_port_key)
     capsule_queries.remove_capsule(capsule_id)
-    capsule_runner.wake_parked_capsules()
+    capsule_runner.wake_parked_capsules(target_key)
 end
 
 local function init_storage()
@@ -155,8 +207,9 @@ local function update_capsules(current_tick)
             if not capsule.to_port_key then
                 local can_retry = not capsule.next_retry_tick or (current_tick and current_tick >= capsule.next_retry_tick)
                 if can_retry then
+                    local arr_port = capsule.from_port_key
                     if capsule_motion.handle_arrival(capsule, id) then
-                        capsule_runner.wake_parked_capsules()
+                        capsule_runner.wake_parked_capsules(arr_port)
                         break
                     end
 
@@ -181,8 +234,9 @@ local function update_capsules(current_tick)
 
             local from_pos, surf = capsule_motion.get_port_world_pos(capsule.from_port_key)
             if not from_pos then
+                local bad_port = capsule.from_port_key
                 capsule_queries.remove_capsule(id)
-                capsule_runner.wake_parked_capsules()
+                capsule_runner.wake_parked_capsules(bad_port)
                 break
             end
             
@@ -193,11 +247,12 @@ local function update_capsules(current_tick)
 
             local to_pos = capsule_motion.get_port_world_pos(capsule.to_port_key)
             if not to_pos then
+                local bad_to = capsule.to_port_key
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
                 capsule_queries.update_capsule_occupancy(capsule)
-                capsule_runner.wake_parked_capsules()
+                capsule_runner.wake_parked_capsules(bad_to)
                 break
             end
 
@@ -206,20 +261,28 @@ local function update_capsules(current_tick)
             local distance = math.sqrt(dx * dx + dy * dy)
 
             if distance <= 0.001 then
+                local vacated_port = capsule.last_port_key or capsule.from_port_key
                 capsule.last_port_key = capsule.from_port_key
                 capsule.from_port_key = capsule.to_port_key
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 capsule_queries.update_capsule_occupancy(capsule)
                 
-                capsule_motion.handle_arrival(capsule, id)
-                capsule_runner.wake_parked_capsules()
-                if not storage.capsules[id] then break end
+                local arr_port = capsule.from_port_key
+                if capsule_motion.handle_arrival(capsule, id) then
+                    capsule_runner.wake_parked_capsules(arr_port)
+                    if not storage.capsules[id] then break end
+                else
+                    if vacated_port then
+                        capsule_runner.wake_parked_capsules(vacated_port)
+                    end
+                end
             else
                 local remaining_distance = distance * (1.0 - capsule.progress)
 
                 if tiles_this_tick >= remaining_distance then
                     tiles_this_tick = tiles_this_tick - remaining_distance
+                    local vacated_port = capsule.last_port_key or capsule.from_port_key
                     capsule.last_port_key = capsule.from_port_key
                     capsule.from_port_key = capsule.to_port_key
                     capsule.to_port_key = nil
@@ -227,9 +290,15 @@ local function update_capsules(current_tick)
                     curr_pos = { x = to_pos.x, y = to_pos.y }
                     capsule_queries.update_capsule_occupancy(capsule)
                     
-                    capsule_motion.handle_arrival(capsule, id)
-                    capsule_runner.wake_parked_capsules()
-                    if not storage.capsules[id] then break end
+                    local arr_port = capsule.from_port_key
+                    if capsule_motion.handle_arrival(capsule, id) then
+                        capsule_runner.wake_parked_capsules(arr_port)
+                        if not storage.capsules[id] then break end
+                    else
+                        if vacated_port then
+                            capsule_runner.wake_parked_capsules(vacated_port)
+                        end
+                    end
                 else
                     capsule.progress = capsule.progress + (tiles_this_tick / distance)
                     curr_pos.x = from_pos.x + dx * capsule.progress
@@ -242,7 +311,7 @@ local function update_capsules(current_tick)
         if storage.capsules[id] then
             if curr_pos and surface and capsule_lifecycle.update(capsule, id, curr_pos, surface) then
                 -- Capsule ruptured mid-transit
-                capsule_runner.wake_parked_capsules()
+                capsule_runner.wake_parked_capsules(capsule.from_port_key)
             else
                 capsule_renderer.render(capsule, id, curr_pos, surface)
             end
@@ -272,7 +341,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
 
     storage.capsules[capsule_id] = new_capsule
     capsule_queries.update_capsule_occupancy(new_capsule)
-    capsule_runner.wake_parked_capsules()
+    capsule_runner.wake_parked_capsules(target_port_key)
     return true
 end
 
@@ -292,9 +361,10 @@ function capsule_runner.emergency_eject(player)
                 position = safe_pos
             }
 
+            local target_key = capsule.from_port_key or capsule.to_port_key
             capsule_manager.remove(capsule.capsule_id or id)
             capsule_queries.remove_capsule(id)
-            capsule_runner.wake_parked_capsules()
+            capsule_runner.wake_parked_capsules(target_key)
             break
         end
     end

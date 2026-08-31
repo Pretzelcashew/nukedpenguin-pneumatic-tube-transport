@@ -74,4 +74,4 @@ with the not operable tag on the visible capsule holder, you cannot take from it
 
 
 
-make selecting the diverter or pump proxy, defer selection to the linked unit, or something better. right now the proxy is just very overbearring on the unit under it. 
+~make selecting the diverter or pump proxy, defer selection to the linked unit, or something better. right now the proxy is just very overbearring on the unit under it. 

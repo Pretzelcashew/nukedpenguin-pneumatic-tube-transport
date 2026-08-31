@@ -148,3 +148,13 @@
 1. **Selection Box Visual Suppression (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Configured `draw_selection_box = false` on proxy prototypes to eliminate secondary green selection box outlines when mousing over host structures.
 2. **Compact Selection Footprint & Priority Tuning (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Reduced proxy `selection_box` to `{{-0.3, -0.3}, {0.3, 0.3}}` with `selection_priority = 0`, ensuring hovering over 90%+ of the building footprint highlights the physical unit while preserving wire connection targeting near the center.
 3. **Seamless Proxy GUI Deferral (`prototypes/pneumatic-pump-proxy-linkage.lua` & `prototypes/pneumatic-diverter-proxy-linkage.lua`):** Refactored `on_gui_opened` event handlers to intercept proxy entity selection and resolve linked host entities via `surface.find_entity()`, launching host configuration GUIs (`pump_gui` / `diverter_gui`) without disruption.
+
+
+### Revision: Pneumatic Control Panel GUI & Hotbar Debug Consolidation
+**Date:** 2026-08-31 11:34 (EDT)
+**Context:** Consolidate individual hotbar debug shortcut toggles into a unified master Pneumatic Control Panel Lua GUI frame to eliminate hotbar clutter and provide a centralized debugging interface.
+**Key Changes:**
+1. **Unified Control Panel GUI (`scripts/debug-manager.lua`):** Implemented `debug_manager.open_panel()`, `close_panel()`, `toggle_panel()`, and `refresh_panel()`, creating a centered, draggable frame featuring a master debug toggle, visual overlay switches (flow vectors, active capsules, hover peek, port markers), and console print toggles. Maintained mutual exclusion between active capsule rendering and hover peeking modes.
+2. **Consolidated Shortcut Bar Prototype (`prototypes/shortcut.lua`):** Replaced individual shortcut bar entries with a single toggleable `pt-debug-panel` shortcut prototype, binding hotbar clicks directly to opening/closing the unified control panel.
+3. **Command & GUI Event Synchronization (`scripts/debug-manager.lua` & `control.lua`):** Added `/pneumatic-panel` and `/debug-panel` console commands, updated toggle command aliases to update panel checkbox states dynamically if open, bound `on_gui_click`, `on_gui_closed`, and `on_gui_checked_state_changed` events, and enforced top-level `require` loading.
+4. **Locale Expansion (`locale/en/config.cfg`):** Added `[gui-debug]` localization headers, checkbox labels, and localized name strings for the `pt-debug-panel` shortcut tooltips.

@@ -4,16 +4,86 @@ local capsule_queries = require("scripts.capsules.capsule-queries")
 
 local hub_spill = {}
 
+--- Copies equipment grid contents from a source item stack (or grid object) to a destination item stack
+--- @param src_stack_or_grid LuaItemStack|LuaEquipmentGrid
+--- @param dest_stack LuaItemStack
+local function copy_equipment_grid(src_stack_or_grid, dest_stack)
+    if not (src_stack_or_grid and dest_stack and dest_stack.valid_for_read) then return end
+
+    local src_grid = nil
+    if src_stack_or_grid.object_name == "LuaEquipmentGrid" then
+        src_grid = src_stack_or_grid
+    elseif src_stack_or_grid.grid and src_stack_or_grid.grid.valid then
+        src_grid = src_stack_or_grid.grid
+    end
+
+    if not (src_grid and src_grid.valid) then return end
+
+    local equipment_list = src_grid.equipment
+    if not (equipment_list and #equipment_list > 0) then return end
+
+    local dest_grid = dest_stack.grid or dest_stack.create_grid()
+    if not (dest_grid and dest_grid.valid) then return end
+
+    for _, eq in ipairs(equipment_list) do
+        if eq and eq.valid then
+            local placed = dest_grid.put{
+                name = eq.name,
+                position = eq.position,
+                quality = eq.quality
+            }
+            if placed and placed.valid then
+                if eq.energy then placed.energy = eq.energy end
+                if eq.shield and eq.shield > 0 then placed.shield = eq.shield end
+            end
+        end
+    end
+end
+
+--- Builds a complete SimpleItemStack specification table preserving all vanilla Factorio 2.0 metadata
+--- @param stack LuaItemStack
+--- @param count number|nil Optional explicit stack count
+--- @return table SimpleItemStack spec
+local function build_stack_spec(stack, count)
+    local spec = {
+        name = stack.name,
+        count = count or stack.count,
+        quality = stack.quality
+    }
+    if stack.health and stack.health < 1.0 then
+        spec.health = stack.health
+    end
+    if stack.spoil_percent and stack.spoil_percent > 0 then
+        spec.spoil_percent = stack.spoil_percent
+    end
+    if stack.is_tool and stack.durability then
+        spec.durability = stack.durability
+    end
+    if stack.is_ammo and stack.ammo then
+        spec.ammo = stack.ammo
+    end
+    if stack.is_item_with_tags then
+        spec.tags = stack.tags
+        spec.custom_description = stack.custom_description
+    end
+    return spec
+end
+
 --- Helper to spill a single item stack and handle explicit deconstruction ordering for spawned items on the ground
 --- @param surface LuaSurface
 --- @param position MapPosition
---- @param stack LuaItemStack
+--- @param stack LuaItemStack|table
 --- @param mark_decon boolean
 --- @param force LuaForce|string
 local function spill_and_mark_stack(surface, position, stack, mark_decon, force)
+    local stack_to_spill = stack
+    if stack and stack.valid_for_read then
+        stack_to_spill = build_stack_spec(stack)
+    end
+
     local spilled_entities = surface.spill_item_stack{
         position = position,
-        stack = stack,
+        stack = stack_to_spill,
         enable_looted = mark_decon,
         force = force
     }
@@ -122,17 +192,43 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
 
                     local container_inv = container_entity.get_inventory(defines.inventory.chest)
                     if container_inv then
+                        local max_container_slot = #container_inv
                         for i = 1, #holder_inv do
                             local stack = holder_inv[i]
                             if stack and stack.valid_for_read then
                                 local original_count = stack.count
-                                local inserted = container_inv.insert(stack)
-                                if inserted >= original_count then
-                                    stack.clear()
-                                else
-                                    stack.count = original_count - inserted
-                                    spill_and_mark_stack(surface, position, stack, mark_decon, effective_force)
-                                    stack.clear()
+                                local transferred = false
+                                for j = 1, max_container_slot do
+                                    local dest_slot = container_inv[j]
+                                    if dest_slot and dest_slot.valid then
+                                        if not dest_slot.valid_for_read or (dest_slot.name == stack.name and dest_slot.quality == stack.quality) then
+                                            if dest_slot.transfer_stack(stack) then
+                                                transferred = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+
+                                if not transferred and stack.valid_for_read then
+                                    local stack_spec = build_stack_spec(stack, original_count)
+                                    local src_grid = stack.grid
+                                    local inserted = container_inv.insert(stack_spec)
+                                    if inserted >= original_count then
+                                        stack.clear()
+                                    else
+                                        stack.count = original_count - inserted
+                                        spill_and_mark_stack(surface, position, stack, mark_decon, effective_force)
+                                        stack.clear()
+                                    end
+                                    if src_grid and src_grid.valid then
+                                        for j = 1, max_container_slot do
+                                            if container_inv[j].valid_for_read and container_inv[j].name == stack.name then
+                                                copy_equipment_grid(src_grid, container_inv[j])
+                                                break
+                                            end
+                                        end
+                                    end
                                 end
                             end
                         end

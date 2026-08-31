@@ -81,3 +81,8 @@ investigate render order of debug overlays (capsule should be in front of flow o
 
 
 major packing issue regarding spoilables, spoil percent is not being transferred, its creating completely fresh items.
+
+
+consider making an item transfer handler for various parts of the project to utilize, and make sure equipment is preserved as well
+
+consider a distinct capsule color circle for the render overlay of oving capsules

@@ -10,6 +10,71 @@ local hub_settings = require("scripts.hubs.hub-settings")
 
 local hub_packing = {}
 
+--- Copies equipment grid contents from a source item stack (or grid object) to a destination item stack
+--- @param src_stack_or_grid LuaItemStack|LuaEquipmentGrid
+--- @param dest_stack LuaItemStack
+local function copy_equipment_grid(src_stack_or_grid, dest_stack)
+    if not (src_stack_or_grid and dest_stack and dest_stack.valid_for_read) then return end
+
+    local src_grid = nil
+    if src_stack_or_grid.object_name == "LuaEquipmentGrid" then
+        src_grid = src_stack_or_grid
+    elseif src_stack_or_grid.grid and src_stack_or_grid.grid.valid then
+        src_grid = src_stack_or_grid.grid
+    end
+
+    if not (src_grid and src_grid.valid) then return end
+
+    local equipment_list = src_grid.equipment
+    if not (equipment_list and #equipment_list > 0) then return end
+
+    local dest_grid = dest_stack.grid or dest_stack.create_grid()
+    if not (dest_grid and dest_grid.valid) then return end
+
+    for _, eq in ipairs(equipment_list) do
+        if eq and eq.valid then
+            local placed = dest_grid.put{
+                name = eq.name,
+                position = eq.position,
+                quality = eq.quality
+            }
+            if placed and placed.valid then
+                if eq.energy then placed.energy = eq.energy end
+                if eq.shield and eq.shield > 0 then placed.shield = eq.shield end
+            end
+        end
+    end
+end
+
+--- Builds a complete SimpleItemStack specification table preserving all vanilla Factorio 2.0 metadata
+--- @param stack LuaItemStack
+--- @param count number|nil Optional explicit stack count
+--- @return table SimpleItemStack spec
+local function build_stack_spec(stack, count)
+    local spec = {
+        name = stack.name,
+        count = count or stack.count,
+        quality = stack.quality
+    }
+    if stack.health and stack.health < 1.0 then
+        spec.health = stack.health
+    end
+    if stack.spoil_percent and stack.spoil_percent > 0 then
+        spec.spoil_percent = stack.spoil_percent
+    end
+    if stack.is_tool and stack.durability then
+        spec.durability = stack.durability
+    end
+    if stack.is_ammo and stack.ammo then
+        spec.ammo = stack.ammo
+    end
+    if stack.is_item_with_tags then
+        spec.tags = stack.tags
+        spec.custom_description = stack.custom_description
+    end
+    return spec
+end
+
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
     if not (stack and stack.valid_for_read) then return false end
@@ -203,6 +268,8 @@ function hub_packing.evaluate_inventory(entity)
     local cargo_counts = {}
     local has_spoilable_items = false
 
+    local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
+
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
         if stack and stack.valid_for_read then
@@ -220,21 +287,35 @@ function hub_packing.evaluate_inventory(entity)
                 dominant_cargo_item = item_name
             end
 
-            if amount_to_transfer < original_count then
-                stack.count = amount_to_transfer
-                local inserted = dest_inv.insert(stack)
-                local remaining = (original_count - amount_to_transfer) + (amount_to_transfer - inserted)
-                if remaining > 0 then
-                    stack.count = remaining
-                else
-                    stack.clear()
+            local transferred = false
+            for i = 1, max_search do
+                local dest_slot = dest_inv[i]
+                if dest_slot and dest_slot.valid then
+                    if not dest_slot.valid_for_read or (dest_slot.name == item_name and dest_slot.quality == stack.quality) then
+                        if dest_slot.transfer_stack(stack, amount_to_transfer) then
+                            transferred = true
+                            break
+                        end
+                    end
                 end
-            else
-                local inserted = dest_inv.insert(stack)
+            end
+
+            if not transferred and stack.valid_for_read then
+                local stack_spec = build_stack_spec(stack, amount_to_transfer)
+                local src_grid = stack.grid
+                local inserted = dest_inv.insert(stack_spec)
                 if inserted >= original_count then
                     stack.clear()
                 else
                     stack.count = original_count - inserted
+                end
+                if src_grid and src_grid.valid then
+                    for i = 1, max_search do
+                        if dest_inv[i].valid_for_read and dest_inv[i].name == item_name then
+                            copy_equipment_grid(src_grid, dest_inv[i])
+                            break
+                        end
+                    end
                 end
             end
         end
@@ -252,7 +333,6 @@ function hub_packing.evaluate_inventory(entity)
 
         if capsule_def.include_self and not capsule_def.destroy_self then
             local target_slot = nil
-            local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
             for i = 1, max_search do
                 if not dest_inv[i].valid_for_read then
                     target_slot = i
@@ -260,37 +340,41 @@ function hub_packing.evaluate_inventory(entity)
                 end
             end
 
-            local stack_spec = {
-                name = primary_stack.name,
-                count = 1,
-                quality = primary_stack.quality
-            }
-            if primary_stack.is_tool then
-                stack_spec.durability = primary_stack.durability
-            end
-            if primary_stack.is_ammo then
-                stack_spec.ammo = primary_stack.ammo
-            end
-            if primary_stack.is_item_with_tags then
-                stack_spec.custom_description = primary_stack.custom_description
-                stack_spec.tags = primary_stack.tags
-            end
-
-            if primary_stack.count > 1 then
-                primary_stack.count = primary_stack.count - 1
-            else
-                primary_stack.clear()
-            end
-
+            local transferred = false
             if target_slot then
-                dest_inv[target_slot].set_stack(stack_spec)
-                primary_holder_slot = target_slot
-            else
-                local inserted = dest_inv.insert(stack_spec)
-                if inserted > 0 then
-                    for i = 1, max_search do
-                        if dest_inv[i].valid_for_read and dest_inv[i].name == primary_stack.name then
-                            primary_holder_slot = i
+                if dest_inv[target_slot].transfer_stack(primary_stack, 1) then
+                    transferred = true
+                    primary_holder_slot = target_slot
+                end
+            end
+
+            if not transferred then
+                local src_grid = primary_stack.grid
+                local stack_spec = build_stack_spec(primary_stack, 1)
+
+                if primary_stack.count > 1 then
+                    primary_stack.count = primary_stack.count - 1
+                else
+                    primary_stack.clear()
+                end
+
+                if target_slot then
+                    dest_inv[target_slot].set_stack(stack_spec)
+                    primary_holder_slot = target_slot
+                    if src_grid and src_grid.valid then
+                        copy_equipment_grid(src_grid, dest_inv[target_slot])
+                    end
+                else
+                    local inserted = dest_inv.insert(stack_spec)
+                    if inserted > 0 then
+                        for i = 1, max_search do
+                            if dest_inv[i].valid_for_read and dest_inv[i].name == primary_stack.name then
+                                primary_holder_slot = i
+                                if src_grid and src_grid.valid then
+                                    copy_equipment_grid(src_grid, dest_inv[i])
+                                end
+                                break
+                            end
                         end
                     end
                 end

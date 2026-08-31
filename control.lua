@@ -2,8 +2,8 @@ local events = require("scripts.events")
 local networks = require("scripts.networks.networks")
 local networks_flow = require("scripts.networks.networks-flow")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
+local debug_manager = require("scripts.debug-manager")
 
-require("scripts.debug-manager")
 require("scripts.ports.port-renderer")
 require("scripts.ports.port-finder")
 require("scripts.networks.network-connect")
@@ -34,6 +34,10 @@ local function setup_storage()
     storage.bio_integrity_levels = storage.bio_integrity_levels or {}
     networks.init()
     liminal_surface.init_storage()
+
+    for _, player in pairs(game.players) do
+        debug_manager.sync_shortcuts(player.index)
+    end
 
     if is_debug_active("flow") then
         networks_flow.draw_all()

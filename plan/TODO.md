@@ -40,7 +40,7 @@
 
 ~mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
 
-clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
+~clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
 make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
 
@@ -61,3 +61,7 @@ explore increasing diverter's internal capsule capacity slightly to accomodate m
 see about making sure all bio items are included in the list for bonus capacity in bio capsules
 
 see about making capsules with spoilable items turn off dominant item polling once there are no spoilable items left
+
+add en locale for the new hotbar toggles
+
+consider adding one ui panel for pneumatic toggles instead of many toggles, it would be one time panel you open for changing each toggle.

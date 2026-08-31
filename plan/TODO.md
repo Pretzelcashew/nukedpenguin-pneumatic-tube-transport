@@ -75,3 +75,9 @@ with the not operable tag on the visible capsule holder, you cannot take from it
 
 
 ~make selecting the diverter or pump proxy, defer selection to the linked unit, or something better. right now the proxy is just very overbearring on the unit under it. 
+
+
+investigate render order of debug overlays (capsule should be in front of flow overlay)
+
+
+major packing issue regarding spoilables, spoil percent is not being transferred, its creating completely fresh items.

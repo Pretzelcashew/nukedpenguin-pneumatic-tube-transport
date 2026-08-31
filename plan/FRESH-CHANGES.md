@@ -158,3 +158,12 @@
 2. **Consolidated Shortcut Bar Prototype (`prototypes/shortcut.lua`):** Replaced individual shortcut bar entries with a single toggleable `pt-debug-panel` shortcut prototype, binding hotbar clicks directly to opening/closing the unified control panel.
 3. **Command & GUI Event Synchronization (`scripts/debug-manager.lua` & `control.lua`):** Added `/pneumatic-panel` and `/debug-panel` console commands, updated toggle command aliases to update panel checkbox states dynamically if open, bound `on_gui_click`, `on_gui_closed`, and `on_gui_checked_state_changed` events, and enforced top-level `require` loading.
 4. **Locale Expansion (`locale/en/config.cfg`):** Added `[gui-debug]` localization headers, checkbox labels, and localized name strings for the `pt-debug-panel` shortcut tooltips.
+
+
+### Revision: Dynamic Spoilage Expiration Tracking & Zero-Overhead Render Polling
+**Date:** 2026-08-31 12:03 (EDT)
+**Context:** Dynamically update active capsule spoilability tracking when spoilable cargo completely spoils or decays during transit, eliminating perpetual 60-tick container inventory re-scans while ensuring dominant item visual icons correctly update to spoiled products.
+**Key Changes:**
+1. **Post-Update Spoilage Expiration Guard (`scripts/capsules/capsule-renderer.lua`):** Refactored `get_dominant_item()` to inspect active container slots using `is_stack_spoilable()`, update `cap_data.dominant_item` to the newly spoiled product (e.g. `copper-ore` or `spoilage`) first, and then flip `has_spoilable_items` to `false` only if zero spoilable stacks remain across all active slots.
+2. **0-Tick Scan Suppression (`scripts/capsules/capsule-renderer.lua`):** Configured `render()` to permanently suppress 60-tick periodic inventory re-scans once `has_spoilable_items` transitions to `false`, serving cached dominant item icons directly from Lua memory in $O(1)$ time.
+3. **Decoupled Lifecycle State Cleanliness (`scripts/capsules/capsule-lifecycle.lua`):** Restricted `capsule-lifecycle.lua` from performing premature state mutation on `has_spoilable_items`, preserving strict single-responsibility ownership in `capsule-renderer.lua` to prevent stale icon caching during mid-flight spoilage transitions.

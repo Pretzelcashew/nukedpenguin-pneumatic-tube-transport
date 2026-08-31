@@ -12,6 +12,25 @@ local active_debug_count = 0
 local scratch_debug_players = {}
 local scratch_debug_keys = {}
 
+--- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
+local function is_stack_spoilable(stack)
+    if not (stack and stack.valid_for_read) then return false end
+    local proto = stack.prototype
+    if proto and proto.get_spoil_ticks then
+        local ticks = proto.get_spoil_ticks()
+        if ticks and ticks > 0 then
+            return true
+        end
+    end
+    if stack.spoil_tick and stack.spoil_tick > 0 then
+        return true
+    end
+    if stack.spoil_percent and stack.spoil_percent > 0 then
+        return true
+    end
+    return false
+end
+
 --- Pre-evaluates player viewport eligibility, Alt Mode state, and hover peeking unit numbers once per tick.
 function capsule_renderer.prepare_frame()
     local current_tick = game.tick
@@ -69,6 +88,7 @@ end
 --- Returns the dominant item string for a capsule.
 --- Serves cached payload metadata instantly unless force_refresh is true.
 --- Short-circuits force_refresh for capsules marked with no spoilable items.
+--- Updates dominant_item to the spoiled product BEFORE disabling further 60-tick refreshes.
 --- @param capsule_id number
 --- @param force_refresh boolean|nil
 --- @return string|nil
@@ -90,6 +110,9 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
 
     local inventory = cap_data.holder.get_inventory(defines.inventory.chest)
     if not (inventory and inventory.valid and not inventory.is_empty()) then
+        if cap_data and cap_data.has_spoilable_items then
+            cap_data.has_spoilable_items = false
+        end
         return cap_data.dominant_item or (cap_data.definition and cap_data.definition.name)
     end
 
@@ -98,6 +121,7 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
     local max_vessel_count = 0
     local dominant_vessel_item = nil
     local primary_slot = cap_data.primary_slot
+    local still_has_spoilable = false
 
     -- Calculate active slot bound to avoid allocating C++ LuaItemStack userdata for red-locked slots
     local max_slot = #inventory
@@ -111,6 +135,10 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
     for i = 1, max_slot do
         local stack = inventory[i]
         if stack and stack.valid_for_read and stack.count > 0 then
+            if is_stack_spoilable(stack) then
+                still_has_spoilable = true
+            end
+
             if primary_slot and i == primary_slot then
                 if stack.count > max_vessel_count then
                     max_vessel_count = stack.count
@@ -127,11 +155,17 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
 
     local dominant_item = dominant_cargo_item or dominant_vessel_item or (cap_data.definition and cap_data.definition.name)
 
+    -- Update cached dominant item FIRST so rendering overlay displays the newly spoiled item
     if cap_data then
         cap_data.dominant_item = dominant_item
     end
     if storage.capsules and storage.capsules[capsule_id] then
         storage.capsules[capsule_id].dominant_item = dominant_item
+    end
+
+    -- ONLY AFTER updating dominant_item to the spoiled result do we flip has_spoilable_items to false
+    if cap_data and cap_data.has_spoilable_items and not still_has_spoilable then
+        cap_data.has_spoilable_items = false
     end
 
     return dominant_item

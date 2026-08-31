@@ -19,8 +19,9 @@ proxy.flags = {
 }
 proxy.collision_box = {{0, 0}, {0, 0}}
 proxy.collision_mask = {layers = {}}
-proxy.selection_box = (pump and pump.selection_box) or cc.selection_box
+proxy.selection_box = {{-0.3, -0.3}, {0.3, 0.3}}
 proxy.selection_priority = 0
+proxy.draw_selection_box = false
 proxy.item_slot_count = 10
 proxy.minable = nil
 

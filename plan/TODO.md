@@ -71,3 +71,7 @@ consider adding one ui panel for pneumatic toggles instead of many toggles, it w
 
 
 with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
+
+
+
+make selecting the diverter or pump proxy, defer selection to the linked unit, or something better. right now the proxy is just very overbearring on the unit under it. 

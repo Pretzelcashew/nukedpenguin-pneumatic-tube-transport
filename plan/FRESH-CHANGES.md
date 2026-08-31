@@ -139,3 +139,12 @@
 1. **Empty Collision Mask (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Configured `collision_mask = {layers = {}}` on proxy prototypes to eliminate all spatial collision layers, allowing fast-replace upgrades and building placement overlays to function seamlessly without proxy collision interference.
 2. **Wire Selection & Flag Tuning (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Removed `"not-selectable-in-game"` from `flags`, added `"no-copy-paste"`, set `selection_priority = 0`, and mapped `selection_box` to host structures, restoring red/green circuit network wire targeting.
 3. **Top-Level Require Compliance (`prototypes/pneumatic-pump-proxy-linkage.lua` & `prototypes/pneumatic-diverter-proxy-linkage.lua`):** Verified strict top-level module import standards across proxy lifecycle linkage scripts.
+
+
+### Revision: Zero-Overhead Circuit Proxy Selection Deferral & Visual Suppression
+**Date:** 2026-08-31 11:18 (EDT)
+**Context:** Prevent circuit proxy constant combinators from overriding hover selection and double-rendering selection outlines over host units (`pneumatic-pump` and `pneumatic-diverter`), while deferring GUI opening and wire targeting cleanly to the linked physical entity.
+**Key Changes:**
+1. **Selection Box Visual Suppression (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Configured `draw_selection_box = false` on proxy prototypes to eliminate secondary green selection box outlines when mousing over host structures.
+2. **Compact Selection Footprint & Priority Tuning (`prototypes/pneumatic-pump-proxy.lua` & `prototypes/pneumatic-diverter.lua`):** Reduced proxy `selection_box` to `{{-0.3, -0.3}, {0.3, 0.3}}` with `selection_priority = 0`, ensuring hovering over 90%+ of the building footprint highlights the physical unit while preserving wire connection targeting near the center.
+3. **Seamless Proxy GUI Deferral (`prototypes/pneumatic-pump-proxy-linkage.lua` & `prototypes/pneumatic-diverter-proxy-linkage.lua`):** Refactored `on_gui_opened` event handlers to intercept proxy entity selection and resolve linked host entities via `surface.find_entity()`, launching host configuration GUIs (`pump_gui` / `diverter_gui`) without disruption.

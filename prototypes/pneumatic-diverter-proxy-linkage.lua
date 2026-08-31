@@ -90,11 +90,19 @@ local function on_gui_opened(event)
     if event.gui_type ~= defines.gui_type.entity then return end
     local entity = event.entity
     if not (entity and entity.valid) then return end
-    if entity.name ~= DIVERTER_NAME then return end
+
+    local host_entity = nil
+    if entity.name == DIVERTER_NAME then
+        host_entity = entity
+    elseif entity.name == PROXY_NAME then
+        host_entity = entity.surface.find_entity(DIVERTER_NAME, entity.position)
+    end
+
+    if not (host_entity and host_entity.valid) then return end
 
     local player = game.get_player(event.player_index)
     if player and player.valid then
-        diverter_gui.open(player, entity)
+        diverter_gui.open(player, host_entity)
     end
 end
 

@@ -30,6 +30,7 @@ function capsule_runner.wake_parked_capsules(target)
         for _, capsule in pairs(storage.capsules) do
             if not capsule.to_port_key then
                 capsule.next_retry_tick = nil
+                capsule.last_failed_hub = nil
             end
         end
         return
@@ -46,6 +47,7 @@ function capsule_runner.wake_parked_capsules(target)
                     local cap = storage.capsules[cap_id]
                     if cap and not cap.to_port_key then
                         cap.next_retry_tick = nil
+                        cap.last_failed_hub = nil
                         woke_capsules[cap_id] = true
                     end
                 end

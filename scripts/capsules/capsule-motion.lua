@@ -14,7 +14,7 @@ local MAX_SPEED_TILES_PER_SEC = 60
 local capsule_motion = {}
 
 --- Efficiently retrieves the unit_number from a port_key ("unit_number:port_index")
---- Uses node metadata if available, falling back to fast plain string sub without regex.
+--- Uses node metadata if available, falling back to memoized port string info lookup.
 --- @param port_key string|nil
 --- @return number|nil unit_number
 local function get_unit_number(port_key)
@@ -23,8 +23,7 @@ local function get_unit_number(port_key)
     if node and node.unit_number then
         return node.unit_number
     end
-    local colon = string.find(port_key, ":", 1, true)
-    return colon and tonumber(string.sub(port_key, 1, colon - 1))
+    return capsule_queries.get_port_info(port_key)
 end
 
 local function evaluate_filter_slot(slot, payload_item)
@@ -97,10 +96,7 @@ local function check_diverter_port_filter(port_key, payload_item)
         unit_number = node.unit_number
         port_index = node.port_index
     else
-        local colon = string.find(port_key, ":", 1, true)
-        if not colon then return true end
-        unit_number = tonumber(string.sub(port_key, 1, colon - 1))
-        port_index = tonumber(string.sub(port_key, colon + 1))
+        unit_number, port_index = capsule_queries.get_port_info(port_key)
     end
     if not (unit_number and port_index) then return true end
 
@@ -304,6 +300,7 @@ function capsule_motion.select_next_target(capsule)
         local best_hub_port = capsule_motion.find_best_hub_outbound_port(entity, capsule.capsule_id or capsule.id, capsule.from_port_key)
         if best_hub_port and best_hub_port ~= capsule.from_port_key then
             capsule.from_port_key = best_hub_port
+            capsule_queries.update_capsule_occupancy(capsule)
             current_node = capsule_motion.get_node(best_hub_port)
         end
     end
@@ -438,11 +435,11 @@ function capsule_motion.handle_arrival(capsule, id)
         if hub_def and capsule.source_hub ~= node.entity.unit_number then
             local unpacked = hub_unpacking.capture(capsule, node.entity)
             if unpacked then
-                capsule_queries.clear_capsule_render(capsule)
-                storage.capsules[id] = nil
+                capsule_queries.remove_capsule(id)
                 return true
             else
                 capsule.to_port_key = nil
+                capsule_queries.update_capsule_occupancy(capsule)
             end
         end
     end

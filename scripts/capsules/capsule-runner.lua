@@ -162,6 +162,7 @@ local function update_capsules(current_tick)
 
                     capsule.to_port_key = capsule_motion.select_next_target(capsule)
                     capsule.progress = 0.0
+                    capsule_queries.update_capsule_occupancy(capsule)
 
                     if capsule.to_port_key then
                         capsule.next_retry_tick = nil
@@ -180,8 +181,7 @@ local function update_capsules(current_tick)
 
             local from_pos, surf = capsule_motion.get_port_world_pos(capsule.from_port_key)
             if not from_pos then
-                capsule_queries.clear_capsule_render(capsule)
-                storage.capsules[id] = nil
+                capsule_queries.remove_capsule(id)
                 capsule_runner.wake_parked_capsules()
                 break
             end
@@ -196,6 +196,7 @@ local function update_capsules(current_tick)
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
                 capsule.next_retry_tick = (current_tick or 0) + PARKED_RETRY_INTERVAL
+                capsule_queries.update_capsule_occupancy(capsule)
                 capsule_runner.wake_parked_capsules()
                 break
             end
@@ -209,6 +210,7 @@ local function update_capsules(current_tick)
                 capsule.from_port_key = capsule.to_port_key
                 capsule.to_port_key = nil
                 capsule.progress = 0.0
+                capsule_queries.update_capsule_occupancy(capsule)
                 
                 capsule_motion.handle_arrival(capsule, id)
                 capsule_runner.wake_parked_capsules()
@@ -223,6 +225,7 @@ local function update_capsules(current_tick)
                     capsule.to_port_key = nil
                     capsule.progress = 0.0
                     curr_pos = { x = to_pos.x, y = to_pos.y }
+                    capsule_queries.update_capsule_occupancy(capsule)
                     
                     capsule_motion.handle_arrival(capsule, id)
                     capsule_runner.wake_parked_capsules()
@@ -254,7 +257,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     local target_port_key = best_port_key or fallback_port_key
     if not target_port_key then return false end
 
-    storage.capsules[capsule_id] = {
+    local new_capsule = {
         id = capsule_id,
         capsule_id = capsule_id,
         from_port_key = target_port_key,
@@ -266,6 +269,9 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         source_hub = entity.unit_number,
         passenger = passenger
     }
+
+    storage.capsules[capsule_id] = new_capsule
+    capsule_queries.update_capsule_occupancy(new_capsule)
     capsule_runner.wake_parked_capsules()
     return true
 end
@@ -286,9 +292,8 @@ function capsule_runner.emergency_eject(player)
                 position = safe_pos
             }
 
-            capsule_queries.clear_capsule_render(capsule)
             capsule_manager.remove(capsule.capsule_id or id)
-            storage.capsules[id] = nil
+            capsule_queries.remove_capsule(id)
             capsule_runner.wake_parked_capsules()
             break
         end

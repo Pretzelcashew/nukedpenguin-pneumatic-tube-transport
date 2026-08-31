@@ -44,45 +44,46 @@
 
 ~make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage (ended up just making the thing not operable)
 
+
+
+====
+
+~add en locale for pump circuit proxy
+
+~make circuit proxys no longer block building (so build over upgrades can function)
+
+~see about making sure all bio items are included in the list for bonus capacity in bio capsules
+
+~see about making capsules with spoilable items turn off dominant item polling once there are no spoilable items left
+
+~add en locale for the new hotbar toggles
+
+~consider adding one ui panel for pneumatic toggles instead of many toggles, it would be one time panel you open for changing each toggle.
+
+
 improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
 explore having motes around liminal capsule cells for as a guard against possible wrong unit spill
 
 explore only spacing out liminal capsules with spoilables that can spoil into units
 
-add en locale for pump circuit proxy
+~see about adding bar inventory clamp to hubs
 
-make circuit proxys no longer block building (so build over upgrades can function)
-
-see about adding bar inventory clamp to hubs
-
-explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior
-
-see about making sure all bio items are included in the list for bonus capacity in bio capsules
-
-see about making capsules with spoilable items turn off dominant item polling once there are no spoilable items left
-
-add en locale for the new hotbar toggles
-
-consider adding one ui panel for pneumatic toggles instead of many toggles, it would be one time panel you open for changing each toggle.
+~explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior
 
 
-
-
-
-with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
-
+====
 
 
 ~make selecting the diverter or pump proxy, defer selection to the linked unit, or something better. right now the proxy is just very overbearring on the unit under it. 
 
-
-investigate render order of debug overlays (capsule should be in front of flow overlay)
-
-
-major packing issue regarding spoilables, spoil percent is not being transferred, its creating completely fresh items.
+~major packing issue regarding spoilables, spoil percent is not being transferred, its creating completely fresh items.
 
 
 consider making an item transfer handler for various parts of the project to utilize, and make sure equipment is preserved as well
 
-consider a distinct capsule color circle for the render overlay of oving capsules
+consider a distinct capsule color circle for the render overlay of moving capsules
+
+investigate render order of debug overlays (capsule should be in front of flow overlay)
+
+with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives

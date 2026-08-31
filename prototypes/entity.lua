@@ -10,7 +10,7 @@ data:extend({
     collision_box = {{-0.9, -0.4}, {0.9, 0.4}},
     selection_box = {{-1.0, -0.5}, {1.0, 0.5}},
     inventory_size = 10,
-    inventory_type = "with_filters",
+    inventory_type = "with_filters_and_bar",
     picture = {
       layers = {
         {
@@ -46,7 +46,7 @@ data:extend({
     collision_box = {{-0.4, -0.9}, {0.4, 0.9}},
     selection_box = {{-0.5, -1.0}, {0.5, 1.0}},
     inventory_size = 10,
-    inventory_type = "with_filters",
+    inventory_type = "with_filters_and_bar",
     picture = {
       layers = {
         {

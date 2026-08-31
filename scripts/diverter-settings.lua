@@ -1,5 +1,7 @@
 local diverter_settings = {}
 
+diverter_settings.DEFAULT_CAPACITY = 2
+
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target
     elseif operator == ">" then return val > target
@@ -15,6 +17,7 @@ function diverter_settings.get(unit_number)
     storage.diverter_settings = storage.diverter_settings or {}
     if not storage.diverter_settings[unit_number] then
         storage.diverter_settings[unit_number] = {
+            capacity = diverter_settings.DEFAULT_CAPACITY,
             read_red = true,
             read_green = true,
             ports = {
@@ -82,6 +85,7 @@ function diverter_settings.get(unit_number)
         }
     else
         local s = storage.diverter_settings[unit_number]
+        if s.capacity == nil then s.capacity = diverter_settings.DEFAULT_CAPACITY end
         if s.read_red == nil then s.read_red = true end
         if s.read_green == nil then s.read_green = true end
         if s.ports then
@@ -97,6 +101,12 @@ function diverter_settings.get(unit_number)
         end
     end
     return storage.diverter_settings[unit_number]
+end
+
+function diverter_settings.get_capacity(unit_number)
+    if not unit_number then return diverter_settings.DEFAULT_CAPACITY end
+    local s = storage.diverter_settings and storage.diverter_settings[unit_number]
+    return (s and s.capacity) or diverter_settings.DEFAULT_CAPACITY
 end
 
 function diverter_settings.get_proxy(entity)

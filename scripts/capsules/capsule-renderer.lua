@@ -4,6 +4,68 @@ require("scripts.debug-manager")
 
 local capsule_renderer = {}
 
+-- Module-scoped per-frame player viewport cache & scratch structures
+local last_prepared_tick = -1
+local active_debug_players = {}
+local active_debug_count = 0
+
+local scratch_debug_players = {}
+local scratch_debug_keys = {}
+
+--- Pre-evaluates player viewport eligibility, Alt Mode state, and hover peeking unit numbers once per tick.
+function capsule_renderer.prepare_frame()
+    local current_tick = game.tick
+    if last_prepared_tick == current_tick then
+        return
+    end
+    last_prepared_tick = current_tick
+
+    active_debug_count = 0
+
+    local players = game.players
+    for _, player in pairs(players) do
+        if player and player.valid then
+            local p_idx = player.index
+            local view_settings = player.game_view_settings
+            local alt_mode = view_settings and view_settings.show_entity_info
+
+            if alt_mode then
+                local wants_debug = is_debug_active("capsules", p_idx)
+                local wants_peek = is_debug_active("peek", p_idx)
+                local hovered_unit = nil
+
+                if wants_peek then
+                    local selected = player.selected
+                    if selected and selected.valid and selected.unit_number then
+                        hovered_unit = selected.unit_number
+                    else
+                        wants_peek = false
+                    end
+                end
+
+                if wants_debug or wants_peek then
+                    active_debug_count = active_debug_count + 1
+                    local entry = active_debug_players[active_debug_count]
+                    if not entry then
+                        entry = {}
+                        active_debug_players[active_debug_count] = entry
+                    end
+                    entry.player = player
+                    entry.index = p_idx
+                    entry.wants_debug = wants_debug
+                    entry.wants_peek = wants_peek
+                    entry.hovered_unit = hovered_unit
+                end
+            end
+        end
+    end
+
+    -- Clear trailing references in pre-allocated array
+    for i = active_debug_count + 1, #active_debug_players do
+        active_debug_players[i] = nil
+    end
+end
+
 function capsule_renderer.get_dominant_item(capsule_id)
     local cap_data = capsule_manager.get(capsule_id)
     if not (cap_data and cap_data.holder and cap_data.holder.valid) then
@@ -56,54 +118,68 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         return
     end
 
+    -- Ensure system-level frame context is prepared for current tick
+    if last_prepared_tick ~= game.tick then
+        capsule_renderer.prepare_frame()
+    end
+
     local passenger = capsule.passenger
     local passenger_valid = passenger and passenger.valid
     local passenger_index = passenger_valid and passenger.index or nil
     local surface_index = surface.index
 
-    -- Build list of players eligible to view capsule visual overlay for this frame
-    local debug_players = {}
-    local debug_key_tbl = {}
+    local debug_player_count = 0
 
-    for _, player in pairs(game.players) do
-        if player and player.valid then
-            local p_idx = player.index
-            local alt_mode = player.game_view_settings and player.game_view_settings.show_entity_info
+    if active_debug_count > 0 then
+        local from_key = capsule.from_port_key
+        local to_key = capsule.to_port_key
+        local u_from = from_key and capsule_queries.get_port_info(from_key)
+        local u_to = to_key and capsule_queries.get_port_info(to_key)
 
-            local wants_debug = alt_mode and is_debug_active("capsules", p_idx)
+        for i = 1, active_debug_count do
+            local entry = active_debug_players[i]
+            local is_eligible = false
 
-            local wants_peek = false
-            if alt_mode and is_debug_active("peek", p_idx) then
-                local selected = player.selected
-                if selected and selected.valid and selected.unit_number then
-                    local unit_number = selected.unit_number
-                    local prefix = tostring(unit_number) .. ":"
-                    local prefix_len = #prefix
-                    local at_from = capsule.from_port_key and string.sub(capsule.from_port_key, 1, prefix_len) == prefix
-                    local at_to = capsule.to_port_key and string.sub(capsule.to_port_key, 1, prefix_len) == prefix
-                    if at_from or at_to then
-                        wants_peek = true
-                    end
+            if entry.wants_debug then
+                is_eligible = true
+            elseif entry.wants_peek and entry.hovered_unit then
+                local h_unit = entry.hovered_unit
+                if (u_from and u_from == h_unit) or (u_to and u_to == h_unit) then
+                    is_eligible = true
                 end
             end
 
-            if wants_debug or wants_peek then
-                table.insert(debug_players, player)
-                table.insert(debug_key_tbl, p_idx)
+            if is_eligible then
+                debug_player_count = debug_player_count + 1
+                scratch_debug_players[debug_player_count] = entry.player
+                scratch_debug_keys[debug_player_count] = entry.index
             end
         end
     end
 
-    local debug_key = table.concat(debug_key_tbl, ",")
+    -- Numeric debug key for 0 or 1 player to avoid string allocation & table joins
+    local debug_key
+    if debug_player_count == 0 then
+        debug_key = 0
+    elseif debug_player_count == 1 then
+        debug_key = scratch_debug_keys[1]
+    else
+        local key_tbl = {}
+        for i = 1, debug_player_count do
+            key_tbl[i] = scratch_debug_keys[i]
+        end
+        debug_key = table.concat(key_tbl, ",")
+    end
 
     local cache = capsule.render_cache
     local render_id = capsule.render_id
 
-    -- Validate that all existing render handles are still valid C++ objects
+    -- Validate existing render handles against C++ object validity
     local render_objects_valid = true
     if render_id then
         if type(render_id) == "table" then
-            for _, obj in ipairs(render_id) do
+            for i = 1, #render_id do
+                local obj = render_id[i]
                 if not (obj and obj.valid) then
                     render_objects_valid = false
                     break
@@ -118,7 +194,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
 
     -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules
     local dominant_item = nil
-    if debug_key ~= "" and not passenger_valid then
+    if debug_key ~= 0 and debug_key ~= "" and not passenger_valid then
         local tick_offset = capsule.capsule_id or id or 0
         local recheck_spoilage = ((game.tick + tick_offset) % 60 == 0)
 
@@ -140,14 +216,21 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     if state_matches then
         local pos_changed = (cache.pos_x ~= curr_pos.x or cache.pos_y ~= curr_pos.y)
         if not pos_changed then
+            -- Clean up scratch arrays
+            for i = 1, debug_player_count do
+                scratch_debug_players[i] = nil
+                scratch_debug_keys[i] = nil
+            end
             -- Case 1: Stationary capsule with unchanged render state -> Zero allocation NO-OP
             return
         end
 
         -- Case 2: Moving capsule with unchanged render state -> Fast in-place target position update
         if type(render_id) == "table" and cache.target_offsets then
-            for i, render_obj in ipairs(render_id) do
-                local offset_y = cache.target_offsets[i] or 0
+            local offsets = cache.target_offsets
+            for i = 1, #render_id do
+                local render_obj = render_id[i]
+                local offset_y = offsets[i] or 0
                 if offset_y ~= 0 then
                     render_obj.target = { curr_pos.x, curr_pos.y + offset_y }
                 else
@@ -160,13 +243,19 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
 
         cache.pos_x = curr_pos.x
         cache.pos_y = curr_pos.y
+
+        -- Clean up scratch arrays
+        for i = 1, debug_player_count do
+            scratch_debug_players[i] = nil
+            scratch_debug_keys[i] = nil
+        end
         return
     end
 
     -- Case 3: State changed, spoilage refreshed, or handles invalid -> Destroy old render objects and re-create
     capsule_queries.clear_capsule_render(capsule)
 
-    if debug_key ~= "" and not passenger_valid and dominant_item == nil then
+    if debug_key ~= 0 and debug_key ~= "" and not passenger_valid and dominant_item == nil then
         dominant_item = capsule_renderer.get_dominant_item(capsule.capsule_id or id)
     end
 
@@ -187,7 +276,8 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         table.insert(target_offsets, 0.8)
     end
 
-    for _, player in ipairs(debug_players) do
+    for i = 1, debug_player_count do
+        local player = scratch_debug_players[i]
         if passenger_valid then
             local ring = rendering.draw_circle{
                 color = { r = 0, g = 0.8, b = 1, a = 0.9 },
@@ -237,6 +327,12 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(target_offsets, 0)
             end
         end
+    end
+
+    -- Clean up scratch arrays
+    for i = 1, debug_player_count do
+        scratch_debug_players[i] = nil
+        scratch_debug_keys[i] = nil
     end
 
     if #render_objects > 0 then

@@ -194,6 +194,9 @@ end
 local function update_capsules(current_tick)
     if not storage.capsules then return end
 
+    -- Pre-evaluate player viewport eligibility & Alt Mode settings once per tick
+    capsule_renderer.prepare_frame()
+
     for id, capsule in pairs(storage.capsules) do
         local current_speed = capsule_motion.calculate_segment_speed(capsule.from_port_key, capsule.to_port_key)
         local tiles_this_tick = current_speed

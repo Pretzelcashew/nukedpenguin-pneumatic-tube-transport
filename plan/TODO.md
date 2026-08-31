@@ -85,8 +85,7 @@ improve deconstruction/removal of pnuematic networks (particularly regarding mer
 
 ~investigate render order of debug overlays (capsule should be in front of flow overlay)
 
+~consider making an item transfer handler for various parts of the project to utilize, and make sure equipment is preserved as well
 
-consider making an item transfer handler for various parts of the project to utilize, and make sure equipment is preserved as well
-
-with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
+~with the not operable tag on the visible capsule holder, you cannot take from it with ctrl+click, so consider alternatives
 

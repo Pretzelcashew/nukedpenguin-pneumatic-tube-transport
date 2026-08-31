@@ -36,6 +36,28 @@ events.on_event(defines.events.on_tick, function(event)
     end
 end)
 
+-- Instantly dismiss container GUI on open
+events.on_event(defines.events.on_gui_opened, function(event)
+    local entity = event.entity
+    if entity and entity.valid and entity.name == "visible-capsule-holder" then
+        local player = game.get_player(event.player_index)
+        if player then
+            player.opened = nil
+        end
+    end
+end)
+
+-- Re-enforce bar set to slot 1 if settings are pasted onto spilled container
+events.on_event(defines.events.on_entity_settings_pasted, function(event)
+    local destination = event.destination
+    if destination and destination.valid and destination.name == "visible-capsule-holder" then
+        local inv = destination.get_inventory(defines.inventory.chest)
+        if inv and inv.supports_bar() then
+            inv.set_bar(1)
+        end
+    end
+end)
+
 --- Central hook for spilling a liminal capsule's contents and cleaning up all motion, render, and holder state
 --- @param capsule_id number The unit_number of the holder entity / capsule ID
 --- @param surface LuaSurface Surface to spill items onto
@@ -92,7 +114,7 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                 }
 
                 if container_entity and container_entity.valid then
-                    container_entity.operable = false -- Non-operable: Prevents opening container GUI to insert items by hand
+                    container_entity.operable = true -- Operable: Enables Ctrl+Click fast-looting
 
                     if mark_decon then
                         container_entity.order_deconstruction(effective_force)
@@ -115,6 +137,9 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                         if container_inv.is_empty() then
                             container_entity.destroy()
                         else
+                            if container_inv.supports_bar() then
+                                container_inv.set_bar(1) -- Lock all slots against manual insertion while allowing item extraction
+                            end
                             storage.spilled_containers = storage.spilled_containers or {}
                             storage.spilled_containers[container_entity.unit_number] = container_entity
                         end

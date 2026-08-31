@@ -101,12 +101,13 @@ data:extend({
       "placeable-neutral",
       "player-creation",
       "no-automated-item-insertion",
-      "no-automated-item-removal"
+      "no-automated-item-removal",
+      "no-copy-paste"
     },
     minable = {mining_time = 0.2},
     max_health = 150,
     destructible = true,
-    operable = false, -- Non-operable: Prevents players from opening container GUI to manually insert items
+    operable = true, -- Operable: Enables Ctrl+Click fast-looting
     collision_mask = {layers = {}},
     collision_box = {{-0.2, -0.2}, {0.2, 0.2}},
     selection_box = {{-0.3, -0.3}, {0.3, 0.3}},

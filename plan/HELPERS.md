@@ -56,6 +56,12 @@ Please sync our documentation with the latest changelog updates by following the
 /c local player = game.player for i=1, 500 do player.insert{name="biter-egg", count=1, spoil_percent=0.95} end
 
 
+
+/c local p=game.player; local surf=p.surface; local pos=p.position; local chest=surf.create_entity{name="iron-chest", position=pos, force=p.force}; if chest then local inv=chest.get_inventory(defines.inventory.chest); local function g(n) return inv.find_item_stack(n) end; if inv.insert{name="repair-pack"}>0 then g"repair-pack".durability=0.5 end; if inv.insert{name="firearm-magazine"}>0 then g"firearm-magazine".ammo=5 end; if prototypes.item["flesh-chunk"] and inv.insert{name="flesh-chunk"}>0 then g"flesh-chunk".spoil_tick=game.tick+prototypes.item["flesh-chunk"].spoil_ticks/2 end; if inv.insert{name="stone-wall"}>0 then g"stone-wall".health=0.3 end; if inv.insert{name="selection-tool"}>0 then g"selection-tool".custom_description="test-id-123" end; if inv.insert{name="power-armor-mk2"}>0 then local s=g"power-armor-mk2"; if s.grid then s.grid.put{name="personal-laser-defense-equipment"} end end; p.print("Test chest created successfully!") end
+
+
+
+
 what changed, and in what situations will it help?
 
 

@@ -32,16 +32,28 @@
 
 ~address the fact that waking up capsules after a network stoppaged and rebuild is virtually nonexistent beyond the direct entity touching (leading to an entire stalled network that can't wake up except one by manually intervention), i believe this has to do with the last couple revisions. Those revisions helped the performance a lot, but having an entire system that once stopped, destroy a segment and rebuild, doesnt wake them up except one by one is not going to fly. but also a brute force wake will not fly either
 
-explore ways to make capsule movement much more performant (right now it's extremely laggy with only 150 moving capsules, down to 30 ups!)
+~explore ways to make capsule movement much more performant (right now it's extremely laggy with only 150 moving capsules, down to 30 ups!)
 
-investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png)
+~investigate why recently packed capsules dispatching from hubs are prioritizing moving into a higher pressure (eg moving into -34 instead of -66) ![alt text](image-1.png) (seemingly fixed along the way)
 
-improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
-
-fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters)
+~fix deleting pumps with the decon tool in sandbox would leave behind the circuit proxy (check if this is the same case for diverters, test with diverters, it doesnt affect diverters.), also see about making the pump circuit proxy not visible like the diverter's (cross ref how its handled, and copy)
 
 mark capsules that dont have spoilage to not be re-poll candidates for dominant item rechecks
 
 clean up command naming, explore adding in some toggles in the hotbar toggles section (vertical elipsis button)
 
 make it force player hand inserted items back into their hand when they try to exploit spilled capsule containers as extra storage
+
+improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+
+explore having motes around liminal capsule cells for as a guard against possible wrong unit spill
+
+explore only spacing out liminal capsules with spoilables that can spoil into units
+
+add en locale for pump circuit proxy
+
+make circuit proxys no longer block building (so build over upgrades can function)
+
+see about adding bar inventory clamp to hubs
+
+explore increasing diverter's internal capsule capacity slightly to accomodate more predictable and useful behavior

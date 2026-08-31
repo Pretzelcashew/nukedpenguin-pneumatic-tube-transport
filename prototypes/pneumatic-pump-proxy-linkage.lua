@@ -12,13 +12,19 @@ local build_events = {
     defines.events.script_raised_built,
     defines.events.script_raised_revive
 }
+if defines.events.on_space_platform_built_entity then
+    table.insert(build_events, defines.events.on_space_platform_built_entity)
+end
 
 local destroy_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
     defines.events.on_entity_died,
-    defines.script_raised_destroy
+    defines.events.script_raised_destroy
 }
+if defines.events.on_space_platform_mined_entity then
+    table.insert(destroy_events, defines.events.on_space_platform_mined_entity)
+end
 
 local rotate_events = {
     defines.events.on_player_rotated_entity,

@@ -22,6 +22,20 @@ proxy.selection_priority = 0
 proxy.item_slot_count = 10
 proxy.minable = nil
 
+local empty_sprite = util.empty_sprite()
+proxy.sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+proxy.activity_led_sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+
 data:extend({
   proxy
 })

@@ -23,12 +23,15 @@ require("scripts.capsules.capsule-inputs")
 require("prototypes.pneumatic-diverter-proxy-linkage")
 require("prototypes.pneumatic-pump-proxy-linkage")
 
+require("scripts.flow.port-defs")
 require("scripts.flow.creation-listener")
 require("scripts.flow.removal-listener")
 require("scripts.flow.state-listener")
+local connection_manager = require("scripts.flow.connection-manager")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}
+    storage.flow_port_connections = storage.flow_port_connections or {}
     storage.active_hubs = storage.active_hubs or {}
     storage.hub_settings = storage.hub_settings or {}
     storage.diverter_settings = storage.diverter_settings or {}
@@ -38,6 +41,7 @@ local function setup_storage()
     storage.bio_integrity_levels = storage.bio_integrity_levels or {}
     networks.init()
     liminal_surface.init_storage()
+    connection_manager.init_storage()
 
     for _, player in pairs(game.players) do
         debug_manager.sync_shortcuts(player.index)

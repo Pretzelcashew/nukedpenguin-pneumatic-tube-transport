@@ -1,5 +1,5 @@
 local events = require("scripts.events")
-local port_defs = require("scripts.ports.port-definitions")
+local port_defs = require("scripts.flow.port-defs")
 local debug_manager = require("scripts.debug-manager")
 
 local creation_listener = {}

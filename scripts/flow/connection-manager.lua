@@ -2,7 +2,6 @@ local creation_listener = require("scripts.flow.creation-listener")
 local removal_listener = require("scripts.flow.removal-listener")
 local state_listener = require("scripts.flow.state-listener")
 local port_defs = require("scripts.flow.port-defs")
-local debug_manager = require("scripts.debug-manager")
 
 local connection_manager = {}
 
@@ -95,7 +94,6 @@ function connection_manager.disconnect_entity(entity, player_idx)
     end
 end
 
--- Hook lifecycle listeners
 creation_listener.on_entity_created(function(entity, event)
     local player_idx = event and event.player_index
     connection_manager.connect_entity(entity, player_idx)

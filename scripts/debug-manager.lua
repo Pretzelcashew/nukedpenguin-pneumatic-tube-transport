@@ -1,5 +1,6 @@
 local port_renderer = require("scripts.ports.port-renderer")
 local networks_flow = require("scripts.networks.networks-flow")
+local flow_engine = require("scripts.flow.flow-engine")
 local events = require("scripts.events")
 
 local debug_manager = {}
@@ -14,6 +15,7 @@ local function get_debug(player_index)
             master = true,
             ports = false,
             flow = true,
+            new_flow = false,
             capsules = true,
             peek = false,
             prints = false,
@@ -22,6 +24,9 @@ local function get_debug(player_index)
     else
         if storage.debug[player_index].peek == nil then
             storage.debug[player_index].peek = false
+        end
+        if storage.debug[player_index].new_flow == nil then
+            storage.debug[player_index].new_flow = false
         end
     end
     return storage.debug[player_index]
@@ -47,6 +52,7 @@ local function update_player_shortcuts(player_index)
     safe_set_shortcut_toggled(player, "pt-debug-panel", master)
     safe_set_shortcut_toggled(player, "pt-toggle-debug", master)
     safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (dbg.flow == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-new-flow", master and (dbg.new_flow == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsules", master and (dbg.capsules == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsule-peek", master and (dbg.peek == true))
     safe_set_shortcut_toggled(player, "pt-toggle-ports", master and (dbg.ports == true))
@@ -138,6 +144,12 @@ function debug_manager.refresh_panel(player_index)
         chk_flow.state = master and (dbg.flow == true)
     end
 
+    local chk_new_flow = content.pneumatic_debug_chk_new_flow
+    if chk_new_flow then
+        chk_new_flow.enabled = master
+        chk_new_flow.state = master and (dbg.new_flow == true)
+    end
+
     local chk_capsules = content.pneumatic_debug_chk_capsules
     if chk_capsules then
         chk_capsules.enabled = master
@@ -180,7 +192,6 @@ function debug_manager.open_panel(player_index)
     frame.auto_center = true
     player.opened = frame
 
-    -- Header Title Bar
     local title_flow = frame.add{type = "flow", name = "title_flow", direction = "horizontal"}
     title_flow.style.vertical_align = "center"
 
@@ -205,7 +216,6 @@ function debug_manager.open_panel(player_index)
         style = "frame_action_button"
     }
 
-    -- Content Container
     local content_frame = frame.add{
         type = "frame",
         name = "content_frame",
@@ -214,7 +224,6 @@ function debug_manager.open_panel(player_index)
     }
     content_frame.style.padding = 12
 
-    -- Master Enable Switch
     local master_flow = content_frame.add{type = "flow", name = "master_flow", direction = "horizontal"}
     master_flow.style.vertical_align = "center"
     master_flow.style.bottom_margin = 8
@@ -228,7 +237,6 @@ function debug_manager.open_panel(player_index)
 
     content_frame.add{type = "line", direction = "horizontal"}
 
-    -- Visual Overlays Section
     local overlay_label = content_frame.add{
         type = "label",
         caption = {"gui-debug.overlays-header"},
@@ -242,6 +250,14 @@ function debug_manager.open_panel(player_index)
         name = "pneumatic_debug_chk_flow",
         caption = {"gui-debug.toggle-flow"},
         state = master and (dbg.flow == true),
+        enabled = master
+    }
+
+    content_frame.add{
+        type = "checkbox",
+        name = "pneumatic_debug_chk_new_flow",
+        caption = "New Flow Engine (Alt Mode)",
+        state = master and (dbg.new_flow == true),
         enabled = master
     }
 
@@ -271,7 +287,6 @@ function debug_manager.open_panel(player_index)
 
     content_frame.add{type = "line", direction = "horizontal"}
 
-    -- Logging & Console Section
     local logging_label = content_frame.add{
         type = "label",
         caption = {"gui-debug.logging-header"},
@@ -310,6 +325,7 @@ local function toggle_master(player_index)
 
     if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
     if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
+    if is_debug_active("new_flow", player_index) then flow_engine.draw_all(player_index) else flow_engine.clear_all(player_index) end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -354,6 +370,20 @@ local function toggle_flow(player_index)
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Flow Overlay: " .. (dbg.flow and "[ENABLED]" or "[DISABLED]"))
+end
+
+local function toggle_new_flow(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.new_flow = not dbg.new_flow
+
+    if is_debug_active("new_flow", player_index) then flow_engine.draw_all(player_index) else flow_engine.clear_all(player_index) end
+
+    update_player_shortcuts(player_index)
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] New Flow Overlay: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
 end
 
 local function toggle_capsules(player_index)
@@ -411,28 +441,27 @@ local function reset_debug_filter(player_index)
     player.print("[Debug] Filter reset.")
 end
 
--- Primary Console Commands
 commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("debug-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("toggle-prints", "Toggle game debug prints", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 commands.add_command("toggle-ports", "Toggle port overlay", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)
 commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
+commands.add_command("toggle-new-flow", "Toggle new water-like flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
 commands.add_command("debug-filter-reset", "Reset the debug print prefix text filter", function(cmd) if cmd.player_index then reset_debug_filter(cmd.player_index) end end)
 
--- Command Aliases for Backward Compatibility
 commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-debug", "Toggle master debug state (Alias)", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-new-flow", "Toggle new flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-ports", "Toggle port overlay (Alias)", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 
--- Shortcut Bar Event Listener
 events.on_event(defines.events.on_lua_shortcut, function(event)
     local p_name = event.prototype_name
     local p_idx = event.player_index
@@ -443,7 +472,6 @@ events.on_event(defines.events.on_lua_shortcut, function(event)
     end
 end)
 
--- GUI Interaction Listeners
 events.on_event(defines.events.on_gui_click, function(event)
     local element = event.element
     if not (element and element.valid) then return end
@@ -472,11 +500,17 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
         dbg.master = element.state
         if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
         if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all(p_idx) end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_flow" then
         dbg.flow = element.state
         if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        update_player_shortcuts(p_idx)
+        debug_manager.refresh_panel(p_idx)
+    elseif name == "pneumatic_debug_chk_new_flow" then
+        dbg.new_flow = element.state
+        if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all(p_idx) end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_capsules" then
@@ -501,7 +535,6 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     end
 end)
 
--- Synchronize Shortcuts on Player Init/Join
 events.on_event(defines.events.on_player_created, function(event)
     update_player_shortcuts(event.player_index)
 end)

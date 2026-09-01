@@ -1,6 +1,5 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
-local debug_manager = require("scripts.debug-manager")
 
 local state_listener = {}
 
@@ -42,7 +41,6 @@ for _, event_id in ipairs(state_events) do
     events.on_event(event_id, handle_state_changed)
 end
 
--- Integrated debug print listener
 state_listener.on_entity_state_changed(function(entity, event)
     local unit_str = entity.unit_number and (" #" .. tostring(entity.unit_number)) or ""
     local player_idx = event and event.player_index

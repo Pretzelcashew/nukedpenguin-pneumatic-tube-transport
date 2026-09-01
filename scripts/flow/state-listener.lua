@@ -2,7 +2,7 @@ local events = require("scripts.events")
 local port_defs = require("scripts.ports.port-definitions")
 local debug_manager = require("scripts.debug-manager")
 
-local entity_listener = {}
+local state_listener = {}
 
 local pneumatic_entities = {}
 for _, name in ipairs(port_defs.registered_names) do
@@ -11,32 +11,25 @@ end
 
 local listeners = {}
 
-function entity_listener.register_entity_name(name)
+function state_listener.register_entity_name(name)
     pneumatic_entities[name] = true
 end
 
-function entity_listener.is_pneumatic_entity(entity)
+function state_listener.is_pneumatic_entity(entity)
     return entity and entity.valid and pneumatic_entities[entity.name] == true
 end
 
-function entity_listener.on_entity_created(callback)
+function state_listener.on_entity_state_changed(callback)
     table.insert(listeners, callback)
 end
 
-local build_events = {
-    defines.events.on_built_entity,
-    defines.events.on_robot_built_entity,
-    defines.events.script_raised_built,
-    defines.events.script_raised_revive,
-    defines.events.on_entity_cloned
+local state_events = {
+    defines.events.on_player_rotated_entity,
+    defines.events.on_player_flipped_entity
 }
 
-if defines.events.on_space_platform_built_entity then
-    table.insert(build_events, defines.events.on_space_platform_built_entity)
-end
-
-local function handle_entity_entry(event)
-    local entity = event.destination or event.entity or event.created_entity
+local function handle_state_changed(event)
+    local entity = event.entity
     if not (entity and entity.valid) then return end
     if not pneumatic_entities[entity.name] then return end
 
@@ -45,16 +38,16 @@ local function handle_entity_entry(event)
     end
 end
 
-for _, event_id in ipairs(build_events) do
-    events.on_event(event_id, handle_entity_entry)
+for _, event_id in ipairs(state_events) do
+    events.on_event(event_id, handle_state_changed)
 end
 
 -- Integrated debug print listener
-entity_listener.on_entity_created(function(entity, event)
+state_listener.on_entity_state_changed(function(entity, event)
     local unit_str = entity.unit_number and (" #" .. tostring(entity.unit_number)) or ""
     local player_idx = event and event.player_index
 
-    debug_print(string.format("[Flow Engine] Entity created: %s%s at (%.1f, %.1f) on '%s'",
+    debug_print(string.format("[Flow Engine] Entity state changed: %s%s at (%.1f, %.1f) on '%s'",
         entity.name,
         unit_str,
         entity.position.x,
@@ -63,4 +56,4 @@ entity_listener.on_entity_created(function(entity, event)
     ), player_idx)
 end)
 
-return entity_listener
+return state_listener

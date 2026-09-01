@@ -23,10 +23,9 @@ require("scripts.capsules.capsule-inputs")
 require("prototypes.pneumatic-diverter-proxy-linkage")
 require("prototypes.pneumatic-pump-proxy-linkage")
 
-
-
-require("scripts.flow.entity-listener")
-
+require("scripts.flow.creation-listener")
+require("scripts.flow.removal-listener")
+require("scripts.flow.state-listener")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}

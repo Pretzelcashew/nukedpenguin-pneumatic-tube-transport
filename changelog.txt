@@ -33,6 +33,7 @@ Date: 2026-08-31
     - Fixed Factorio 2.0 LuaItemPrototype indexing crash during hub packing.
   Locale:
     - Added localized English display names for pneumatic pump circuit proxies and hotbar shortcut toggles.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.2
 Date: 2026-08-29
   Features:

@@ -68,8 +68,7 @@
 
 ~explore only spacing out liminal capsules with spoilables that can spoil into units
 
-
-improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
+~improve deconstruction/removal of pnuematic networks (particularly regarding merge type networks). consider a staged, progressive over time rebuild of networks rather than that instant.
 
 
 

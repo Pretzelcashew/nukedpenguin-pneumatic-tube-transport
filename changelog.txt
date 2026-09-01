@@ -1,4 +1,38 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.2.0
+Date: 2026-08-31
+  Overview:
+    - This update introduces a consolidated Pneumatic Control Panel GUI, distinct color-coded capsule render overlays, expanded Space Age biological cargo support, and increased diverter junction throughput.
+    - Network pathfinding now features downstream route lookahead validation to prevent diverters from backing up, while complete item metadata and equipment grids are preserved across all capsule operations and ground spills.
+    - Major performance optimizations include 0-tick queue advancement and time-sliced network rebuilding to eliminate lag spikes, paired with seamless circuit proxy placement and improved spilled container mechanics.
+  Features:
+    - Added a unified Pneumatic Control Panel GUI (`/pneumatic-panel`, `/debug-panel`) accessible via a single hotbar shortcut button (`pt-debug-panel`).
+    - Added Alt Mode capsule hover-peeking (`/toggle-capsule-peek` or `/capsule-peek`) to inspect capsules occupying targeted pneumatic structures.
+    - Added distinct color-coded indicator rings for each capsule variant overlay (Gold, Emerald Green, Frost Cyan, Slate Grey, Violet Purple, Crimson Orange).
+    - Expanded bio capsule 2x slot capacity bonus to all Space Age and Factorio 2.0 organic items (yumako, jellynut, seeds, slumps, bioflux, nutrients, eggs, bacteria, fish, wood).
+    - Added red inventory bar limit slider to Pneumatic Hub GUIs for inserter deposition control.
+    - Increased Pneumatic Diverter internal capsule capacity from 1 to 2 to double junction throughput.
+  Minor Features:
+    - Added downstream capacity and filter lookahead validation to diverters to prevent capsules from taking branches leading to full or blocked lines.
+    - Preserved 100% of item metadata (quality, spoilage, durability, health, ammo, custom tags) and equipment grids (`stack.grid`) across transfers, spills, and decay.
+    - Configured spilled capsule containers to red-lock slots against manual item insertion while supporting Ctrl+Click fast-looting and self-despawning when empty.
+    - Partitioned storage surface grid into dual domains, placing biological cargo on 3x3 lab platforms with 2-tile water moats to contain spawned organic units.
+  Graphics:
+    - Configured debug render overlays to update dynamically mid-flight when refrigerated tools expire into spent capsules or cargo spoils.
+    - Updated debug render layers so capsule overlays draw cleanly in front of flow vectors.
+    - Suppressed secondary selection box outlines on pump and diverter circuit proxies.
+  Optimizations:
+    - Implemented 0-tick queue advancement for parked capsules, waking queued upstream capsules instantly when space opens without 10-tick retry delays.
+    - Implemented staged, time-sliced network rebuilding and batched flow updates to eliminate FPS/UPS drops during mass building, blueprinting, or deconstruction.
+    - Implemented O(1) spatial occupancy indexing and memoized port key parsing for constant-time lookups during pathing.
+    - Suppressed 60-tick periodic inventory spoilage scans for capsules carrying non-spoilable cargo or fully spoiled cargo.
+  Bugfixes:
+    - Fixed circuit proxy combinators blocking building placement, building over, and fast-replace upgrades by assigning an empty collision mask.
+    - Tuned circuit proxy selection footprints to cleanly defer hover selection and GUI opening to parent pump and diverter entities.
+    - Fixed orphaned circuit proxies remaining after sandbox deconstruction, scripted removal, or space platform building/mining events.
+    - Fixed Factorio 2.0 LuaItemPrototype indexing crash during hub packing.
+  Locale:
+    - Added localized English display names for pneumatic pump circuit proxies and hotbar shortcut toggles.
 Version: 0.1.2
 Date: 2026-08-29
   Features:

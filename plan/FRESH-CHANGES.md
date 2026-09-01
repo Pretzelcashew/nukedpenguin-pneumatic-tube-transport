@@ -231,3 +231,11 @@
 1. **Staged Rebuild Engine (`scripts/networks/network-rebuild-engine.lua`):** Created a background job processor managing `storage.network_rebuild_queue`, executing graph split checks incrementally under a per-tick node budget (350 nodes/tick) and coalescing network updates across ticks.
 2. **Instant $O(1)$ Edge Severing (`scripts/networks/network-unmerge.lua` & `scripts/networks/network-invalidate.lua`):** Refactored entity removal and unmerge workflows to sever physical graph edges (`storage.port_connections`) and purge port definitions in constant time, delegating split checks to the rebuild engine queue.
 3. **Coalesced Batched Rebuild Engine (`scripts/networks/networks-flow.lua`):** Added `networks_flow.build_batch()` to run multi-source pressure BFS calculations (`networks_pressure.process`), flow map updates (`build_single_network`), and spatial occupancy index updates (`capsule_queries.rebuild_occupancy_index()`) in a single consolidated pass across dirty networks.
+
+
+### Revision: Batched Blueprint Placement Validation & Manager Rebuild Coalescing
+**Date:** 2026-08-31 20:03 (EDT)
+**Context:** Eliminate FPS/UPS drops and tick spikes during mass entity and blueprint placement by routing entity build validation and pump/diverter state updates into the batched network rebuild engine.
+**Key Changes:**
+1. **Deferred Validation Rebuilds (`scripts/networks/network-validate.lua`):** Refactored `network_validate.execute()` to replace synchronous per-entity `networks_flow.build()` invocations with $O(1)$ `network_rebuild_engine.mark_dirty(net_id)` tagging. Preserves instant spatial graph edge linking and network ID merges while deferring graph calculations.
+2. **Coalesced State Sensitivity (`scripts/networks/pump-manager.lua` & `scripts/networks/diverter-manager.lua`):** Updated `rebuild_pump_networks` and `rebuild_diverter_networks` to route power, state, and port setting updates through `network_rebuild_engine.mark_dirty()`, eliminating repeated synchronous BFS sweeps on multi-port structures.

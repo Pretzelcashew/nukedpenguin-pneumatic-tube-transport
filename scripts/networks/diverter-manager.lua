@@ -1,5 +1,5 @@
 local events = require("scripts.events")
-local networks_flow = require("scripts.networks.networks-flow")
+local network_rebuild_engine = require("scripts.networks.network-rebuild-engine")
 local port_defs = require("scripts.ports.port-definitions")
 local diverter_settings = require("scripts.diverter-settings")
 
@@ -23,13 +23,11 @@ local function rebuild_diverter_networks(entity)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
-    local visited = {}
     for p_idx, _ in ipairs(ports) do
         local port_key = unit_number .. ":" .. p_idx
         local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-        if net_id and not visited[net_id] then
-            visited[net_id] = true
-            networks_flow.build(net_id)
+        if net_id then
+            network_rebuild_engine.mark_dirty(net_id)
         end
     end
 end

@@ -1,10 +1,9 @@
--- scripts/networks/network-validate.lua
 local port_defs = require("scripts.ports.port-definitions")
 local port_finder = require("scripts.ports.port-finder")
 local port_evaluator = require("scripts.ports.port-evaluator")
 local connection_defs = require("scripts.ports.port-connection-definitions")
 local network_form_internals = require("scripts.networks.network-form-internals")
-local networks_flow = require("scripts.networks.networks-flow")
+local network_rebuild_engine = require("scripts.networks.network-rebuild-engine")
 
 local network_validate = {}
 
@@ -63,7 +62,7 @@ function network_validate.execute(entity)
     end
 
     for net_id in pairs(rebuilt) do
-        networks_flow.build(net_id)
+        network_rebuild_engine.mark_dirty(net_id)
     end
 end
 

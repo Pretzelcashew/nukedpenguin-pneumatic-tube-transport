@@ -1,3 +1,4 @@
+local events = require("scripts.events")
 local creation_listener = require("scripts.flow.creation-listener")
 local removal_listener = require("scripts.flow.removal-listener")
 local state_listener = require("scripts.flow.state-listener")
@@ -25,97 +26,136 @@ local function parse_port_key(key)
 end
 
 function flow_engine.init_storage()
+    storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
     storage.flow_entities = storage.flow_entities or {}
     storage.flow_emitters = storage.flow_emitters or {}
     storage.flow_levels = storage.flow_levels or {}
+    storage.flow_queue = storage.flow_queue or {}
     storage.new_flow_render_objects = storage.new_flow_render_objects or {}
 end
 
-function flow_engine.recalculate()
-    storage.flow_port_connections = storage.flow_port_connections or {}
-    storage.flow_entities = storage.flow_entities or {}
-    storage.flow_emitters = storage.flow_emitters or {}
-    storage.flow_levels = {}
+function flow_engine.enqueue_port(pkey)
+    if not pkey then return end
+    storage.flow_queue = storage.flow_queue or {}
+    storage.flow_queue[pkey] = true
+end
 
-    local queue = {}
+function flow_engine.enqueue_entity(entity)
+    if not (entity and entity.valid and entity.unit_number) then return end
+    local ports = port_defs.get_ports(entity)
+    if ports then
+        for port_index = 1, #ports do
+            flow_engine.enqueue_port(make_port_key(entity.unit_number, port_index))
+        end
+    end
+end
 
-    for unit_number, entity in pairs(storage.flow_emitters) do
-        if entity and entity.valid then
-            local ports = port_defs.get_ports(entity)
-            if ports then
-                for port_index = 1, #ports do
-                    local pkey = make_port_key(unit_number, port_index)
-                    storage.flow_levels[pkey] = MAX_FLOW
-                    table.insert(queue, {key = pkey, level = MAX_FLOW})
+local function compute_entity_flow_level(entity)
+    if not (entity and entity.valid) then return 0 end
+
+    -- Emitters produce MAX_FLOW
+    if EMITTER_NAMES[entity.name] then
+        return MAX_FLOW
+    end
+
+    local ports = port_defs.get_ports(entity)
+    if not ports then return 0 end
+
+    local max_incoming = 0
+
+    -- Scan external neighbor connections across all ports of this entity
+    for port_index = 1, #ports do
+        local pkey = make_port_key(entity.unit_number, port_index)
+        local neighbors = storage.flow_port_connections and storage.flow_port_connections[pkey]
+        if neighbors then
+            for neighbor_key, _ in pairs(neighbors) do
+                local n_level = storage.flow_levels[neighbor_key] or 0
+                if n_level > 1 then
+                    local incoming = n_level - 1
+                    if incoming > max_incoming then
+                        max_incoming = incoming
+                    end
                 end
             end
-        else
-            storage.flow_emitters[unit_number] = nil
         end
     end
 
-    local head = 1
-    while head <= #queue do
-        local item = queue[head]
-        head = head + 1
+    return max_incoming
+end
 
-        local current_key = item.key
-        local current_level = item.level
+-- Event-driven delta step: 0 UPS when network is stable/idle!
+function flow_engine.step()
+    storage.flow_queue = storage.flow_queue or {}
+    if next(storage.flow_queue) == nil then
+        return -- ZERO CPU COST WHEN IDLE / STEADY STATE
+    end
 
-        if current_level > 1 then
-            local next_level = current_level - 1
-            local unit_num, port_idx = parse_port_key(current_key)
+    storage.flow_port_connections = storage.flow_port_connections or {}
+    storage.flow_entities = storage.flow_entities or {}
+    storage.flow_emitters = storage.flow_emitters or {}
+    storage.flow_levels = storage.flow_levels or {}
 
-            if unit_num then
-                local entity = storage.flow_entities[unit_num]
+    local current_queue = storage.flow_queue
+    storage.flow_queue = {}
+
+    local any_changed = false
+
+    for pkey, _ in pairs(current_queue) do
+        local unit_num, port_idx = parse_port_key(pkey)
+        if unit_num then
+            local entity = storage.flow_entities[unit_num]
+            local target_level = compute_entity_flow_level(entity)
+            local current_level = storage.flow_levels[pkey] or 0
+
+            if target_level ~= current_level then
+                any_changed = true
+                if target_level > 0 then
+                    storage.flow_levels[pkey] = target_level
+                else
+                    storage.flow_levels[pkey] = nil
+                end
+
+                -- Enqueue entity's other internal ports & external neighbors for next tick step
                 if entity and entity.valid then
                     local ports = port_defs.get_ports(entity)
                     if ports then
-                        for other_idx = 1, #ports do
-                            if other_idx ~= port_idx then
-                                local int_key = make_port_key(unit_num, other_idx)
-                                if not storage.flow_levels[int_key] or storage.flow_levels[int_key] < current_level then
-                                    storage.flow_levels[int_key] = current_level
-                                    table.insert(queue, {key = int_key, level = current_level})
-                                end
+                        for i = 1, #ports do
+                            local int_key = make_port_key(unit_num, i)
+                            if int_key ~= pkey then
+                                storage.flow_queue[int_key] = true
                             end
                         end
                     end
                 end
-            end
 
-            local neighbors = storage.flow_port_connections[current_key]
-            if neighbors then
-                for neighbor_key, _ in pairs(neighbors) do
-                    if not storage.flow_levels[neighbor_key] or storage.flow_levels[neighbor_key] < next_level then
-                        storage.flow_levels[neighbor_key] = next_level
-                        table.insert(queue, {key = neighbor_key, level = next_level})
+                local neighbors = storage.flow_port_connections[pkey]
+                if neighbors then
+                    for neighbor_key, _ in pairs(neighbors) do
+                        storage.flow_queue[neighbor_key] = true
                     end
                 end
+            end
+        else
+            if storage.flow_levels[pkey] then
+                storage.flow_levels[pkey] = nil
+                any_changed = true
             end
         end
     end
 
-    debug_print("[Flow Engine] Recalculated water-like flow. Active flow ports: " .. tostring(table_size(storage.flow_levels)))
-
-    flow_engine.redraw_all()
+    if any_changed then
+        flow_engine.redraw_all()
+    end
 end
 
+events.on_event(defines.events.on_tick, function(event)
+    flow_engine.step()
+end)
+
 function flow_engine.clear_all(player_index)
-    storage.new_flow_render_objects = storage.new_flow_render_objects or {}
-    if player_index then
-        local objs = storage.new_flow_render_objects[player_index]
-        if objs then
-            for _, obj in ipairs(objs) do
-                if obj and obj.valid then
-                    obj.destroy()
-                end
-            end
-        end
-        storage.new_flow_render_objects[player_index] = {}
-    else
-        for p_idx, objs in pairs(storage.new_flow_render_objects) do
+    if not player_index then
+        for p_idx, objs in pairs(storage.new_flow_render_objects or {}) do
             for _, obj in ipairs(objs) do
                 if obj and obj.valid then
                     obj.destroy()
@@ -123,7 +163,19 @@ function flow_engine.clear_all(player_index)
             end
             storage.new_flow_render_objects[p_idx] = {}
         end
+        return
     end
+
+    storage.new_flow_render_objects = storage.new_flow_render_objects or {}
+    local objs = storage.new_flow_render_objects[player_index]
+    if objs then
+        for _, obj in ipairs(objs) do
+            if obj and obj.valid then
+                obj.destroy()
+            end
+        end
+    end
+    storage.new_flow_render_objects[player_index] = {}
 end
 
 function flow_engine.draw_all(player_index)
@@ -147,12 +199,14 @@ function flow_engine.redraw_all()
 end
 
 function flow_engine.draw_for_player(player_index)
-    flow_engine.clear_all(player_index)
-
-    if not is_debug_active("new_flow", player_index) then return end
+    if not player_index then return end
 
     local player = game.get_player(player_index)
     if not (player and player.valid) then return end
+
+    flow_engine.clear_all(player_index)
+
+    if not is_debug_active("new_flow", player_index) then return end
 
     storage.flow_levels = storage.flow_levels or {}
     storage.flow_entities = storage.flow_entities or {}
@@ -244,7 +298,7 @@ creation_listener.on_entity_created(function(entity, event)
         if EMITTER_NAMES[entity.name] then
             storage.flow_emitters[entity.unit_number] = entity
         end
-        flow_engine.recalculate()
+        flow_engine.enqueue_entity(entity)
     end
 end)
 
@@ -254,7 +308,7 @@ removal_listener.on_entity_removed(function(entity, event)
         storage.flow_emitters = storage.flow_emitters or {}
         storage.flow_entities[entity.unit_number] = nil
         storage.flow_emitters[entity.unit_number] = nil
-        flow_engine.recalculate()
+        flow_engine.enqueue_entity(entity)
     end
 end)
 
@@ -266,7 +320,7 @@ state_listener.on_entity_state_changed(function(entity, event)
         if EMITTER_NAMES[entity.name] then
             storage.flow_emitters[entity.unit_number] = entity
         end
-        flow_engine.recalculate()
+        flow_engine.enqueue_entity(entity)
     end
 end)
 

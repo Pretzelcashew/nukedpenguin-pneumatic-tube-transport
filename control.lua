@@ -32,6 +32,7 @@ local flow_engine = require("scripts.flow.flow-engine")
 
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}
+    storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
     storage.flow_entities = storage.flow_entities or {}
     storage.flow_emitters = storage.flow_emitters or {}
@@ -58,11 +59,10 @@ local function setup_storage()
                 if entity.name == "pneumatic-pump" or entity.name == "pneumatic-diverter" then
                     storage.flow_emitters[entity.unit_number] = entity
                 end
+                connection_manager.connect_entity(entity, nil)
             end
         end
     end
-
-    flow_engine.recalculate()
 
     for _, player in pairs(game.players) do
         debug_manager.sync_shortcuts(player.index)

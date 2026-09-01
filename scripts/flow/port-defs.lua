@@ -1,7 +1,6 @@
 local port_defs = {}
 
 local definitions = {
-    -- FIXED HUBS
     ["capsule-hub-horizontal"] = {
         [defines.direction.north] = {
             { offset = {x = -0.5, y = -0.5} },
@@ -24,7 +23,6 @@ local definitions = {
         }
     },
 
-    -- ROTATABLE TUBES
     ["pneumatic-tube"] = {
         [defines.direction.north] = {
             { offset = {x = 0.0, y = -1.0} },
@@ -44,7 +42,6 @@ local definitions = {
         }
     },
 
-    -- ROTATABLE PUMPS
     ["pneumatic-pump"] = {
         [defines.direction.north] = {
             { offset = {x = 0.0, y =  1.0} },

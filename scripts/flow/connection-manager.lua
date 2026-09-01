@@ -2,15 +2,23 @@ local creation_listener = require("scripts.flow.creation-listener")
 local removal_listener = require("scripts.flow.removal-listener")
 local state_listener = require("scripts.flow.state-listener")
 local port_defs = require("scripts.flow.port-defs")
+local flow_engine = require("scripts.flow.flow-engine")
 
 local connection_manager = {}
 
 function connection_manager.init_storage()
+    storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
 end
 
 local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
+end
+
+local function make_pos_key(surface_name, x, y)
+    local rx = math.floor(x * 10 + 0.5) / 10
+    local ry = math.floor(y * 10 + 0.5) / 10
+    return string.format("%s@%.1f,%.1f", surface_name, rx, ry)
 end
 
 function connection_manager.connect_entity(entity, player_idx)
@@ -19,48 +27,46 @@ function connection_manager.connect_entity(entity, player_idx)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
+    storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
 
-    local surface = entity.surface
+    local surface_name = entity.surface.name
     local ex, ey = entity.position.x, entity.position.y
 
     for port_index, port in ipairs(ports) do
         local px, py = ex + port.offset.x, ey + port.offset.y
+        local pos_key = make_pos_key(surface_name, px, py)
         local port_key_a = make_port_key(entity.unit_number, port_index)
 
-        local candidates = surface.find_entities_filtered{
-            area = {{px - 0.5, py - 0.5}, {px + 0.5, py + 0.5}},
-            name = port_defs.registered_names
-        }
+        storage.flow_port_registry[pos_key] = storage.flow_port_registry[pos_key] or {}
 
-        for _, neighbor in ipairs(candidates) do
-            if neighbor ~= entity and neighbor.valid and neighbor.unit_number then
-                local neighbor_ports = port_defs.get_ports(neighbor)
-                if neighbor_ports then
-                    local nx, ny = neighbor.position.x, neighbor.position.y
+        for existing_key, existing in pairs(storage.flow_port_registry[pos_key]) do
+            if existing.unit_number ~= entity.unit_number then
+                storage.flow_port_connections[port_key_a] = storage.flow_port_connections[port_key_a] or {}
+                storage.flow_port_connections[existing_key] = storage.flow_port_connections[existing_key] or {}
 
-                    for n_index, n_port in ipairs(neighbor_ports) do
-                        if math.abs((nx + n_port.offset.x) - px) < 0.05 and math.abs((ny + n_port.offset.y) - py) < 0.05 then
-                            local port_key_b = make_port_key(neighbor.unit_number, n_index)
+                if not storage.flow_port_connections[port_key_a][existing_key] then
+                    storage.flow_port_connections[port_key_a][existing_key] = true
+                    storage.flow_port_connections[existing_key][port_key_a] = true
 
-                            storage.flow_port_connections[port_key_a] = storage.flow_port_connections[port_key_a] or {}
-                            storage.flow_port_connections[port_key_b] = storage.flow_port_connections[port_key_b] or {}
+                    flow_engine.enqueue_port(existing_key)
 
-                            if not storage.flow_port_connections[port_key_a][port_key_b] then
-                                storage.flow_port_connections[port_key_a][port_key_b] = true
-                                storage.flow_port_connections[port_key_b][port_key_a] = true
-
-                                debug_print(string.format("[Flow Engine] Connected %s #%d (Port %d) <-> %s #%d (Port %d) at (%.1f, %.1f)",
-                                    entity.name, entity.unit_number, port_index,
-                                    neighbor.name, neighbor.unit_number, n_index,
-                                    px, py
-                                ), player_idx)
-                            end
-                        end
-                    end
+                    debug_print(string.format("[Flow Engine] Connected %s #%d (Port %d) <-> #%d (Port %d) at %s",
+                        entity.name, entity.unit_number, port_index,
+                        existing.unit_number, existing.port_index,
+                        pos_key
+                    ), player_idx)
                 end
             end
         end
+
+        storage.flow_port_registry[pos_key][port_key_a] = {
+            unit_number = entity.unit_number,
+            port_index = port_index,
+            entity_name = entity.name
+        }
+
+        flow_engine.enqueue_port(port_key_a)
     end
 end
 
@@ -70,12 +76,25 @@ function connection_manager.disconnect_entity(entity, player_idx)
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
+    storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
 
-    for port_index = 1, #ports do
-        local port_key_a = make_port_key(entity.unit_number, port_index)
-        local connections = storage.flow_port_connections[port_key_a]
+    local surface_name = entity.surface.name
+    local ex, ey = entity.position.x, entity.position.y
 
+    for port_index, port in ipairs(ports) do
+        local px, py = ex + port.offset.x, ey + port.offset.y
+        local pos_key = make_pos_key(surface_name, px, py)
+        local port_key_a = make_port_key(entity.unit_number, port_index)
+
+        if storage.flow_port_registry[pos_key] then
+            storage.flow_port_registry[pos_key][port_key_a] = nil
+            if next(storage.flow_port_registry[pos_key]) == nil then
+                storage.flow_port_registry[pos_key] = nil
+            end
+        end
+
+        local connections = storage.flow_port_connections[port_key_a]
         if connections then
             for port_key_b, _ in pairs(connections) do
                 if storage.flow_port_connections[port_key_b] then
@@ -85,12 +104,16 @@ function connection_manager.disconnect_entity(entity, player_idx)
                     end
                 end
 
+                flow_engine.enqueue_port(port_key_b)
+
                 debug_print(string.format("[Flow Engine] Disconnected %s #%d (Port %d) <-> Port %s",
                     entity.name, entity.unit_number, port_index, port_key_b
                 ), player_idx)
             end
             storage.flow_port_connections[port_key_a] = nil
         end
+
+        flow_engine.enqueue_port(port_key_a)
     end
 end
 

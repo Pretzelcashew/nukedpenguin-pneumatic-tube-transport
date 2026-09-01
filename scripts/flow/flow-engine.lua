@@ -12,6 +12,7 @@ local EMITTER_NAMES = {
 }
 
 local MAX_FLOW = 10
+local BATCH_SIZE = 50
 
 local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
@@ -25,6 +26,24 @@ local function parse_port_key(key)
     return nil, nil
 end
 
+local function get_port_emitter_flow(entity, port_index)
+    if not (entity and entity.valid) then return nil end
+    local ports = port_defs.get_ports(entity)
+    if ports and ports[port_index] then
+        return ports[port_index].flow
+    end
+    return nil
+end
+
+local function is_any_player_rendering_flow()
+    for _, player in pairs(game.players) do
+        if is_debug_active("new_flow", player.index) then
+            return true
+        end
+    end
+    return false
+end
+
 function flow_engine.init_storage()
     storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
@@ -33,6 +52,7 @@ function flow_engine.init_storage()
     storage.flow_levels = storage.flow_levels or {}
     storage.flow_queue = storage.flow_queue or {}
     storage.new_flow_render_objects = storage.new_flow_render_objects or {}
+    storage.flow_render_dirty = storage.flow_render_dirty or false
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -51,106 +71,136 @@ function flow_engine.enqueue_entity(entity)
     end
 end
 
-local function compute_entity_flow_level(entity)
+local function compute_port_flow_level(pkey)
+    local unit_num, port_idx = parse_port_key(pkey)
+    if not unit_num then return 0 end
+
+    local entity = storage.flow_entities[unit_num]
     if not (entity and entity.valid) then return 0 end
 
-    -- Emitters produce MAX_FLOW
-    if EMITTER_NAMES[entity.name] then
-        return MAX_FLOW
+    local emitter_flow = get_port_emitter_flow(entity, port_idx)
+    if emitter_flow then
+        return emitter_flow
     end
 
     local ports = port_defs.get_ports(entity)
     if not ports then return 0 end
 
-    local max_incoming = 0
+    local max_pos = 0
+    local min_neg = 0
 
-    -- Scan external neighbor connections across all ports of this entity
-    for port_index = 1, #ports do
-        local pkey = make_port_key(entity.unit_number, port_index)
-        local neighbors = storage.flow_port_connections and storage.flow_port_connections[pkey]
+    for p_i = 1, #ports do
+        local check_pkey = make_port_key(unit_num, p_i)
+        local neighbors = storage.flow_port_connections and storage.flow_port_connections[check_pkey]
         if neighbors then
             for neighbor_key, _ in pairs(neighbors) do
                 local n_level = storage.flow_levels[neighbor_key] or 0
                 if n_level > 1 then
                     local incoming = n_level - 1
-                    if incoming > max_incoming then
-                        max_incoming = incoming
+                    if incoming > max_pos then
+                        max_pos = incoming
+                    end
+                elseif n_level < -1 then
+                    local incoming = n_level + 1
+                    if incoming < min_neg then
+                        min_neg = incoming
                     end
                 end
             end
         end
     end
 
-    return max_incoming
+    local pos_mag = max_pos
+    local neg_mag = math.abs(min_neg)
+
+    if pos_mag > neg_mag then
+        return max_pos
+    elseif neg_mag > pos_mag then
+        return min_neg
+    else
+        return 0
+    end
 end
 
--- Event-driven delta step: 0 UPS when network is stable/idle!
-function flow_engine.step()
+-- Staged Time-Sliced Step Engine with Throttled Visual Re-Rendering
+function flow_engine.step(tick)
     storage.flow_queue = storage.flow_queue or {}
-    if next(storage.flow_queue) == nil then
-        return -- ZERO CPU COST WHEN IDLE / STEADY STATE
-    end
+    local queue_has_items = next(storage.flow_queue) ~= nil
 
-    storage.flow_port_connections = storage.flow_port_connections or {}
-    storage.flow_entities = storage.flow_entities or {}
-    storage.flow_emitters = storage.flow_emitters or {}
-    storage.flow_levels = storage.flow_levels or {}
+    if queue_has_items then
+        storage.flow_port_connections = storage.flow_port_connections or {}
+        storage.flow_entities = storage.flow_entities or {}
+        storage.flow_emitters = storage.flow_emitters or {}
+        storage.flow_levels = storage.flow_levels or {}
 
-    local current_queue = storage.flow_queue
-    storage.flow_queue = {}
+        local batch = {}
+        local batch_count = 0
 
-    local any_changed = false
+        for pkey, _ in pairs(storage.flow_queue) do
+            batch_count = batch_count + 1
+            batch[batch_count] = pkey
+            storage.flow_queue[pkey] = nil
+            if batch_count >= BATCH_SIZE then
+                break
+            end
+        end
 
-    for pkey, _ in pairs(current_queue) do
-        local unit_num, port_idx = parse_port_key(pkey)
-        if unit_num then
-            local entity = storage.flow_entities[unit_num]
-            local target_level = compute_entity_flow_level(entity)
-            local current_level = storage.flow_levels[pkey] or 0
+        for i = 1, batch_count do
+            local pkey = batch[i]
+            local unit_num, port_idx = parse_port_key(pkey)
+            if unit_num then
+                local entity = storage.flow_entities[unit_num]
+                local target_level = compute_port_flow_level(pkey)
+                local current_level = storage.flow_levels[pkey] or 0
 
-            if target_level ~= current_level then
-                any_changed = true
-                if target_level > 0 then
-                    storage.flow_levels[pkey] = target_level
-                else
-                    storage.flow_levels[pkey] = nil
-                end
+                if target_level ~= current_level then
+                    storage.flow_render_dirty = true
+                    if target_level ~= 0 then
+                        storage.flow_levels[pkey] = target_level
+                    else
+                        storage.flow_levels[pkey] = nil
+                    end
 
-                -- Enqueue entity's other internal ports & external neighbors for next tick step
-                if entity and entity.valid then
-                    local ports = port_defs.get_ports(entity)
-                    if ports then
-                        for i = 1, #ports do
-                            local int_key = make_port_key(unit_num, i)
-                            if int_key ~= pkey then
-                                storage.flow_queue[int_key] = true
+                    if entity and entity.valid then
+                        local ports = port_defs.get_ports(entity)
+                        if ports then
+                            for p_i = 1, #ports do
+                                local int_key = make_port_key(unit_num, p_i)
+                                if int_key ~= pkey then
+                                    storage.flow_queue[int_key] = true
+                                end
                             end
                         end
                     end
-                end
 
-                local neighbors = storage.flow_port_connections[pkey]
-                if neighbors then
-                    for neighbor_key, _ in pairs(neighbors) do
-                        storage.flow_queue[neighbor_key] = true
+                    local neighbors = storage.flow_port_connections[pkey]
+                    if neighbors then
+                        for neighbor_key, _ in pairs(neighbors) do
+                            storage.flow_queue[neighbor_key] = true
+                        end
                     end
                 end
-            end
-        else
-            if storage.flow_levels[pkey] then
-                storage.flow_levels[pkey] = nil
-                any_changed = true
+            else
+                if storage.flow_levels[pkey] then
+                    storage.flow_levels[pkey] = nil
+                    storage.flow_render_dirty = true
+                end
             end
         end
     end
 
-    if any_changed then
-        flow_engine.redraw_all()
+    -- Visual re-rendering is throttled (max 4 Hz during sweep, or immediately when idle)
+    local is_idle = next(storage.flow_queue) == nil
+    if storage.flow_render_dirty and is_any_player_rendering_flow() then
+        if is_idle or (tick and tick % 15 == 0) then
+            storage.flow_render_dirty = false
+            flow_engine.redraw_all()
+        end
     end
 end
 
 events.on_event(defines.events.on_tick, function(event)
-    flow_engine.step()
+    flow_engine.step(event.tick)
 end)
 
 function flow_engine.clear_all(player_index)
@@ -229,8 +279,16 @@ function flow_engine.draw_for_player(player_index)
                     local surface = entity.surface
                     local pos = {x = px, y = py}
 
+                    local abs_level = math.abs(level)
+                    local circle_color
+                    if level > 0 then
+                        circle_color = {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
+                    else
+                        circle_color = {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
+                    end
+
                     local c_obj = rendering.draw_circle{
-                        color = {r = 0, g = 0.4 + (level / MAX_FLOW) * 0.6, b = 1, a = 0.8},
+                        color = circle_color,
                         radius = 0.15,
                         filled = true,
                         target = pos,
@@ -267,8 +325,11 @@ function flow_engine.draw_for_player(player_index)
                                                 x = n_entity.position.x + n_port.offset.x,
                                                 y = n_entity.position.y + n_port.offset.y
                                             }
+                                            local line_color = (level > 0)
+                                                and {r = 0, g = 0.7, b = 1, a = 0.8}
+                                                or {r = 1, g = 0.5, b = 0, a = 0.8}
                                             local l_obj = rendering.draw_line{
-                                                color = {r = 0, g = 0.7, b = 1, a = 0.8},
+                                                color = line_color,
                                                 width = 3,
                                                 from = pos,
                                                 to = npos,

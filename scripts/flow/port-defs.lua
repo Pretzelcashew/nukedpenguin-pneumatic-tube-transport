@@ -44,20 +44,20 @@ local definitions = {
 
     ["pneumatic-pump"] = {
         [defines.direction.north] = {
-            { offset = {x = 0.0, y =  1.0} },
-            { offset = {x = 0.0, y = -1.0} }
+            { offset = {x = 0.0, y =  1.0}, flow = -10 },
+            { offset = {x = 0.0, y = -1.0}, flow =  10 }
         },
         [defines.direction.east] = {
-            { offset = {x = -1.0, y = 0.0} },
-            { offset = {x =  1.0, y = 0.0} }
+            { offset = {x = -1.0, y = 0.0}, flow = -10 },
+            { offset = {x =  1.0, y = 0.0}, flow =  10 }
         },
         [defines.direction.south] = {
-            { offset = {x = 0.0, y = -1.0} },
-            { offset = {x = 0.0, y =  1.0} }
+            { offset = {x = 0.0, y = -1.0}, flow = -10 },
+            { offset = {x = 0.0, y =  1.0}, flow =  10 }
         },
         [defines.direction.west] = {
-            { offset = {x =  1.0, y = 0.0} },
-            { offset = {x = -1.0, y = 0.0} }
+            { offset = {x =  1.0, y = 0.0}, flow = -10 },
+            { offset = {x = -1.0, y = 0.0}, flow =  10 }
         }
     },
 
@@ -117,28 +117,28 @@ local definitions = {
 
     ["pneumatic-diverter"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -1.5} },
-            { offset = {x =  1.5, y =  0.0} },
-            { offset = {x =  0.0, y =  1.5} },
-            { offset = {x = -1.5, y =  0.0} }
+            { offset = {x =  0.0, y = -1.5}, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, flow = 10 }
         },
         [defines.direction.east] = {
-            { offset = {x =  0.0, y = -1.5} },
-            { offset = {x =  1.5, y =  0.0} },
-            { offset = {x =  0.0, y =  1.5} },
-            { offset = {x = -1.5, y =  0.0} }
+            { offset = {x =  0.0, y = -1.5}, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, flow = 10 }
         },
         [defines.direction.south] = {
-            { offset = {x =  0.0, y = -1.5} },
-            { offset = {x =  1.5, y =  0.0} },
-            { offset = {x =  0.0, y =  1.5} },
-            { offset = {x = -1.5, y =  0.0} }
+            { offset = {x =  0.0, y = -1.5}, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, flow = 10 }
         },
         [defines.direction.west] = {
-            { offset = {x =  0.0, y = -1.5} },
-            { offset = {x =  1.5, y =  0.0} },
-            { offset = {x =  0.0, y =  1.5} },
-            { offset = {x = -1.5, y =  0.0} }
+            { offset = {x =  0.0, y = -1.5}, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, flow = 10 }
         }
     }
 }

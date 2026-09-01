@@ -17,6 +17,7 @@ local function get_debug(player_index)
             capsules = true,
             peek = false,
             prints = false,
+            filter = nil,
         }
     else
         if storage.debug[player_index].peek == nil then
@@ -55,17 +56,33 @@ function debug_manager.sync_shortcuts(player_index)
     update_player_shortcuts(player_index)
 end
 
+local function passes_filter(dbg, msg)
+    if not dbg or not dbg.filter or dbg.filter == "" then
+        return true
+    end
+    if type(msg) ~= "string" then
+        return false
+    end
+    return msg:sub(1, #dbg.filter) == dbg.filter
+end
+
 function debug_print(msg, target_player)
     if target_player then
         local p_idx = type(target_player) == "table" and target_player.index or target_player
         if is_debug_active("prints", p_idx) then
-            local p = game.get_player(p_idx)
-            if p then p.print(msg) end
+            local dbg = get_debug(p_idx)
+            if passes_filter(dbg, msg) then
+                local p = game.get_player(p_idx)
+                if p then p.print(msg) end
+            end
         end
     else
         for _, p in pairs(game.players) do
             if is_debug_active("prints", p.index) then
-                p.print(msg)
+                local dbg = get_debug(p.index)
+                if passes_filter(dbg, msg) then
+                    p.print(msg)
+                end
             end
         end
     end
@@ -369,6 +386,31 @@ local function toggle_peek(player_index)
     player.print("[Debug] Capsule Peek: " .. (dbg.peek and "[ENABLED]" or "[DISABLED]"))
 end
 
+local function set_debug_filter(player_index, filter_text)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    if not filter_text or filter_text == "" then
+        player.print("[Debug] Usage: /debug-filter <filter text>")
+        return
+    end
+
+    local cleaned = filter_text:match('^"(.*)"$') or filter_text:match("^'(.*)'$") or filter_text
+
+    local dbg = get_debug(player_index)
+    dbg.filter = cleaned
+    player.print("[Debug] Filter set to: \"" .. cleaned .. "\"")
+end
+
+local function reset_debug_filter(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.filter = nil
+    player.print("[Debug] Filter reset.")
+end
+
 -- Primary Console Commands
 commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("debug-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
@@ -378,6 +420,8 @@ commands.add_command("toggle-ports", "Toggle port overlay", function(cmd) if cmd
 commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
+commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
+commands.add_command("debug-filter-reset", "Reset the debug print prefix text filter", function(cmd) if cmd.player_index then reset_debug_filter(cmd.player_index) end end)
 
 -- Command Aliases for Backward Compatibility
 commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)

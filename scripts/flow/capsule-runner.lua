@@ -49,6 +49,7 @@ function capsule_runner_v2.wake_parked_capsules(target)
             if not capsule.to_port_key then
                 capsule.next_retry_tick = nil
                 capsule.last_failed_hub = nil
+                capsule.last_port_key = nil
             end
         end
         return
@@ -66,6 +67,7 @@ function capsule_runner_v2.wake_parked_capsules(target)
         if not target_unit or cap_unit == target_unit then
             capsule.next_retry_tick = nil
             capsule.last_failed_hub = nil
+            capsule.last_port_key = nil
         end
     end
 end
@@ -588,6 +590,7 @@ function capsule_runner_v2.update_capsules(current_tick)
                     local next_port_key = capsule_runner_v2.select_next_target(capsule)
                     if not next_port_key then
                         capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
+                        capsule.last_port_key = nil
                         break
                     end
 

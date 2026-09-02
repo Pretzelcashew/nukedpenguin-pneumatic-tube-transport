@@ -129,3 +129,11 @@
 1. **Strict Pressure Gradient Filtering (`scripts/flow/capsule-runner.lua`):** Updated `select_next_target` to require a strictly positive flow drop (`drop > 0`) for candidate target selection, preventing capsules from endlessly wandering across flat-level or unpowered tube networks.
 2. **Dead-End & Unpowered Motion Suppression (`scripts/flow/capsule-runner.lua`):** Removed unconditional fallback backtracking and allowed capsules to park cleanly (`return nil`) when no outbound hop offers an active positive flow drop.
 3. **Metadata-Based Emitter & Diverter Traversal (`scripts/flow/capsule-runner.lua`):** Leveraged `node.emitter` metadata attributes rather than entity name matching to handle internal pump push (`emitter < 0` to `emitter > 0` with `drop = math.huge`) and evaluate downstream diverter output lookahead (`effective_from = cand_node.emitter`), routing capsules smoothly through active output branches.
+
+
+### Revision: v2 Flow Engine Stale Motion Reset & Backtracking Cleanup
+**Date:** 2026-09-02 10:28 (EDT)
+**Context:** Resolve capsule lockups and stagnation when flow reverses or changes direction under the v2 flow engine by clearing stale origin port memory upon parking and target wakeups.
+**Key Changes:**
+1. **Wakeup Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `capsule_runner_v2.wake_parked_capsules` to reset `capsule.last_port_key = nil` alongside `next_retry_tick` and `last_failed_hub` whenever capsules are woken by flow updates, pump/diverter state edits, or network events.
+2. **Parked State Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `update_capsules` to set `capsule.last_port_key = nil` when `select_next_target` returns `nil` and a capsule enters a parked state, ensuring newly reversed pressure drops (`drop > 0`) can be cleanly selected on subsequent step evaluations.

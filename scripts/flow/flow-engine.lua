@@ -205,6 +205,7 @@ local function update_port_render(pkey, level)
                             filled = true,
                             target = pos,
                             surface = surface,
+                            only_in_alt_mode = true,
                             players = { player }
                         }
                         local t_obj = rendering.draw_text{
@@ -214,6 +215,7 @@ local function update_port_render(pkey, level)
                             color = {r = 1, g = 1, b = 1, a = 0.9},
                             scale = 0.7,
                             alignment = "center",
+                            only_in_alt_mode = true,
                             players = { player }
                         }
                         p_renders[pkey] = { circle = c_obj, text = t_obj }
@@ -263,6 +265,7 @@ local function update_edge_render(key_a, key_b)
                         from = node_a.pos,
                         to = node_b.pos,
                         surface = surface,
+                        only_in_alt_mode = true,
                         players = { player }
                     }
                     e_renders[edge_key] = l_obj

@@ -184,3 +184,12 @@
 1. **Dynamic Emitter Flow Evaluation (`scripts/flow/flow-engine.lua`):** Created `flow_engine.get_node_emitter_level(node)` and `flow_engine.enqueue_unit_ports(unit_number)`. Updated `compute_port_flow_level` to dynamically evaluate active machine power (`entity.energy > 0`), circuit enable toggles, and diverter port modes (`"input"` vs `"output"`) using O(1) storage cache lookups, returning 0 flow level for unpowered or disabled ports.
 2. **v2 Event-Driven State Manager Delegation (`scripts/networks/pump-manager.lua` & `scripts/networks/diverter-manager.lua`):** Updated `rebuild_pump_networks` and `rebuild_diverter_networks` to branch on `FLOW_VERSION == "v2"`, forwarding power and circuit state changes to v2 port enqueues (`enqueue_unit_ports`) and targeted parked capsule wakeups (`wake_parked_capsules`).
 3. **Motion Engine Power & Hop Gating (`scripts/flow/capsule-runner.lua`):** Updated `is_hop_valid` to reject movement into unpowered or disabled machine ports. Refactored `select_next_target` so internal pump push (`drop = math.huge`) and downstream diverter exit lookahead (`effective_from`) evaluate dynamic active emitter levels instead of static prototype definitions.
+
+
+### Revision: Flow v2 Alt Mode Rendering Sensitivity & v1 Debug Panel Gating
+**Date:** 2026-09-02 14:04 (EDT)
+**Context:** Ensure Flow v2 visual debug overlays natively respect Factorio Alt Mode settings and remove legacy v1-specific debug controls from the Pneumatic Control Panel frame when operating in v2 flow mode.
+**Key Changes:**
+1. **Alt Mode Render Flags (`scripts/flow/flow-engine.lua`):** Added `only_in_alt_mode = true` parameter to `rendering.draw_circle`, `rendering.draw_text`, and `rendering.draw_line` calls in `update_port_render` and `update_edge_render`. Overlays now automatically hide when players toggle off Alt Mode.
+2. **v1 Debug Panel Control Removal (`scripts/debug-manager.lua`):** Guarded `pneumatic_debug_chk_flow` (v1 Flow Overlay) and `pneumatic_debug_chk_ports` (v1 Port Markers) UI checkboxes behind `FLOW_VERSION == "v1"` in `open_panel` and `refresh_panel`. When v2 is selected, legacy v1 controls are omitted from the Pneumatic Control Panel.
+3. **Symmetrical Shortcut & Command Event Gating (`scripts/debug-manager.lua`):** Updated `update_player_shortcuts`, `toggle_master`, `toggle_flow`, `toggle_ports`, and `on_gui_checked_state_changed` to condition v1 port and flow rendering triggers behind `FLOW_VERSION == "v1"`, isolating v1 and v2 debug overlay behavior.

@@ -52,11 +52,11 @@ local function update_player_shortcuts(player_index)
     local master = dbg.master == true
     safe_set_shortcut_toggled(player, "pt-debug-panel", master)
     safe_set_shortcut_toggled(player, "pt-toggle-debug", master)
-    safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (dbg.flow == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (FLOW_VERSION == "v1") and (dbg.flow == true))
     safe_set_shortcut_toggled(player, "pt-toggle-new-flow", master and (FLOW_VERSION == "v2") and (dbg.new_flow == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsules", master and (dbg.capsules == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsule-peek", master and (dbg.peek == true))
-    safe_set_shortcut_toggled(player, "pt-toggle-ports", master and (dbg.ports == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-ports", master and (FLOW_VERSION == "v1") and (dbg.ports == true))
 end
 
 function debug_manager.sync_shortcuts(player_index)
@@ -141,8 +141,8 @@ function debug_manager.refresh_panel(player_index)
 
     local chk_flow = content.pneumatic_debug_chk_flow
     if chk_flow then
-        chk_flow.enabled = master
-        chk_flow.state = master and (dbg.flow == true)
+        chk_flow.enabled = master and (FLOW_VERSION == "v1")
+        chk_flow.state = master and (FLOW_VERSION == "v1") and (dbg.flow == true)
     end
 
     local chk_new_flow = content.pneumatic_debug_chk_new_flow
@@ -165,8 +165,8 @@ function debug_manager.refresh_panel(player_index)
 
     local chk_ports = content.pneumatic_debug_chk_ports
     if chk_ports then
-        chk_ports.enabled = master
-        chk_ports.state = master and (dbg.ports == true)
+        chk_ports.enabled = master and (FLOW_VERSION == "v1")
+        chk_ports.state = master and (FLOW_VERSION == "v1") and (dbg.ports == true)
     end
 
     local chk_prints = content.pneumatic_debug_chk_prints
@@ -246,13 +246,15 @@ function debug_manager.open_panel(player_index)
     overlay_label.style.top_margin = 4
     overlay_label.style.bottom_margin = 4
 
-    content_frame.add{
-        type = "checkbox",
-        name = "pneumatic_debug_chk_flow",
-        caption = {"gui-debug.toggle-flow"},
-        state = master and (dbg.flow == true),
-        enabled = master
-    }
+    if FLOW_VERSION == "v1" then
+        content_frame.add{
+            type = "checkbox",
+            name = "pneumatic_debug_chk_flow",
+            caption = {"gui-debug.toggle-flow"},
+            state = master and (dbg.flow == true),
+            enabled = master
+        }
+    end
 
     if FLOW_VERSION == "v2" then
         content_frame.add{
@@ -280,13 +282,15 @@ function debug_manager.open_panel(player_index)
         enabled = master
     }
 
-    content_frame.add{
-        type = "checkbox",
-        name = "pneumatic_debug_chk_ports",
-        caption = {"gui-debug.toggle-ports"},
-        state = master and (dbg.ports == true),
-        enabled = master
-    }
+    if FLOW_VERSION == "v1" then
+        content_frame.add{
+            type = "checkbox",
+            name = "pneumatic_debug_chk_ports",
+            caption = {"gui-debug.toggle-ports"},
+            state = master and (dbg.ports == true),
+            enabled = master
+        }
+    end
 
     content_frame.add{type = "line", direction = "horizontal"}
 
@@ -326,9 +330,13 @@ local function toggle_master(player_index)
     local dbg = get_debug(player_index)
     dbg.master = not dbg.master
 
-    if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
-    if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
-    if is_debug_active("new_flow", player_index) and (FLOW_VERSION == "v2") then flow_engine.draw_all(player_index) else flow_engine.clear_all_renders(player_index) end
+    if FLOW_VERSION == "v1" then
+        if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
+        if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
+    end
+    if FLOW_VERSION == "v2" then
+        if is_debug_active("new_flow", player_index) then flow_engine.draw_all(player_index) else flow_engine.clear_all_renders(player_index) end
+    end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -354,7 +362,9 @@ local function toggle_ports(player_index)
     local dbg = get_debug(player_index)
     dbg.ports = not dbg.ports
 
-    if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
+    if FLOW_VERSION == "v1" then
+        if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
+    end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -368,7 +378,9 @@ local function toggle_flow(player_index)
     local dbg = get_debug(player_index)
     dbg.flow = not dbg.flow
 
-    if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
+    if FLOW_VERSION == "v1" then
+        if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
+    end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -501,19 +513,27 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     local name = element.name
     if name == "pneumatic_debug_chk_master" then
         dbg.master = element.state
-        if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
-        if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
-        if is_debug_active("new_flow", p_idx) and (FLOW_VERSION == "v2") then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
+        if FLOW_VERSION == "v1" then
+            if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
+            if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        end
+        if FLOW_VERSION == "v2" then
+            if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
+        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_flow" then
         dbg.flow = element.state
-        if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        if FLOW_VERSION == "v1" then
+            if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_new_flow" then
         dbg.new_flow = element.state
-        if is_debug_active("new_flow", p_idx) and (FLOW_VERSION == "v2") then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
+        if FLOW_VERSION == "v2" then
+            if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
+        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_capsules" then
@@ -528,7 +548,9 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_ports" then
         dbg.ports = element.state
-        if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
+        if FLOW_VERSION == "v1" then
+            if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
+        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_prints" then

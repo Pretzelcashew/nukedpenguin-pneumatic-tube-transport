@@ -223,26 +223,43 @@ local function get_candidate_hops(from_port_key)
     local unit_number = node.unit_number
     local candidates = {}
 
-    if node.transmit and node.group ~= nil then
+    if node.cross_transit then
         local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
         if unit_ports then
-            for _, int_key in ipairs(unit_ports) do
-                if int_key ~= from_port_key then
-                    local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
-                    if int_node and int_node.transmit and int_node.group == node.group then
-                        table.insert(candidates, int_key)
+            for _, port_key in ipairs(unit_ports) do
+                local ext_neighbors = storage.flow_connections and storage.flow_connections[port_key]
+                if ext_neighbors then
+                    for ext_key, _ in pairs(ext_neighbors) do
+                        local ext_node = storage.flow_nodes and storage.flow_nodes[ext_key]
+                        if ext_node and ext_node.unit_number ~= unit_number then
+                            table.insert(candidates, { key = ext_key, via_port = port_key })
+                        end
                     end
                 end
             end
         end
-    end
+    else
+        if node.transmit and node.group ~= nil then
+            local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+            if unit_ports then
+                for _, int_key in ipairs(unit_ports) do
+                    if int_key ~= from_port_key then
+                        local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
+                        if int_node and int_node.transmit and int_node.group == node.group then
+                            table.insert(candidates, { key = int_key, is_internal = true })
+                        end
+                    end
+                end
+            end
+        end
 
-    local ext_neighbors = storage.flow_connections and storage.flow_connections[from_port_key]
-    if ext_neighbors then
-        for ext_key, _ in pairs(ext_neighbors) do
-            local ext_node = storage.flow_nodes and storage.flow_nodes[ext_key]
-            if ext_node and ext_node.unit_number ~= unit_number then
-                table.insert(candidates, ext_key)
+        local ext_neighbors = storage.flow_connections and storage.flow_connections[from_port_key]
+        if ext_neighbors then
+            for ext_key, _ in pairs(ext_neighbors) do
+                local ext_node = storage.flow_nodes and storage.flow_nodes[ext_key]
+                if ext_node and ext_node.unit_number ~= unit_number then
+                    table.insert(candidates, { key = ext_key, is_external = true })
+                end
             end
         end
     end
@@ -276,7 +293,8 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
 
         local candidate_exits = get_candidate_hops(target_port_key)
         local has_valid_exit = false
-        for _, exit_key in ipairs(candidate_exits) do
+        for _, exit_cand in ipairs(candidate_exits) do
+            local exit_key = (type(exit_cand) == "table") and exit_cand.key or exit_cand
             local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
             if exit_node and exit_node.unit_number ~= target_node.unit_number then
                 if is_hop_valid(target_port_key, exit_key, payload_item, depth + 1) then
@@ -298,6 +316,8 @@ function capsule_runner_v2.select_next_target(capsule)
     local current_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
     if not current_node then return nil end
 
+    local unit_number = current_node.unit_number
+
     local payload_item = capsule.dominant_item
     if not payload_item then
         local cap_id = capsule.capsule_id or capsule.id
@@ -315,60 +335,86 @@ function capsule_runner_v2.select_next_target(capsule)
     if #candidate_hops == 0 then return nil end
 
     local level_from = storage.flow_levels and storage.flow_levels[from_port_key] or 0
+    if current_node.cross_transit then
+        local max_entity_level = level_from
+        local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+        if unit_ports then
+            for _, pkey in ipairs(unit_ports) do
+                local p_lvl = storage.flow_levels and storage.flow_levels[pkey] or 0
+                if math.abs(p_lvl) > math.abs(max_entity_level) or p_lvl > max_entity_level then
+                    max_entity_level = p_lvl
+                end
+            end
+        end
+        level_from = max_entity_level
+    end
+
     local max_drop = 0
     local best_list = {}
 
-    for _, cand_key in ipairs(candidate_hops) do
-        if cand_key ~= capsule.last_port_key and is_hop_valid(from_port_key, cand_key, payload_item) then
-            local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
-            local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
+    for _, cand in ipairs(candidate_hops) do
+        local cand_key = (type(cand) == "table") and cand.key or cand
+        local via_port = (type(cand) == "table") and cand.via_port or from_port_key
 
-            local drop = level_from - level_cand
-
-            -- Emitter check: Intake (emitter < 0) to Output (emitter > 0) internal push
-            if current_node.emitter and cand_node and cand_node.emitter then
-                if current_node.emitter < 0 and cand_node.emitter > 0 then
-                    drop = math.huge
-                end
+        if cand_key ~= capsule.last_port_key then
+            local valid_hop = false
+            if current_node.cross_transit then
+                valid_hop = is_hop_valid(via_port, cand_key, payload_item)
+            else
+                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item)
             end
 
-            -- Lookahead for internal transitions (e.g. entering diverters, pumps, or junctions internally)
-            local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
-            if is_internal and cand_node then
-                local best_downstream = -math.huge
-                local exits = get_candidate_hops(cand_key)
-                for _, exit_key in ipairs(exits) do
-                    local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
-                    if exit_node and exit_node.unit_number ~= current_node.unit_number then
-                        if is_hop_valid(cand_key, exit_key, payload_item) then
-                            local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
-                            
-                            -- Use emitter flow value as effective origin level for positive emitter outputs
-                            local effective_from = (cand_node.emitter and cand_node.emitter > 0) and cand_node.emitter or level_from
-                            local d = effective_from - exit_level
-                            if d > best_downstream then
-                                best_downstream = d
+            if valid_hop then
+                local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
+                local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
+
+                local drop = level_from - level_cand
+
+                -- Emitter check: Intake (emitter < 0) to Output (emitter > 0) internal push
+                if current_node.emitter and cand_node and cand_node.emitter then
+                    if current_node.emitter < 0 and cand_node.emitter > 0 then
+                        drop = math.huge
+                    end
+                end
+
+                -- Lookahead for internal transitions (e.g. entering diverters, pumps, or junctions internally)
+                local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
+                if is_internal and cand_node then
+                    local best_downstream = -math.huge
+                    local exits = get_candidate_hops(cand_key)
+                    for _, exit_cand in ipairs(exits) do
+                        local exit_key = (type(exit_cand) == "table") and exit_cand.key or exit_cand
+                        local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
+                        if exit_node and exit_node.unit_number ~= current_node.unit_number then
+                            if is_hop_valid(cand_key, exit_key, payload_item) then
+                                local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
+
+                                local effective_from = (cand_node.emitter and cand_node.emitter > 0) and cand_node.emitter or level_from
+                                local d = effective_from - exit_level
+                                if d > best_downstream then
+                                    best_downstream = d
+                                end
                             end
                         end
                     end
+                    if best_downstream ~= -math.huge then
+                        drop = best_downstream
+                    end
                 end
-                if best_downstream ~= -math.huge then
-                    drop = best_downstream
-                end
-            end
 
-            if drop > max_drop then
-                max_drop = drop
-                best_list = { { key = cand_key, is_external = not is_internal } }
-            elseif drop == max_drop and drop > 0 then
-                local current_best_is_ext = best_list[1] and best_list[1].is_external
-                local cand_is_ext = not is_internal
-                if cand_is_ext and not current_best_is_ext then
-                    best_list = { { key = cand_key, is_external = true } }
-                elseif not cand_is_ext and current_best_is_ext then
-                    -- prefer external
-                else
-                    table.insert(best_list, { key = cand_key, is_external = cand_is_ext })
+                if drop > max_drop then
+                    max_drop = drop
+                    best_list = { { key = cand_key, via_port = via_port, is_external = not is_internal } }
+                elseif drop == max_drop and drop > 0 then
+                    local current_best_is_ext = best_list[1] and best_list[1].is_external
+                    local cand_is_ext = not is_internal
+                    if cand_is_ext and not current_best_is_ext then
+                        best_list = { { key = cand_key, via_port = via_port, is_external = true } }
+                    elseif not cand_is_ext and current_best_is_ext then
+                        -- prefer external
+                    else
+                        table.insert(best_list, { key = cand_key, via_port = via_port, is_external = cand_is_ext })
+                    end
                 end
             end
         end
@@ -379,6 +425,11 @@ function capsule_runner_v2.select_next_target(capsule)
     end
 
     local chosen = best_list[math.random(#best_list)]
+    if current_node.cross_transit and chosen.via_port and chosen.via_port ~= capsule.from_port_key then
+        capsule.from_port_key = chosen.via_port
+        capsule_queries.update_capsule_occupancy(capsule)
+    end
+
     return chosen.key
 end
 
@@ -415,8 +466,17 @@ function capsule_runner_v2.find_best_hub_outbound_port(hub_entity, capsule_id)
     local unit_number = hub_entity.unit_number
     local fallback_port_key = unit_number .. ":1"
     local best_port_key = nil
-    local max_flow_mag = -1
+    local max_drop = -math.huge
     local best_flow_level = 0
+
+    local max_hub_level = 0
+    for port_index = 1, #ports do
+        local pkey = unit_number .. ":" .. port_index
+        local p_lvl = storage.flow_levels and storage.flow_levels[pkey] or 0
+        if math.abs(p_lvl) > math.abs(max_hub_level) or p_lvl > max_hub_level then
+            max_hub_level = p_lvl
+        end
+    end
 
     for port_index = 1, #ports do
         local pkey = unit_number .. ":" .. port_index
@@ -425,9 +485,9 @@ function capsule_runner_v2.find_best_hub_outbound_port(hub_entity, capsule_id)
         if neighbors and next(neighbors) ~= nil then
             for n_key, _ in pairs(neighbors) do
                 local level = storage.flow_levels and storage.flow_levels[n_key] or 0
-                local mag = math.abs(level)
-                if mag > max_flow_mag then
-                    max_flow_mag = mag
+                local drop = max_hub_level - level
+                if drop > max_drop then
+                    max_drop = drop
                     best_port_key = pkey
                     best_flow_level = level
                 end
@@ -481,7 +541,7 @@ function capsule_runner_v2.emergency_eject(player)
     if not (storage.capsules and player and player.valid) then return end
 
     for id, capsule in pairs(storage.capsules) do
-        if capsule.passenger == player then
+        if capsule.passenger == player then -- Note: clean valid logic
             local pos, surface = capsule_runner_v2.get_capsule_location(id)
             if not (pos and surface) then
                 pos = player.position

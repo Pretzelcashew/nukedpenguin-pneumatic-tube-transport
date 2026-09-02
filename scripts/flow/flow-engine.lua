@@ -251,7 +251,8 @@ function flow_engine.connect_entity(entity)
             surface_name = surface_name,
             emitter = port.flow,
             group = port.group,
-            transmit = (port.transmit ~= false)
+            transmit = (port.transmit ~= false),
+            cross_transit = (port.cross_transit == true)
         }
 
         storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}

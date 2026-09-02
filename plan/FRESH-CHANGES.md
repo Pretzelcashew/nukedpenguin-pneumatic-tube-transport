@@ -137,3 +137,12 @@
 **Key Changes:**
 1. **Wakeup Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `capsule_runner_v2.wake_parked_capsules` to reset `capsule.last_port_key = nil` alongside `next_retry_tick` and `last_failed_hub` whenever capsules are woken by flow updates, pump/diverter state edits, or network events.
 2. **Parked State Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `update_capsules` to set `capsule.last_port_key = nil` when `select_next_target` returns `nil` and a capsule enters a parked state, ensuring newly reversed pressure drops (`drop > 0`) can be cleanly selected on subsequent step evaluations.
+
+
+### Revision: Data-Driven Decoupled Hub Cross-Transit Architecture
+**Date:** 2026-09-02 10:54 (EDT)
+**Context:** Decouple gas flow transmission (`transmit = false`) from capsule motion (`cross_transit = true`), enabling data-driven hub pass-through traversal under the v2 flow engine without entity hardcoding.
+**Key Changes:**
+1. **Port Definition Cross-Transit Attribute (`scripts/flow/port-defs.lua`):** Added `cross_transit = true` attribute to `capsule-hub-horizontal` and `capsule-hub-vertical` port definitions, declaring capsule internal crossing permission independently from gas/flow level propagation.
+2. **Spatial Node Property Caching (`scripts/flow/flow-engine.lua`):** Updated `flow_engine.connect_entity` to cache `cross_transit = (port.cross_transit == true)` directly onto `storage.flow_nodes` descriptors during entity registration.
+3. **Data-Driven Candidate Resolution & Target Shifting (`scripts/flow/capsule-runner.lua`):** Refactored `get_candidate_hops`, `select_next_target`, and `find_best_hub_outbound_port` to evaluate `node.cross_transit` instead of hardcoded `is_hub` entity checks. Capsules at cross-transit nodes inspect all external exit ports, calculate baseline pressure drops against the entity's maximum flow level, and dynamically shift origin port keys to pass through the path offering the strongest outbound gradient.

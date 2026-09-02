@@ -3,23 +3,23 @@ local port_defs = {}
 local definitions = {
     ["capsule-hub-horizontal"] = {
         [defines.direction.north] = {
-            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false },
-            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false },
-            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false },
-            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false },
-            { offset = {x = -1.0, y =  0.0}, group = 1, transmit = false },
-            { offset = {x =  1.0, y =  0.0}, group = 1, transmit = false }
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x = -1.0, y =  0.0}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  1.0, y =  0.0}, group = 1, transmit = false, cross_transit = true }
         }
     },
 
     ["capsule-hub-vertical"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -1.0}, group = 1, transmit = false },
-            { offset = {x =  0.0, y =  1.0}, group = 1, transmit = false },
-            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false },
-            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false },
-            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false },
-            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false }
+            { offset = {x =  0.0, y = -1.0}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  0.0, y =  1.0}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = true },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = true }
         }
     },
 

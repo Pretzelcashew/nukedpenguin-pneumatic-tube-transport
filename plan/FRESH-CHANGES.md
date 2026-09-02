@@ -101,3 +101,12 @@
 2. **Staged Rebuild Engine Gating (`scripts/networks/network-rebuild-engine.lua`):** Guarded the time-sliced background graph rebuild `on_tick` processor (`network_rebuild_engine.step`) behind `FLOW_VERSION == "v1"`, preventing graph split checks and v1 flow map updates during `v2` operation.
 3. **v1 Capsule Motion Runner Gating (`scripts/capsules/capsule-runner.lua`):** Guarded v1 tick updates (`update_capsules`), liminal surface spawn listeners, and `networks_flow` listener registrations behind `FLOW_VERSION == "v1"`. Silences v1 capsule movement and segment interpolation during `v2` mode while keeping module helper functions exported.
 4. **v2 Flow Engine Internal Self-Guarding (`scripts/flow/flow-engine.lua` & `control.lua`):** Added internal `FLOW_VERSION == "v2"` guards inside `flow_engine.register_events()`, `init_storage()`, `connect_entity()`, `disconnect_entity()`, and `draw_all()`, making `flow-engine.lua` self-contained and symmetrical with v1 modules. Guarded legacy `networks_flow.draw_all()` call in `control.lua` behind `FLOW_VERSION == "v1"`.
+
+
+### Revision: v2 Flow Engine Capsule Runner & Hub Packing Integration
+**Date:** 2026-09-02 08:45 (EDT)
+**Context:** Implement the foundational v2 flow engine capsule runner module and integrate hub packing delegation across v1 and v2 flow engines with debug logging.
+**Key Changes:**
+1. **v2 Capsule Runner Module (`scripts/flow/capsule-runner.lua`):** Created dedicated v2 capsule runner handling outbound hub port resolution (`find_best_hub_outbound_port`), capsule injection (`inject_from_hub`), parked capsule wakeup, tick frame rendering updates, and event registration. Evaluates active port flow levels while defaulting fallback to internal hub port 1 (`unit_number .. ":1"`), allowing disconnected hubs to pack capsules onto internal nodes. Includes `debug_print` output logging successful packaging onto the v2 flow engine.
+2. **Capsule Runner Facade Delegation (`scripts/capsules/capsule-runner.lua`):** Added `FLOW_VERSION == "v2"` version routing inside `inject_from_hub` and `wake_parked_capsules` to forward calls to `scripts/flow/capsule-runner.lua` when running in v2 mode while keeping v1 runtime logic fully intact.
+3. **v2 Event Registration & Top-Level Require (`control.lua`):** Required `scripts/flow/capsule-runner.lua` at top level and registered `v2_capsule_runner.register_events()` when startup setting `pneumatic-flow-version` is set to `v2`.

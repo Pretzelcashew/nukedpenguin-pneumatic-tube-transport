@@ -8,6 +8,7 @@ local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 local networks_flow = require("scripts.networks.networks-flow")
+local v2_capsule_runner = require("scripts.flow.capsule-runner")
 
 local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 
@@ -26,6 +27,10 @@ capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 --- If no target is specified, wakes all parked capsules as a global fallback.
 --- @param target string|number|table|nil port_key ("101:1"), unit_number, net_id, affected_nets table, or nil
 function capsule_runner.wake_parked_capsules(target)
+    if FLOW_VERSION == "v2" then
+        return v2_capsule_runner.wake_parked_capsules(target)
+    end
+
     if not storage.capsules then return end
 
     if not target then
@@ -358,6 +363,10 @@ local function update_capsules(current_tick)
 end
 
 function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
+    if FLOW_VERSION == "v2" then
+        return v2_capsule_runner.inject_from_hub(capsule_id, entity, passenger)
+    end
+
     init_storage()
 
     local cap_data = capsule_manager.get(capsule_id)

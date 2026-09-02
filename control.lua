@@ -25,11 +25,13 @@ require("prototypes.pneumatic-pump-proxy-linkage")
 
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
+local v2_capsule_runner = require("scripts.flow.capsule-runner")
 
 local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 
 if FLOW_VERSION == "v2" then
     flow_engine.register_events()
+    v2_capsule_runner.register_events()
 end
 
 local function setup_storage()

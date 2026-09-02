@@ -156,3 +156,13 @@
 2. **Parked Lifecycle Tracking (`scripts/flow/capsule-runner.lua`):** Implemented `mark_capsule_parked` and `mark_capsule_unparked` helper functions. Registered capsules in `storage.parked_by_port` upon failed target selection or initial hub injection, and cleanly untracked them when moving, arriving at a destination, or being removed.
 3. **Targeted O(1) Neighbor Wakeups (`scripts/flow/capsule-runner.lua`):** Rewrote `capsule_runner_v2.wake_parked_capsules(target)` to inspect strictly target port keys, sister unit ports (`storage.flow_unit_ports`), and adjacent flow connections (`storage.flow_connections`), completely eliminating `pairs(storage.capsules)` map sweeps.
 4. **Stagger Timer Protection (`scripts/flow/capsule-runner.lua`):** Enforced parked-only retry timer resets (`to_port_key == nil`), preventing active moving capsules from having their 6-tick motion stagger timers wiped by nearby hops.
+
+
+### Revision: Stage 2 Zero_cand_is_ext`, `scratch_cand_counts`, `scratch_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch_best_count`, `scratch_-Allocation Scratch Buffers in Pathfinding & Hop Evaluation
+**Date:** 2026-09-02 11:43 (EDT)
+**Context:** Eliminate Lua Garbage Collection (GC) tableports_to_wake`) to eliminate temporary table instantiations (`{}`) during movement ticks.
+2. ** churn and memory allocations during active capsule pathfinding, downstream hop evaluation, and neighbor wakeups in the v2 flow engineZero-Allocation Pathfinding & Hop Evaluation (`scripts/flow/capsule-runner.lua`):** Refact.
+**Key Changes:**
+1. **Module-Level Persistent Scratch Buffers (`scripts/flow/capsuleored `get_candidate_hops` to populate tiered scratch arrays by candidate evaluation depth (tiers 1–3), avoiding buffer overw-runner.lua`):** Initialized persistent top-level scratch tables (`scratch_cand_keys`, `scratchrites during nested machine exit checks in `is_hop_valid` and `select_next_target`.
+3_cand_vias`, `scratch_cand_is_ext`, `scratch_cand_counts`, `scratch. **Max-Drop Candidate Selection & Wakeup Optimization (`scripts/flow/capsule-runner.lua`):_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch** Refactored `select_next_target`, `wake_parked_capsules`, and `find__best_count`, `scratch_ports_to_wake`) to eliminate temporary table object creation (`{}`) duringbest_hub_outbound_port` to score pressure drops, resolve neighbor wakeups, and fetch port keys directly runtime movement.
+2. **Tier-Indexed Candidate Hop Resolution (`scripts/flow/capsule-runner.lua from scratch buffers and `storage.flow_unit_ports`, removing GC allocations from runtime path evaluation.

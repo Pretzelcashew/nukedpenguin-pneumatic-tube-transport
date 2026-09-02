@@ -3,142 +3,142 @@ local port_defs = {}
 local definitions = {
     ["capsule-hub-horizontal"] = {
         [defines.direction.north] = {
-            { offset = {x = -0.5, y = -0.5} },
-            { offset = {x =  0.5, y = -0.5} },
-            { offset = {x = -0.5, y =  0.5} },
-            { offset = {x =  0.5, y =  0.5} },
-            { offset = {x = -1.0, y =  0.0} },
-            { offset = {x =  1.0, y =  0.0} }
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false },
+            { offset = {x = -1.0, y =  0.0}, group = 1, transmit = false },
+            { offset = {x =  1.0, y =  0.0}, group = 1, transmit = false }
         }
     },
 
     ["capsule-hub-vertical"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -1.0} },
-            { offset = {x =  0.0, y =  1.0} },
-            { offset = {x = -0.5, y = -0.5} },
-            { offset = {x = -0.5, y =  0.5} },
-            { offset = {x =  0.5, y = -0.5} },
-            { offset = {x =  0.5, y =  0.5} }
+            { offset = {x =  0.0, y = -1.0}, group = 1, transmit = false },
+            { offset = {x =  0.0, y =  1.0}, group = 1, transmit = false },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false }
         }
     },
 
     ["pneumatic-tube"] = {
         [defines.direction.north] = {
-            { offset = {x = 0.0, y = -1.0} },
-            { offset = {x = 0.0, y =  1.0} }
+            { offset = {x = 0.0, y = -1.0}, group = 1 },
+            { offset = {x = 0.0, y =  1.0}, group = 1 }
         },
         [defines.direction.south] = {
-            { offset = {x = 0.0, y = -1.0} },
-            { offset = {x = 0.0, y =  1.0} }
+            { offset = {x = 0.0, y = -1.0}, group = 1 },
+            { offset = {x = 0.0, y =  1.0}, group = 1 }
         },
         [defines.direction.east] = {
-            { offset = {x = -1.0, y = 0.0} },
-            { offset = {x =  1.0, y = 0.0} }
+            { offset = {x = -1.0, y = 0.0}, group = 1 },
+            { offset = {x =  1.0, y = 0.0}, group = 1 }
         },
         [defines.direction.west] = {
-            { offset = {x = -1.0, y = 0.0} },
-            { offset = {x =  1.0, y = 0.0} }
+            { offset = {x = -1.0, y = 0.0}, group = 1 },
+            { offset = {x =  1.0, y = 0.0}, group = 1 }
         }
     },
 
     ["pneumatic-pump"] = {
         [defines.direction.north] = {
-            { offset = {x = 0.0, y =  1.0}, flow = -10 },
-            { offset = {x = 0.0, y = -1.0}, flow =  10 }
+            { offset = {x = 0.0, y =  1.0}, group = 1, flow = -10 },
+            { offset = {x = 0.0, y = -1.0}, group = 1, flow =  10 }
         },
         [defines.direction.east] = {
-            { offset = {x = -1.0, y = 0.0}, flow = -10 },
-            { offset = {x =  1.0, y = 0.0}, flow =  10 }
+            { offset = {x = -1.0, y = 0.0}, group = 1, flow = -10 },
+            { offset = {x =  1.0, y = 0.0}, group = 1, flow =  10 }
         },
         [defines.direction.south] = {
-            { offset = {x = 0.0, y = -1.0}, flow = -10 },
-            { offset = {x = 0.0, y =  1.0}, flow =  10 }
+            { offset = {x = 0.0, y = -1.0}, group = 1, flow = -10 },
+            { offset = {x = 0.0, y =  1.0}, group = 1, flow =  10 }
         },
         [defines.direction.west] = {
-            { offset = {x =  1.0, y = 0.0}, flow = -10 },
-            { offset = {x = -1.0, y = 0.0}, flow =  10 }
+            { offset = {x =  1.0, y = 0.0}, group = 1, flow = -10 },
+            { offset = {x = -1.0, y = 0.0}, group = 1, flow =  10 }
         }
     },
 
     ["junction"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 1 },
+            { offset = {x =  0.5, y =  0.0}, group = 1 }
         },
         [defines.direction.east] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 1 },
+            { offset = {x =  0.5, y =  0.0}, group = 1 }
         },
         [defines.direction.south] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 1 },
+            { offset = {x =  0.5, y =  0.0}, group = 1 }
         },
         [defines.direction.west] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 1 },
+            { offset = {x =  0.5, y =  0.0}, group = 1 }
         }
     },
 
     ["crossflow-junction"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 2 },
+            { offset = {x =  0.5, y =  0.0}, group = 2 }
         },
         [defines.direction.east] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 2 },
+            { offset = {x =  0.5, y =  0.0}, group = 2 }
         },
         [defines.direction.south] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 2 },
+            { offset = {x =  0.5, y =  0.0}, group = 2 }
         },
         [defines.direction.west] = {
-            { offset = {x =  0.0, y = -0.5} },
-            { offset = {x =  0.0, y =  0.5} },
-            { offset = {x = -0.5, y =  0.0} },
-            { offset = {x =  0.5, y =  0.0} }
+            { offset = {x =  0.0, y = -0.5}, group = 1 },
+            { offset = {x =  0.0, y =  0.5}, group = 1 },
+            { offset = {x = -0.5, y =  0.0}, group = 2 },
+            { offset = {x =  0.5, y =  0.0}, group = 2 }
         }
     },
 
     ["pneumatic-diverter"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -1.5}, flow = 10 },
-            { offset = {x =  1.5, y =  0.0}, flow = 10 },
-            { offset = {x =  0.0, y =  1.5}, flow = 10 },
-            { offset = {x = -1.5, y =  0.0}, flow = 10 }
+            { offset = {x =  0.0, y = -1.5}, group = 1, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, group = 1, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, group = 1, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, group = 1, flow = 10 }
         },
         [defines.direction.east] = {
-            { offset = {x =  0.0, y = -1.5}, flow = 10 },
-            { offset = {x =  1.5, y =  0.0}, flow = 10 },
-            { offset = {x =  0.0, y =  1.5}, flow = 10 },
-            { offset = {x = -1.5, y =  0.0}, flow = 10 }
+            { offset = {x =  0.0, y = -1.5}, group = 1, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, group = 1, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, group = 1, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, group = 1, flow = 10 }
         },
         [defines.direction.south] = {
-            { offset = {x =  0.0, y = -1.5}, flow = 10 },
-            { offset = {x =  1.5, y =  0.0}, flow = 10 },
-            { offset = {x =  0.0, y =  1.5}, flow = 10 },
-            { offset = {x = -1.5, y =  0.0}, flow = 10 }
+            { offset = {x =  0.0, y = -1.5}, group = 1, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, group = 1, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, group = 1, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, group = 1, flow = 10 }
         },
         [defines.direction.west] = {
-            { offset = {x =  0.0, y = -1.5}, flow = 10 },
-            { offset = {x =  1.5, y =  0.0}, flow = 10 },
-            { offset = {x =  0.0, y =  1.5}, flow = 10 },
-            { offset = {x = -1.5, y =  0.0}, flow = 10 }
+            { offset = {x =  0.0, y = -1.5}, group = 1, flow = 10 },
+            { offset = {x =  1.5, y =  0.0}, group = 1, flow = 10 },
+            { offset = {x =  0.0, y =  1.5}, group = 1, flow = 10 },
+            { offset = {x = -1.5, y =  0.0}, group = 1, flow = 10 }
         }
     }
 }

@@ -243,7 +243,9 @@ function flow_engine.connect_entity(entity)
             pos_key = pos_key,
             pos = {x = px, y = py},
             surface_name = surface_name,
-            emitter = port.flow
+            emitter = port.flow,
+            group = port.group,
+            transmit = (port.transmit ~= false)
         }
 
         storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}
@@ -331,19 +333,27 @@ local function compute_port_flow_level(pkey)
     local min_neg = 0
 
     for _, check_pkey in pairs(unit_ports) do
-        local neighbors = storage.flow_connections[check_pkey]
-        if neighbors then
-            for n_key, _ in pairs(neighbors) do
-                local n_level = storage.flow_levels[n_key] or 0
-                if n_level > 1 then
-                    local incoming = n_level - 1
-                    if incoming > max_pos then
-                        max_pos = incoming
-                    end
-                elseif n_level < -1 then
-                    local incoming = n_level + 1
-                    if incoming < min_neg then
-                        min_neg = incoming
+        local check_node = storage.flow_nodes[check_pkey]
+        if check_node then
+            local is_self = (check_pkey == pkey)
+            local can_transmit_internally = node.transmit and check_node.transmit and (node.group ~= nil) and (check_node.group == node.group)
+
+            if is_self or can_transmit_internally then
+                local neighbors = storage.flow_connections[check_pkey]
+                if neighbors then
+                    for n_key, _ in pairs(neighbors) do
+                        local n_level = storage.flow_levels[n_key] or 0
+                        if n_level > 1 then
+                            local incoming = n_level - 1
+                            if incoming > max_pos then
+                                max_pos = incoming
+                            end
+                        elseif n_level < -1 then
+                            local incoming = n_level + 1
+                            if incoming < min_neg then
+                                min_neg = incoming
+                            end
+                        end
                     end
                 end
             end
@@ -392,12 +402,15 @@ function flow_engine.step(tick)
             update_port_render(pkey, target_level)
 
             local node = storage.flow_nodes[pkey]
-            if node then
+            if node and node.transmit then
                 local unit_ports = storage.flow_unit_ports[node.unit_number]
-                if unit_ports then
+                if unit_ports and node.group then
                     for _, int_key in pairs(unit_ports) do
                         if int_key ~= pkey then
-                            storage.flow_queue[int_key] = true
+                            local int_node = storage.flow_nodes[int_key]
+                            if int_node and int_node.transmit and int_node.group == node.group then
+                                storage.flow_queue[int_key] = true
+                            end
                         end
                     end
                 end

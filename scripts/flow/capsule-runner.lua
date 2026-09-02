@@ -439,10 +439,19 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
     local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
     if not (from_node and target_node) then return false end
 
+    if target_node.emitter then
+        local target_emitter_lvl = flow_engine.get_node_emitter_level(target_node)
+        if target_emitter_lvl == 0 then
+            return false
+        end
+    end
+
     local is_internal = (from_node.unit_number == target_node.unit_number)
     if is_internal then
         if from_node.emitter and target_node.emitter then
-            if from_node.emitter > 0 and target_node.emitter < 0 then
+            local from_emitter_lvl = flow_engine.get_node_emitter_level(from_node)
+            local target_emitter_lvl = flow_engine.get_node_emitter_level(target_node)
+            if from_emitter_lvl > 0 and target_emitter_lvl < 0 then
                 return false
             end
         end
@@ -528,7 +537,9 @@ function capsule_runner_v2.select_next_target(capsule)
                 local drop = level_from - level_cand
 
                 if current_node.emitter and cand_node and cand_node.emitter then
-                    if current_node.emitter < 0 and cand_node.emitter > 0 then
+                    local current_lvl = flow_engine.get_node_emitter_level(current_node)
+                    local cand_lvl = flow_engine.get_node_emitter_level(cand_node)
+                    if current_lvl < 0 and cand_lvl > 0 then
                         drop = math.huge
                     end
                 end
@@ -544,7 +555,8 @@ function capsule_runner_v2.select_next_target(capsule)
                             if is_hop_valid(cand_key, exit_key, payload_item) then
                                 local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
 
-                                local effective_from = (cand_node.emitter and cand_node.emitter > 0) and cand_node.emitter or level_from
+                                local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
+                                local effective_from = (cand_emitter_lvl > 0) and cand_emitter_lvl or level_from
                                 local d = effective_from - exit_level
                                 if d > best_downstream then
                                     best_downstream = d

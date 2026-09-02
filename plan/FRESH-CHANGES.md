@@ -175,3 +175,12 @@
 1. **Fast-Path Debug Overlay Guards (`scripts/flow/flow-engine.lua`):** Added `if not is_debug_active("new_flow") then return end` as a line-1 short-circuit in `update_port_render()` and `update_edge_render()`. Bypasses string key formatting (`make_edge_key`), spatial node table queries, and player loop iterations when debug overlays are disabled.
 2. **0-Tick Queue Sleep Validation (`scripts/flow/flow-engine.lua`):** Validated line-2 queue emptiness checks (`if not storage.flow_queue or next(storage.flow_queue) == nil then return end`) in `flow_engine.step(tick)`, ensuring 0.00 ms CPU overhead and 0 Lua GC table allocations during steady-state ticks.
 3. **Steady-State Propagation Convergence (`scripts/flow/flow-engine.lua`):** Confirmed `target_level ~= current_level` delta gating inside batch processing, ensuring unchanged port levels do not re-enqueue internal or external neighbor ports into `storage.flow_queue`.
+
+
+### Revision: Flow v2 Engine Power & Circuit State Sensitivity Integration
+**Date:** 2026-09-02 13:00 (EDT)
+**Context:** Restore electrical power requirements and circuit network state sensitivity for pneumatic pumps and diverters under the Flow v2 wavefront propagation engine, maintaining zero-allocation performance and preserving legacy v1 behavior.
+**Key Changes:**
+1. **Dynamic Emitter Flow Evaluation (`scripts/flow/flow-engine.lua`):** Created `flow_engine.get_node_emitter_level(node)` and `flow_engine.enqueue_unit_ports(unit_number)`. Updated `compute_port_flow_level` to dynamically evaluate active machine power (`entity.energy > 0`), circuit enable toggles, and diverter port modes (`"input"` vs `"output"`) using O(1) storage cache lookups, returning 0 flow level for unpowered or disabled ports.
+2. **v2 Event-Driven State Manager Delegation (`scripts/networks/pump-manager.lua` & `scripts/networks/diverter-manager.lua`):** Updated `rebuild_pump_networks` and `rebuild_diverter_networks` to branch on `FLOW_VERSION == "v2"`, forwarding power and circuit state changes to v2 port enqueues (`enqueue_unit_ports`) and targeted parked capsule wakeups (`wake_parked_capsules`).
+3. **Motion Engine Power & Hop Gating (`scripts/flow/capsule-runner.lua`):** Updated `is_hop_valid` to reject movement into unpowered or disabled machine ports. Refactored `select_next_target` so internal pump push (`drop = math.huge`) and downstream diverter exit lookahead (`effective_from`) evaluate dynamic active emitter levels instead of static prototype definitions.

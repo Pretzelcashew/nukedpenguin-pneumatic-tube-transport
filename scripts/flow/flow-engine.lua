@@ -1,5 +1,7 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
+local pump_settings = require("scripts.pump-settings")
+local diverter_settings = require("scripts.diverter-settings")
 
 local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 
@@ -53,6 +55,90 @@ function flow_engine.enqueue_port(pkey)
     if pkey and storage.flow_queue then
         storage.flow_queue[pkey] = true
     end
+end
+
+function flow_engine.enqueue_unit_ports(unit_number)
+    if not unit_number then return end
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if unit_ports then
+        for i = 1, #unit_ports do
+            flow_engine.enqueue_port(unit_ports[i])
+        end
+    end
+end
+
+function flow_engine.get_node_emitter_level(node)
+    if not node or not node.emitter then return 0 end
+
+    local unit_number = node.unit_number
+
+    local pump_power = storage.pump_power_states and storage.pump_power_states[unit_number]
+    if pump_power ~= nil then
+        if not pump_power then return 0 end
+        local pump_enabled = storage.pump_enabled_states and storage.pump_enabled_states[unit_number]
+        if pump_enabled == false then return 0 end
+        return node.emitter
+    end
+
+    if storage.active_pumps and storage.active_pumps[unit_number] then
+        local pump_entity = storage.active_pumps[unit_number]
+        if not (pump_entity and pump_entity.valid) then return 0 end
+
+        local is_powered = (pump_entity.energy > 0)
+        storage.pump_power_states = storage.pump_power_states or {}
+        storage.pump_power_states[unit_number] = is_powered
+        if not is_powered then return 0 end
+
+        local is_enabled = pump_settings.is_pump_enabled(pump_entity)
+        storage.pump_enabled_states = storage.pump_enabled_states or {}
+        storage.pump_enabled_states[unit_number] = is_enabled
+        if not is_enabled then return 0 end
+
+        return node.emitter
+    end
+
+    local diverter_power = storage.diverter_power_states and storage.diverter_power_states[unit_number]
+    if diverter_power ~= nil then
+        if not diverter_power then return 0 end
+        local port_idx = node.port_index
+        local port_states = storage.diverter_port_states and storage.diverter_port_states[unit_number]
+        if port_states and port_states[port_idx] == false then return 0 end
+
+        local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
+        local p_setting = d_settings and d_settings.ports and d_settings.ports[port_idx]
+        if p_setting and p_setting.mode == "input" then
+            return -10
+        else
+            return 10
+        end
+    end
+
+    if storage.active_diverters and storage.active_diverters[unit_number] then
+        local div_entity = storage.active_diverters[unit_number]
+        if not (div_entity and div_entity.valid) then return 0 end
+
+        local is_powered = (div_entity.energy > 0)
+        storage.diverter_power_states = storage.diverter_power_states or {}
+        storage.diverter_power_states[unit_number] = is_powered
+        if not is_powered then return 0 end
+
+        local port_idx = node.port_index
+        local is_port_on = diverter_settings.is_port_enabled(div_entity, port_idx)
+        storage.diverter_port_states = storage.diverter_port_states or {}
+        storage.diverter_port_states[unit_number] = storage.diverter_port_states[unit_number] or {}
+        storage.diverter_port_states[unit_number][port_idx] = is_port_on
+        if not is_port_on then return 0 end
+
+        local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
+        local p_setting = d_settings and d_settings.ports and d_settings.ports[port_idx]
+        if p_setting and p_setting.mode == "input" then
+            return -10
+        else
+            return 10
+        end
+    end
+
+    return node.emitter
 end
 
 --------------------------------------------------------------------------------
@@ -337,7 +423,7 @@ local function compute_port_flow_level(pkey)
     if not node then return 0 end
 
     if node.emitter then
-        return node.emitter
+        return flow_engine.get_node_emitter_level(node)
     end
 
     local unit_number = node.unit_number

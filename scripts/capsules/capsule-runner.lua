@@ -9,6 +9,8 @@ local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 local networks_flow = require("scripts.networks.networks-flow")
 
+local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
+
 local PARKED_RETRY_INTERVAL = 10
 local DEFAULT_MIN_SPEED = 4.0 / 60.0
 
@@ -411,40 +413,42 @@ function capsule_runner.emergency_eject(player)
     end
 end
 
--- Hook entity creation events for instant spoilage handling
-events.on_event(defines.events.on_trigger_created_entity, function(event)
-    handle_liminal_entity_spawn(event.entity)
-end)
+if FLOW_VERSION == "v1" then
+    -- Hook entity creation events for instant spoilage handling
+    events.on_event(defines.events.on_trigger_created_entity, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
 
-events.on_event(defines.events.on_entity_spawned, function(event)
-    handle_liminal_entity_spawn(event.entity)
-end)
+    events.on_event(defines.events.on_entity_spawned, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
 
-events.on_event(defines.events.script_raised_built, function(event)
-    handle_liminal_entity_spawn(event.entity)
-end)
+    events.on_event(defines.events.script_raised_built, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
 
-events.on_event(defines.events.on_built_entity, function(event)
-    handle_liminal_entity_spawn(event.entity)
-end)
+    events.on_event(defines.events.on_built_entity, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
 
-events.on_event(defines.events.on_tick, function(event)
-    update_capsules(event.tick)
+    events.on_event(defines.events.on_tick, function(event)
+        update_capsules(event.tick)
 
-    if event.tick % 60 == 0 then
-        local liminal_surf = game.surfaces["liminal_surface"]
-        if liminal_surf and liminal_surf.valid then
-            local entities = liminal_surf.find_entities_filtered{
-                type = {"unit", "turret"}
-            }
-            for _, entity in ipairs(entities) do
-                handle_liminal_entity_spawn(entity)
+        if event.tick % 60 == 0 then
+            local liminal_surf = game.surfaces["liminal_surface"]
+            if liminal_surf and liminal_surf.valid then
+                local entities = liminal_surf.find_entities_filtered{
+                    type = {"unit", "turret"}
+                }
+                for _, entity in ipairs(entities) do
+                    handle_liminal_entity_spawn(entity)
+                end
             end
         end
-    end
-end)
+    end)
 
--- Register flow update listener to wake parked capsules when network flow changes
-networks_flow.register_listener(capsule_runner.wake_parked_capsules)
+    -- Register flow update listener to wake parked capsules when network flow changes
+    networks_flow.register_listener(capsule_runner.wake_parked_capsules)
+end
 
 return capsule_runner

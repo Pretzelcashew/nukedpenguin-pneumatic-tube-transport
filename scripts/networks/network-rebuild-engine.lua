@@ -5,6 +5,8 @@ local networks_pressure = require("scripts.networks.networks-pressure")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local events = require("scripts.events")
 
+local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
+
 local network_rebuild_engine = {}
 
 local DEFAULT_NODE_BUDGET = 350
@@ -193,8 +195,10 @@ function network_rebuild_engine.flush()
     end
 end
 
-events.on_event(defines.events.on_tick, function()
-    network_rebuild_engine.step()
-end)
+if FLOW_VERSION == "v1" then
+    events.on_event(defines.events.on_tick, function()
+        network_rebuild_engine.step()
+    end)
+end
 
 return network_rebuild_engine

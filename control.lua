@@ -62,7 +62,7 @@ local function setup_storage()
         debug_manager.sync_shortcuts(player.index)
     end
 
-    if is_debug_active("flow") then
+    if FLOW_VERSION == "v1" and is_debug_active("flow") then
         networks_flow.draw_all()
     end
 end

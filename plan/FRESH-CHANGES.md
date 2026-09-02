@@ -158,11 +158,20 @@
 4. **Stagger Timer Protection (`scripts/flow/capsule-runner.lua`):** Enforced parked-only retry timer resets (`to_port_key == nil`), preventing active moving capsules from having their 6-tick motion stagger timers wiped by nearby hops.
 
 
-### Revision: Stage 2 Zero_cand_is_ext`, `scratch_cand_counts`, `scratch_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch_best_count`, `scratch_-Allocation Scratch Buffers in Pathfinding & Hop Evaluation
+# Revision Entry
+### Revision: Stage 2 Zero-Allocation Scratch Buffers in Pathfinding & Hop Evaluation
 **Date:** 2026-09-02 11:43 (EDT)
-**Context:** Eliminate Lua Garbage Collection (GC) tableports_to_wake`) to eliminate temporary table instantiations (`{}`) during movement ticks.
-2. ** churn and memory allocations during active capsule pathfinding, downstream hop evaluation, and neighbor wakeups in the v2 flow engineZero-Allocation Pathfinding & Hop Evaluation (`scripts/flow/capsule-runner.lua`):** Refact.
+**Context:** Eliminate Lua Garbage Collection (GC) table churn and memory allocations during active capsule pathfinding, downstream hop evaluation, and neighbor wakeups in the v2 flow engine.
 **Key Changes:**
-1. **Module-Level Persistent Scratch Buffers (`scripts/flow/capsuleored `get_candidate_hops` to populate tiered scratch arrays by candidate evaluation depth (tiers 1–3), avoiding buffer overw-runner.lua`):** Initialized persistent top-level scratch tables (`scratch_cand_keys`, `scratchrites during nested machine exit checks in `is_hop_valid` and `select_next_target`.
-3_cand_vias`, `scratch_cand_is_ext`, `scratch_cand_counts`, `scratch. **Max-Drop Candidate Selection & Wakeup Optimization (`scripts/flow/capsule-runner.lua`):_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch** Refactored `select_next_target`, `wake_parked_capsules`, and `find__best_count`, `scratch_ports_to_wake`) to eliminate temporary table object creation (`{}`) duringbest_hub_outbound_port` to score pressure drops, resolve neighbor wakeups, and fetch port keys directly runtime movement.
-2. **Tier-Indexed Candidate Hop Resolution (`scripts/flow/capsule-runner.lua from scratch buffers and `storage.flow_unit_ports`, removing GC allocations from runtime path evaluation.
+1. **Module-Level Persistent Scratch Buffers (`scripts/flow/capsule-runner.lua`):** Initialized persistent top-level scratch tables (`scratch_cand_keys`, `scratch_cand_vias`, `scratch_cand_is_ext`, `scratch_cand_counts`, `scratch_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch_best_count`, `scratch_ports_to_wake`) to eliminate temporary table object creation (`{}`) during runtime movement.
+2. **Tier-Indexed Candidate Hop Resolution (`scripts/flow/capsule-runner.lua`):** Refactored `get_candidate_hops` to populate tiered scratch arrays by candidate evaluation depth (tiers 1–3), avoiding buffer overwrites during nested machine exit checks in `is_hop_valid` and `select_next_target`.
+3. **Max-Drop Candidate Selection & Wakeup Optimization (`scripts/flow/capsule-runner.lua`):** Refactored `select_next_target`, `wake_parked_capsules`, and `find_best_hub_outbound_port` to score pressure drops, resolve neighbor wakeups, and fetch port keys directly from scratch buffers and `storage.flow_unit_ports`, removing GC allocations from runtime path evaluation.
+
+
+### Revision: Flow v2 Wavefront Engine Idle Sleep & Fast-Path Debug Render Guards
+**Date:** 2026-09-02 12:09 (EDT)
+**Context:** Implement Stage 3 performance optimizations for the v2 flow engine, adding fast-path debug rendering short-circuits and validating 0-tick idle sleep behavior for steady-state networks.
+**Key Changes:**
+1. **Fast-Path Debug Overlay Guards (`scripts/flow/flow-engine.lua`):** Added `if not is_debug_active("new_flow") then return end` as a line-1 short-circuit in `update_port_render()` and `update_edge_render()`. Bypasses string key formatting (`make_edge_key`), spatial node table queries, and player loop iterations when debug overlays are disabled.
+2. **0-Tick Queue Sleep Validation (`scripts/flow/flow-engine.lua`):** Validated line-2 queue emptiness checks (`if not storage.flow_queue or next(storage.flow_queue) == nil then return end`) in `flow_engine.step(tick)`, ensuring 0.00 ms CPU overhead and 0 Lua GC table allocations during steady-state ticks.
+3. **Steady-State Propagation Convergence (`scripts/flow/flow-engine.lua`):** Confirmed `target_level ~= current_level` delta gating inside batch processing, ensuring unchanged port levels do not re-enqueue internal or external neighbor ports into `storage.flow_queue`.

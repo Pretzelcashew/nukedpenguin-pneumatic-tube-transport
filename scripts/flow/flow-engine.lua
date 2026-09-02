@@ -81,6 +81,8 @@ local function destroy_edge_render(edge_key)
 end
 
 local function update_port_render(pkey, level)
+    if not is_debug_active("new_flow") then return end
+
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then
         destroy_port_renders(pkey)
@@ -139,6 +141,8 @@ local function update_port_render(pkey, level)
 end
 
 local function update_edge_render(key_a, key_b)
+    if not is_debug_active("new_flow") then return end
+
     local edge_key = make_edge_key(key_a, key_b)
     local level_a = storage.flow_levels and storage.flow_levels[key_a] or 0
     local level_b = storage.flow_levels and storage.flow_levels[key_b] or 0

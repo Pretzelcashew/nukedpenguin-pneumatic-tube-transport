@@ -9,6 +9,7 @@ local connection_manager = {}
 function connection_manager.init_storage()
     storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
+    storage.flow_unit_ports = storage.flow_unit_ports or {}
 end
 
 local function make_port_key(unit_number, port_index)
@@ -29,19 +30,25 @@ function connection_manager.connect_entity(entity, player_idx)
 
     storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
+    storage.flow_unit_ports = storage.flow_unit_ports or {}
 
     local surface_name = entity.surface.name
     local ex, ey = entity.position.x, entity.position.y
+    local unit_number = entity.unit_number
+
+    storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
 
     for port_index, port in ipairs(ports) do
         local px, py = ex + port.offset.x, ey + port.offset.y
         local pos_key = make_pos_key(surface_name, px, py)
-        local port_key_a = make_port_key(entity.unit_number, port_index)
+        local port_key_a = make_port_key(unit_number, port_index)
+
+        storage.flow_unit_ports[unit_number][port_index] = pos_key
 
         storage.flow_port_registry[pos_key] = storage.flow_port_registry[pos_key] or {}
 
         for existing_key, existing in pairs(storage.flow_port_registry[pos_key]) do
-            if existing.unit_number ~= entity.unit_number then
+            if existing.unit_number ~= unit_number then
                 storage.flow_port_connections[port_key_a] = storage.flow_port_connections[port_key_a] or {}
                 storage.flow_port_connections[existing_key] = storage.flow_port_connections[existing_key] or {}
 
@@ -52,7 +59,7 @@ function connection_manager.connect_entity(entity, player_idx)
                     flow_engine.enqueue_port(existing_key)
 
                     debug_print(string.format("[Flow Engine] Connected %s #%d (Port %d) <-> #%d (Port %d) at %s",
-                        entity.name, entity.unit_number, port_index,
+                        entity.name, unit_number, port_index,
                         existing.unit_number, existing.port_index,
                         pos_key
                     ), player_idx)
@@ -61,7 +68,7 @@ function connection_manager.connect_entity(entity, player_idx)
         end
 
         storage.flow_port_registry[pos_key][port_key_a] = {
-            unit_number = entity.unit_number,
+            unit_number = unit_number,
             port_index = port_index,
             entity_name = entity.name
         }
@@ -71,49 +78,90 @@ function connection_manager.connect_entity(entity, player_idx)
 end
 
 function connection_manager.disconnect_entity(entity, player_idx)
-    if not (entity and entity.valid and entity.unit_number) then return end
-
-    local ports = port_defs.get_ports(entity)
-    if not ports then return end
+    if not (entity and entity.unit_number) then return end
 
     storage.flow_port_registry = storage.flow_port_registry or {}
     storage.flow_port_connections = storage.flow_port_connections or {}
+    storage.flow_unit_ports = storage.flow_unit_ports or {}
 
-    local surface_name = entity.surface.name
-    local ex, ey = entity.position.x, entity.position.y
+    local unit_number = entity.unit_number
+    local unit_ports = storage.flow_unit_ports[unit_number]
 
-    for port_index, port in ipairs(ports) do
-        local px, py = ex + port.offset.x, ey + port.offset.y
-        local pos_key = make_pos_key(surface_name, px, py)
-        local port_key_a = make_port_key(entity.unit_number, port_index)
+    if unit_ports then
+        for port_index, pos_key in pairs(unit_ports) do
+            local port_key_a = make_port_key(unit_number, port_index)
 
-        if storage.flow_port_registry[pos_key] then
-            storage.flow_port_registry[pos_key][port_key_a] = nil
-            if next(storage.flow_port_registry[pos_key]) == nil then
-                storage.flow_port_registry[pos_key] = nil
-            end
-        end
-
-        local connections = storage.flow_port_connections[port_key_a]
-        if connections then
-            for port_key_b, _ in pairs(connections) do
-                if storage.flow_port_connections[port_key_b] then
-                    storage.flow_port_connections[port_key_b][port_key_a] = nil
-                    if next(storage.flow_port_connections[port_key_b]) == nil then
-                        storage.flow_port_connections[port_key_b] = nil
-                    end
+            if storage.flow_port_registry[pos_key] then
+                storage.flow_port_registry[pos_key][port_key_a] = nil
+                if next(storage.flow_port_registry[pos_key]) == nil then
+                    storage.flow_port_registry[pos_key] = nil
                 end
-
-                flow_engine.enqueue_port(port_key_b)
-
-                debug_print(string.format("[Flow Engine] Disconnected %s #%d (Port %d) <-> Port %s",
-                    entity.name, entity.unit_number, port_index, port_key_b
-                ), player_idx)
             end
-            storage.flow_port_connections[port_key_a] = nil
+
+            local connections = storage.flow_port_connections[port_key_a]
+            if connections then
+                for port_key_b, _ in pairs(connections) do
+                    if storage.flow_port_connections[port_key_b] then
+                        storage.flow_port_connections[port_key_b][port_key_a] = nil
+                        if next(storage.flow_port_connections[port_key_b]) == nil then
+                            storage.flow_port_connections[port_key_b] = nil
+                        end
+                    end
+
+                    flow_engine.enqueue_port(port_key_b)
+
+                    debug_print(string.format("[Flow Engine] Disconnected #%d (Port %d) <-> Port %s",
+                        unit_number, port_index, port_key_b
+                    ), player_idx)
+                end
+                storage.flow_port_connections[port_key_a] = nil
+            end
+
+            flow_engine.enqueue_port(port_key_a)
         end
 
-        flow_engine.enqueue_port(port_key_a)
+        storage.flow_unit_ports[unit_number] = nil
+    else
+        if not entity.valid then return end
+        local ports = port_defs.get_ports(entity)
+        if not ports then return end
+
+        local surface_name = entity.surface.name
+        local ex, ey = entity.position.x, entity.position.y
+
+        for port_index, port in ipairs(ports) do
+            local px, py = ex + port.offset.x, ey + port.offset.y
+            local pos_key = make_pos_key(surface_name, px, py)
+            local port_key_a = make_port_key(unit_number, port_index)
+
+            if storage.flow_port_registry[pos_key] then
+                storage.flow_port_registry[pos_key][port_key_a] = nil
+                if next(storage.flow_port_registry[pos_key]) == nil then
+                    storage.flow_port_registry[pos_key] = nil
+                end
+            end
+
+            local connections = storage.flow_port_connections[port_key_a]
+            if connections then
+                for port_key_b, _ in pairs(connections) do
+                    if storage.flow_port_connections[port_key_b] then
+                        storage.flow_port_connections[port_key_b][port_key_a] = nil
+                        if next(storage.flow_port_connections[port_key_b]) == nil then
+                            storage.flow_port_connections[port_key_b] = nil
+                        end
+                    end
+
+                    flow_engine.enqueue_port(port_key_b)
+
+                    debug_print(string.format("[Flow Engine] Disconnected %s #%d (Port %d) <-> Port %s",
+                        entity.name, unit_number, port_index, port_key_b
+                    ), player_idx)
+                end
+                storage.flow_port_connections[port_key_a] = nil
+            end
+
+            flow_engine.enqueue_port(port_key_a)
+        end
     end
 end
 

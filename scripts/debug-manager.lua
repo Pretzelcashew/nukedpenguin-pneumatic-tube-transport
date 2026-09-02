@@ -16,7 +16,7 @@ local function get_debug(player_index)
             master = true,
             ports = false,
             flow = true,
-            new_flow = false,
+            new_flow = true,
             capsules = true,
             peek = false,
             prints = false,
@@ -27,7 +27,7 @@ local function get_debug(player_index)
             storage.debug[player_index].peek = false
         end
         if storage.debug[player_index].new_flow == nil then
-            storage.debug[player_index].new_flow = false
+            storage.debug[player_index].new_flow = true
         end
     end
     return storage.debug[player_index]
@@ -260,7 +260,7 @@ function debug_manager.open_panel(player_index)
         content_frame.add{
             type = "checkbox",
             name = "pneumatic_debug_chk_new_flow",
-            caption = "New Flow Engine (Alt Mode)",
+            caption = "Flow Engine (Alt Mode)",
             state = master and (dbg.new_flow == true),
             enabled = master
         }
@@ -398,7 +398,7 @@ local function toggle_new_flow(player_index)
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
-    player.print("[Debug] New Flow Overlay: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
+    player.print("[Debug] Flow Overlay: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
 end
 
 local function toggle_capsules(player_index)
@@ -462,7 +462,7 @@ commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) 
 commands.add_command("toggle-prints", "Toggle game debug prints", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 commands.add_command("toggle-ports", "Toggle port overlay", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)
 commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
-commands.add_command("toggle-new-flow", "Toggle new water-like flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("toggle-new-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
@@ -471,7 +471,7 @@ commands.add_command("debug-filter-reset", "Reset the debug print prefix text fi
 commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-debug", "Toggle master debug state (Alias)", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
-commands.add_command("pt-toggle-new-flow", "Toggle new flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-new-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-ports", "Toggle port overlay (Alias)", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)

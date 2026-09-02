@@ -193,3 +193,13 @@
 1. **Alt Mode Render Flags (`scripts/flow/flow-engine.lua`):** Added `only_in_alt_mode = true` parameter to `rendering.draw_circle`, `rendering.draw_text`, and `rendering.draw_line` calls in `update_port_render` and `update_edge_render`. Overlays now automatically hide when players toggle off Alt Mode.
 2. **v1 Debug Panel Control Removal (`scripts/debug-manager.lua`):** Guarded `pneumatic_debug_chk_flow` (v1 Flow Overlay) and `pneumatic_debug_chk_ports` (v1 Port Markers) UI checkboxes behind `FLOW_VERSION == "v1"` in `open_panel` and `refresh_panel`. When v2 is selected, legacy v1 controls are omitted from the Pneumatic Control Panel.
 3. **Symmetrical Shortcut & Command Event Gating (`scripts/debug-manager.lua`):** Updated `update_player_shortcuts`, `toggle_master`, `toggle_flow`, `toggle_ports`, and `on_gui_checked_state_changed` to condition v1 port and flow rendering triggers behind `FLOW_VERSION == "v1"`, isolating v1 and v2 debug overlay behavior.
+
+
+### Revision: Default v2 Flow Engine & Debug Panel Overlay Standardization
+**Date:** 2026-09-02 14:30 (EDT)
+**Context:** Promote the event-driven v2 flow engine to the default startup setting, enable the flow vector overlay by default, and remove legacy "New" phrasing across debug panel UI captions and command feedback.
+**Key Changes:**
+1. **Default Startup Engine Setting (`settings.lua`):** Updated `pneumatic-flow-version` default setting value from `"v1"` to `"v2"`.
+2. **Debug Panel UI Caption (`scripts/debug-manager.lua`):** Updated the v2 flow overlay checkbox label in `open_panel` from `"New Flow Engine (Alt Mode)"` to `"Flow Engine (Alt Mode)"`.
+3. **Default Overlay Enabled (`scripts/debug-manager.lua`):** Updated `get_debug()` to default `new_flow = true` for new player debug storage initializations and missing schema fallbacks.
+4. **Command & Chat Feedback Cleanups (`scripts/debug-manager.lua`):** Sanitized chat status print feedback and command descriptions for `/toggle-new-flow` and `/pt-toggle-new-flow` to standardize messaging.

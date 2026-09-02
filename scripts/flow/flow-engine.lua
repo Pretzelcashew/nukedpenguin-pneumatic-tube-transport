@@ -46,6 +46,7 @@ function flow_engine.init_storage()
     storage.flow_unit_ports = storage.flow_unit_ports or {}
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
+    storage.parked_by_port = storage.parked_by_port or {}
 end
 
 function flow_engine.enqueue_port(pkey)

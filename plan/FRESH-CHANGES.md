@@ -146,3 +146,13 @@
 1. **Port Definition Cross-Transit Attribute (`scripts/flow/port-defs.lua`):** Added `cross_transit = true` attribute to `capsule-hub-horizontal` and `capsule-hub-vertical` port definitions, declaring capsule internal crossing permission independently from gas/flow level propagation.
 2. **Spatial Node Property Caching (`scripts/flow/flow-engine.lua`):** Updated `flow_engine.connect_entity` to cache `cross_transit = (port.cross_transit == true)` directly onto `storage.flow_nodes` descriptors during entity registration.
 3. **Data-Driven Candidate Resolution & Target Shifting (`scripts/flow/capsule-runner.lua`):** Refactored `get_candidate_hops`, `select_next_target`, and `find_best_hub_outbound_port` to evaluate `node.cross_transit` instead of hardcoded `is_hub` entity checks. Capsules at cross-transit nodes inspect all external exit ports, calculate baseline pressure drops against the entity's maximum flow level, and dynamically shift origin port keys to pass through the path offering the strongest outbound gradient.
+
+
+### Revision: Stage 1 $O(1)$ Spatial Parked Index & Targeted Neighbor Wakeups
+**Date:** 2026-09-02 11:27 (EDT)
+**Context:** Eliminate map-wide O(N) capsule sweeps in wake_parked_capsules, restore 6-tick motion staggering breakdown, and introduce constant-time spatial parked capsule indexing to scale the v2 flow engine.
+**Key Changes:**
+1. **Spatial Parked Index Initialization (`scripts/flow/flow-engine.lua` & `control.lua`):** Initialized `storage.parked_by_port = {}` schema in `flow_engine.init_storage()` and `control.lua`. Added automatic re-indexing for existing parked v2 capsules during storage setup and savegame migration.
+2. **Parked Lifecycle Tracking (`scripts/flow/capsule-runner.lua`):** Implemented `mark_capsule_parked` and `mark_capsule_unparked` helper functions. Registered capsules in `storage.parked_by_port` upon failed target selection or initial hub injection, and cleanly untracked them when moving, arriving at a destination, or being removed.
+3. **Targeted O(1) Neighbor Wakeups (`scripts/flow/capsule-runner.lua`):** Rewrote `capsule_runner_v2.wake_parked_capsules(target)` to inspect strictly target port keys, sister unit ports (`storage.flow_unit_ports`), and adjacent flow connections (`storage.flow_connections`), completely eliminating `pairs(storage.capsules)` map sweeps.
+4. **Stagger Timer Protection (`scripts/flow/capsule-runner.lua`):** Enforced parked-only retry timer resets (`to_port_key == nil`), preventing active moving capsules from having their 6-tick motion stagger timers wiped by nearby hops.

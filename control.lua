@@ -49,6 +49,17 @@ local function setup_storage()
 
     if FLOW_VERSION == "v2" then
         flow_engine.init_storage()
+        storage.parked_by_port = storage.parked_by_port or {}
+
+        if storage.capsules then
+            for cap_id, capsule in pairs(storage.capsules) do
+                if capsule.from_port_key and capsule.to_port_key == nil and capsule.next_retry_tick then
+                    storage.parked_by_port[capsule.from_port_key] = storage.parked_by_port[capsule.from_port_key] or {}
+                    storage.parked_by_port[capsule.from_port_key][cap_id] = true
+                    capsule.parked_at_port = capsule.from_port_key
+                end
+            end
+        end
 
         for _, surface in pairs(game.surfaces) do
             local entities = surface.find_entities_filtered{name = port_defs.registered_names}

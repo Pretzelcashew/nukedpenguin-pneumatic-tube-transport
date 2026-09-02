@@ -19,6 +19,58 @@ local PARKED_RETRY_INTERVAL = 10
 
 local capsule_runner_v2 = {}
 
+local function mark_capsule_parked(capsule)
+    if not capsule then return end
+    local cap_id = capsule.capsule_id or capsule.id
+    local port_key = capsule.from_port_key
+    if not (cap_id and port_key) then return end
+
+    storage.parked_by_port = storage.parked_by_port or {}
+
+    if capsule.parked_at_port and capsule.parked_at_port ~= port_key then
+        local old_bucket = storage.parked_by_port[capsule.parked_at_port]
+        if old_bucket then
+            old_bucket[cap_id] = nil
+            if next(old_bucket) == nil then
+                storage.parked_by_port[capsule.parked_at_port] = nil
+            end
+        end
+    end
+
+    storage.parked_by_port[port_key] = storage.parked_by_port[port_key] or {}
+    storage.parked_by_port[port_key][cap_id] = true
+    capsule.parked_at_port = port_key
+end
+
+local function mark_capsule_unparked(capsule)
+    if not capsule then return end
+    local cap_id = capsule.capsule_id or capsule.id
+    if not cap_id then return end
+
+    storage.parked_by_port = storage.parked_by_port or {}
+
+    if capsule.parked_at_port then
+        local bucket = storage.parked_by_port[capsule.parked_at_port]
+        if bucket then
+            bucket[cap_id] = nil
+            if next(bucket) == nil then
+                storage.parked_by_port[capsule.parked_at_port] = nil
+            end
+        end
+        capsule.parked_at_port = nil
+    end
+
+    if capsule.from_port_key then
+        local bucket = storage.parked_by_port[capsule.from_port_key]
+        if bucket then
+            bucket[cap_id] = nil
+            if next(bucket) == nil then
+                storage.parked_by_port[capsule.from_port_key] = nil
+            end
+        end
+    end
+end
+
 function capsule_runner_v2.get_capsule_count_at_entity(unit_number)
     return capsule_queries.get_capsule_count_at_entity(unit_number)
 end
@@ -42,38 +94,91 @@ function capsule_runner_v2.has_capacity(from_port_key, target_port_key)
 end
 
 function capsule_runner_v2.wake_parked_capsules(target)
-    if not storage.capsules then return end
+    if not storage.parked_by_port then return end
 
-    if not target then
-        for _, capsule in pairs(storage.capsules) do
-            if not capsule.to_port_key then
+    local function wake_bucket(port_key)
+        local bucket = storage.parked_by_port and storage.parked_by_port[port_key]
+        if not bucket then return end
+
+        for cap_id in pairs(bucket) do
+            local capsule = storage.capsules and storage.capsules[cap_id]
+            if capsule and capsule.to_port_key == nil then
                 capsule.next_retry_tick = nil
                 capsule.last_failed_hub = nil
                 capsule.last_port_key = nil
             end
         end
+    end
+
+    if not target then
+        for pkey in pairs(storage.parked_by_port) do
+            wake_bucket(pkey)
+        end
         return
     end
 
     local target_unit = nil
+    local target_port_key = nil
+
     if type(target) == "string" then
+        target_port_key = target
         target_unit = capsule_queries.get_port_info(target)
     elseif type(target) == "number" then
         target_unit = target
+    elseif type(target) == "table" then
+        for k, v in pairs(target) do
+            local key = (type(k) == "string" and k) or (type(v) == "string" and v)
+            if key then
+                capsule_runner_v2.wake_parked_capsules(key)
+            end
+        end
+        return
     end
 
-    for _, capsule in pairs(storage.capsules) do
-        local cap_unit = capsule.from_port_key and capsule_queries.get_port_info(capsule.from_port_key)
-        if not target_unit or cap_unit == target_unit then
-            capsule.next_retry_tick = nil
-            capsule.last_failed_hub = nil
-            capsule.last_port_key = nil
+    local ports_to_wake = {}
+
+    local function add_port(pkey)
+        if pkey then
+            ports_to_wake[pkey] = true
         end
+    end
+
+    if target_port_key then
+        add_port(target_port_key)
+    end
+
+    if target_unit then
+        local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[target_unit]
+        if unit_ports then
+            for _, pkey in ipairs(unit_ports) do
+                add_port(pkey)
+                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                if neighbors then
+                    for neighbor_key in pairs(neighbors) do
+                        add_port(neighbor_key)
+                    end
+                end
+            end
+        end
+    elseif target_port_key then
+        local neighbors = storage.flow_connections and storage.flow_connections[target_port_key]
+        if neighbors then
+            for neighbor_key in pairs(neighbors) do
+                add_port(neighbor_key)
+            end
+        end
+    end
+
+    for pkey in pairs(ports_to_wake) do
+        wake_bucket(pkey)
     end
 end
 
 function capsule_runner_v2.remove_capsule(capsule_id)
     local capsule = storage.capsules and storage.capsules[capsule_id]
+    if capsule then
+        mark_capsule_unparked(capsule)
+    end
     local target_key = capsule and capsule.from_port_key
     capsule_queries.remove_capsule(capsule_id)
     capsule_runner_v2.wake_parked_capsules(target_key)
@@ -370,14 +475,12 @@ function capsule_runner_v2.select_next_target(capsule)
 
                 local drop = level_from - level_cand
 
-                -- Emitter check: Intake (emitter < 0) to Output (emitter > 0) internal push
                 if current_node.emitter and cand_node and cand_node.emitter then
                     if current_node.emitter < 0 and cand_node.emitter > 0 then
                         drop = math.huge
                     end
                 end
 
-                -- Lookahead for internal transitions (e.g. entering diverters, pumps, or junctions internally)
                 local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
                 if is_internal and cand_node then
                     local best_downstream = -math.huge
@@ -526,6 +629,7 @@ function capsule_runner_v2.inject_from_hub(capsule_id, entity, passenger)
     storage.capsules[capsule_id] = new_capsule
 
     capsule_queries.update_capsule_occupancy(new_capsule)
+    mark_capsule_parked(new_capsule)
     capsule_runner_v2.wake_parked_capsules(target_port_key)
 
     if best_port_key then
@@ -541,7 +645,7 @@ function capsule_runner_v2.emergency_eject(player)
     if not (storage.capsules and player and player.valid) then return end
 
     for id, capsule in pairs(storage.capsules) do
-        if capsule.passenger == player then -- Note: clean valid logic
+        if capsule.passenger == player then
             local pos, surface = capsule_runner_v2.get_capsule_location(id)
             if not (pos and surface) then
                 pos = player.position
@@ -633,6 +737,7 @@ function capsule_runner_v2.update_capsules(current_tick)
         local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
 
         if not node then
+            mark_capsule_unparked(capsule)
             capsule_runner_v2.remove_capsule(id)
         else
             local is_woken = (capsule.next_retry_tick == nil)
@@ -651,9 +756,11 @@ function capsule_runner_v2.update_capsules(current_tick)
                     if not next_port_key then
                         capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
                         capsule.last_port_key = nil
+                        mark_capsule_parked(capsule)
                         break
                     end
 
+                    mark_capsule_unparked(capsule)
                     local prev_key = capsule.from_port_key
                     capsule.last_port_key = prev_key
                     capsule.from_port_key = next_port_key

@@ -82,3 +82,12 @@
 1. **Port Group & Transmission Definitions (`scripts/flow/port-defs.lua`):** Assigned `group = 1` across all port definitions for hubs, tubes, pumps, junctions, and diverters. Restored split internal groups (`group = 1` for vertical, `group = 2` for horizontal) on `crossflow-junction`. Added `transmit = false` attribute to hub port definitions to block internal flow bridging across hub ports.
 2. **Node Metadata & Group Transmission (`scripts/flow/flow-engine.lua`):** Updated `connect_entity` to cache `node.group` and `node.transmit`. Updated `compute_port_flow_level` to permit internal port sampling only when both ports are transmitting and share matching non-nil group IDs (`can_transmit_internally`), while allowing non-transmitting hub ports to sample their own direct external connections (`is_self`).
 3. **Targeted Wavefront Queueing (`scripts/flow/flow-engine.lua`):** Refined `flow_engine.step` so that state changes on a port only enqueue sister internal ports if both ports are transmitting and share the same internal group ID, suppressing unnecessary queue ticks for non-transmitting hubs and isolated crossflow pairs.
+
+
+### Revision: Startup Flow Version Setting & Debug Panel Version Guards
+**Date:** 2026-09-01 22:58 (EDT)
+**Context:** Add a startup mod setting to toggle between legacy (v1) and event-driven wavefront (v2) flow engines, implementing modular event registration and updating the Pneumatic Control Panel to safely adapt UI toggles per engine version.
+**Key Changes:**
+1. **Startup Mod Setting (`settings.lua` & `locale/en/config.cfg`):** Created `settings.lua` registering the `pneumatic-flow-version` startup string setting (`v1` vs `v2`, default `v1`). Added corresponding localized titles and descriptions under `[mod-setting-name]` and `[mod-setting-description]` in `locale/en/config.cfg`.
+2. **Modular Event Registration (`scripts/flow/flow-engine.lua` & `control.lua`):** Encapsulated v2 tick and spatial topology event listeners into `flow_engine.register_events()`. Updated `control.lua` to only invoke `register_events()`, `flow_engine.init_storage()`, and surface spatial scans when `pneumatic-flow-version` is set to `v2`.
+3. **Debug Panel Version Guards & Method Correction (`scripts/debug-manager.lua`):** Corrected `flow_engine.clear_all` calls to `flow_engine.clear_all_renders`. Guarded v2 overlay render commands behind `FLOW_VERSION == "v2"` and hid the "New Flow Engine" checkbox in the Pneumatic Control Panel when running in `v1` mode, preventing runtime GUI crashes.

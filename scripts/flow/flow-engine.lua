@@ -45,7 +45,7 @@ function flow_engine.init_storage()
 end
 
 function flow_engine.enqueue_port(pkey)
-    if pkey then
+    if pkey and storage.flow_queue then
         storage.flow_queue[pkey] = true
     end
 end
@@ -76,7 +76,7 @@ local function destroy_edge_render(edge_key)
 end
 
 local function update_port_render(pkey, level)
-    local node = storage.flow_nodes[pkey]
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then
         destroy_port_renders(pkey)
         return
@@ -135,10 +135,10 @@ end
 
 local function update_edge_render(key_a, key_b)
     local edge_key = make_edge_key(key_a, key_b)
-    local level_a = storage.flow_levels[key_a] or 0
-    local level_b = storage.flow_levels[key_b] or 0
-    local node_a = storage.flow_nodes[key_a]
-    local node_b = storage.flow_nodes[key_b]
+    local level_a = storage.flow_levels and storage.flow_levels[key_a] or 0
+    local level_b = storage.flow_levels and storage.flow_levels[key_b] or 0
+    local node_a = storage.flow_nodes and storage.flow_nodes[key_a]
+    local node_b = storage.flow_nodes and storage.flow_nodes[key_b]
 
     if level_a == 0 and level_b == 0 or not node_a or not node_b then
         destroy_edge_render(edge_key)
@@ -272,22 +272,22 @@ function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
 
     local unit_number = entity.unit_number
-    local unit_ports = storage.flow_unit_ports[unit_number]
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
     if not unit_ports then return end
 
     for port_index, pkey in pairs(unit_ports) do
-        local node = storage.flow_nodes[pkey]
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
         if node then
             local pos_key = node.pos_key
 
-            if storage.flow_grid[pos_key] then
+            if storage.flow_grid and storage.flow_grid[pos_key] then
                 storage.flow_grid[pos_key][pkey] = nil
                 if next(storage.flow_grid[pos_key]) == nil then
                     storage.flow_grid[pos_key] = nil
                 end
             end
 
-            local neighbors = storage.flow_connections[pkey]
+            local neighbors = storage.flow_connections and storage.flow_connections[pkey]
             if neighbors then
                 for n_key, _ in pairs(neighbors) do
                     if storage.flow_connections[n_key] then
@@ -303,14 +303,16 @@ function flow_engine.disconnect_entity(entity)
             end
 
             destroy_port_renders(pkey)
-            storage.flow_levels[pkey] = nil
-            storage.flow_nodes[pkey] = nil
+            if storage.flow_levels then storage.flow_levels[pkey] = nil end
+            if storage.flow_nodes then storage.flow_nodes[pkey] = nil end
         end
 
         flow_engine.enqueue_port(pkey)
     end
 
-    storage.flow_unit_ports[unit_number] = nil
+    if storage.flow_unit_ports then
+        storage.flow_unit_ports[unit_number] = nil
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -318,7 +320,7 @@ end
 --------------------------------------------------------------------------------
 
 local function compute_port_flow_level(pkey)
-    local node = storage.flow_nodes[pkey]
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then return 0 end
 
     if node.emitter then
@@ -326,23 +328,23 @@ local function compute_port_flow_level(pkey)
     end
 
     local unit_number = node.unit_number
-    local unit_ports = storage.flow_unit_ports[unit_number]
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
     if not unit_ports then return 0 end
 
     local max_pos = 0
     local min_neg = 0
 
     for _, check_pkey in pairs(unit_ports) do
-        local check_node = storage.flow_nodes[check_pkey]
+        local check_node = storage.flow_nodes and storage.flow_nodes[check_pkey]
         if check_node then
             local is_self = (check_pkey == pkey)
             local can_transmit_internally = node.transmit and check_node.transmit and (node.group ~= nil) and (check_node.group == node.group)
 
             if is_self or can_transmit_internally then
-                local neighbors = storage.flow_connections[check_pkey]
+                local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
                 if neighbors then
                     for n_key, _ in pairs(neighbors) do
-                        local n_level = storage.flow_levels[n_key] or 0
+                        local n_level = storage.flow_levels and storage.flow_levels[n_key] or 0
                         if n_level > 1 then
                             local incoming = n_level - 1
                             if incoming > max_pos then
@@ -373,7 +375,7 @@ local function compute_port_flow_level(pkey)
 end
 
 function flow_engine.step(tick)
-    if next(storage.flow_queue) == nil then return end
+    if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
     local batch = {}
     local batch_count = 0
@@ -390,7 +392,7 @@ function flow_engine.step(tick)
     for i = 1, batch_count do
         local pkey = batch[i]
         local target_level = compute_port_flow_level(pkey)
-        local current_level = storage.flow_levels[pkey] or 0
+        local current_level = storage.flow_levels and storage.flow_levels[pkey] or 0
 
         if target_level ~= current_level then
             if target_level ~= 0 then
@@ -401,25 +403,25 @@ function flow_engine.step(tick)
 
             update_port_render(pkey, target_level)
 
-            local node = storage.flow_nodes[pkey]
+            local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node and node.transmit then
-                local unit_ports = storage.flow_unit_ports[node.unit_number]
+                local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then
                     for _, int_key in pairs(unit_ports) do
                         if int_key ~= pkey then
-                            local int_node = storage.flow_nodes[int_key]
+                            local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
                             if int_node and int_node.transmit and int_node.group == node.group then
-                                storage.flow_queue[int_key] = true
+                                flow_engine.enqueue_port(int_key)
                             end
                         end
                     end
                 end
             end
 
-            local neighbors = storage.flow_connections[pkey]
+            local neighbors = storage.flow_connections and storage.flow_connections[pkey]
             if neighbors then
                 for n_key, _ in pairs(neighbors) do
-                    storage.flow_queue[n_key] = true
+                    flow_engine.enqueue_port(n_key)
                     update_edge_render(pkey, n_key)
                 end
             end
@@ -428,66 +430,68 @@ function flow_engine.step(tick)
 end
 
 --------------------------------------------------------------------------------
--- EVENT LIFECYCLE HOOKS
+-- EVENT REGISTRATION MANAGER
 --------------------------------------------------------------------------------
 
-events.on_event(defines.events.on_tick, function(event)
-    flow_engine.step(event.tick)
-end)
+function flow_engine.register_events()
+    events.on_event(defines.events.on_tick, function(event)
+        flow_engine.step(event.tick)
+    end)
 
-local build_events = {
-    defines.events.on_built_entity,
-    defines.events.on_robot_built_entity,
-    defines.events.script_raised_built,
-    defines.events.script_raised_revive,
-    defines.events.on_entity_cloned
-}
-if defines.events.on_space_platform_built_entity then
-    table.insert(build_events, defines.events.on_space_platform_built_entity)
-end
+    local build_events = {
+        defines.events.on_built_entity,
+        defines.events.on_robot_built_entity,
+        defines.events.script_raised_built,
+        defines.events.script_raised_revive,
+        defines.events.on_entity_cloned
+    }
+    if defines.events.on_space_platform_built_entity then
+        table.insert(build_events, defines.events.on_space_platform_built_entity)
+    end
 
-for _, event_id in ipairs(build_events) do
-    events.on_event(event_id, function(event)
+    for _, event_id in ipairs(build_events) do
+        events.on_event(event_id, function(event)
+            local entity = event.entity
+            if entity and entity.valid then
+                flow_engine.connect_entity(entity)
+            end
+        end)
+    end
+
+    local removal_events = {
+        defines.events.on_player_mined_entity,
+        defines.events.on_robot_mined_entity,
+        defines.events.on_entity_died,
+        defines.events.script_raised_destroy
+    }
+    if defines.events.on_space_platform_mined_entity then
+        table.insert(removal_events, defines.events.on_space_platform_mined_entity)
+    end
+
+    for _, event_id in ipairs(removal_events) do
+        events.on_event(event_id, function(event)
+            local entity = event.entity
+            if entity then
+                flow_engine.disconnect_entity(entity)
+            end
+        end)
+    end
+
+    events.on_event(defines.events.on_player_rotated_entity, function(event)
         local entity = event.entity
         if entity and entity.valid then
+            flow_engine.disconnect_entity(entity)
+            flow_engine.connect_entity(entity)
+        end
+    end)
+
+    events.on_event(defines.events.on_player_flipped_entity, function(event)
+        local entity = event.entity
+        if entity and entity.valid then
+            flow_engine.disconnect_entity(entity)
             flow_engine.connect_entity(entity)
         end
     end)
 end
-
-local removal_events = {
-    defines.events.on_player_mined_entity,
-    defines.events.on_robot_mined_entity,
-    defines.events.on_entity_died,
-    defines.events.script_raised_destroy
-}
-if defines.events.on_space_platform_mined_entity then
-    table.insert(removal_events, defines.events.on_space_platform_mined_entity)
-end
-
-for _, event_id in ipairs(removal_events) do
-    events.on_event(event_id, function(event)
-        local entity = event.entity
-        if entity then
-            flow_engine.disconnect_entity(entity)
-        end
-    end)
-end
-
-events.on_event(defines.events.on_player_rotated_entity, function(event)
-    local entity = event.entity
-    if entity and entity.valid then
-        flow_engine.disconnect_entity(entity)
-        flow_engine.connect_entity(entity)
-    end
-end)
-
-events.on_event(defines.events.on_player_flipped_entity, function(event)
-    local entity = event.entity
-    if entity and entity.valid then
-        flow_engine.disconnect_entity(entity)
-        flow_engine.connect_entity(entity)
-    end
-end)
 
 return flow_engine

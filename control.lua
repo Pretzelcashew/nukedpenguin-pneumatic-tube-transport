@@ -26,6 +26,12 @@ require("prototypes.pneumatic-pump-proxy-linkage")
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
 
+local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
+
+if FLOW_VERSION == "v2" then
+    flow_engine.register_events()
+end
+
 local function setup_storage()
     storage.port_connections = storage.port_connections or {}
     storage.active_hubs = storage.active_hubs or {}
@@ -38,13 +44,16 @@ local function setup_storage()
 
     networks.init()
     liminal_surface.init_storage()
-    flow_engine.init_storage()
 
-    for _, surface in pairs(game.surfaces) do
-        local entities = surface.find_entities_filtered{name = port_defs.registered_names}
-        for _, entity in ipairs(entities) do
-            if entity.valid and entity.unit_number then
-                flow_engine.connect_entity(entity)
+    if FLOW_VERSION == "v2" then
+        flow_engine.init_storage()
+
+        for _, surface in pairs(game.surfaces) do
+            local entities = surface.find_entities_filtered{name = port_defs.registered_names}
+            for _, entity in ipairs(entities) do
+                if entity.valid and entity.unit_number then
+                    flow_engine.connect_entity(entity)
+                end
             end
         end
     end

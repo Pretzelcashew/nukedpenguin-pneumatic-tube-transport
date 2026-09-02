@@ -23,9 +23,6 @@ capsule_runner.get_capsule_count_at_entity = capsule_queries.get_capsule_count_a
 capsule_runner.get_capsule_count_at_entity_network = capsule_queries.get_capsule_count_at_entity_network
 capsule_runner.find_capsules_at_entity = capsule_queries.find_capsules_at_entity
 
---- Clears retry delay on parked capsules affected by a freed port, entity, or network state change.
---- If no target is specified, wakes all parked capsules as a global fallback.
---- @param target string|number|table|nil port_key ("101:1"), unit_number, net_id, affected_nets table, or nil
 function capsule_runner.wake_parked_capsules(target)
     if FLOW_VERSION == "v2" then
         return v2_capsule_runner.wake_parked_capsules(target)
@@ -97,6 +94,10 @@ function capsule_runner.wake_parked_capsules(target)
 end
 
 function capsule_runner.remove_capsule(capsule_id)
+    if FLOW_VERSION == "v2" then
+        return v2_capsule_runner.remove_capsule(capsule_id)
+    end
+
     local capsule = storage.capsules and storage.capsules[capsule_id]
     local target_key = capsule and (capsule.from_port_key or capsule.to_port_key)
     capsule_queries.remove_capsule(capsule_id)
@@ -108,11 +109,11 @@ local function init_storage()
     storage.next_capsule_id = storage.next_capsule_id or 1
 end
 
---- Retrieves the current physical world position and surface of a transit capsule counterpart
---- @param capsule_id number
---- @return MapPosition|nil position
---- @return LuaSurface|nil surface
 function capsule_runner.get_capsule_location(capsule_id)
+    if FLOW_VERSION == "v2" then
+        return v2_capsule_runner.get_capsule_location(capsule_id)
+    end
+
     if not storage.capsules then return nil, nil end
     local capsule = storage.capsules[capsule_id]
     if not capsule then return nil, nil end
@@ -148,16 +149,12 @@ function capsule_runner.get_capsule_location(capsule_id)
     return { x = from_pos.x, y = from_pos.y }, surf
 end
 
---- Handles an entity created or spawned on liminal_surface (e.g. from item spoilage)
---- Recreates spoiled units on the real-world transit capsule surface preserving quality and health.
---- @param entity LuaEntity
 local function handle_liminal_entity_spawn(entity)
     if not (entity and entity.valid) then return end
 
     local surface = entity.surface
     if not (surface and surface.valid and surface.name == "liminal_surface") then return end
 
-    -- Ignore container holder entities
     if entity.name == "invisible-capsule-holder" or entity.name == "visible-capsule-holder" then
         return
     end
@@ -203,14 +200,12 @@ local function handle_liminal_entity_spawn(entity)
             force = entity_force
         }
 
-        -- Preserve Factorio 2.0 item/unit Quality
         if entity_quality then
             params.quality = entity_quality
         end
 
         local created = target_surface.create_entity(params)
         if created and created.valid then
-            -- Preserve current health (naturally preserves negative health regen decay)
             if entity_health and created.health then
                 created.health = entity_health
             end
@@ -225,7 +220,6 @@ end
 local function update_capsules(current_tick)
     if not storage.capsules then return end
 
-    -- Pre-evaluate player viewport eligibility & Alt Mode settings once per tick
     capsule_renderer.prepare_frame()
 
     for id, capsule in pairs(storage.capsules) do
@@ -353,7 +347,6 @@ local function update_capsules(current_tick)
 
         if storage.capsules[id] then
             if curr_pos and surface and capsule_lifecycle.update(capsule, id, curr_pos, surface) then
-                -- Capsule ruptured mid-transit
                 capsule_runner.wake_parked_capsules(capsule.from_port_key)
             else
                 capsule_renderer.render(capsule, id, curr_pos, surface)
@@ -398,6 +391,10 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
 end
 
 function capsule_runner.emergency_eject(player)
+    if FLOW_VERSION == "v2" then
+        return v2_capsule_runner.emergency_eject(player)
+    end
+
     if not (storage.capsules and player and player.valid) then return end
 
     for id, capsule in pairs(storage.capsules) do
@@ -423,7 +420,6 @@ function capsule_runner.emergency_eject(player)
 end
 
 if FLOW_VERSION == "v1" then
-    -- Hook entity creation events for instant spoilage handling
     events.on_event(defines.events.on_trigger_created_entity, function(event)
         handle_liminal_entity_spawn(event.entity)
     end)
@@ -456,7 +452,6 @@ if FLOW_VERSION == "v1" then
         end
     end)
 
-    -- Register flow update listener to wake parked capsules when network flow changes
     networks_flow.register_listener(capsule_runner.wake_parked_capsules)
 end
 

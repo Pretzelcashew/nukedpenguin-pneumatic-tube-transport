@@ -1,12 +1,21 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
+local hub_defs = require("scripts.hubs.hub-definitions")
+local hub_unpacking = require("scripts.hubs.hub-unpacking")
+local diverter_settings = require("scripts.diverter-settings")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
+local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
+local liminal_surface = require("scripts.surfaces.liminal-surface")
 local debug_manager = require("scripts.debug-manager")
 
 local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
+
+local STAGGER_TICKS = 6
+local MAX_NODE_HOPS_PER_STEP = 3
+local PARKED_RETRY_INTERVAL = 10
 
 local capsule_runner_v2 = {}
 
@@ -14,24 +23,369 @@ function capsule_runner_v2.get_capsule_count_at_entity(unit_number)
     return capsule_queries.get_capsule_count_at_entity(unit_number)
 end
 
+function capsule_runner_v2.has_capacity(from_port_key, target_port_key)
+    local from_unit = capsule_queries.get_port_info(from_port_key)
+    local target_unit = capsule_queries.get_port_info(target_port_key)
+
+    if not target_unit then return false end
+    if from_unit == target_unit then
+        return true
+    end
+
+    local max_cap = 1
+    if storage.diverter_settings and storage.diverter_settings[target_unit] then
+        max_cap = diverter_settings.get_capacity(target_unit)
+    end
+
+    local count = capsule_queries.get_capsule_count_at_entity(target_unit)
+    return count < max_cap
+end
+
 function capsule_runner_v2.wake_parked_capsules(target)
     if not storage.capsules then return end
 
+    if not target then
+        for _, capsule in pairs(storage.capsules) do
+            if not capsule.to_port_key then
+                capsule.next_retry_tick = nil
+                capsule.last_failed_hub = nil
+            end
+        end
+        return
+    end
+
+    local target_unit = nil
+    if type(target) == "string" then
+        target_unit = capsule_queries.get_port_info(target)
+    elseif type(target) == "number" then
+        target_unit = target
+    end
+
     for _, capsule in pairs(storage.capsules) do
-        if not capsule.to_port_key then
+        local cap_unit = capsule.from_port_key and capsule_queries.get_port_info(capsule.from_port_key)
+        if not target_unit or cap_unit == target_unit then
             capsule.next_retry_tick = nil
             capsule.last_failed_hub = nil
         end
     end
 end
 
---- Evaluates ports of a hub entity on the v2 flow engine.
---- Defaults fallback to port 1 of the hub entity so capsules pack onto the hub's internal node even when disconnected.
---- @param hub_entity LuaEntity
---- @param capsule_id number|nil
---- @return string|nil best_port_key
---- @return string fallback_port_key
---- @return number best_flow_level
+function capsule_runner_v2.remove_capsule(capsule_id)
+    local capsule = storage.capsules and storage.capsules[capsule_id]
+    local target_key = capsule and capsule.from_port_key
+    capsule_queries.remove_capsule(capsule_id)
+    capsule_runner_v2.wake_parked_capsules(target_key)
+end
+
+function capsule_runner_v2.get_capsule_location(capsule_id)
+    if not storage.capsules then return nil, nil end
+    local capsule = storage.capsules[capsule_id]
+    if not capsule then return nil, nil end
+
+    local pkey = capsule.from_port_key
+    local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
+    if node then
+        local surf = game.surfaces[node.surface_name]
+        if surf and surf.valid then
+            return { x = node.pos.x, y = node.pos.y }, surf
+        end
+    end
+
+    return nil, nil
+end
+
+local function get_compiled_filter(port_setting)
+    local compiled = port_setting._compiled
+    if compiled ~= nil then
+        return compiled
+    end
+
+    if not port_setting.use_filters then
+        compiled = false
+        port_setting._compiled = compiled
+        return compiled
+    end
+
+    local filter_mode = port_setting.filter_mode or "whitelist"
+    local is_blacklist = (filter_mode == "blacklist")
+    local filters = port_setting.filters
+
+    local active_slots = {}
+    if filters then
+        for i = 1, 5 do
+            local slot = filters[i]
+            if slot then
+                local item = slot.item or slot.signal
+                if item then
+                    local comp = slot.comparator or "="
+                    table.insert(active_slots, { item = item, comp = comp })
+                end
+            end
+        end
+    end
+
+    compiled = {
+        is_blacklist = is_blacklist,
+        active_slots = active_slots
+    }
+    port_setting._compiled = compiled
+    return compiled
+end
+
+local function evaluates_port_filter(port_setting, payload_item)
+    if not port_setting then return true end
+
+    local compiled = get_compiled_filter(port_setting)
+    if compiled == false then
+        return true
+    end
+
+    if not payload_item then
+        return compiled.is_blacklist
+    end
+
+    local active_slots = compiled.active_slots
+    local num_active = #active_slots
+
+    if num_active == 0 then
+        return compiled.is_blacklist
+    end
+
+    local any_slot_matched = false
+    for i = 1, num_active do
+        local slot = active_slots[i]
+        local item_match = (payload_item == slot.item)
+        local comp = slot.comp
+
+        local match_res = false
+        if comp == "=" then
+            match_res = item_match
+        elseif comp == "≠" or comp == "!=" then
+            match_res = not item_match
+        elseif comp == ">" or comp == "≥" or comp == ">=" then
+            match_res = item_match
+        elseif comp == "<" then
+            match_res = not item_match
+        elseif comp == "≤" or comp == "<=" then
+            match_res = true
+        else
+            match_res = item_match
+        end
+
+        if match_res then
+            any_slot_matched = true
+            if not compiled.is_blacklist then
+                return true
+            end
+        end
+    end
+
+    if compiled.is_blacklist then
+        return not any_slot_matched
+    else
+        return any_slot_matched
+    end
+end
+
+local function check_diverter_port_filter(port_key, payload_item)
+    if not port_key then return true end
+    local diverter_settings_store = storage.diverter_settings
+    if not diverter_settings_store then return true end
+
+    local unit_number, port_index = capsule_queries.get_port_info(port_key)
+    if not unit_number then return true end
+
+    local d_settings = diverter_settings_store[unit_number]
+    if not d_settings then return true end
+
+    local port_setting = d_settings.ports and d_settings.ports[port_index]
+    if not port_setting then return true end
+
+    return evaluates_port_filter(port_setting, payload_item)
+end
+
+local function is_hop_allowed_by_diverter_filters(from_port_key, hop_key, payload_item)
+    if not check_diverter_port_filter(hop_key, payload_item) then
+        return false
+    end
+    if not check_diverter_port_filter(from_port_key, payload_item) then
+        return false
+    end
+    return true
+end
+
+local function get_candidate_hops(from_port_key)
+    local node = storage.flow_nodes and storage.flow_nodes[from_port_key]
+    if not node then return {} end
+
+    local unit_number = node.unit_number
+    local candidates = {}
+
+    if node.transmit and node.group ~= nil then
+        local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+        if unit_ports then
+            for _, int_key in ipairs(unit_ports) do
+                if int_key ~= from_port_key then
+                    local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
+                    if int_node and int_node.transmit and int_node.group == node.group then
+                        table.insert(candidates, int_key)
+                    end
+                end
+            end
+        end
+    end
+
+    local ext_neighbors = storage.flow_connections and storage.flow_connections[from_port_key]
+    if ext_neighbors then
+        for ext_key, _ in pairs(ext_neighbors) do
+            local ext_node = storage.flow_nodes and storage.flow_nodes[ext_key]
+            if ext_node and ext_node.unit_number ~= unit_number then
+                table.insert(candidates, ext_key)
+            end
+        end
+    end
+
+    return candidates
+end
+
+local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
+    depth = depth or 1
+    if depth > 3 then return false end
+
+    if not capsule_runner_v2.has_capacity(from_port_key, target_port_key) then
+        return false
+    end
+
+    if not is_hop_allowed_by_diverter_filters(from_port_key, target_port_key, payload_item) then
+        return false
+    end
+
+    local from_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
+    local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
+    if not (from_node and target_node) then return false end
+
+    local is_internal = (from_node.unit_number == target_node.unit_number)
+    if is_internal then
+        if from_node.emitter and target_node.emitter then
+            if from_node.emitter > 0 and target_node.emitter < 0 then
+                return false
+            end
+        end
+
+        local candidate_exits = get_candidate_hops(target_port_key)
+        local has_valid_exit = false
+        for _, exit_key in ipairs(candidate_exits) do
+            local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
+            if exit_node and exit_node.unit_number ~= target_node.unit_number then
+                if is_hop_valid(target_port_key, exit_key, payload_item, depth + 1) then
+                    has_valid_exit = true
+                    break
+                end
+            end
+        end
+        if not has_valid_exit then
+            return false
+        end
+    end
+
+    return true
+end
+
+function capsule_runner_v2.select_next_target(capsule)
+    local from_port_key = capsule.from_port_key
+    local current_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
+    if not current_node then return nil end
+
+    local payload_item = capsule.dominant_item
+    if not payload_item then
+        local cap_id = capsule.capsule_id or capsule.id
+        local cap_data = cap_id and capsule_manager.get(cap_id)
+        payload_item = cap_data and cap_data.dominant_item
+        if not payload_item and cap_id then
+            payload_item = capsule_renderer.get_dominant_item(cap_id)
+            if payload_item then
+                capsule.dominant_item = payload_item
+            end
+        end
+    end
+
+    local candidate_hops = get_candidate_hops(from_port_key)
+    if #candidate_hops == 0 then return nil end
+
+    local level_from = storage.flow_levels and storage.flow_levels[from_port_key] or 0
+
+    local valid_candidates = {}
+    for _, cand_key in ipairs(candidate_hops) do
+        if cand_key ~= capsule.last_port_key and is_hop_valid(from_port_key, cand_key, payload_item) then
+            local cand_node = storage.flow_nodes[cand_key]
+            local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
+
+            local drop = level_from - level_cand
+            local is_pump_push = false
+            if current_node.emitter and cand_node and cand_node.emitter then
+                if current_node.emitter < 0 and cand_node.emitter > 0 then
+                    is_pump_push = true
+                    drop = math.huge
+                end
+            end
+
+            if drop >= 0 or is_pump_push then
+                table.insert(valid_candidates, { key = cand_key, drop = drop })
+            end
+        end
+    end
+
+    if #valid_candidates == 0 then
+        for _, cand_key in ipairs(candidate_hops) do
+            if cand_key == capsule.last_port_key and is_hop_valid(from_port_key, cand_key, payload_item) then
+                local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
+                local drop = level_from - level_cand
+                table.insert(valid_candidates, { key = cand_key, drop = drop })
+            end
+        end
+    end
+
+    if #valid_candidates == 0 then return nil end
+
+    local max_drop = -math.huge
+    local best_list = {}
+    for _, cand in ipairs(valid_candidates) do
+        if cand.drop > max_drop then
+            max_drop = cand.drop
+            best_list = { cand }
+        elseif cand.drop == max_drop then
+            table.insert(best_list, cand)
+        end
+    end
+
+    local chosen = best_list[math.random(#best_list)]
+    return chosen.key
+end
+
+function capsule_runner_v2.handle_arrival(capsule, id)
+    local from_key = capsule.from_port_key
+    if not from_key then return false end
+
+    local unit_num = capsule_queries.get_port_info(from_key)
+    if capsule.source_hub and unit_num ~= capsule.source_hub then
+        capsule.source_hub = nil
+    end
+
+    local node = storage.flow_nodes and storage.flow_nodes[from_key]
+    if not node then return false end
+
+    local hub_entity = storage.active_hubs and storage.active_hubs[node.unit_number]
+    if hub_entity and hub_entity.valid and capsule.source_hub ~= node.unit_number then
+        local unpacked = hub_unpacking.capture(capsule, hub_entity)
+        if unpacked then
+            capsule_runner_v2.remove_capsule(id)
+            return true
+        end
+    end
+
+    return false
+end
+
 function capsule_runner_v2.find_best_hub_outbound_port(hub_entity, capsule_id)
     if not (hub_entity and hub_entity.valid) then return nil, nil, 0 end
 
@@ -64,11 +418,6 @@ function capsule_runner_v2.find_best_hub_outbound_port(hub_entity, capsule_id)
     return best_port_key, fallback_port_key, best_flow_level
 end
 
---- Injects a packed capsule onto the v2 flow engine.
---- @param capsule_id number
---- @param entity LuaEntity
---- @param passenger LuaPlayer|nil
---- @return boolean success
 function capsule_runner_v2.inject_from_hub(capsule_id, entity, passenger)
     if FLOW_VERSION ~= "v2" then return false end
     if not (entity and entity.valid) then return false end
@@ -108,8 +457,91 @@ function capsule_runner_v2.inject_from_hub(capsule_id, entity, passenger)
     return true
 end
 
---- v2 tick update handler: updates occupancy and renders active capsules on their v2 port positions
---- @param current_tick number
+function capsule_runner_v2.emergency_eject(player)
+    if not (storage.capsules and player and player.valid) then return end
+
+    for id, capsule in pairs(storage.capsules) do
+        if capsule.passenger == player then
+            local pos, surface = capsule_runner_v2.get_capsule_location(id)
+            if not (pos and surface) then
+                pos = player.position
+                surface = player.surface
+            end
+
+            local safe_pos = surface.find_non_colliding_position("character", pos, 4, 0.5) or pos
+            player.teleport(safe_pos, surface)
+
+            surface.create_entity{
+                name = "explosion",
+                position = safe_pos
+            }
+
+            capsule_runner_v2.remove_capsule(id)
+            break
+        end
+    end
+end
+
+local function handle_liminal_entity_spawn(entity)
+    if not (entity and entity.valid) then return end
+
+    local surface = entity.surface
+    if not (surface and surface.valid and surface.name == "liminal_surface") then return end
+
+    if entity.name == "invisible-capsule-holder" or entity.name == "visible-capsule-holder" then
+        return
+    end
+
+    local holder = liminal_surface.find_holder_near(entity.position, 3.5)
+    if not (holder and holder.valid) then
+        entity.destroy()
+        return
+    end
+
+    local capsule_id = holder.unit_number
+    local capsule_data = capsule_manager.get(capsule_id)
+    if not capsule_data then
+        entity.destroy()
+        return
+    end
+
+    local def = capsule_data.definition
+    local spill_contents = def and def.spill_contents
+    local units_allowed = true
+    if type(spill_contents) == "table" and spill_contents.units == false then
+        units_allowed = false
+    elseif spill_contents == false then
+        units_allowed = false
+    end
+
+    if not units_allowed then
+        entity.destroy()
+        return
+    end
+
+    local target_pos, target_surface = capsule_runner_v2.get_capsule_location(capsule_id)
+    if target_pos and target_surface and target_surface.valid then
+        local safe_pos = target_surface.find_non_colliding_position(entity.name, target_pos, 6, 0.5) or target_pos
+        local params = {
+            name = entity.name,
+            position = safe_pos,
+            force = entity.force
+        }
+        if entity.quality then params.quality = entity.quality end
+
+        local created = target_surface.create_entity(params)
+        if created and created.valid then
+            if entity.health and created.health then
+                created.health = entity.health
+            end
+        end
+
+        entity.destroy()
+    else
+        entity.destroy()
+    end
+end
+
 function capsule_runner_v2.update_capsules(current_tick)
     if FLOW_VERSION ~= "v2" then return end
     if not storage.capsules then return end
@@ -120,10 +552,61 @@ function capsule_runner_v2.update_capsules(current_tick)
         local from_key = capsule.from_port_key
         local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
 
-        if node then
-            local surface = game.surfaces[node.surface_name]
-            if surface and surface.valid then
-                capsule_renderer.render(capsule, id, node.pos, surface)
+        if not node then
+            capsule_runner_v2.remove_capsule(id)
+        else
+            local is_woken = (capsule.next_retry_tick == nil)
+            local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
+
+            if is_woken or is_stagger_tick then
+                capsule.next_retry_tick = current_tick + STAGGER_TICKS
+
+                local hops_done = 0
+                while hops_done < MAX_NODE_HOPS_PER_STEP do
+                    if capsule_runner_v2.handle_arrival(capsule, id) then
+                        break
+                    end
+
+                    local next_port_key = capsule_runner_v2.select_next_target(capsule)
+                    if not next_port_key then
+                        capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
+                        break
+                    end
+
+                    local prev_key = capsule.from_port_key
+                    capsule.last_port_key = prev_key
+                    capsule.from_port_key = next_port_key
+                    capsule.to_port_key = nil
+
+                    capsule_queries.update_capsule_occupancy(capsule)
+                    capsule_runner_v2.wake_parked_capsules(prev_key)
+
+                    hops_done = hops_done + 1
+
+                    local prev_unit = capsule_queries.get_port_info(prev_key)
+                    local new_unit = capsule_queries.get_port_info(next_port_key)
+                    if prev_unit ~= new_unit then
+                        if capsule_runner_v2.handle_arrival(capsule, id) then
+                            break
+                        end
+                        break
+                    end
+                end
+            end
+
+            if storage.capsules[id] then
+                local current_node = storage.flow_nodes[capsule.from_port_key]
+                if current_node then
+                    local surface = game.surfaces[current_node.surface_name]
+                    local curr_pos = current_node.pos
+                    if surface and surface.valid and curr_pos then
+                        if capsule_lifecycle.update(capsule, id, curr_pos, surface) then
+                            capsule_runner_v2.wake_parked_capsules(capsule.from_port_key)
+                        else
+                            capsule_renderer.render(capsule, id, curr_pos, surface)
+                        end
+                    end
+                end
             end
         end
     end
@@ -132,8 +615,36 @@ end
 function capsule_runner_v2.register_events()
     if FLOW_VERSION ~= "v2" then return end
 
+    events.on_event(defines.events.on_trigger_created_entity, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
+
+    events.on_event(defines.events.on_entity_spawned, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
+
+    events.on_event(defines.events.script_raised_built, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
+
+    events.on_event(defines.events.on_built_entity, function(event)
+        handle_liminal_entity_spawn(event.entity)
+    end)
+
     events.on_event(defines.events.on_tick, function(event)
         capsule_runner_v2.update_capsules(event.tick)
+
+        if event.tick % 60 == 0 then
+            local liminal_surf = game.surfaces["liminal_surface"]
+            if liminal_surf and liminal_surf.valid then
+                local entities = liminal_surf.find_entities_filtered{
+                    type = {"unit", "turret"}
+                }
+                for _, entity in ipairs(entities) do
+                    handle_liminal_entity_spawn(entity)
+                end
+            end
+        end
     end)
 end
 

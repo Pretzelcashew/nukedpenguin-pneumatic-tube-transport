@@ -120,3 +120,12 @@
 2. **Flow Gradient Target Selection & Filter Lookahead (`scripts/flow/capsule-runner.lua`):** Created candidate target selector (`select_next_target`) evaluating positive pressure drop (`level_from - level_cand`), intake vacuum pull, compiled diverter filters, and downstream path validation (`is_hop_valid`) to prevent capsules from entering machines without open exits.
 3. **O(1) Hub Arrival & Capture Engine (`scripts/flow/capsule-runner.lua`):** Integrated O(1) hub entity lookup via `storage.active_hubs` in `handle_arrival` for capsule capture/unpacking, liminal unit spoilage re-instantiation, and player passenger emergency eject (`emergency_eject`).
 4. **Facade Router Delegation (`scripts/capsules/capsule-runner.lua`):** Updated facade module functions `get_capsule_location`, `emergency_eject`, and `remove_capsule` to delegate to `scripts/flow/capsule-runner.lua` when running in `v2` mode.
+
+
+### Revision: v2 Flow Engine Gradient-Driven Motion & Emitter Traversal
+**Date:** 2026-09-02 09:51 (EDT)
+**Context:** Eliminate capsule oscillation ("dancing") in zero-gradient flow zones, unpowered networks, and dead ends under the v2 flow engine by enforcing strict positive pressure drop requirements and metadata-based emitter traversal.
+**Key Changes:**
+1. **Strict Pressure Gradient Filtering (`scripts/flow/capsule-runner.lua`):** Updated `select_next_target` to require a strictly positive flow drop (`drop > 0`) for candidate target selection, preventing capsules from endlessly wandering across flat-level or unpowered tube networks.
+2. **Dead-End & Unpowered Motion Suppression (`scripts/flow/capsule-runner.lua`):** Removed unconditional fallback backtracking and allowed capsules to park cleanly (`return nil`) when no outbound hop offers an active positive flow drop.
+3. **Metadata-Based Emitter & Diverter Traversal (`scripts/flow/capsule-runner.lua`):** Leveraged `node.emitter` metadata attributes rather than entity name matching to handle internal pump push (`emitter < 0` to `emitter > 0` with `drop = math.huge`) and evaluate downstream diverter output lookahead (`effective_from = cand_node.emitter`), routing capsules smoothly through active output branches.

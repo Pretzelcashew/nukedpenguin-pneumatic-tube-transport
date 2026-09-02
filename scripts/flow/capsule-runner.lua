@@ -313,49 +313,67 @@ function capsule_runner_v2.select_next_target(capsule)
     if #candidate_hops == 0 then return nil end
 
     local level_from = storage.flow_levels and storage.flow_levels[from_port_key] or 0
+    local max_drop = 0
+    local best_list = {}
 
-    local valid_candidates = {}
     for _, cand_key in ipairs(candidate_hops) do
         if cand_key ~= capsule.last_port_key and is_hop_valid(from_port_key, cand_key, payload_item) then
-            local cand_node = storage.flow_nodes[cand_key]
+            local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
             local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
 
             local drop = level_from - level_cand
-            local is_pump_push = false
+
+            -- Emitter check: Intake (emitter < 0) to Output (emitter > 0) internal push
             if current_node.emitter and cand_node and cand_node.emitter then
                 if current_node.emitter < 0 and cand_node.emitter > 0 then
-                    is_pump_push = true
                     drop = math.huge
                 end
             end
 
-            if drop >= 0 or is_pump_push then
-                table.insert(valid_candidates, { key = cand_key, drop = drop })
+            -- Lookahead for internal transitions (e.g. entering diverters, pumps, or junctions internally)
+            local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
+            if is_internal and cand_node then
+                local best_downstream = -math.huge
+                local exits = get_candidate_hops(cand_key)
+                for _, exit_key in ipairs(exits) do
+                    local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
+                    if exit_node and exit_node.unit_number ~= current_node.unit_number then
+                        if is_hop_valid(cand_key, exit_key, payload_item) then
+                            local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
+                            
+                            -- Use emitter flow value as effective origin level for positive emitter outputs
+                            local effective_from = (cand_node.emitter and cand_node.emitter > 0) and cand_node.emitter or level_from
+                            local d = effective_from - exit_level
+                            if d > best_downstream then
+                                best_downstream = d
+                            end
+                        end
+                    end
+                end
+                if best_downstream ~= -math.huge then
+                    drop = best_downstream
+                end
+            end
+
+            if drop > max_drop then
+                max_drop = drop
+                best_list = { { key = cand_key, is_external = not is_internal } }
+            elseif drop == max_drop and drop > 0 then
+                local current_best_is_ext = best_list[1] and best_list[1].is_external
+                local cand_is_ext = not is_internal
+                if cand_is_ext and not current_best_is_ext then
+                    best_list = { { key = cand_key, is_external = true } }
+                elseif not cand_is_ext and current_best_is_ext then
+                    -- prefer external
+                else
+                    table.insert(best_list, { key = cand_key, is_external = cand_is_ext })
+                end
             end
         end
     end
 
-    if #valid_candidates == 0 then
-        for _, cand_key in ipairs(candidate_hops) do
-            if cand_key == capsule.last_port_key and is_hop_valid(from_port_key, cand_key, payload_item) then
-                local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
-                local drop = level_from - level_cand
-                table.insert(valid_candidates, { key = cand_key, drop = drop })
-            end
-        end
-    end
-
-    if #valid_candidates == 0 then return nil end
-
-    local max_drop = -math.huge
-    local best_list = {}
-    for _, cand in ipairs(valid_candidates) do
-        if cand.drop > max_drop then
-            max_drop = cand.drop
-            best_list = { cand }
-        elseif cand.drop == max_drop then
-            table.insert(best_list, cand)
-        end
+    if #best_list == 0 then
+        return nil
     end
 
     local chosen = best_list[math.random(#best_list)]

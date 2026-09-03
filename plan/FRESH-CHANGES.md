@@ -40,3 +40,12 @@
 **Context:** Resolve runtime crash (`LuaEntity::minable is read only`) occurring during entity build events when initializing hidden circuit proxies for pneumatic pumps and diverters.
 **Key Changes:**
 1. **Runtime Property Assignment Fix (`scripts/proxy-manager.lua`):** Removed `proxy.minable = false` property assignment in `on_created`. In Factorio 2.0+, `LuaEntity.minable` is read-only at runtime; proxy unminability is governed at the prototype stage via flags (`"not-minable"`).
+
+
+### Revision: Modular Hub GUI Refactoring (Stage 5 Refactor)
+**Date:** 2026-09-03 14:15 (EDT)
+**Context:** Refactor Pneumatic Hub configuration interface (`scripts/hubs/hub-gui.lua`) to consume the centralized UI widget library (`scripts/utils/gui-components.lua`), standardizing relative container window anchoring, wire channel toggles, and circuit condition selectors across active devices.
+**Key Changes:**
+1. **Container Window Support & Panel Flexibility (`scripts/utils/gui-components.lua`):** Updated `create_relative_window` to assign window titles on relative container frames and made `add_circuit_condition_panel` checkbox parameters optional for compound enable/circuit layout rows.
+2. **Declarative Hub GUI Refactoring (`scripts/hubs/hub-gui.lua`):** Streamlined Hub interface construction using `gui_components` helpers (`create_relative_window`, `add_wire_channel_toggles`, `add_card_frame`, `add_circuit_condition_panel`), replacing local operator tables with canonical comparator helpers (`gui_components.COMPARATORS`).
+3. **Unified Event Routing & State Mutation (`scripts/hubs/hub-gui.lua`):** Refactored event listeners across checkboxes, signal choosers, operator dropdowns, and constant textfields to mutate settings via `gui_components` helpers while preserving mutual exclusivity rules and triggering immediate wakeups via `hub_manager.notify_settings_changed(entity)`.

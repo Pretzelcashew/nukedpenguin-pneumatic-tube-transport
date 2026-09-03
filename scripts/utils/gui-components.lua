@@ -57,13 +57,15 @@ function gui_components.create_relative_window(player, anchor_spec, frame_name, 
             type = "frame",
             name = frame_name,
             direction = "vertical",
+            caption = title,
             anchor = anchor_spec
         }
     else
         main_frame = player.gui.screen.add{
             type = "frame",
             name = frame_name,
-            direction = "vertical"
+            direction = "vertical",
+            caption = title
         }
         main_frame.auto_center = true
     end
@@ -168,13 +170,16 @@ function gui_components.add_circuit_condition_panel(parent, config)
     circuit_flow.style.vertical_align = "center"
     circuit_flow.style.horizontal_spacing = config.spacing or 6
 
-    local cb = circuit_flow.add{
-        type = "checkbox",
-        name = config.checkbox_name or "use_circuit_enable",
-        caption = config.checkbox_caption or "Circuit Enable",
-        state = config.checkbox_state or false,
-        tags = config.tags
-    }
+    local cb
+    if config.checkbox_name then
+        cb = circuit_flow.add{
+            type = "checkbox",
+            name = config.checkbox_name,
+            caption = config.checkbox_caption or "Circuit Enable",
+            state = config.checkbox_state or false,
+            tags = config.tags
+        }
+    end
 
     local cond = config.condition or {}
     local first_signal = config.signal or cond.first_signal
@@ -206,7 +211,7 @@ function gui_components.add_circuit_condition_panel(parent, config)
         allow_negative = true,
         tags = config.tags
     }
-    const_tf.style.width = config.constant_width or 50
+    const_tf.style.width = config.constant_width or 60
 
     return circuit_flow, {
         checkbox = cb,

@@ -2,18 +2,11 @@ local events = require("scripts.events")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_settings = require("scripts.hubs.hub-settings")
 local hub_manager = require("scripts.hubs.hub-manager")
+local gui_components = require("scripts.utils.gui-components")
 
 local hub_gui = {}
 
 local GUI_FRAME_NAME = "hub_operational_mode_frame"
-local OPERATORS = {"<", ">", "=", "≥", "≤", "≠"}
-
-local function get_operator_index(op)
-    for i, v in ipairs(OPERATORS) do
-        if v == op then return i end
-    end
-    return 1
-end
 
 local function notify_change(unit_number)
     local entity = storage.active_hubs and storage.active_hubs[unit_number]
@@ -22,8 +15,8 @@ local function notify_change(unit_number)
     end
 end
 
-local function close_hub_gui(player)
-    if player.gui.relative[GUI_FRAME_NAME] then
+function hub_gui.close(player)
+    if player and player.valid and player.gui.relative[GUI_FRAME_NAME] then
         player.gui.relative[GUI_FRAME_NAME].destroy()
     end
 end
@@ -39,7 +32,7 @@ local function on_gui_opened(event)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
 
-    close_hub_gui(player)
+    hub_gui.close(player)
 
     local settings = hub_settings.get(entity.unit_number)
 
@@ -48,52 +41,31 @@ local function on_gui_opened(event)
         position = defines.relative_gui_position.right
     }
 
-    local main_frame = player.gui.relative.add{
-        type = "frame",
-        name = GUI_FRAME_NAME,
-        direction = "vertical",
-        caption = "Circuit connection",
-        anchor = anchor
-    }
+    local main_frame = gui_components.create_relative_window(player, anchor, GUI_FRAME_NAME, "Circuit connection")
+    if not main_frame then return end
 
-    -- Header wire channel toggles
-    local header_flow = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
+    -- Header Wire Channel Row
+    local header_flow = main_frame.add{ type = "flow", direction = "horizontal" }
     header_flow.style.vertical_align = "center"
-    header_flow.add{
-        type = "label",
-        caption = "Input"
-    }
+    header_flow.add{ type = "label", caption = "Input" }
 
-    local filler = header_flow.add{
-        type = "empty-widget"
-    }
+    local filler = header_flow.add{ type = "empty-widget" }
     filler.style.horizontally_stretchable = true
 
-    header_flow.add{
-        type = "checkbox",
-        name = "hub_wire_red",
-        caption = "R",
-        state = settings.read_red,
+    gui_components.add_wire_channel_toggles(header_flow, {
+        read_red_name = "hub_wire_red",
+        read_green_name = "hub_wire_green",
+        read_red_caption = "R",
+        read_green_caption = "G",
+        read_red_state = settings.read_red ~= false,
+        read_green_state = settings.read_green ~= false,
         tags = { unit_number = entity.unit_number }
-    }
-    header_flow.add{
-        type = "checkbox",
-        name = "hub_wire_green",
-        caption = "G",
-        state = settings.read_green,
-        tags = { unit_number = entity.unit_number }
-    }
+    })
 
     main_frame.add{ type = "line", direction = "horizontal" }
 
-    -- Send Control Row & Condition Selectors
-    local send_flow_1 = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
+    -- Send Settings Section
+    local send_flow_1 = main_frame.add{ type = "flow", direction = "horizontal" }
     send_flow_1.style.vertical_align = "center"
     send_flow_1.add{
         type = "checkbox",
@@ -110,42 +82,20 @@ local function on_gui_opened(event)
         tags = { unit_number = entity.unit_number }
     }
 
-    local send_cond_flow = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
-    send_cond_flow.style.vertical_align = "center"
-    send_cond_flow.add{
-        type = "choose-elem-button",
-        name = "hub_send_signal",
-        elem_type = "signal",
+    gui_components.add_circuit_condition_panel(main_frame, {
         signal = settings.send_condition.first_signal,
+        comparator = settings.send_condition.comparator or "<",
+        constant = settings.send_condition.constant or 0,
+        signal_button_name = "hub_send_signal",
+        comparator_dropdown_name = "hub_send_operator",
+        constant_textfield_name = "hub_send_constant",
         tags = { unit_number = entity.unit_number }
-    }
-    send_cond_flow.add{
-        type = "drop-down",
-        name = "hub_send_operator",
-        items = OPERATORS,
-        selected_index = get_operator_index(settings.send_condition.comparator),
-        tags = { unit_number = entity.unit_number }
-    }
-    local send_text = send_cond_flow.add{
-        type = "textfield",
-        name = "hub_send_constant",
-        text = tostring(settings.send_condition.constant or 0),
-        numeric = true,
-        allow_negative = true,
-        tags = { unit_number = entity.unit_number }
-    }
-    send_text.style.width = 60
+    })
 
     main_frame.add{ type = "line", direction = "horizontal" }
 
-    -- Receive Control Row
-    local recv_flow_1 = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
+    -- Receive Settings Section
+    local recv_flow_1 = main_frame.add{ type = "flow", direction = "horizontal" }
     recv_flow_1.style.vertical_align = "center"
     recv_flow_1.add{
         type = "checkbox",
@@ -162,41 +112,18 @@ local function on_gui_opened(event)
         tags = { unit_number = entity.unit_number }
     }
 
-    -- Receive Condition Selectors
-    local recv_cond_flow = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
-    recv_cond_flow.style.vertical_align = "center"
-    recv_cond_flow.add{
-        type = "choose-elem-button",
-        name = "hub_receive_signal",
-        elem_type = "signal",
+    gui_components.add_circuit_condition_panel(main_frame, {
         signal = settings.receive_condition.first_signal,
+        comparator = settings.receive_condition.comparator or "<",
+        constant = settings.receive_condition.constant or 0,
+        signal_button_name = "hub_receive_signal",
+        comparator_dropdown_name = "hub_receive_operator",
+        constant_textfield_name = "hub_receive_constant",
         tags = { unit_number = entity.unit_number }
-    }
-    recv_cond_flow.add{
-        type = "drop-down",
-        name = "hub_receive_operator",
-        items = OPERATORS,
-        selected_index = get_operator_index(settings.receive_condition.comparator),
-        tags = { unit_number = entity.unit_number }
-    }
-    local recv_text = recv_cond_flow.add{
-        type = "textfield",
-        name = "hub_receive_constant",
-        text = tostring(settings.receive_condition.constant or 0),
-        numeric = true,
-        allow_negative = true,
-        tags = { unit_number = entity.unit_number }
-    }
-    recv_text.style.width = 60
+    })
 
-    -- Dedicated Receive Latch Option Row
-    local recv_latch_flow = main_frame.add{
-        type = "flow",
-        direction = "horizontal"
-    }
+    -- Receive Lock Latch Section
+    local recv_latch_flow = main_frame.add{ type = "flow", direction = "horizontal" }
     recv_latch_flow.style.top_margin = 4
     recv_latch_flow.add{
         type = "checkbox",
@@ -270,9 +197,9 @@ local function on_gui_elem_changed(event)
     local settings = hub_settings.get(unit_number)
 
     if element.name == "hub_send_signal" then
-        settings.send_condition.first_signal = element.elem_value
+        gui_components.update_condition_signal(settings.send_condition, element.elem_value)
     elseif element.name == "hub_receive_signal" then
-        settings.receive_condition.first_signal = element.elem_value
+        gui_components.update_condition_signal(settings.receive_condition, element.elem_value)
     end
 
     notify_change(unit_number)
@@ -288,9 +215,11 @@ local function on_gui_selection_state_changed(event)
     local settings = hub_settings.get(unit_number)
 
     if element.name == "hub_send_operator" then
-        settings.send_condition.comparator = OPERATORS[element.selected_index] or "<"
+        local comp = gui_components.get_comparator_by_index(element.selected_index)
+        gui_components.update_condition_comparator(settings.send_condition, comp)
     elseif element.name == "hub_receive_operator" then
-        settings.receive_condition.comparator = OPERATORS[element.selected_index] or "<"
+        local comp = gui_components.get_comparator_by_index(element.selected_index)
+        gui_components.update_condition_comparator(settings.receive_condition, comp)
     end
 
     notify_change(unit_number)
@@ -306,9 +235,9 @@ local function on_gui_text_changed(event)
     local settings = hub_settings.get(unit_number)
 
     if element.name == "hub_send_constant" then
-        settings.send_condition.constant = tonumber(element.text) or 0
+        gui_components.update_condition_constant(settings.send_condition, element.text)
     elseif element.name == "hub_receive_constant" then
-        settings.receive_condition.constant = tonumber(element.text) or 0
+        gui_components.update_condition_constant(settings.receive_condition, element.text)
     end
 
     notify_change(unit_number)
@@ -318,7 +247,7 @@ local function on_gui_closed(event)
     if event.gui_type == defines.gui_type.entity then
         local player = game.get_player(event.player_index)
         if player and player.valid then
-            close_hub_gui(player)
+            hub_gui.close(player)
         end
     end
 end

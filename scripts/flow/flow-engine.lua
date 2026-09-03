@@ -5,8 +5,6 @@ local diverter_settings = require("scripts.diverter-settings")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 
-local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
-
 local flow_engine = {}
 
 local BATCH_SIZE = 50
@@ -40,8 +38,6 @@ local function make_edge_key(key_a, key_b)
 end
 
 function flow_engine.init_storage()
-    if FLOW_VERSION ~= "v2" then return end
-
     storage.flow_nodes = storage.flow_nodes or {}
     storage.flow_grid = storage.flow_grid or {}
     storage.flow_connections = storage.flow_connections or {}
@@ -303,7 +299,6 @@ function flow_engine.clear_all_renders(player_index)
 end
 
 function flow_engine.draw_all(player_index)
-    if FLOW_VERSION ~= "v2" then return end
     for pkey, level in pairs(storage.flow_levels or {}) do
         update_port_render(pkey, level)
         local neighbors = storage.flow_connections and storage.flow_connections[pkey]
@@ -320,7 +315,6 @@ end
 --------------------------------------------------------------------------------
 
 function flow_engine.connect_entity(entity)
-    if FLOW_VERSION ~= "v2" then return end
     if not (entity and entity.valid and entity.unit_number) then return end
     if not registered_entities[entity.name] then return end
 
@@ -380,7 +374,6 @@ function flow_engine.connect_entity(entity)
 end
 
 function flow_engine.disconnect_entity(entity)
-    if FLOW_VERSION ~= "v2" then return end
     if not (entity and entity.unit_number) then return end
 
     local unit_number = entity.unit_number
@@ -582,7 +575,6 @@ local function compute_port_flow_level(pkey)
 end
 
 function flow_engine.step(tick)
-    if FLOW_VERSION ~= "v2" then return end
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
     local batch = {}
@@ -642,8 +634,6 @@ end
 --------------------------------------------------------------------------------
 
 function flow_engine.register_events()
-    if FLOW_VERSION ~= "v2" then return end
-
     events.on_event(defines.events.on_tick, function(event)
         flow_engine.step(event.tick)
     end)
@@ -692,7 +682,7 @@ function flow_engine.register_events()
         defines.events.on_player_mined_entity,
         defines.events.on_robot_mined_entity,
         defines.events.on_entity_died,
-        defines.events.script_raised_destroy
+        defines.script_raised_destroy
     }
     if defines.events.on_space_platform_mined_entity then
         table.insert(removal_events, defines.events.on_space_platform_mined_entity)

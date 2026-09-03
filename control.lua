@@ -18,10 +18,10 @@ require("prototypes.pneumatic-pump-proxy-linkage")
 
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
-local v2_capsule_runner = require("scripts.flow.capsule-runner")
+local capsule_runner = require("scripts.capsules.capsule-runner")
 
 flow_engine.register_events()
-v2_capsule_runner.register_events()
+capsule_runner.register_events()
 
 local function setup_storage()
     -- Clear legacy v1 storage tables

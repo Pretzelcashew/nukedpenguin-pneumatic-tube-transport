@@ -39,3 +39,12 @@
 1. **Obsolete File Purge (`scripts/networks/`, `scripts/ports/`, `scripts/capsules/`):** Deleted 25 legacy v1 source files including network graph rebuild engines, port evaluators, flow/pressure calculators, edge handlers, and the obsolete `capsule-motion.lua` script.
 2. **Machine Manager Relocation (`scripts/pump-manager.lua`, `scripts/diverter-manager.lua`):** Moved active `pump-manager.lua` and `diverter-manager.lua` scripts out of `scripts/networks/` into `scripts/`. Updated all top-level `require` paths across `control.lua`, `pump-gui.lua`, and `diverter-gui.lua`.
 3. **Storage Migration & Save Cleanup (`control.lua`):** Added explicit `nil`-clearing migration logic in `script.on_configuration_changed` for legacy v1 storage tables (`storage.networks`, `storage.port_connections`, `storage.port_pressures`, `storage.network_rebuild_queue`, `storage.port_to_network`) to free save-game memory.
+
+
+### Revision: Stage 4 v1 Engine Removal — v2 Runner Consolidation & Architecture Finalization
+**Date:** 2026-09-03 10:55 (EDT)
+**Context:** Complete Stage 4 of the v1 engine removal plan by consolidating the v2 capsule runner implementation directly into `scripts/capsules/capsule-runner.lua`, purging obsolete `FLOW_VERSION` gating checks across the v2 suite, deleting redundant script layers, and updating top-level entry point bindings.
+**Key Changes:**
+1. **Runner Implementation Consolidation (`scripts/capsules/capsule-runner.lua`):** Transferred the complete v2 motion runner engine, spatial parked index management, zero-allocation pathfinding scratch buffers, and event handlers into `scripts/capsules/capsule-runner.lua`, and deleted the obsolete `scripts/flow/capsule-runner.lua`.
+2. **Legacy Flow Version Gating Purge (`scripts/capsules/capsule-runner.lua`, `scripts/flow/flow-engine.lua`):** Purged stale `FLOW_VERSION` gating checks (`FLOW_VERSION ~= "v2"`) across stepper functions, renderers, and event registrations to establish v2 as the sole execution path.
+3. **Control Entry Point Alignment (`control.lua`):** Updated top-level imports in `control.lua` to require `scripts.capsules.capsule-runner` directly and register its event listeners alongside `flow_engine.register_events()`.

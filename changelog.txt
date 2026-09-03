@@ -1,4 +1,31 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.0
+Date: 2026-09-02
+  Overview:
+    - Introduced the event-driven v2 Flow Engine, replacing global BFS graph sweeps with localized delta wavefront pressure propagation that sleeps at 0-UPS during steady state.
+    - Added pressure gradient-driven capsule motion with multi-hop internal transitions, data-driven hub cross-transit, and zero GC table churn pathfinding.
+    - Integrated object destruction hooks for clean sandbox wipes and chunk deletions, paired with console debug message prefix filters and Alt Mode render sensitivity.
+  Features:
+    - Upgraded the flow engine backend to Version 2 (now default), propagating pressure differentials locally at 60 tiles/second and sleeping completely when networks reach equilibrium.
+    - Implemented pressure gradient-driven capsule movement for v2 networks, enabling capsules to evaluate downstream path validity, navigate hubs (`cross_transit`), and park cleanly when no positive drop is available.
+    - Added a startup mod setting (`pneumatic-flow-version`) to toggle between the legacy pressure graph engine (`v1`) and the new event-driven delta wavefront engine (`v2`).
+    - Added `/debug-filter <text>` and `/debug-filter-reset` console commands to filter debug chat logging output by string prefix.
+  Minor Features:
+    - Integrated object destruction handlers (`script.register_on_object_destroyed`) across pneumatic structures and liminal holders to cleanly purge flow nodes and capsules during sandbox wipes or chunk deletions.
+    - Updated the v2 flow engine to dynamically react to electrical power availability and circuit network enable conditions on pneumatic pumps and diverters.
+    - Configured visual debug overlays to natively respect Factorio Alt Mode settings (`only_in_alt_mode = true`).
+    - Decoupled capsule crossing permission (`cross_transit`) from gas flow propagation (`transmit`), allowing hubs to route capsules without bridging independent pressure networks.
+  Optimizations:
+    - Replaced map-wide capsule scans during target wakeups with an O(1) spatial parked capsule index (`storage.parked_by_port`).
+    - Implemented time-sliced batching (`BATCH_SIZE = 50`) on the flow propagation queue to smooth processing across ticks during large blueprint placements or mass deconstruction.
+    - Implemented module-level persistent scratch buffers for pathfinding, hop selection, and neighbor wakeups in the v2 motion runner, eliminating Lua GC table allocation during active transit.
+    - Added fast-path short-circuits in visual debug renderers to bypass string key formatting and node lookups when overlays are disabled.
+  Bugfixes:
+    - Fixed capsule oscillation ("dancing") in zero-gradient zones, unpowered tube lines, or dead ends by enforcing strict positive pressure drop requirements (`drop > 0`).
+    - Resolved capsule lockups when flow direction reverses by resetting stale origin port memory upon parking and target wakeups.
+    - Fixed potential Pneumatic Control Panel GUI crashes when updating debug overlays from player handles or integer player indices.
+    - Fixed orphan tracking data and stalled tube traffic during Sandbox "remove all entities" wipes by safely unparking capsules, waking upstream traffic, and disembarking passengers.
+---------------------------------------------------------------------------------------------------
 Version: 0.2.0
 Date: 2026-08-31
   Overview:

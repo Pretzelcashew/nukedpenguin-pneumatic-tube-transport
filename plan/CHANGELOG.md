@@ -814,4 +814,232 @@
 1. **Deferred Validation Rebuilds (`scripts/networks/network-validate.lua`):** Refactored `network_validate.execute()` to replace synchronous per-entity `networks_flow.build()` invocations with $O(1)$ `network_rebuild_engine.mark_dirty(net_id)` tagging. Preserves instant spatial graph edge linking and network ID merges while deferring graph calculations.
 2. **Coalesced State Sensitivity (`scripts/networks/pump-manager.lua` & `scripts/networks/diverter-manager.lua`):** Updated `rebuild_pump_networks` and `rebuild_diverter_networks` to route power, state, and port setting updates through `network_rebuild_engine.mark_dirty()`, eliminating repeated synchronous BFS sweeps on multi-port structures.
 
-####
+#### 0.3.0
+
+### Revision: Flow Engine Entity Creation Listener
+**Date:** 2026-09-01 13:27 (EDT)
+**Context:** Add an entity placement listener for the new flow propagation system with integrated debug logging.
+**Key Changes:**
+1. **Entity Placement Listener (`scripts/flow/entity-listener.lua`):** Added event listener covering all entity creation triggers (`on_built_entity`, `on_robot_built_entity`, `script_raised_built`, `script_raised_revive`, `on_space_platform_built_entity`, `on_entity_cloned`). Filters for pneumatic structures using `port_defs.registered_names`.
+2. **Debug Output (`scripts/flow/entity-listener.lua`):** Connected creation events to `debug_print` to print placement info (name, unit number, coordinates, surface) to chat when debug prints are active.
+3. **Control Entrypoint (`control.lua`):** Registered `scripts.flow.entity-listener` at top level.
+
+
+### Revision: Standardized Flow Engine Entity Lifecycle Listeners
+**Date:** 2026-09-01 15:07 (EDT)
+**Context:** Standardize and expand the new flow propagation system's entity lifecycle listeners into a symmetrical tri-module suite (`creation-listener`, `removal-listener`, and `state-listener`) inside `scripts/flow/`.
+**Key Changes:**
+1. **Creation Listener Rename & Standardization (`scripts/flow/creation-listener.lua`):** Renamed `entity-listener.lua` to `creation-listener.lua` for consistent naming across flow modules while keeping entity placement hook logic and debug logging intact.
+2. **Removal Event Listener (`scripts/flow/removal-listener.lua`):** Created dedicated removal event listener covering player/robot mining, entity destruction, script destruction, and space platform entity mining (`on_space_platform_mined_entity`) for registered pneumatic entities with debug print output.
+3. **State Change Event Listener (`scripts/flow/state-listener.lua`):** Created dedicated state change listener tracking orientation and flipping events (`on_player_rotated_entity`, `on_player_flipped_entity`) for registered pneumatic entities with debug print output.
+4. **Control Entrypoint Registration (`control.lua`):** Updated top-level `require` declarations to import `creation-listener`, `removal-listener`, and `state-listener`.
+
+
+### Revision: Flow Engine Port Definitions & Spatial Connection Manager
+**Date:** 2026-09-01 15:32 (EDT)
+**Context:** Add simplified port definitions and an event-driven connection manager to the new decoupled flow engine system (`scripts/flow/`), establishing direct port-to-port spatial linkage without legacy network BFS graph execution.
+**Key Changes:**
+1. **Lightweight Flow Port Definitions (`scripts/flow/port-defs.lua`):** Created standalone port definition registry containing cardinal tile offsets for all pneumatic structure variants (`capsule-hub-horizontal`, `capsule-hub-vertical`, `pneumatic-tube`, `pneumatic-pump`, `junction`, `crossflow-junction`, `pneumatic-diverter`) and exposed `registered_names` alongside `get_ports(entity)`.
+2. **Spatial Connection Manager (`scripts/flow/connection-manager.lua`):** Implemented connection manager tracking active spatial port edges in `storage.flow_port_connections`. Listens to creation, removal, and state change listeners to dynamically record bidirectional links between adjacent matching ports, sever removed edges, and sync rotation/flip state transitions with integrated debug logging.
+3. **Decoupled Lifecycle Listeners (`scripts/flow/creation-listener.lua`, `scripts/flow/removal-listener.lua`, `scripts/flow/state-listener.lua`):** Updated flow lifecycle event listeners to import `scripts/flow/port-defs` directly, isolating the new flow suite from legacy port definition dependencies.
+4. **Control Entrypoint Registration (`control.lua`):** Registered `scripts.flow.port-defs` and `scripts.flow.connection-manager` at top level and initialized `storage.flow_port_connections` in `setup_storage()`.
+
+
+### Revision: Console Debug Message Prefix Filter Commands
+**Date:** 2026-09-01 15:46 (EDT)
+**Context:** Add console commands to filter debug chat messages by prefix string, allowing developers to isolate log outputs for specific subsystems during testing.
+**Key Changes:**
+1. **Debug State & Filtering (`scripts/debug-manager.lua`):** Extended per-player debug storage schema with a `filter` field. Updated `debug_print` to validate incoming message strings against `dbg.filter` via prefix checking (`msg:sub(1, #dbg.filter) == dbg.filter`).
+2. **Filter Management Commands (`scripts/debug-manager.lua`):** Registered `/debug-filter <text>` and `/debug-filter-reset` console commands with parameter quote-trimming logic and player chat status feedback.
+
+
+### Revision: Water-Like Flow Propagation Engine & Overlay Debug System
+**Date:** 2026-09-01 16:29 (EDT)
+**Context:** Implement a rudimentary water-like BFS flow propagation engine through connected ports, add visual debug rendering overlays with Pneumatic Control Panel UI toggles, and resolve cyclic module dependency stack overflows.
+**Key Changes:**
+1. **Water-Like Flow Propagation Engine (`scripts/flow/flow-engine.lua`):** Created a BFS propagation module treating `pneumatic-pump` and `pneumatic-diverter` entities as flow emitters starting at maximum strength (10). Propagates flow across internal entity ports and external connected port edges (`storage.flow_port_connections`), decaying by 1 per hop down to 0, and maintaining runtime state in `storage.flow_levels`.
+2. **Flow Debug Overlay & Control Panel Toggle (`scripts/debug-manager.lua` & `scripts/flow/flow-engine.lua`):** Integrated cyan circle markers, numerical flow level text, and connection lines drawn on official rendering layers. Added `new_flow` debug state toggles, console commands (`/toggle-new-flow`, `/pt-toggle-new-flow`), hotbar shortcut sync, and a `"New Flow Engine (Alt Mode)"` checkbox in the Pneumatic Control Panel GUI.
+3. **Surface Registration & Entrypoint Integration (`control.lua`):** Registered `scripts.flow.flow-engine` at top level, added schema initialization for `flow_entities`, `flow_emitters`, `flow_levels`, and `new_flow_render_objects`, and added surface entity scanning on `on_init` / `on_configuration_changed`.
+4. **Cyclic Require Stack Overflow Fix (`scripts/flow/*`):** Removed redundant `require("scripts.debug-manager")` statements from `creation-listener.lua`, `removal-listener.lua`, `state-listener.lua`, `connection-manager.lua`, and `flow-engine.lua`. Leveraged global `debug_print` access to break cyclic require loops during top-level module loading.
+
+
+### Revision: Event-Driven Delta Flow Engine & Spatial Port Registry
+**Date:** 2026-09-01 18:47 (EDT)
+**Context:** Replace instant global BFS graph sweeps with an event-driven delta wavefront flow propagation engine and an O(1) multi-port spatial coordinate registry.
+**Key Changes:**
+1. **Multi-Port Spatial Registry (`scripts/flow/connection-manager.lua`):** Replaced `surface.find_entities_filtered` queries with O(1) spatial coordinate string lookups (`storage.flow_port_registry`). Converted port storage at tile coordinates into a multi-port dictionary (`{ [port_key] = port_data }`) so co-located ports do not overwrite each other during placement or rotation, ensuring clean connection severing upon entity removal.
+2. **Event-Driven Delta Wavefront Engine (`scripts/flow/flow-engine.lua`):** Replaced synchronous global BFS sweeps with a 1-hop-per-tick delta wavefront step handler (`flow_engine.step`) backed by `storage.flow_queue`. Flow propagates outward from active emitters (`MAX_FLOW = 10`) at 60 tiles/second until reaching steady-state equilibrium. When no levels change or the network is idle, `storage.flow_queue` empties, allowing `step()` to return on line 1 for 0-UPS idle performance.
+3. **Drain Wavefront & Removal Handling (`scripts/flow/flow-engine.lua` & `scripts/flow/connection-manager.lua`):** Entity creation, removal, and rotation events enqueue affected local ports into `storage.flow_queue`. Severed tube connections trigger a tile-by-tile downstream drain wave (`compute_entity_flow_level()`), cleanly clearing cut-off flow values to zero frame-by-frame before returning the engine to sleep.
+4. **GUI Display Crash Prevention (`scripts/flow/flow-engine.lua`):** Added `get_player_object_and_index` parameter resolution in `draw_for_player` and `clear_all` to safely handle both integer player indices and `LuaPlayer` object handles passed from Pneumatic Control Panel GUI check events (`on_gui_checked_state_changed`).
+
+
+### Revision: Flow Propagation Batching, Negative Pressure & Spatial Disconnection Updates
+**Date:** 2026-09-01 19:34 (EDT)
+**Context:** Add time-sliced batching to the flow queue, introduce negative flow values for pump intake ports, throttle visual overlay updates, and revise entity disconnection handling for rotated and flipped structures.
+**Key Changes:**
+1. **Flow Queue Batching (`scripts/flow/flow-engine.lua`):** Added a per-tick execution limit (`BATCH_SIZE = 50`) to `flow_engine.step()`, spreading queue processing across ticks during large placement events.
+2. **Negative Flow & Emitter Levels (`scripts/flow/port-defs.lua` & `scripts/flow/flow-engine.lua`):** Assigned directional `flow = -10` (intake) and `flow = 10` (output) attributes to `pneumatic-pump` ports in `port-defs.lua`. Updated `compute_port_flow_level` to calculate negative flow levels (-10 up to -1) alongside positive pressure (+10 down to +1) and resolve opposing magnitudes.
+3. **Throttled Overlay Redraws (`scripts/flow/flow-engine.lua`):** Added `flow_render_dirty` tracking to throttle full overlay redraws (`flow_engine.redraw_all()`) to 15-tick intervals during active sweeps or when the queue empties. Color-coded positive levels (Blue/Cyan) and negative levels (Orange/Red).
+4. **Unit Port Coordinate Tracking (`scripts/flow/connection-manager.lua` & `control.lua`):** Added `storage.flow_unit_ports` to record tile coordinates upon connection. Updated `disconnect_entity` to clean up registered ports, severed connections, and port levels using recorded tile coordinates during entity removal, rotation, and flip events.
+
+
+### Revision: Flow Engine Consolidation & Granular Spatial Topology Management
+**Date:** 2026-09-01 21:30 (EDT)
+**Context:** Consolidate the distributed flow simulation system into a unified, high-performance engine (`scripts/flow/flow-engine.lua`), removing redundant listener/manager modules and replacing full visual redraw sweeps with targeted O(1) render updates.
+**Key Changes:**
+1. **Module Consolidation & File Cleanup (`scripts/flow/`):** Removed `connection-manager.lua`, `creation-listener.lua`, `removal-listener.lua`, and `state-listener.lua`. Consolidated entity lifecycle handling, connection graph tracking, and port wavefront propagation directly inside `scripts/flow/flow-engine.lua`.
+2. **Spatial Grid Topology (`scripts/flow/flow-engine.lua`):** Implemented a coordinate-indexed spatial lookup (`flow_grid`, `flow_nodes`, `flow_connections`) using formatted string position keys (`surface@x,y`). Entity build, mine, rotate, and flip events automatically connect or disconnect matching overlapping ports across adjacent entities.
+3. **Granular Rendering Pipeline (`scripts/flow/flow-engine.lua`):** Replaced bulk visual redraws with direct O(1) single-port and single-edge object mutations (`update_port_render`, `update_edge_render`, `destroy_port_renders`, `destroy_edge_render`). Render circles, flow level text, and link lines update dynamically on state change per player index rather than triggering map-wide sweeps.
+4. **Mod Lifecycle Cleanup (`control.lua`):** Simplified mod initialization and configuration change hooks (`setup_storage`). Removed legacy sub-table initialization and storage keys (`flow_port_registry`, `flow_entities`, `flow_emitters`), delegating entity registration directly to `flow_engine.connect_entity(entity)`.
+
+
+### Revision: Flow Engine Entity Flavor & Structural Port Group Architecture
+**Date:** 2026-09-01 22:05 (EDT)
+**Context:** Restore original port group structure across pneumatic entities, implement explicit non-transmitting hub behavior, and update wavefront propagation logic to respect internal group transmission boundaries without legacy graph overhead.
+**Key Changes:**
+1. **Port Group & Transmission Definitions (`scripts/flow/port-defs.lua`):** Assigned `group = 1` across all port definitions for hubs, tubes, pumps, junctions, and diverters. Restored split internal groups (`group = 1` for vertical, `group = 2` for horizontal) on `crossflow-junction`. Added `transmit = false` attribute to hub port definitions to block internal flow bridging across hub ports.
+2. **Node Metadata & Group Transmission (`scripts/flow/flow-engine.lua`):** Updated `connect_entity` to cache `node.group` and `node.transmit`. Updated `compute_port_flow_level` to permit internal port sampling only when both ports are transmitting and share matching non-nil group IDs (`can_transmit_internally`), while allowing non-transmitting hub ports to sample their own direct external connections (`is_self`).
+3. **Targeted Wavefront Queueing (`scripts/flow/flow-engine.lua`):** Refined `flow_engine.step` so that state changes on a port only enqueue sister internal ports if both ports are transmitting and share the same internal group ID, suppressing unnecessary queue ticks for non-transmitting hubs and isolated crossflow pairs.
+
+
+### Revision: Startup Flow Version Setting & Debug Panel Version Guards
+**Date:** 2026-09-01 22:58 (EDT)
+**Context:** Add a startup mod setting to toggle between legacy (v1) and event-driven wavefront (v2) flow engines, implementing modular event registration and updating the Pneumatic Control Panel to safely adapt UI toggles per engine version.
+**Key Changes:**
+1. **Startup Mod Setting (`settings.lua` & `locale/en/config.cfg`):** Created `settings.lua` registering the `pneumatic-flow-version` startup string setting (`v1` vs `v2`, default `v1`). Added corresponding localized titles and descriptions under `[mod-setting-name]` and `[mod-setting-description]` in `locale/en/config.cfg`.
+2. **Modular Event Registration (`scripts/flow/flow-engine.lua` & `control.lua`):** Encapsulated v2 tick and spatial topology event listeners into `flow_engine.register_events()`. Updated `control.lua` to only invoke `register_events()`, `flow_engine.init_storage()`, and surface spatial scans when `pneumatic-flow-version` is set to `v2`.
+3. **Debug Panel Version Guards & Method Correction (`scripts/debug-manager.lua`):** Corrected `flow_engine.clear_all` calls to `flow_engine.clear_all_renders`. Guarded v2 overlay render commands behind `FLOW_VERSION == "v2"` and hid the "New Flow Engine" checkbox in the Pneumatic Control Panel when running in `v1` mode, preventing runtime GUI crashes.
+
+
+### Revision: Symmetrical Flow Engine Event Gating & v1 Lifecycle Isolation
+**Date:** 2026-09-01 23:34 (EDT)
+**Context:** Isolate legacy (v1) network topology construction, background graph rebuilding, and capsule movement loops when running in v2 flow mode, establishing symmetrical internal version guards across both engines.
+**Key Changes:**
+1. **v1 Network Topology Event Gating (`scripts/networks/network-connect.lua`, `scripts/networks/network-disconnect.lua`, `scripts/networks/network-rotate.lua`):** Guarded network connect, disconnect, and rotation event listeners behind `FLOW_VERSION == "v1"`. Disables v1 graph validation and edge invalidation on placement/mining/rotation when running in `v2` mode while preserving hub cargo spilling and pump/diverter orientation notifications.
+2. **Staged Rebuild Engine Gating (`scripts/networks/network-rebuild-engine.lua`):** Guarded the time-sliced background graph rebuild `on_tick` processor (`network_rebuild_engine.step`) behind `FLOW_VERSION == "v1"`, preventing graph split checks and v1 flow map updates during `v2` operation.
+3. **v1 Capsule Motion Runner Gating (`scripts/capsules/capsule-runner.lua`):** Guarded v1 tick updates (`update_capsules`), liminal surface spawn listeners, and `networks_flow` listener registrations behind `FLOW_VERSION == "v1"`. Silences v1 capsule movement and segment interpolation during `v2` mode while keeping module helper functions exported.
+4. **v2 Flow Engine Internal Self-Guarding (`scripts/flow/flow-engine.lua` & `control.lua`):** Added internal `FLOW_VERSION == "v2"` guards inside `flow_engine.register_events()`, `init_storage()`, `connect_entity()`, `disconnect_entity()`, and `draw_all()`, making `flow-engine.lua` self-contained and symmetrical with v1 modules. Guarded legacy `networks_flow.draw_all()` call in `control.lua` behind `FLOW_VERSION == "v1"`.
+
+
+### Revision: v2 Flow Engine Capsule Runner & Hub Packing Integration
+**Date:** 2026-09-02 08:45 (EDT)
+**Context:** Implement the foundational v2 flow engine capsule runner module and integrate hub packing delegation across v1 and v2 flow engines with debug logging.
+**Key Changes:**
+1. **v2 Capsule Runner Module (`scripts/flow/capsule-runner.lua`):** Created dedicated v2 capsule runner handling outbound hub port resolution (`find_best_hub_outbound_port`), capsule injection (`inject_from_hub`), parked capsule wakeup, tick frame rendering updates, and event registration. Evaluates active port flow levels while defaulting fallback to internal hub port 1 (`unit_number .. ":1"`), allowing disconnected hubs to pack capsules onto internal nodes. Includes `debug_print` output logging successful packaging onto the v2 flow engine.
+2. **Capsule Runner Facade Delegation (`scripts/capsules/capsule-runner.lua`):** Added `FLOW_VERSION == "v2"` version routing inside `inject_from_hub` and `wake_parked_capsules` to forward calls to `scripts/flow/capsule-runner.lua` when running in v2 mode while keeping v1 runtime logic fully intact.
+3. **v2 Event Registration & Top-Level Require (`control.lua`):** Required `scripts/flow/capsule-runner.lua` at top level and registered `v2_capsule_runner.register_events()` when startup setting `pneumatic-flow-version` is set to `v2`.
+
+
+### Revision: v2 Flow Engine Granular Capsule Runner & Facade Synchronization
+**Date:** 2026-09-02 09:17 (EDT)
+**Context:** Implement discrete node-to-node capsule movement for the v2 flow engine with pressure gradient target selection, diverter filter lookahead, O(1) hub arrival capture, and facade routing synchronization.
+**Key Changes:**
+1. **v2 Granular Node Hop Runner (`scripts/flow/capsule-runner.lua`):** Implemented discrete node-to-node hop movement executing every 6 ticks (staggered per capsule ID) with multi-hop processing (`MAX_NODE_HOPS_PER_STEP = 3`) for internal entity transitions, continuous passenger position synchronization, and unused progress schema preservation.
+2. **Flow Gradient Target Selection & Filter Lookahead (`scripts/flow/capsule-runner.lua`):** Created candidate target selector (`select_next_target`) evaluating positive pressure drop (`level_from - level_cand`), intake vacuum pull, compiled diverter filters, and downstream path validation (`is_hop_valid`) to prevent capsules from entering machines without open exits.
+3. **O(1) Hub Arrival & Capture Engine (`scripts/flow/capsule-runner.lua`):** Integrated O(1) hub entity lookup via `storage.active_hubs` in `handle_arrival` for capsule capture/unpacking, liminal unit spoilage re-instantiation, and player passenger emergency eject (`emergency_eject`).
+4. **Facade Router Delegation (`scripts/capsules/capsule-runner.lua`):** Updated facade module functions `get_capsule_location`, `emergency_eject`, and `remove_capsule` to delegate to `scripts/flow/capsule-runner.lua` when running in `v2` mode.
+
+
+### Revision: v2 Flow Engine Gradient-Driven Motion & Emitter Traversal
+**Date:** 2026-09-02 09:51 (EDT)
+**Context:** Eliminate capsule oscillation ("dancing") in zero-gradient flow zones, unpowered networks, and dead ends under the v2 flow engine by enforcing strict positive pressure drop requirements and metadata-based emitter traversal.
+**Key Changes:**
+1. **Strict Pressure Gradient Filtering (`scripts/flow/capsule-runner.lua`):** Updated `select_next_target` to require a strictly positive flow drop (`drop > 0`) for candidate target selection, preventing capsules from endlessly wandering across flat-level or unpowered tube networks.
+2. **Dead-End & Unpowered Motion Suppression (`scripts/flow/capsule-runner.lua`):** Removed unconditional fallback backtracking and allowed capsules to park cleanly (`return nil`) when no outbound hop offers an active positive flow drop.
+3. **Metadata-Based Emitter & Diverter Traversal (`scripts/flow/capsule-runner.lua`):** Leveraged `node.emitter` metadata attributes rather than entity name matching to handle internal pump push (`emitter < 0` to `emitter > 0` with `drop = math.huge`) and evaluate downstream diverter output lookahead (`effective_from = cand_node.emitter`), routing capsules smoothly through active output branches.
+
+
+### Revision: v2 Flow Engine Stale Motion Reset & Backtracking Cleanup
+**Date:** 2026-09-02 10:28 (EDT)
+**Context:** Resolve capsule lockups and stagnation when flow reverses or changes direction under the v2 flow engine by clearing stale origin port memory upon parking and target wakeups.
+**Key Changes:**
+1. **Wakeup Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `capsule_runner_v2.wake_parked_capsules` to reset `capsule.last_port_key = nil` alongside `next_retry_tick` and `last_failed_hub` whenever capsules are woken by flow updates, pump/diverter state edits, or network events.
+2. **Parked State Backtracking Reset (`scripts/flow/capsule-runner.lua`):** Updated `update_capsules` to set `capsule.last_port_key = nil` when `select_next_target` returns `nil` and a capsule enters a parked state, ensuring newly reversed pressure drops (`drop > 0`) can be cleanly selected on subsequent step evaluations.
+
+
+### Revision: Data-Driven Decoupled Hub Cross-Transit Architecture
+**Date:** 2026-09-02 10:54 (EDT)
+**Context:** Decouple gas flow transmission (`transmit = false`) from capsule motion (`cross_transit = true`), enabling data-driven hub pass-through traversal under the v2 flow engine without entity hardcoding.
+**Key Changes:**
+1. **Port Definition Cross-Transit Attribute (`scripts/flow/port-defs.lua`):** Added `cross_transit = true` attribute to `capsule-hub-horizontal` and `capsule-hub-vertical` port definitions, declaring capsule internal crossing permission independently from gas/flow level propagation.
+2. **Spatial Node Property Caching (`scripts/flow/flow-engine.lua`):** Updated `flow_engine.connect_entity` to cache `cross_transit = (port.cross_transit == true)` directly onto `storage.flow_nodes` descriptors during entity registration.
+3. **Data-Driven Candidate Resolution & Target Shifting (`scripts/flow/capsule-runner.lua`):** Refactored `get_candidate_hops`, `select_next_target`, and `find_best_hub_outbound_port` to evaluate `node.cross_transit` instead of hardcoded `is_hub` entity checks. Capsules at cross-transit nodes inspect all external exit ports, calculate baseline pressure drops against the entity's maximum flow level, and dynamically shift origin port keys to pass through the path offering the strongest outbound gradient.
+
+
+### Revision: Stage 1 $O(1)$ Spatial Parked Index & Targeted Neighbor Wakeups
+**Date:** 2026-09-02 11:27 (EDT)
+**Context:** Eliminate map-wide O(N) capsule sweeps in wake_parked_capsules, restore 6-tick motion staggering breakdown, and introduce constant-time spatial parked capsule indexing to scale the v2 flow engine.
+**Key Changes:**
+1. **Spatial Parked Index Initialization (`scripts/flow/flow-engine.lua` & `control.lua`):** Initialized `storage.parked_by_port = {}` schema in `flow_engine.init_storage()` and `control.lua`. Added automatic re-indexing for existing parked v2 capsules during storage setup and savegame migration.
+2. **Parked Lifecycle Tracking (`scripts/flow/capsule-runner.lua`):** Implemented `mark_capsule_parked` and `mark_capsule_unparked` helper functions. Registered capsules in `storage.parked_by_port` upon failed target selection or initial hub injection, and cleanly untracked them when moving, arriving at a destination, or being removed.
+3. **Targeted O(1) Neighbor Wakeups (`scripts/flow/capsule-runner.lua`):** Rewrote `capsule_runner_v2.wake_parked_capsules(target)` to inspect strictly target port keys, sister unit ports (`storage.flow_unit_ports`), and adjacent flow connections (`storage.flow_connections`), completely eliminating `pairs(storage.capsules)` map sweeps.
+4. **Stagger Timer Protection (`scripts/flow/capsule-runner.lua`):** Enforced parked-only retry timer resets (`to_port_key == nil`), preventing active moving capsules from having their 6-tick motion stagger timers wiped by nearby hops.
+
+
+# Revision Entry
+### Revision: Stage 2 Zero-Allocation Scratch Buffers in Pathfinding & Hop Evaluation
+**Date:** 2026-09-02 11:43 (EDT)
+**Context:** Eliminate Lua Garbage Collection (GC) table churn and memory allocations during active capsule pathfinding, downstream hop evaluation, and neighbor wakeups in the v2 flow engine.
+**Key Changes:**
+1. **Module-Level Persistent Scratch Buffers (`scripts/flow/capsule-runner.lua`):** Initialized persistent top-level scratch tables (`scratch_cand_keys`, `scratch_cand_vias`, `scratch_cand_is_ext`, `scratch_cand_counts`, `scratch_best_keys`, `scratch_best_vias`, `scratch_best_is_ext`, `scratch_best_count`, `scratch_ports_to_wake`) to eliminate temporary table object creation (`{}`) during runtime movement.
+2. **Tier-Indexed Candidate Hop Resolution (`scripts/flow/capsule-runner.lua`):** Refactored `get_candidate_hops` to populate tiered scratch arrays by candidate evaluation depth (tiers 1–3), avoiding buffer overwrites during nested machine exit checks in `is_hop_valid` and `select_next_target`.
+3. **Max-Drop Candidate Selection & Wakeup Optimization (`scripts/flow/capsule-runner.lua`):** Refactored `select_next_target`, `wake_parked_capsules`, and `find_best_hub_outbound_port` to score pressure drops, resolve neighbor wakeups, and fetch port keys directly from scratch buffers and `storage.flow_unit_ports`, removing GC allocations from runtime path evaluation.
+
+
+### Revision: Flow v2 Wavefront Engine Idle Sleep & Fast-Path Debug Render Guards
+**Date:** 2026-09-02 12:09 (EDT)
+**Context:** Implement Stage 3 performance optimizations for the v2 flow engine, adding fast-path debug rendering short-circuits and validating 0-tick idle sleep behavior for steady-state networks.
+**Key Changes:**
+1. **Fast-Path Debug Overlay Guards (`scripts/flow/flow-engine.lua`):** Added `if not is_debug_active("new_flow") then return end` as a line-1 short-circuit in `update_port_render()` and `update_edge_render()`. Bypasses string key formatting (`make_edge_key`), spatial node table queries, and player loop iterations when debug overlays are disabled.
+2. **0-Tick Queue Sleep Validation (`scripts/flow/flow-engine.lua`):** Validated line-2 queue emptiness checks (`if not storage.flow_queue or next(storage.flow_queue) == nil then return end`) in `flow_engine.step(tick)`, ensuring 0.00 ms CPU overhead and 0 Lua GC table allocations during steady-state ticks.
+3. **Steady-State Propagation Convergence (`scripts/flow/flow-engine.lua`):** Confirmed `target_level ~= current_level` delta gating inside batch processing, ensuring unchanged port levels do not re-enqueue internal or external neighbor ports into `storage.flow_queue`.
+
+
+### Revision: Flow v2 Engine Power & Circuit State Sensitivity Integration
+**Date:** 2026-09-02 13:00 (EDT)
+**Context:** Restore electrical power requirements and circuit network state sensitivity for pneumatic pumps and diverters under the Flow v2 wavefront propagation engine, maintaining zero-allocation performance and preserving legacy v1 behavior.
+**Key Changes:**
+1. **Dynamic Emitter Flow Evaluation (`scripts/flow/flow-engine.lua`):** Created `flow_engine.get_node_emitter_level(node)` and `flow_engine.enqueue_unit_ports(unit_number)`. Updated `compute_port_flow_level` to dynamically evaluate active machine power (`entity.energy > 0`), circuit enable toggles, and diverter port modes (`"input"` vs `"output"`) using O(1) storage cache lookups, returning 0 flow level for unpowered or disabled ports.
+2. **v2 Event-Driven State Manager Delegation (`scripts/networks/pump-manager.lua` & `scripts/networks/diverter-manager.lua`):** Updated `rebuild_pump_networks` and `rebuild_diverter_networks` to branch on `FLOW_VERSION == "v2"`, forwarding power and circuit state changes to v2 port enqueues (`enqueue_unit_ports`) and targeted parked capsule wakeups (`wake_parked_capsules`).
+3. **Motion Engine Power & Hop Gating (`scripts/flow/capsule-runner.lua`):** Updated `is_hop_valid` to reject movement into unpowered or disabled machine ports. Refactored `select_next_target` so internal pump push (`drop = math.huge`) and downstream diverter exit lookahead (`effective_from`) evaluate dynamic active emitter levels instead of static prototype definitions.
+
+
+### Revision: Flow v2 Alt Mode Rendering Sensitivity & v1 Debug Panel Gating
+**Date:** 2026-09-02 14:04 (EDT)
+**Context:** Ensure Flow v2 visual debug overlays natively respect Factorio Alt Mode settings and remove legacy v1-specific debug controls from the Pneumatic Control Panel frame when operating in v2 flow mode.
+**Key Changes:**
+1. **Alt Mode Render Flags (`scripts/flow/flow-engine.lua`):** Added `only_in_alt_mode = true` parameter to `rendering.draw_circle`, `rendering.draw_text`, and `rendering.draw_line` calls in `update_port_render` and `update_edge_render`. Overlays now automatically hide when players toggle off Alt Mode.
+2. **v1 Debug Panel Control Removal (`scripts/debug-manager.lua`):** Guarded `pneumatic_debug_chk_flow` (v1 Flow Overlay) and `pneumatic_debug_chk_ports` (v1 Port Markers) UI checkboxes behind `FLOW_VERSION == "v1"` in `open_panel` and `refresh_panel`. When v2 is selected, legacy v1 controls are omitted from the Pneumatic Control Panel.
+3. **Symmetrical Shortcut & Command Event Gating (`scripts/debug-manager.lua`):** Updated `update_player_shortcuts`, `toggle_master`, `toggle_flow`, `toggle_ports`, and `on_gui_checked_state_changed` to condition v1 port and flow rendering triggers behind `FLOW_VERSION == "v1"`, isolating v1 and v2 debug overlay behavior.
+
+
+### Revision: Default v2 Flow Engine & Debug Panel Overlay Standardization
+**Date:** 2026-09-02 14:30 (EDT)
+**Context:** Promote the event-driven v2 flow engine to the default startup setting, enable the flow vector overlay by default, and remove legacy "New" phrasing across debug panel UI captions and command feedback.
+**Key Changes:**
+1. **Default Startup Engine Setting (`settings.lua`):** Updated `pneumatic-flow-version` default setting value from `"v1"` to `"v2"`.
+2. **Debug Panel UI Caption (`scripts/debug-manager.lua`):** Updated the v2 flow overlay checkbox label in `open_panel` from `"New Flow Engine (Alt Mode)"` to `"Flow Engine (Alt Mode)"`.
+3. **Default Overlay Enabled (`scripts/debug-manager.lua`):** Updated `get_debug()` to default `new_flow = true` for new player debug storage initializations and missing schema fallbacks.
+4. **Command & Chat Feedback Cleanups (`scripts/debug-manager.lua`):** Sanitized chat status print feedback and command descriptions for `/toggle-new-flow` and `/pt-toggle-new-flow` to standardize messaging.
+
+
+### Revision: Flow v2 Entity Destruction Registration & Silent Sandbox Purge
+**Date:** 2026-09-02 20:07 (EDT)
+**Context:** Register pneumatic entities with script.register_on_object_destroyed to cleanly purge flows, capsules, and liminal item holders during bulk entity deletions (such as Sandbox mode "remove all entities", chunk deletions, or direct script destructions) without spilling cargo onto the ground.
+**Key Changes:**
+1. **Object Destruction Mapping (`scripts/flow/flow-engine.lua` & `control.lua`):** Initialized `storage.object_destruction_map` schema in `control.lua` and `flow-engine.lua`. Updated `flow_engine.connect_entity` to register valid pneumatic structures with `script.register_on_object_destroyed(entity)` during entity placement and surface setup scans, mapping registration IDs to entity unit numbers.
+2. **Object Destruction Event Handler (`scripts/flow/flow-engine.lua`):** Registered `defines.events.on_object_destroyed` event listener. Implemented `flow_engine.handle_object_destroyed(unit_number)` to query active/parked capsules, safely destroy linked liminal item holders on `liminal_surface` (`capsule_manager.remove`) without spilling cargo, disconnect flow engine ports (`disconnect_entity`), and clear active machine tracking tables.
+3. **Idempotent Deconstruction Fallback (`scripts/flow/flow-engine.lua`):** Preserved standard cargo spilling for routine player/robot mining and combat death events while utilizing `on_object_destroyed` as a silent fallback when entities are destroyed without standard mining events firing.
+
+
+### Revision: Liminal Holder Destruction Registration & Silent v2 Flow Purge
+**Date:** 2026-09-02 21:01 (EDT)
+**Context:** Register liminal item holder entities with script.register_on_object_destroyed so that when liminal surface entities are wiped (e.g., via sandbox "remove all entities", chunk deletions, or script destructions), linked capsules, spatial occupancy, and passenger references are cleanly purged from the v2 flow engine without leaving orphan tracking data or stalling tube traffic.
+**Key Changes:**
+1. **Liminal Holder Object Destruction Registration (`scripts/capsules/capsule-manager.lua` & `control.lua`):** Updated `capsule_manager.register` to invoke `script.register_on_object_destroyed(holder_entity)` and record registration IDs in `storage.object_destruction_map` as `{ type = "capsule", id = capsule_id }`. Updated `setup_storage()` in `control.lua` to re-register active capsule holders during save game loads and configuration changes.
+2. **Typed Destruction Mapping (`scripts/flow/flow-engine.lua`):** Updated `flow_engine.connect_entity` to store object destruction entries as `{ type = "entity", unit_number = unit_number }`, allowing `defines.events.on_object_destroyed` to distinguish between pneumatic structures and liminal capsule holders while preserving backwards compatibility for legacy numeric entries.
+3. **Silent Capsule Destruction Handler (`scripts/flow/flow-engine.lua`):** Created `flow_engine.handle_capsule_destroyed(capsule_id)` to handle holder deletion events. Unparks the capsule from `storage.parked_by_port`, teleports riding passengers (`cap.passenger`) to a safe ground position, clears spatial occupancy (`capsule_queries.remove_capsule`), releases off-grid liminal positions (`capsule_manager.remove`), and automatically wakes upstream parked capsules waiting at the target port key to prevent network flow lockups.
+
+#### next ver
+
+

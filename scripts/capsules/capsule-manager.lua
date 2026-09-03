@@ -23,6 +23,12 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
     capsule_manager.init()
     local capsule_id = holder_entity.unit_number
     local pos = holder_entity.position
+
+    if script.register_on_object_destroyed then
+        local reg_id = script.register_on_object_destroyed(holder_entity)
+        storage.object_destruction_map = storage.object_destruction_map or {}
+        storage.object_destruction_map[reg_id] = { type = "capsule", id = capsule_id }
+    end
     
     storage.active_capsules[capsule_id] = {
         holder = holder_entity,

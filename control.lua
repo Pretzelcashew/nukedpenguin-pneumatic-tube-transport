@@ -52,6 +52,15 @@ local function setup_storage()
         storage.parked_by_port = storage.parked_by_port or {}
         storage.object_destruction_map = storage.object_destruction_map or {}
 
+        if storage.active_capsules and script.register_on_object_destroyed then
+            for cap_id, cap_data in pairs(storage.active_capsules) do
+                if cap_data.holder and cap_data.holder.valid then
+                    local reg_id = script.register_on_object_destroyed(cap_data.holder)
+                    storage.object_destruction_map[reg_id] = { type = "capsule", id = cap_id }
+                end
+            end
+        end
+
         if storage.capsules then
             for cap_id, capsule in pairs(storage.capsules) do
                 if capsule.from_port_key and capsule.to_port_key == nil and capsule.next_retry_tick then

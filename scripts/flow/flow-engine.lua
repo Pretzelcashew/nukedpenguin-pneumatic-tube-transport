@@ -329,7 +329,7 @@ function flow_engine.connect_entity(entity)
     if script.register_on_object_destroyed then
         local reg_id = script.register_on_object_destroyed(entity)
         storage.object_destruction_map = storage.object_destruction_map or {}
-        storage.object_destruction_map[reg_id] = unit_number
+        storage.object_destruction_map[reg_id] = { type = "entity", unit_number = unit_number }
     end
 
     local ports = port_defs.get_ports(entity)
@@ -424,6 +424,52 @@ function flow_engine.disconnect_entity(entity)
 
     if storage.flow_unit_ports then
         storage.flow_unit_ports[unit_number] = nil
+    end
+end
+
+function flow_engine.handle_capsule_destroyed(capsule_id)
+    if not capsule_id then return end
+
+    local cap = storage.capsules and storage.capsules[capsule_id]
+    local target_key = cap and cap.from_port_key
+
+    if storage.parked_by_port and cap then
+        if cap.parked_at_port then
+            local bucket = storage.parked_by_port[cap.parked_at_port]
+            if bucket then
+                bucket[capsule_id] = nil
+                if next(bucket) == nil then
+                    storage.parked_by_port[cap.parked_at_port] = nil
+                end
+            end
+        end
+    end
+
+    if cap and cap.passenger and cap.passenger.valid then
+        local player = cap.passenger
+        local surface = player.surface
+        local pos = player.position
+        local safe_pos = surface and surface.find_non_colliding_position("character", pos, 4, 0.5) or pos
+        if safe_pos and surface then
+            player.teleport(safe_pos, surface)
+        end
+    end
+
+    capsule_queries.remove_capsule(capsule_id)
+    capsule_manager.remove(capsule_id)
+
+    if target_key and storage.parked_by_port then
+        local bucket = storage.parked_by_port[target_key]
+        if bucket then
+            for cap_id in pairs(bucket) do
+                local parked_cap = storage.capsules and storage.capsules[cap_id]
+                if parked_cap and parked_cap.to_port_key == nil then
+                    parked_cap.next_retry_tick = nil
+                    parked_cap.last_failed_hub = nil
+                    parked_cap.last_port_key = nil
+                end
+            end
+        end
     end
 end
 
@@ -606,11 +652,20 @@ function flow_engine.register_events()
         local reg_id = event.registration_number
         if not reg_id or not storage.object_destruction_map then return end
 
-        local unit_number = storage.object_destruction_map[reg_id]
-        if not unit_number then return end
+        local entry = storage.object_destruction_map[reg_id]
+        if not entry then return end
 
         storage.object_destruction_map[reg_id] = nil
-        flow_engine.handle_object_destroyed(unit_number)
+
+        if type(entry) == "table" then
+            if entry.type == "capsule" then
+                flow_engine.handle_capsule_destroyed(entry.id)
+            elseif entry.type == "entity" then
+                flow_engine.handle_object_destroyed(entry.unit_number)
+            end
+        elseif type(entry) == "number" then
+            flow_engine.handle_object_destroyed(entry)
+        end
     end)
 
     local build_events = {

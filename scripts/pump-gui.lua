@@ -1,6 +1,6 @@
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
-local pump_manager = require("scripts.networks.pump-manager")
+local pump_manager = require("scripts.pump-manager")
 
 local pump_gui = {}
 

@@ -1,1 +1,0 @@
--- Obsolete v1 network placement event listener (decoupled in Stage 2, slated for purge in Stage 3)

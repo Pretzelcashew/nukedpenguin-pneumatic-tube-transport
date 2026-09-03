@@ -9,8 +9,8 @@ require("scripts.diverter-gui")
 require("scripts.pump-settings")
 require("scripts.pump-gui")
 require("scripts.capsules.capsule-runner")
-require("scripts.networks.pump-manager")
-require("scripts.networks.diverter-manager")
+require("scripts.pump-manager")
+require("scripts.diverter-manager")
 require("scripts.capsules.capsule-inputs")
 
 require("prototypes.pneumatic-diverter-proxy-linkage")
@@ -24,7 +24,13 @@ flow_engine.register_events()
 v2_capsule_runner.register_events()
 
 local function setup_storage()
-    storage.port_connections = storage.port_connections or {}
+    -- Clear legacy v1 storage tables
+    storage.networks = nil
+    storage.port_connections = nil
+    storage.port_pressures = nil
+    storage.network_rebuild_queue = nil
+    storage.port_to_network = nil
+
     storage.active_hubs = storage.active_hubs or {}
     storage.hub_settings = storage.hub_settings or {}
     storage.diverter_settings = storage.diverter_settings or {}
@@ -73,4 +79,11 @@ local function setup_storage()
 end
 
 script.on_init(setup_storage)
-script.on_configuration_changed(setup_storage)
+script.on_configuration_changed(function(data)
+    storage.networks = nil
+    storage.port_connections = nil
+    storage.port_pressures = nil
+    storage.network_rebuild_queue = nil
+    storage.port_to_network = nil
+    setup_storage(data)
+end)

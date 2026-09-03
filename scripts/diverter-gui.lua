@@ -1,6 +1,6 @@
 local events = require("scripts.events")
 local diverter_settings = require("scripts.diverter-settings")
-local diverter_manager = require("scripts.networks.diverter-manager")
+local diverter_manager = require("scripts.diverter-manager")
 
 local diverter_gui = {}
 

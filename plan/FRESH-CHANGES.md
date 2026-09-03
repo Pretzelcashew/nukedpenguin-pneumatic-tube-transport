@@ -30,3 +30,12 @@
 1. **Pump & Diverter State Managers (`scripts/networks/pump-manager.lua`, `scripts/networks/diverter-manager.lua`):** Removed top-level requires for `network-rebuild-engine` and `port-definitions`. Simplified `rebuild_pump_networks` and `rebuild_diverter_networks` to unconditionally route machine power and state updates directly to `flow_engine.enqueue_unit_ports` and `capsule_runner.wake_parked_capsules`.
 2. **Placement & Removal Hooks (`scripts/networks/network-connect.lua`, `scripts/networks/network-disconnect.lua`):** Removed legacy `network_validate` and `network_invalidate` execution calls on entity placement and destruction. Retained `hub_spill.handle_entity_destruction` in `network-disconnect.lua` to preserve cargo spillage on structure destruction.
 3. **Orientation Event Handler (`scripts/networks/network-rotate.lua`):** Purged v1 network invalidation and re-validation calls from `on_player_rotated_entity` and `on_player_flipped_entity` event listeners while preserving proxy linkage settings notifications (`notify_settings_changed`) for pumps and diverters.
+
+
+### Revision: Stage 3 v1 Engine Removal — Obsolete File Purge, Manager Relocation & Storage Migration
+**Date:** 2026-09-03 10:45 (EDT)
+**Context:** Execute Stage 3 of the v1 deprecation plan by deleting obsolete v1 network graph, port topology, and legacy motion files, relocating active machine state managers out of `scripts/networks/`, and implementing save-game storage cleanup.
+**Key Changes:**
+1. **Obsolete File Purge (`scripts/networks/`, `scripts/ports/`, `scripts/capsules/`):** Deleted 25 legacy v1 source files including network graph rebuild engines, port evaluators, flow/pressure calculators, edge handlers, and the obsolete `capsule-motion.lua` script.
+2. **Machine Manager Relocation (`scripts/pump-manager.lua`, `scripts/diverter-manager.lua`):** Moved active `pump-manager.lua` and `diverter-manager.lua` scripts out of `scripts/networks/` into `scripts/`. Updated all top-level `require` paths across `control.lua`, `pump-gui.lua`, and `diverter-gui.lua`.
+3. **Storage Migration & Save Cleanup (`control.lua`):** Added explicit `nil`-clearing migration logic in `script.on_configuration_changed` for legacy v1 storage tables (`storage.networks`, `storage.port_connections`, `storage.port_pressures`, `storage.network_rebuild_queue`, `storage.port_to_network`) to free save-game memory.

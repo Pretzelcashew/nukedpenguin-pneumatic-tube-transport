@@ -5,9 +5,8 @@ data:extend({
     enabled = false,
     energy_required = 2.0,
     ingredients = {
-      {type = "item", name = "steel-plate", amount = 4},
-      {type = "item", name = "plastic-bar", amount = 2},
-      {type = "item", name = "electronic-circuit", amount = 1}
+      {type = "item", name = "steel-plate", amount = 1},
+      {type = "item", name = "plastic-bar", amount = 1}
     },
     results = {
       {type = "item", name = "item-capsule", amount = 1}
@@ -16,7 +15,7 @@ data:extend({
   {
     type = "recipe",
     name = "biodegradable-capsule",
-    categories = {"organic", "crafting-with-fluid"},
+    categories = {"organic"},
     enabled = false,
     energy_required = 1.0,
     ingredients = {
@@ -31,16 +30,35 @@ data:extend({
   {
     type = "recipe",
     name = "refrigerated-capsule",
+    categories = {"crafting-with-fluid"},
     enabled = false,
     energy_required = 3.0,
     ingredients = {
-      {type = "item", name = "item-capsule", amount = 1},
-      {type = "item", name = "copper-cable", amount = 6},
-      {type = "item", name = "plastic-bar", amount = 4},
-      {type = "item", name = "electronic-circuit", amount = 2}
+      {type = "fluid", name = "fluoroketone-cold", amount = 125},
+      {type = "item", name = "lithium-plate", amount = 8},
+      {type = "item", name = "superconductor", amount = 10},
+      {type = "item", name = "low-density-structure", amount = 2}
     },
     results = {
       {type = "item", name = "refrigerated-capsule", amount = 1}
+    }
+  },
+  {
+    type = "recipe",
+    name = "recharge-refrigerated-capsule",
+    categories = {"crafting-with-fluid"},
+    enabled = false,
+    energy_required = 2.0,
+    icons = {
+      { icon = "__space-age__/graphics/icons/ice.png", icon_size = 64, tint = {r = 0.40, g = 0.80, b = 1.00, a = 1.0} }
+    },
+    ingredients = {
+      {type = "item", name = "spent-refrigerated-capsule", amount = 1},
+      {type = "fluid", name = "fluoroketone-cold", amount = 125}
+    },
+    results = {
+      {type = "item", name = "refrigerated-capsule", amount = 1},
+      {type = "fluid", name = "fluoroketone-hot", amount = 100}
     }
   },
   {
@@ -49,9 +67,8 @@ data:extend({
     enabled = false,
     energy_required = 4.0,
     ingredients = {
-      {type = "item", name = "item-capsule", amount = 1},
-      {type = "item", name = "steel-plate", amount = 8},
-      {type = "item", name = "advanced-circuit", amount = 2}
+      {type = "item", name = "tungsten-carbide", amount = 8},
+      {type = "item", name = "low-density-structure", amount = 2}
     },
     results = {
       {type = "item", name = "reinforced-capsule", amount = 1}
@@ -63,10 +80,8 @@ data:extend({
     enabled = false,
     energy_required = 5.0,
     ingredients = {
-      {type = "item", name = "item-capsule", amount = 1},
-      {type = "item", name = "steel-plate", amount = 10},
-      {type = "item", name = "advanced-circuit", amount = 4},
-      {type = "item", name = "electric-engine-unit", amount = 1}
+      {type = "item", name = "low-density-structure", amount = 2},
+      {type = "item", name = "advanced-circuit", amount = 1}
     },
     results = {
       {type = "item", name = "player-transit-capsule", amount = 1}
@@ -78,10 +93,8 @@ data:extend({
     enabled = false,
     energy_required = 3.5,
     ingredients = {
-      {type = "item", name = "steel-chest", amount = 1},
-      {type = "item", name = "steel-plate", amount = 4},
-      {type = "item", name = "advanced-circuit", amount = 2},
-      {type = "item", name = "electric-engine-unit", amount = 1}
+      {type = "item", name = "steel-plate", amount = 16},
+      {type = "item", name = "advanced-circuit", amount = 10}
     },
     results = {
       {type = "item", name = "capsule-hub-horizontal", amount = 1}
@@ -93,10 +106,8 @@ data:extend({
     enabled = false,
     energy_required = 3.5,
     ingredients = {
-      {type = "item", name = "steel-chest", amount = 1},
-      {type = "item", name = "steel-plate", amount = 4},
-      {type = "item", name = "advanced-circuit", amount = 2},
-      {type = "item", name = "electric-engine-unit", amount = 1}
+      {type = "item", name = "steel-plate", amount = 16},
+      {type = "item", name = "advanced-circuit", amount = 10}
     },
     results = {
       {type = "item", name = "capsule-hub-vertical", amount = 1}
@@ -109,11 +120,10 @@ data:extend({
     energy_required = 1.0,
     ingredients = {
       {type = "item", name = "steel-plate", amount = 2},
-      {type = "item", name = "copper-plate", amount = 1},
-      {type = "item", name = "plastic-bar", amount = 1}
+      {type = "item", name = "plastic-bar", amount = 8}
     },
     results = {
-      {type = "item", name = "pneumatic-tube", amount = 2}
+      {type = "item", name = "pneumatic-tube", amount = 1}
     }
   },
   {
@@ -122,10 +132,8 @@ data:extend({
     enabled = false,
     energy_required = 3.0,
     ingredients = {
-      {type = "item", name = "pump", amount = 1},
-      {type = "item", name = "engine-unit", amount = 1},
-      {type = "item", name = "steel-plate", amount = 5},
-      {type = "item", name = "advanced-circuit", amount = 2}
+      {type = "item", name = "pneumatic-tube", amount = 1},
+      {type = "item", name = "engine-unit", amount = 1}
     },
     results = {
       {type = "item", name = "pneumatic-pump", amount = 1}
@@ -137,9 +145,8 @@ data:extend({
     enabled = false,
     energy_required = 1.5,
     ingredients = {
-      {type = "item", name = "pneumatic-tube", amount = 4},
-      {type = "item", name = "steel-plate", amount = 2},
-      {type = "item", name = "advanced-circuit", amount = 1}
+      {type = "item", name = "steel-plate", amount = 4},
+      {type = "item", name = "plastic-bar", amount = 4}
     },
     results = {
       {type = "item", name = "junction", amount = 1}
@@ -151,9 +158,8 @@ data:extend({
     enabled = false,
     energy_required = 1.5,
     ingredients = {
-      {type = "item", name = "pneumatic-tube", amount = 4},
       {type = "item", name = "steel-plate", amount = 4},
-      {type = "item", name = "advanced-circuit", amount = 2}
+      {type = "item", name = "plastic-bar", amount = 4}
     },
     results = {
       {type = "item", name = "crossflow-junction", amount = 1}
@@ -165,10 +171,9 @@ data:extend({
     enabled = false,
     energy_required = 3.0,
     ingredients = {
-      {type = "item", name = "junction", amount = 1},
-      {type = "item", name = "steel-plate", amount = 6},
-      {type = "item", name = "advanced-circuit", amount = 4},
-      {type = "item", name = "electric-engine-unit", amount = 2}
+      {type = "item", name = "pneumatic-tube", amount = 4},
+      {type = "item", name = "engine-unit", amount = 4},
+      {type = "item", name = "advanced-circuit", amount = 12}
     },
     results = {
       {type = "item", name = "pneumatic-diverter", amount = 1}

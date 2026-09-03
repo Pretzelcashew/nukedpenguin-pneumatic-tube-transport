@@ -1,6 +1,7 @@
 local events = require("scripts.events")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 local debug_manager = require("scripts.debug-manager")
+local proxy_manager = require("scripts.proxy-manager")
 
 require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
@@ -13,13 +14,11 @@ require("scripts.pump-manager")
 require("scripts.diverter-manager")
 require("scripts.capsules.capsule-inputs")
 
-require("prototypes.pneumatic-diverter-proxy-linkage")
-require("prototypes.pneumatic-pump-proxy-linkage")
-
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 
+proxy_manager.register_events()
 flow_engine.register_events()
 capsule_runner.register_events()
 

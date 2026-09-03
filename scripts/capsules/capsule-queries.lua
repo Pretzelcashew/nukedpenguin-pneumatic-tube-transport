@@ -1,5 +1,4 @@
-local port_defs = require("scripts.ports.port-definitions")
-local networks = require("scripts.networks.networks")
+local port_defs = require("scripts.flow.port-defs")
 
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 
@@ -47,25 +46,12 @@ end
 --- @param port_key string
 --- @return number|nil
 function capsule_queries.get_port_group(port_key)
-    if not (port_key and storage.networks and storage.networks.port_to_network) then return nil end
-    local net_id = storage.networks.port_to_network[port_key]
-    if not net_id then return nil end
-
-    local flow_map = networks.get_metadata(net_id, "flow_map")
-    local node = flow_map and flow_map[port_key]
-    if not node then return nil end
-
-    if node.group ~= nil then
-        return node.group ~= false and node.group or nil
+    if not port_key then return nil end
+    local node = storage.flow_nodes and storage.flow_nodes[port_key]
+    if node and node.group ~= nil then
+        return node.group
     end
-
-    if not (node.entity and node.entity.valid and node.port_index) then return nil end
-
-    local ports = port_defs.get_ports(node.entity)
-    local port_def = ports and ports[node.port_index]
-    local group = port_def and port_def.group
-    node.group = (group ~= nil) and group or false
-    return group
+    return nil
 end
 
 --- Helper to resolve (unit_number, net_id, group) tuple for a given port_key
@@ -78,9 +64,8 @@ local function get_port_descriptor(port_key)
     local unit_number = capsule_queries.get_port_info(port_key)
     if not unit_number then return nil, nil, nil end
 
-    local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
     local group = capsule_queries.get_port_group(port_key) or 0
-    return unit_number, net_id, group
+    return unit_number, 1, group
 end
 
 --- Internal helper to add a capsule to a specific (unit_number, net_id, group) occupancy bucket

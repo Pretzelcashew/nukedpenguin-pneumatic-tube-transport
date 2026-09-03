@@ -21,3 +21,12 @@
 2. **Unconditional v2 Entry Point Registration (`control.lua`):** Removed legacy v1 module imports (`networks`, `networks-flow`, `port-renderer`, `port-finder`, `network-connect`, `network-disconnect`, `network-rotate`). Updated lifecycle hooks to unconditionally initialize v2 `flow_engine` and `v2_capsule_runner` event listeners and storage structures.
 3. **Capsule Runner Facade Alias (`scripts/capsules/capsule-runner.lua`):** Purged over 500 lines of legacy v1 motion calculation loops, pressure queries, and event handlers; converted script into a zero-allocation direct passthrough returning `require("scripts.flow.capsule-runner")`.
 4. **Debug Interface & Command Consolidation (`scripts/debug-manager.lua`):** Purged legacy v1 UI checkboxes (`pneumatic_debug_chk_flow`, `pneumatic_debug_chk_ports`) and commands (`/toggle-ports`). Re-mapped `/toggle-flow` and `/pt-toggle-flow` directly to control the v2 Alt Mode flow engine vector overlay.
+
+
+### Revision: Stage 2 v1 Engine Removal — Decouple Machine Managers & Lifecycle Hooks
+**Date:** 2026-09-03 10:40 (EDT)
+**Context:** Execute Stage 2 of the v1 deprecation plan by disconnecting legacy network graph rebuilding (`network-rebuild-engine`, `port-definitions`) and `FLOW_VERSION` gating from machine state managers and entity lifecycle event handlers.
+**Key Changes:**
+1. **Pump & Diverter State Managers (`scripts/networks/pump-manager.lua`, `scripts/networks/diverter-manager.lua`):** Removed top-level requires for `network-rebuild-engine` and `port-definitions`. Simplified `rebuild_pump_networks` and `rebuild_diverter_networks` to unconditionally route machine power and state updates directly to `flow_engine.enqueue_unit_ports` and `capsule_runner.wake_parked_capsules`.
+2. **Placement & Removal Hooks (`scripts/networks/network-connect.lua`, `scripts/networks/network-disconnect.lua`):** Removed legacy `network_validate` and `network_invalidate` execution calls on entity placement and destruction. Retained `hub_spill.handle_entity_destruction` in `network-disconnect.lua` to preserve cargo spillage on structure destruction.
+3. **Orientation Event Handler (`scripts/networks/network-rotate.lua`):** Purged v1 network invalidation and re-validation calls from `on_player_rotated_entity` and `on_player_flipped_entity` event listeners while preserving proxy linkage settings notifications (`notify_settings_changed`) for pumps and diverters.

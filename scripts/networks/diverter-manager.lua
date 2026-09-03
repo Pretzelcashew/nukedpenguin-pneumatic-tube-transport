@@ -1,11 +1,7 @@
 local events = require("scripts.events")
-local network_rebuild_engine = require("scripts.networks.network-rebuild-engine")
-local port_defs = require("scripts.ports.port-definitions")
 local diverter_settings = require("scripts.diverter-settings")
 local flow_engine = require("scripts.flow.flow-engine")
 local capsule_runner = require("scripts.capsules.capsule-runner")
-
-local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 
 local diverter_manager = {}
 local SCAN_INTERVAL = 15
@@ -23,23 +19,8 @@ end
 
 local function rebuild_diverter_networks(entity)
     if not (entity and entity.valid) then return end
-    local unit_number = entity.unit_number
-
-    if FLOW_VERSION == "v2" then
-        flow_engine.enqueue_unit_ports(unit_number)
-        capsule_runner.wake_parked_capsules(unit_number)
-    else
-        local ports = port_defs.get_ports(entity)
-        if not ports then return end
-
-        for p_idx, _ in ipairs(ports) do
-            local port_key = unit_number .. ":" .. p_idx
-            local net_id = storage.networks and storage.networks.port_to_network and storage.networks.port_to_network[port_key]
-            if net_id then
-                network_rebuild_engine.mark_dirty(net_id)
-            end
-        end
-    end
+    flow_engine.enqueue_unit_ports(entity.unit_number)
+    capsule_runner.wake_parked_capsules(entity.unit_number)
 end
 
 function diverter_manager.notify_settings_changed(entity)

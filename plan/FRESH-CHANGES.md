@@ -33,3 +33,10 @@
 1. **Pneumatic Pump GUI Refactoring (`scripts/pump-gui.lua`):** Streamlined interface construction using declarative `gui_components` helpers (`create_relative_window`, `add_header`, `add_wire_channel_toggles`, `add_card_frame`, `add_circuit_condition_panel`), routing configuration edits directly to `active_device_scanner.notify_settings_changed(entity)`.
 2. **Pneumatic Diverter GUI Refactoring (`scripts/diverter-gui.lua`):** Standardized titlebar headers, wire channel switches, circuit condition panels, directional mode switches (`add_labeled_switch`), and 5-slot item filter selectors (`add_filter_slot`) using `gui_components` helpers while preserving the 2x2 directional port card layout.
 3. **Unified Notification Routing (`scripts/pump-gui.lua`, `scripts/diverter-gui.lua`):** Updated all GUI event listeners (checkbox, dropdown, textfield, element selection, switch toggle) to trigger immediate port state re-evaluations and wake parked capsules via `active_device_scanner`.
+
+
+### Revision: Factorio 2.1 Read-Only Proxy Minable Fix
+**Date:** 2026-09-03 13:00 (EDT)
+**Context:** Resolve runtime crash (`LuaEntity::minable is read only`) occurring during entity build events when initializing hidden circuit proxies for pneumatic pumps and diverters.
+**Key Changes:**
+1. **Runtime Property Assignment Fix (`scripts/proxy-manager.lua`):** Removed `proxy.minable = false` property assignment in `on_created`. In Factorio 2.0+, `LuaEntity.minable` is read-only at runtime; proxy unminability is governed at the prototype stage via flags (`"not-minable"`).

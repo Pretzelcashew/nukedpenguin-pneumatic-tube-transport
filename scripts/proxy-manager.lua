@@ -69,7 +69,6 @@ local function on_created(event)
         }
         if proxy then
             proxy.destructible = false
-            proxy.minable = false
             proxy.operable = false
         end
     end

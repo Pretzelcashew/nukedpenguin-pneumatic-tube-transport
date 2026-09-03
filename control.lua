@@ -2,6 +2,7 @@ local events = require("scripts.events")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 local debug_manager = require("scripts.debug-manager")
 local proxy_manager = require("scripts.proxy-manager")
+local active_device_scanner = require("scripts.active-device-scanner")
 
 require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
@@ -10,8 +11,6 @@ require("scripts.diverter-gui")
 require("scripts.pump-settings")
 require("scripts.pump-gui")
 require("scripts.capsules.capsule-runner")
-require("scripts.pump-manager")
-require("scripts.diverter-manager")
 require("scripts.capsules.capsule-inputs")
 
 local port_defs = require("scripts.flow.port-defs")
@@ -19,6 +18,7 @@ local flow_engine = require("scripts.flow.flow-engine")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 
 proxy_manager.register_events()
+active_device_scanner.register_events()
 flow_engine.register_events()
 capsule_runner.register_events()
 
@@ -34,8 +34,12 @@ local function setup_storage()
     storage.hub_settings = storage.hub_settings or {}
     storage.diverter_settings = storage.diverter_settings or {}
     storage.pump_settings = storage.pump_settings or {}
+    storage.active_pumps = storage.active_pumps or {}
+    storage.pump_power_states = storage.pump_power_states or {}
+    storage.pump_enabled_states = storage.pump_enabled_states or {}
     storage.active_diverters = storage.active_diverters or {}
     storage.diverter_power_states = storage.diverter_power_states or {}
+    storage.diverter_port_states = storage.diverter_port_states or {}
     storage.bio_integrity_levels = storage.bio_integrity_levels or {}
 
     liminal_surface.init_storage()

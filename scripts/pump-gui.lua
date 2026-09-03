@@ -1,6 +1,6 @@
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
-local pump_manager = require("scripts.pump-manager")
+local active_device_scanner = require("scripts.active-device-scanner")
 
 local pump_gui = {}
 
@@ -17,7 +17,7 @@ end
 local function notify_change(unit_number)
     local entity = storage.active_pumps and storage.active_pumps[unit_number]
     if entity and entity.valid then
-        pump_manager.notify_settings_changed(entity)
+        active_device_scanner.notify_settings_changed(entity)
     end
 end
 

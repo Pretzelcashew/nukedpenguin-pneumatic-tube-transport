@@ -1,6 +1,6 @@
 local events = require("scripts.events")
 local diverter_settings = require("scripts.diverter-settings")
-local diverter_manager = require("scripts.diverter-manager")
+local active_device_scanner = require("scripts.active-device-scanner")
 
 local diverter_gui = {}
 
@@ -22,7 +22,7 @@ end
 local function notify_change(unit_number)
     local entity = storage.active_diverters and storage.active_diverters[unit_number]
     if entity and entity.valid then
-        diverter_manager.notify_settings_changed(entity)
+        active_device_scanner.notify_settings_changed(entity)
     end
 end
 

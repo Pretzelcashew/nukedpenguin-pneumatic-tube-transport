@@ -50,6 +50,7 @@ local function setup_storage()
     if FLOW_VERSION == "v2" then
         flow_engine.init_storage()
         storage.parked_by_port = storage.parked_by_port or {}
+        storage.object_destruction_map = storage.object_destruction_map or {}
 
         if storage.capsules then
             for cap_id, capsule in pairs(storage.capsules) do

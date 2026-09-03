@@ -2,6 +2,8 @@ local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
+local capsule_queries = require("scripts.capsules.capsule-queries")
+local capsule_manager = require("scripts.capsules.capsule-manager")
 
 local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 
@@ -49,6 +51,7 @@ function flow_engine.init_storage()
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
     storage.parked_by_port = storage.parked_by_port or {}
+    storage.object_destruction_map = storage.object_destruction_map or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -321,10 +324,17 @@ function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if not registered_entities[entity.name] then return end
 
+    local unit_number = entity.unit_number
+
+    if script.register_on_object_destroyed then
+        local reg_id = script.register_on_object_destroyed(entity)
+        storage.object_destruction_map = storage.object_destruction_map or {}
+        storage.object_destruction_map[reg_id] = unit_number
+    end
+
     local ports = port_defs.get_ports(entity)
     if not ports then return end
 
-    local unit_number = entity.unit_number
     local surface_name = entity.surface.name
     local ex, ey = entity.position.x, entity.position.y
 
@@ -415,6 +425,55 @@ function flow_engine.disconnect_entity(entity)
     if storage.flow_unit_ports then
         storage.flow_unit_ports[unit_number] = nil
     end
+end
+
+function flow_engine.handle_object_destroyed(unit_number)
+    if not unit_number then return end
+
+    if storage.hub_compartments and storage.hub_compartments[unit_number] then
+        local compartment = storage.hub_compartments[unit_number]
+        for _, capsule_id in ipairs(compartment) do
+            capsule_queries.remove_capsule(capsule_id)
+            capsule_manager.remove(capsule_id)
+        end
+        storage.hub_compartments[unit_number] = nil
+    end
+
+    local runner_ids = capsule_queries.find_capsules_at_entity(unit_number)
+    for _, id in ipairs(runner_ids) do
+        local cap = storage.capsules and storage.capsules[id]
+        local capsule_id = cap and (cap.capsule_id or cap.id) or id
+
+        if storage.parked_by_port and cap then
+            if cap.parked_at_port then
+                local bucket = storage.parked_by_port[cap.parked_at_port]
+                if bucket then
+                    bucket[capsule_id] = nil
+                    if next(bucket) == nil then
+                        storage.parked_by_port[cap.parked_at_port] = nil
+                    end
+                end
+            end
+        end
+
+        capsule_queries.remove_capsule(capsule_id)
+        capsule_manager.remove(capsule_id)
+    end
+
+    flow_engine.disconnect_entity({ unit_number = unit_number })
+
+    if storage.active_hubs then storage.active_hubs[unit_number] = nil end
+    if storage.hub_settings then storage.hub_settings[unit_number] = nil end
+    if storage.hub_receive_locks then storage.hub_receive_locks[unit_number] = nil end
+    if storage.active_pumps then storage.active_pumps[unit_number] = nil end
+    if storage.pump_power_states then storage.pump_power_states[unit_number] = nil end
+    if storage.pump_enabled_states then storage.pump_enabled_states[unit_number] = nil end
+    if storage.pump_settings then storage.pump_settings[unit_number] = nil end
+    if storage.active_diverters then storage.active_diverters[unit_number] = nil end
+    if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
+    if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
+    if storage.diverter_settings then storage.diverter_settings[unit_number] = nil end
+    if storage.spilled_containers then storage.spilled_containers[unit_number] = nil end
 end
 
 --------------------------------------------------------------------------------
@@ -541,6 +600,17 @@ function flow_engine.register_events()
 
     events.on_event(defines.events.on_tick, function(event)
         flow_engine.step(event.tick)
+    end)
+
+    events.on_event(defines.events.on_object_destroyed, function(event)
+        local reg_id = event.registration_number
+        if not reg_id or not storage.object_destruction_map then return end
+
+        local unit_number = storage.object_destruction_map[reg_id]
+        if not unit_number then return end
+
+        storage.object_destruction_map[reg_id] = nil
+        flow_engine.handle_object_destroyed(unit_number)
     end)
 
     local build_events = {

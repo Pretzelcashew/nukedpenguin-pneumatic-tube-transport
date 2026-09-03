@@ -203,3 +203,12 @@
 2. **Debug Panel UI Caption (`scripts/debug-manager.lua`):** Updated the v2 flow overlay checkbox label in `open_panel` from `"New Flow Engine (Alt Mode)"` to `"Flow Engine (Alt Mode)"`.
 3. **Default Overlay Enabled (`scripts/debug-manager.lua`):** Updated `get_debug()` to default `new_flow = true` for new player debug storage initializations and missing schema fallbacks.
 4. **Command & Chat Feedback Cleanups (`scripts/debug-manager.lua`):** Sanitized chat status print feedback and command descriptions for `/toggle-new-flow` and `/pt-toggle-new-flow` to standardize messaging.
+
+
+### Revision: Flow v2 Entity Destruction Registration & Silent Sandbox Purge
+**Date:** 2026-09-02 20:07 (EDT)
+**Context:** Register pneumatic entities with script.register_on_object_destroyed to cleanly purge flows, capsules, and liminal item holders during bulk entity deletions (such as Sandbox mode "remove all entities", chunk deletions, or direct script destructions) without spilling cargo onto the ground.
+**Key Changes:**
+1. **Object Destruction Mapping (`scripts/flow/flow-engine.lua` & `control.lua`):** Initialized `storage.object_destruction_map` schema in `control.lua` and `flow-engine.lua`. Updated `flow_engine.connect_entity` to register valid pneumatic structures with `script.register_on_object_destroyed(entity)` during entity placement and surface setup scans, mapping registration IDs to entity unit numbers.
+2. **Object Destruction Event Handler (`scripts/flow/flow-engine.lua`):** Registered `defines.events.on_object_destroyed` event listener. Implemented `flow_engine.handle_object_destroyed(unit_number)` to query active/parked capsules, safely destroy linked liminal item holders on `liminal_surface` (`capsule_manager.remove`) without spilling cargo, disconnect flow engine ports (`disconnect_entity`), and clear active machine tracking tables.
+3. **Idempotent Deconstruction Fallback (`scripts/flow/flow-engine.lua`):** Preserved standard cargo spilling for routine player/robot mining and combat death events while utilizing `on_object_destroyed` as a silent fallback when entities are destroyed without standard mining events firing.

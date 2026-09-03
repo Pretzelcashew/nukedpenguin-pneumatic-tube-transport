@@ -9,6 +9,11 @@ this means making sure enable/disable toggles are respected, pressure polarity o
 
 ~when v2 is select in settings, remove any strictly v1 related settings from the debug panel
 
+~make the debug panel toggle for viewing the flow engine not use the word "new"
+
+~make this toggle on by default
+
+~in the game settings make v2 the default option
 
 address capsule bouncing randomly between hubs that are full
 
@@ -17,8 +22,4 @@ address delete all entities on surface in sandbox repercussions with established
 address why rotating pumps flow dot layering is inconsistent when rotating (same with diverter), when normally it would show 9 in front but after rotation the 10 is prioritized. the goal is to be consistent rather than 'doing the right thing'
 
 
-make the debug panel toggle for viewing the flow engine not use the word "new"
 
-make this toggle on by default
-
-in the game settings make v2 the default option

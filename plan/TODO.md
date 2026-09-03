@@ -16,3 +16,7 @@ include pipette copying of hub, pump, and diverter settings
 make hub, pump, and diverter settings blueprintable
 
 include capsule details in factoriopedia (like if it supports mixed cargo)
+
+add directional icons for the diverter gui to help mental fatigue
+
+include visible filters over diverter ports when there are some

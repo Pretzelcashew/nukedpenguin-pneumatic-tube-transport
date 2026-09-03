@@ -72,7 +72,16 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
         }
     end
 
-    -- Clean up motion runner tracking and visual overlays
+    local cap_runner = storage.capsules and storage.capsules[capsule_id]
+    if cap_runner and cap_runner.passenger and cap_runner.passenger.valid then
+        local player = cap_runner.passenger
+        local safe_pos = surface and surface.find_non_colliding_position("character", position, 4, 0.5) or position
+        if safe_pos and surface then
+            player.teleport(safe_pos, surface)
+        end
+    end
+
+    -- Clean up motion runner tracking, parked index, and visual overlays via leaf query module
     capsule_queries.remove_capsule(capsule_id)
 
     local capsule_data = capsule_manager.get(capsule_id)
@@ -195,5 +204,25 @@ end
 
 -- Preserve backwards compatibility for hub-manager
 hub_spill.handle_hub_destruction = hub_spill.handle_entity_destruction
+
+-- Register entity removal listeners directly within hub-spill to keep module graph acyclic
+local removal_events = {
+    defines.events.on_player_mined_entity,
+    defines.events.on_robot_mined_entity,
+    defines.events.on_entity_died,
+    defines.script_raised_destroy
+}
+if defines.events.on_space_platform_mined_entity then
+    table.insert(removal_events, defines.events.on_space_platform_mined_entity)
+end
+
+for _, event_id in ipairs(removal_events) do
+    events.on_event(event_id, function(event)
+        local entity = event.entity
+        if entity and entity.valid then
+            hub_spill.handle_entity_destruction(entity)
+        end
+    end)
+end
 
 return hub_spill

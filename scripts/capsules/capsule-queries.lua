@@ -284,15 +284,55 @@ function capsule_queries.clear_capsule_render(capsule)
     end
 end
 
---- Removes a capsule from motion tracking and clears its visual debug render and occupancy tracking
+--- Removes a capsule from motion tracking, cleans up parked index entries, wakes upstream parked capsules at its location, clears visual debug renders, and unregisters occupancy
 --- @param id number
 function capsule_queries.remove_capsule(id)
     if not storage.capsules then return end
     local capsule = storage.capsules[id]
     if capsule then
+        local target_key = capsule.from_port_key or capsule.parked_at_port
+
+        -- 1. Clean up spatial parked index
+        if storage.parked_by_port then
+            if capsule.parked_at_port then
+                local bucket = storage.parked_by_port[capsule.parked_at_port]
+                if bucket then
+                    bucket[id] = nil
+                    if next(bucket) == nil then
+                        storage.parked_by_port[capsule.parked_at_port] = nil
+                    end
+                end
+            end
+            if capsule.from_port_key then
+                local bucket = storage.parked_by_port[capsule.from_port_key]
+                if bucket then
+                    bucket[id] = nil
+                    if next(bucket) == nil then
+                        storage.parked_by_port[capsule.from_port_key] = nil
+                    end
+                end
+            end
+        end
+
+        -- 2. Unregister occupancy and clear renders
         capsule_queries.unregister_capsule_occupancy(id)
         capsule_queries.clear_capsule_render(capsule)
         storage.capsules[id] = nil
+
+        -- 3. Wake up other parked capsules waiting at this location so traffic advances
+        if target_key and storage.parked_by_port then
+            local bucket = storage.parked_by_port[target_key]
+            if bucket then
+                for cap_id in pairs(bucket) do
+                    local parked_cap = storage.capsules and storage.capsules[cap_id]
+                    if parked_cap and parked_cap.to_port_key == nil then
+                        parked_cap.next_retry_tick = nil
+                        parked_cap.last_failed_hub = nil
+                        parked_cap.last_port_key = nil
+                    end
+                end
+            end
+        end
     end
 end
 

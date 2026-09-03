@@ -49,3 +49,12 @@
 2. **Occupancy Query & Topology Decoupling (`scripts/capsules/capsule-queries.lua`):** Removed legacy `scripts.networks` and `scripts.ports.port-definitions` imports. Refactored `get_port_group()` and `get_port_descriptor()` to query v2 spatial `storage.flow_nodes` topology directly.
 3. **Legacy Flow Version Gating Purge (`scripts/capsules/capsule-runner.lua`, `scripts/flow/flow-engine.lua`):** Purged stale `FLOW_VERSION` gating checks (`FLOW_VERSION ~= "v2"`) across stepper functions, renderers, and event registrations to establish v2 as the sole execution path.
 4. **Control Entry Point Alignment (`control.lua`):** Updated top-level imports in `control.lua` to require `scripts.capsules.capsule-runner` directly and register its event listeners alongside `flow_engine.register_events()`.
+
+
+### Revision: Spillage Restoration, Passenger Safety & Dependency Cycle Resolution
+**Date:** 2026-09-03 11:29 (EDT)
+**Context:** Restore cargo spillage, passenger disembarkation, and parked traffic wakeups across all pneumatic network structures upon entity mining or destruction, while resolving circular `require` dependency loops between runner, lifecycle, flow, and spillage modules.
+**Key Changes:**
+1. **Leaf Query Unparking & Traffic Wakeups (`scripts/capsules/capsule-queries.lua`):** Expanded `capsule_queries.remove_capsule` to unpark capsules from `storage.parked_by_port`, clear visual debug renders, unregister occupancy tracking, and wake upstream parked capsules waiting at the freed port key.
+2. **Acyclic Removal Event Dispatching (`scripts/hubs/hub-spill.lua`):** Registered entity removal event listeners (`on_player_mined_entity`, `on_robot_mined_entity`, `on_entity_died`, `script_raised_destroy`, `on_space_platform_mined_entity`) directly inside `hub-spill.lua`. Purged the top-level `capsule-runner` import to break the `capsule-runner` → `capsule-lifecycle` → `hub-spill` → `capsule-runner` module load recursion loop.
+3. **Flow Engine & Hub Manager Decoupling (`scripts/flow/flow-engine.lua` & `scripts/hubs/hub-manager.lua`):** Removed top-level `hub-spill` imports from `flow-engine.lua`, allowing `flow-engine.disconnect_entity` to manage spatial flow topology while `hub-spill` independently handles entity destruction spillage. Streamlined `hub-manager.lua` to avoid duplicate spillage execution passes.

@@ -691,7 +691,7 @@ function flow_engine.register_events()
     for _, event_id in ipairs(removal_events) do
         events.on_event(event_id, function(event)
             local entity = event.entity
-            if entity then
+            if entity and entity.valid then
                 flow_engine.disconnect_entity(entity)
             end
         end)

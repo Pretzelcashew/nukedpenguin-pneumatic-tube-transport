@@ -36,8 +36,6 @@ local function on_hub_removed(event)
     local unit_number = entity.unit_number
     local def = hub_defs.types[entity.name]
     if def then
-        hub_spill.handle_hub_destruction(entity)
-
         if storage.active_hubs then
             storage.active_hubs[unit_number] = nil
         end

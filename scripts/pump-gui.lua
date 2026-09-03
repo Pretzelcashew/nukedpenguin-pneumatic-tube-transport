@@ -1,18 +1,11 @@
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
+local gui_components = require("scripts.utils.gui-components")
 
 local pump_gui = {}
 
 local GUI_FRAME_NAME = "pump_configuration_frame"
-local COMPARATORS = { "=", "≥", "≤", ">", "<", "≠" }
-
-local function get_comparator_index(comp)
-    for i, v in ipairs(COMPARATORS) do
-        if v == comp then return i end
-    end
-    return 1
-end
 
 local function notify_change(unit_number)
     local entity = storage.active_pumps and storage.active_pumps[unit_number]
@@ -37,71 +30,23 @@ function pump_gui.open(player, entity)
 
     local settings = pump_settings.get(entity.unit_number)
 
-    local main_frame = player.gui.screen.add{
-        type = "frame",
-        name = GUI_FRAME_NAME,
-        direction = "vertical"
-    }
-    main_frame.auto_center = true
+    local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
+    if not main_frame then return end
 
-    -- Titlebar
-    local title_flow = main_frame.add{ type = "flow", direction = "horizontal" }
-    title_flow.style.vertical_align = "center"
-
-    title_flow.add{
-        type = "label",
-        style = "frame_title",
-        caption = "Pneumatic Pump Configuration"
-    }
-
-    local drag_spacer = title_flow.add{
-        type = "empty-widget",
-        style = "draggable_space"
-    }
-    drag_spacer.style.horizontally_stretchable = true
-    drag_spacer.style.vertically_stretchable = true
-    drag_spacer.drag_target = main_frame
-
-    title_flow.add{
-        type = "sprite-button",
-        name = "pump_close_button",
-        style = "frame_action_button",
-        sprite = "utility/close",
-        tags = { unit_number = entity.unit_number }
-    }
+    -- Titlebar Header
+    gui_components.add_header(main_frame, "Pneumatic Pump Configuration", "pump_close_button", { unit_number = entity.unit_number })
 
     -- Global Wire Channel Toggles
-    local wire_flow = main_frame.add{ type = "flow", direction = "horizontal" }
-    wire_flow.style.vertical_align = "center"
-    wire_flow.style.horizontal_spacing = 12
-
-    wire_flow.add{
-        type = "checkbox",
-        name = "pump_read_red",
-        caption = "Read Red Wire",
-        state = settings.read_red ~= false,
+    gui_components.add_wire_channel_toggles(main_frame, {
+        read_red_name = "pump_read_red",
+        read_green_name = "pump_read_green",
+        read_red_state = settings.read_red ~= false,
+        read_green_state = settings.read_green ~= false,
         tags = { unit_number = entity.unit_number }
-    }
-
-    wire_flow.add{
-        type = "checkbox",
-        name = "pump_read_green",
-        caption = "Read Green Wire",
-        state = settings.read_green ~= false,
-        tags = { unit_number = entity.unit_number }
-    }
+    })
 
     -- Configuration Card
-    local inner_frame = main_frame.add{
-        type = "frame",
-        style = "inside_shallow_frame_with_padding"
-    }
-
-    local card_frame = inner_frame.add{
-        type = "frame",
-        direction = "vertical",
-        style = "bordered_frame"
-    }
+    local card_frame = gui_components.add_card_frame(main_frame, "vertical")
 
     -- Enable Checkbox Header
     local header_flow = card_frame.add{ type = "flow", direction = "horizontal" }
@@ -115,46 +60,19 @@ function pump_gui.open(player, entity)
     }
 
     -- Circuit Network Enable Row
-    local circuit_flow = card_frame.add{ type = "flow", direction = "horizontal" }
-    circuit_flow.style.vertical_align = "center"
-    circuit_flow.style.horizontal_spacing = 6
-
-    circuit_flow.add{
-        type = "checkbox",
-        name = "pump_use_circuit_enable",
-        caption = "Circuit Enable",
-        state = settings.use_circuit_enable or false,
-        tags = { unit_number = entity.unit_number }
-    }
-
     local cond = settings.enable_condition or { first_signal = nil, comparator = "=", constant = 0 }
-
-    circuit_flow.add{
-        type = "choose-elem-button",
-        name = "pump_circuit_signal",
-        elem_type = "signal",
+    gui_components.add_circuit_condition_panel(card_frame, {
+        checkbox_name = "pump_use_circuit_enable",
+        checkbox_caption = "Circuit Enable",
+        checkbox_state = settings.use_circuit_enable or false,
         signal = cond.first_signal,
+        comparator = cond.comparator or "=",
+        constant = cond.constant or 0,
+        signal_button_name = "pump_circuit_signal",
+        comparator_dropdown_name = "pump_circuit_comparator",
+        constant_textfield_name = "pump_circuit_constant",
         tags = { unit_number = entity.unit_number }
-    }
-
-    local comp_dropdown = circuit_flow.add{
-        type = "drop-down",
-        name = "pump_circuit_comparator",
-        items = COMPARATORS,
-        selected_index = get_comparator_index(cond.comparator or "="),
-        tags = { unit_number = entity.unit_number }
-    }
-    comp_dropdown.style.width = 40
-
-    local const_tf = circuit_flow.add{
-        type = "textfield",
-        name = "pump_circuit_constant",
-        text = tostring(cond.constant or 0),
-        numeric = true,
-        allow_negative = true,
-        tags = { unit_number = entity.unit_number }
-    }
-    const_tf.style.width = 50
+    })
 
     player.opened = main_frame
 end
@@ -214,7 +132,7 @@ local function on_gui_selection_state_changed(event)
     local settings = pump_settings.get(tags.unit_number)
 
     if element.name == "pump_circuit_comparator" then
-        settings.enable_condition.comparator = COMPARATORS[element.selected_index] or "="
+        settings.enable_condition.comparator = gui_components.get_comparator_by_index(element.selected_index)
         notify_change(tags.unit_number)
     end
 end

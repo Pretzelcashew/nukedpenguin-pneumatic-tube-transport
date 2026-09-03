@@ -15,6 +15,14 @@ local STAGGER_TICKS = 6
 local MAX_NODE_HOPS_PER_STEP = 3
 local PARKED_RETRY_INTERVAL = 10
 
+local QUALITY_RANKS = {
+    ["normal"] = 1,
+    ["uncommon"] = 2,
+    ["rare"] = 3,
+    ["epic"] = 4,
+    ["legendary"] = 5
+}
+
 local capsule_runner = {}
 
 --------------------------------------------------------------------------------
@@ -221,8 +229,51 @@ function capsule_runner.get_capsule_location(capsule_id)
 end
 
 --------------------------------------------------------------------------------
--- DIVERTER FILTER & HOP VALIDATION
+-- STRICT DIVERTER FILTER & HOP VALIDATION
 --------------------------------------------------------------------------------
+local function get_item_name_and_quality(item_spec)
+    if not item_spec then return nil, "normal" end
+    if type(item_spec) == "table" then
+        return item_spec.name, item_spec.quality or "normal"
+    elseif type(item_spec) == "string" then
+        return item_spec, "normal"
+    end
+    return nil, "normal"
+end
+
+local function matches_filter_item(payload_item, payload_quality, slot_item, slot_comp)
+    if not (payload_item and slot_item) then return false end
+
+    local payload_name, p_qual = get_item_name_and_quality(payload_item)
+    if payload_quality then p_qual = payload_quality end
+
+    local slot_name, s_qual = get_item_name_and_quality(slot_item)
+
+    if payload_name ~= slot_name then
+        return false
+    end
+
+    local p_rank = QUALITY_RANKS[p_qual] or 1
+    local s_rank = QUALITY_RANKS[s_qual] or 1
+    local comp = slot_comp or "="
+
+    if comp == "=" or comp == "==" then
+        return p_rank == s_rank
+    elseif comp == "≥" or comp == ">=" then
+        return p_rank >= s_rank
+    elseif comp == "≤" or comp == "<=" then
+        return p_rank <= s_rank
+    elseif comp == ">" then
+        return p_rank > s_rank
+    elseif comp == "<" then
+        return p_rank < s_rank
+    elseif comp == "≠" or comp == "!=" then
+        return p_rank ~= s_rank
+    end
+
+    return p_rank == s_rank
+end
+
 local function get_compiled_filter(port_setting)
     local compiled = port_setting._compiled
     if compiled ~= nil then
@@ -261,7 +312,7 @@ local function get_compiled_filter(port_setting)
     return compiled
 end
 
-local function evaluates_port_filter(port_setting, payload_item)
+local function evaluates_port_filter(port_setting, payload_item, payload_quality)
     if not port_setting then return true end
 
     local compiled = get_compiled_filter(port_setting)
@@ -283,25 +334,9 @@ local function evaluates_port_filter(port_setting, payload_item)
     local any_slot_matched = false
     for i = 1, num_active do
         local slot = active_slots[i]
-        local item_match = (payload_item == slot.item)
-        local comp = slot.comp
+        local item_match = matches_filter_item(payload_item, payload_quality, slot.item, slot.comp)
 
-        local match_res = false
-        if comp == "=" then
-            match_res = item_match
-        elseif comp == "≠" or comp == "!=" then
-            match_res = not item_match
-        elseif comp == ">" or comp == "≥" or comp == ">=" then
-            match_res = item_match
-        elseif comp == "<" then
-            match_res = not item_match
-        elseif comp == "≤" or comp == "<=" then
-            match_res = true
-        else
-            match_res = item_match
-        end
-
-        if match_res then
+        if item_match then
             any_slot_matched = true
             if not compiled.is_blacklist then
                 return true
@@ -316,7 +351,7 @@ local function evaluates_port_filter(port_setting, payload_item)
     end
 end
 
-local function check_diverter_port_filter(port_key, payload_item)
+local function check_diverter_port_filter(port_key, payload_item, payload_quality)
     if not port_key then return true end
     local diverter_settings_store = storage.diverter_settings
     if not diverter_settings_store then return true end
@@ -330,14 +365,14 @@ local function check_diverter_port_filter(port_key, payload_item)
     local port_setting = d_settings.ports and d_settings.ports[port_index]
     if not port_setting then return true end
 
-    return evaluates_port_filter(port_setting, payload_item)
+    return evaluates_port_filter(port_setting, payload_item, payload_quality)
 end
 
-local function is_hop_allowed_by_diverter_filters(from_port_key, hop_key, payload_item)
-    if not check_diverter_port_filter(hop_key, payload_item) then
+local function is_hop_allowed_by_diverter_filters(from_port_key, hop_key, payload_item, payload_quality)
+    if not check_diverter_port_filter(hop_key, payload_item, payload_quality) then
         return false
     end
-    if not check_diverter_port_filter(from_port_key, payload_item) then
+    if not check_diverter_port_filter(from_port_key, payload_item, payload_quality) then
         return false
     end
     return true
@@ -421,7 +456,7 @@ local function get_candidate_hops(from_port_key, tier)
     return count
 end
 
-local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
+local function is_hop_valid(from_port_key, target_port_key, payload_item, payload_quality, depth)
     depth = depth or 1
     if depth > 3 then return false end
 
@@ -429,7 +464,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
         return false
     end
 
-    if not is_hop_allowed_by_diverter_filters(from_port_key, target_port_key, payload_item) then
+    if not is_hop_allowed_by_diverter_filters(from_port_key, target_port_key, payload_item, payload_quality) then
         return false
     end
 
@@ -460,7 +495,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, depth)
             local exit_key = scratch_cand_keys[3][i]
             local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
             if exit_node and exit_node.unit_number ~= target_node.unit_number then
-                if is_hop_valid(target_port_key, exit_key, payload_item, depth + 1) then
+                if is_hop_valid(target_port_key, exit_key, payload_item, payload_quality, depth + 1) then
                     has_valid_exit = true
                     break
                 end
@@ -482,14 +517,17 @@ function capsule_runner.select_next_target(capsule)
     local unit_number = current_node.unit_number
 
     local payload_item = capsule.dominant_item
+    local payload_quality = capsule.dominant_quality or "normal"
     if not payload_item then
         local cap_id = capsule.capsule_id or capsule.id
         local cap_data = cap_id and capsule_manager.get(cap_id)
         payload_item = cap_data and cap_data.dominant_item
+        payload_quality = (cap_data and cap_data.dominant_quality) or "normal"
         if not payload_item and cap_id then
             payload_item = capsule_renderer.get_dominant_item(cap_id)
             if payload_item then
                 capsule.dominant_item = payload_item
+                capsule.dominant_quality = payload_quality
             end
         end
     end
@@ -523,9 +561,9 @@ function capsule_runner.select_next_target(capsule)
         if cand_key ~= capsule.last_port_key then
             local valid_hop = false
             if current_node.cross_transit then
-                valid_hop = is_hop_valid(via_port, cand_key, payload_item)
+                valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality)
             else
-                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item)
+                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item, payload_quality)
             end
 
             if valid_hop then
@@ -550,7 +588,7 @@ function capsule_runner.select_next_target(capsule)
                         local exit_key = scratch_cand_keys[2][e]
                         local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
                         if exit_node and exit_node.unit_number ~= current_node.unit_number then
-                            if is_hop_valid(cand_key, exit_key, payload_item) then
+                            if is_hop_valid(cand_key, exit_key, payload_item, payload_quality) then
                                 local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
 
                                 local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
@@ -689,11 +727,13 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
 
     local cap_data = capsule_manager.get(capsule_id)
     local dominant_item = (cap_data and cap_data.dominant_item) or capsule_renderer.get_dominant_item(capsule_id)
+    local dominant_quality = (cap_data and cap_data.dominant_quality) or "normal"
 
     local new_capsule = {
         id = capsule_id,
         capsule_id = capsule_id,
         dominant_item = dominant_item,
+        dominant_quality = dominant_quality,
         from_port_key = target_port_key,
         to_port_key = nil,
         last_port_key = nil,
@@ -712,9 +752,9 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     capsule_runner.wake_parked_capsules(target_port_key)
 
     if best_port_key then
-        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " port " .. tostring(target_port_key) .. " (flow level: " .. tostring(flow_level) .. ")")
+        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. " - " .. tostring(dominant_quality) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " port " .. tostring(target_port_key) .. " (flow level: " .. tostring(flow_level) .. ")")
     else
-        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " (parked at hub port " .. tostring(target_port_key) .. ")")
+        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. " - " .. tostring(dominant_quality) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " (parked at hub port " .. tostring(target_port_key) .. ")")
     end
 
     return true

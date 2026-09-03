@@ -96,6 +96,23 @@ function diverter_settings.get(unit_number)
                     if p.enable_condition == nil then
                         p.enable_condition = { first_signal = nil, comparator = "=", constant = 0 }
                     end
+                    if not p.filters then
+                        p.filters = {
+                            [1] = { comparator = "=", item = nil },
+                            [2] = { comparator = "=", item = nil },
+                            [3] = { comparator = "=", item = nil },
+                            [4] = { comparator = "=", item = nil },
+                            [5] = { comparator = "=", item = nil }
+                        }
+                    else
+                        for j = 1, 5 do
+                            if not p.filters[j] then
+                                p.filters[j] = { comparator = "=", item = nil }
+                            elseif p.filters[j].comparator == nil then
+                                p.filters[j].comparator = "="
+                            end
+                        end
+                    end
                 end
             end
         end

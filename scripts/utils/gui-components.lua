@@ -34,10 +34,23 @@ function gui_components.format_active_label(text, is_active)
     end
 end
 
+--- Extracts item name and quality string from a string or table item specifier.
+--- @param item_value string|table|nil
+--- @return string|nil item_name, string|nil quality_name
+function gui_components.get_item_name_and_quality(item_value)
+    if not item_value then return nil, nil end
+    if type(item_value) == "table" then
+        return item_value.name, item_value.quality
+    elseif type(item_value) == "string" then
+        return item_value, nil
+    end
+    return nil, nil
+end
+
 --- Creates a main GUI frame window for a player.
 --- Supports both centered screen frames and relative anchored frames.
 --- @param player LuaPlayer
---- @param anchor_spec table|nil Optional relative anchor spec (e.g. { gui = defines.relative_gui_type.container_gui, position = defines.relative_gui_position.right })
+--- @param anchor_spec table|nil Optional relative anchor spec
 --- @param frame_name string Name of the frame element
 --- @param title string|nil Header title caption (optional)
 --- @return LuaGuiElement|nil
@@ -221,34 +234,116 @@ function gui_components.add_circuit_condition_panel(parent, config)
     }
 end
 
---- Adds a single item filter slot with item selector and comparator dropdown.
+--- Creates a 40x40 square slot button with top-left corner comparator overlay and optional item sprite.
 --- @param parent LuaGuiElement
---- @param config table Configuration table
---- @return LuaGuiElement slot_column, LuaGuiElement elem_btn, LuaGuiElement dropdown
-function gui_components.add_filter_slot(parent, config)
+--- @param config table Configuration table: { button_name, item, comparator, tags, width, height }
+--- @return LuaGuiElement button
+function gui_components.create_overlay_slot_button(parent, config)
     config = config or {}
-    local slot_column = parent.add{ type = "flow", direction = "vertical" }
-    slot_column.style.horizontal_align = "center"
-    slot_column.style.vertical_spacing = config.spacing or 2
+    local item_name, quality_name = gui_components.get_item_name_and_quality(config.item)
+    local sprite_path = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
 
-    local elem_btn = slot_column.add{
-        type = "choose-elem-button",
-        name = config.button_name or "filter_item_button",
-        elem_type = "item",
-        item = config.item,
+    local button = parent.add{
+        type = "sprite-button",
+        name = config.button_name or "filter_slot_button",
+        style = "slot_button",
+        sprite = sprite_path,
         tags = config.tags
     }
+    button.style.width = config.width or 40
+    button.style.height = config.height or 40
+    button.style.padding = 0
 
-    local dropdown = slot_column.add{
-        type = "drop-down",
-        name = config.dropdown_name or "filter_comparator_dropdown",
-        items = gui_components.COMPARATORS,
-        selected_index = gui_components.get_comparator_index(config.comparator or "="),
-        tags = config.tags
+    local content_flow = button.add{
+        type = "flow",
+        name = "content_flow",
+        direction = "vertical",
+        ignored_by_interaction = true
     }
-    dropdown.style.width = config.dropdown_width or 40
+    content_flow.style.width = 36
+    content_flow.style.height = 36
+    content_flow.style.vertical_spacing = 6
 
-    return slot_column, elem_btn, dropdown
+    local top_flow = content_flow.add{
+        type = "flow",
+        name = "top_flow",
+        direction = "horizontal",
+        ignored_by_interaction = true
+    }
+    top_flow.style.height = 14
+
+    local badge_label = top_flow.add{
+        type = "label",
+        name = "comparator_badge",
+        caption = gui_components.format_active_label(config.comparator or "=", true),
+        ignored_by_interaction = true
+    }
+    badge_label.style.font = "default-bold"
+
+    local bottom_flow = content_flow.add{
+        type = "flow",
+        name = "bottom_flow",
+        direction = "horizontal",
+        ignored_by_interaction = true
+    }
+    bottom_flow.style.height = 14
+
+    local spacer = bottom_flow.add{
+        type = "empty-widget",
+        ignored_by_interaction = true
+    }
+    spacer.style.horizontally_stretchable = true
+
+    if quality_name and quality_name ~= "" and quality_name ~= "normal" then
+        local q_sprite = bottom_flow.add{
+            type = "sprite",
+            name = "quality_badge",
+            sprite = "quality/" .. quality_name,
+            ignored_by_interaction = true
+        }
+        q_sprite.style.width = 14
+        q_sprite.style.height = 14
+    end
+
+    return button
+end
+
+--- Updates an existing overlay slot button's item sprite, comparator badge, and quality icon.
+--- @param button LuaGuiElement
+--- @param item string|table|nil
+--- @param comparator string|nil
+function gui_components.update_overlay_slot_button(button, item, comparator)
+    if not (button and button.valid) then return end
+    local item_name, quality_name = gui_components.get_item_name_and_quality(item)
+    button.sprite = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
+
+    local content_flow = button["content_flow"]
+    if not (content_flow and content_flow.valid) then return end
+
+    local top_flow = content_flow["top_flow"]
+    if top_flow and top_flow.valid then
+        local badge_label = top_flow["comparator_badge"]
+        if badge_label and badge_label.valid then
+            badge_label.caption = gui_components.format_active_label(comparator or "=", true)
+        end
+    end
+
+    local bottom_flow = content_flow["bottom_flow"]
+    if bottom_flow and bottom_flow.valid then
+        local old_q = bottom_flow["quality_badge"]
+        if old_q and old_q.valid then old_q.destroy() end
+
+        if quality_name and quality_name ~= "" and quality_name ~= "normal" then
+            local q_sprite = bottom_flow.add{
+                type = "sprite",
+                name = "quality_badge",
+                sprite = "quality/" .. quality_name,
+                ignored_by_interaction = true
+            }
+            q_sprite.style.width = 14
+            q_sprite.style.height = 14
+        end
+    end
 end
 
 --- Adds a labeled horizontal switch (e.g. Whitelist/Blacklist, Input/Output).

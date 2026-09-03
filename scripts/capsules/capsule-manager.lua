@@ -12,11 +12,12 @@ end
 --- @param capsule_item_name string Name of the capsule prototype
 --- @param primary_slot number|nil Index of the slot containing the primary capsule item in holder inventory
 --- @param dominant_item string|nil Name of the dominant payload item
+--- @param dominant_quality string|nil Quality tier of the dominant payload item ("normal", "uncommon", etc.)
 --- @param has_spoilable_items boolean|nil Whether any item in the capsule can spoil
 --- @param is_wide boolean|nil Whether allocated in a wide 8-tile unit cell
-function capsule_manager.register(holder_entity, capsule_item_name, primary_slot, dominant_item, has_spoilable_items, is_wide)
+function capsule_manager.register(holder_entity, capsule_item_name, primary_slot, dominant_item, dominant_quality, has_spoilable_items, is_wide)
     if not (holder_entity and holder_entity.valid) then return nil end
-    
+
     local def = capsule_defs.types[capsule_item_name]
     if not def then return nil end
 
@@ -29,7 +30,7 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
         storage.object_destruction_map = storage.object_destruction_map or {}
         storage.object_destruction_map[reg_id] = { type = "capsule", id = capsule_id }
     end
-    
+
     storage.active_capsules[capsule_id] = {
         holder = holder_entity,
         type = def.type,
@@ -37,10 +38,11 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
         primary_slot = primary_slot,
         position = { x = pos.x, y = pos.y },
         dominant_item = dominant_item or capsule_item_name,
+        dominant_quality = dominant_quality or "normal",
         has_spoilable_items = has_spoilable_items == true,
         is_wide = is_wide == true
     }
-    
+
     return capsule_id
 end
 
@@ -76,7 +78,7 @@ end
 --- @param capsule_id number
 function capsule_manager.remove(capsule_id)
     if not storage.active_capsules then return end
-    
+
     local data = storage.active_capsules[capsule_id]
     if data then
         local pos = data.position or (data.holder and data.holder.valid and data.holder.position)

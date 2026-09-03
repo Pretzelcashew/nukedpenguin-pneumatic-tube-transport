@@ -1,9 +1,6 @@
-local port_renderer = require("scripts.ports.port-renderer")
-local networks_flow = require("scripts.networks.networks-flow")
 local flow_engine = require("scripts.flow.flow-engine")
 local events = require("scripts.events")
 
-local FLOW_VERSION = settings.startup["pneumatic-flow-version"] and settings.startup["pneumatic-flow-version"].value or "v1"
 local debug_manager = {}
 local PANEL_NAME = "pneumatic_debug_panel"
 
@@ -14,8 +11,6 @@ local function get_debug(player_index)
     if not storage.debug[player_index] then
         storage.debug[player_index] = {
             master = true,
-            ports = false,
-            flow = true,
             new_flow = true,
             capsules = true,
             peek = false,
@@ -52,11 +47,10 @@ local function update_player_shortcuts(player_index)
     local master = dbg.master == true
     safe_set_shortcut_toggled(player, "pt-debug-panel", master)
     safe_set_shortcut_toggled(player, "pt-toggle-debug", master)
-    safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (FLOW_VERSION == "v1") and (dbg.flow == true))
-    safe_set_shortcut_toggled(player, "pt-toggle-new-flow", master and (FLOW_VERSION == "v2") and (dbg.new_flow == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (dbg.new_flow == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-new-flow", master and (dbg.new_flow == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsules", master and (dbg.capsules == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsule-peek", master and (dbg.peek == true))
-    safe_set_shortcut_toggled(player, "pt-toggle-ports", master and (FLOW_VERSION == "v1") and (dbg.ports == true))
 end
 
 function debug_manager.sync_shortcuts(player_index)
@@ -139,16 +133,10 @@ function debug_manager.refresh_panel(player_index)
         master_flow.pneumatic_debug_chk_master.state = master
     end
 
-    local chk_flow = content.pneumatic_debug_chk_flow
-    if chk_flow then
-        chk_flow.enabled = master and (FLOW_VERSION == "v1")
-        chk_flow.state = master and (FLOW_VERSION == "v1") and (dbg.flow == true)
-    end
-
     local chk_new_flow = content.pneumatic_debug_chk_new_flow
     if chk_new_flow then
-        chk_new_flow.enabled = master and (FLOW_VERSION == "v2")
-        chk_new_flow.state = master and (FLOW_VERSION == "v2") and (dbg.new_flow == true)
+        chk_new_flow.enabled = master
+        chk_new_flow.state = master and (dbg.new_flow == true)
     end
 
     local chk_capsules = content.pneumatic_debug_chk_capsules
@@ -161,12 +149,6 @@ function debug_manager.refresh_panel(player_index)
     if chk_peek then
         chk_peek.enabled = master
         chk_peek.state = master and (dbg.peek == true)
-    end
-
-    local chk_ports = content.pneumatic_debug_chk_ports
-    if chk_ports then
-        chk_ports.enabled = master and (FLOW_VERSION == "v1")
-        chk_ports.state = master and (FLOW_VERSION == "v1") and (dbg.ports == true)
     end
 
     local chk_prints = content.pneumatic_debug_chk_prints
@@ -246,25 +228,13 @@ function debug_manager.open_panel(player_index)
     overlay_label.style.top_margin = 4
     overlay_label.style.bottom_margin = 4
 
-    if FLOW_VERSION == "v1" then
-        content_frame.add{
-            type = "checkbox",
-            name = "pneumatic_debug_chk_flow",
-            caption = {"gui-debug.toggle-flow"},
-            state = master and (dbg.flow == true),
-            enabled = master
-        }
-    end
-
-    if FLOW_VERSION == "v2" then
-        content_frame.add{
-            type = "checkbox",
-            name = "pneumatic_debug_chk_new_flow",
-            caption = "Flow Engine (Alt Mode)",
-            state = master and (dbg.new_flow == true),
-            enabled = master
-        }
-    end
+    content_frame.add{
+        type = "checkbox",
+        name = "pneumatic_debug_chk_new_flow",
+        caption = "Flow Engine (Alt Mode)",
+        state = master and (dbg.new_flow == true),
+        enabled = master
+    }
 
     content_frame.add{
         type = "checkbox",
@@ -281,16 +251,6 @@ function debug_manager.open_panel(player_index)
         state = master and (dbg.peek == true),
         enabled = master
     }
-
-    if FLOW_VERSION == "v1" then
-        content_frame.add{
-            type = "checkbox",
-            name = "pneumatic_debug_chk_ports",
-            caption = {"gui-debug.toggle-ports"},
-            state = master and (dbg.ports == true),
-            enabled = master
-        }
-    end
 
     content_frame.add{type = "line", direction = "horizontal"}
 
@@ -330,12 +290,10 @@ local function toggle_master(player_index)
     local dbg = get_debug(player_index)
     dbg.master = not dbg.master
 
-    if FLOW_VERSION == "v1" then
-        if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
-        if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
-    end
-    if FLOW_VERSION == "v2" then
-        if is_debug_active("new_flow", player_index) then flow_engine.draw_all(player_index) else flow_engine.clear_all_renders(player_index) end
+    if is_debug_active("new_flow", player_index) then
+        flow_engine.draw_all(player_index)
+    else
+        flow_engine.clear_all_renders(player_index)
     end
 
     update_player_shortcuts(player_index)
@@ -355,38 +313,6 @@ local function toggle_prints(player_index)
     player.print("[Debug] Prints: " .. (dbg.prints and "[ENABLED]" or "[DISABLED]"))
 end
 
-local function toggle_ports(player_index)
-    local player = game.get_player(player_index)
-    if not (player and player.valid) then return end
-
-    local dbg = get_debug(player_index)
-    dbg.ports = not dbg.ports
-
-    if FLOW_VERSION == "v1" then
-        if is_debug_active("ports", player_index) then port_renderer.draw_all(player_index) else port_renderer.clear_all(player_index) end
-    end
-
-    update_player_shortcuts(player_index)
-    debug_manager.refresh_panel(player_index)
-    player.print("[Debug] Ports: " .. (dbg.ports and "[ENABLED]" or "[DISABLED]"))
-end
-
-local function toggle_flow(player_index)
-    local player = game.get_player(player_index)
-    if not (player and player.valid) then return end
-
-    local dbg = get_debug(player_index)
-    dbg.flow = not dbg.flow
-
-    if FLOW_VERSION == "v1" then
-        if is_debug_active("flow", player_index) then networks_flow.draw_all(player_index) else networks_flow.clear_all(player_index) end
-    end
-
-    update_player_shortcuts(player_index)
-    debug_manager.refresh_panel(player_index)
-    player.print("[Debug] Flow Overlay: " .. (dbg.flow and "[ENABLED]" or "[DISABLED]"))
-end
-
 local function toggle_new_flow(player_index)
     local player = game.get_player(player_index)
     if not (player and player.valid) then return end
@@ -394,7 +320,11 @@ local function toggle_new_flow(player_index)
     local dbg = get_debug(player_index)
     dbg.new_flow = not dbg.new_flow
 
-    if is_debug_active("new_flow", player_index) and (FLOW_VERSION == "v2") then flow_engine.draw_all(player_index) else flow_engine.clear_all_renders(player_index) end
+    if is_debug_active("new_flow", player_index) then
+        flow_engine.draw_all(player_index)
+    else
+        flow_engine.clear_all_renders(player_index)
+    end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -460,8 +390,7 @@ commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Pa
 commands.add_command("debug-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("toggle-prints", "Toggle game debug prints", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
-commands.add_command("toggle-ports", "Toggle port overlay", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)
-commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
+commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-new-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
@@ -470,11 +399,10 @@ commands.add_command("debug-filter-reset", "Reset the debug print prefix text fi
 
 commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-debug", "Toggle master debug state (Alias)", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
-commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-new-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
-commands.add_command("pt-toggle-ports", "Toggle port overlay (Alias)", function(cmd) if cmd.player_index then toggle_ports(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 
 events.on_event(defines.events.on_lua_shortcut, function(event)
@@ -513,26 +441,19 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     local name = element.name
     if name == "pneumatic_debug_chk_master" then
         dbg.master = element.state
-        if FLOW_VERSION == "v1" then
-            if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
-            if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
-        end
-        if FLOW_VERSION == "v2" then
-            if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
-        end
-        update_player_shortcuts(p_idx)
-        debug_manager.refresh_panel(p_idx)
-    elseif name == "pneumatic_debug_chk_flow" then
-        dbg.flow = element.state
-        if FLOW_VERSION == "v1" then
-            if is_debug_active("flow", p_idx) then networks_flow.draw_all(p_idx) else networks_flow.clear_all(p_idx) end
+        if is_debug_active("new_flow", p_idx) then
+            flow_engine.draw_all(p_idx)
+        else
+            flow_engine.clear_all_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_new_flow" then
         dbg.new_flow = element.state
-        if FLOW_VERSION == "v2" then
-            if is_debug_active("new_flow", p_idx) then flow_engine.draw_all(p_idx) else flow_engine.clear_all_renders(p_idx) end
+        if is_debug_active("new_flow", p_idx) then
+            flow_engine.draw_all(p_idx)
+        else
+            flow_engine.clear_all_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
@@ -544,13 +465,6 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     elseif name == "pneumatic_debug_chk_peek" then
         dbg.peek = element.state
         if dbg.peek then dbg.capsules = false end
-        update_player_shortcuts(p_idx)
-        debug_manager.refresh_panel(p_idx)
-    elseif name == "pneumatic_debug_chk_ports" then
-        dbg.ports = element.state
-        if FLOW_VERSION == "v1" then
-            if is_debug_active("ports", p_idx) then port_renderer.draw_all(p_idx) else port_renderer.clear_all(p_idx) end
-        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_prints" then

@@ -11,3 +11,13 @@
    - Re-linked `bio-capsule-integrity-1` through `4` upgrade research tiers to require the `biodegradable-capsule` technology node as their prerequisite root.
 3. **Explicit Ingredient Technology Prerequisite Mapping (`prototypes/technology.lua`):**
    - Audited all 13 recipe ingredient chains and bound exact prerequisite technologies (`engine`, `advanced-circuit`, `low-density-structure`, `carbon-fiber`, `sulfur-processing`, `tungsten-carbide`, `cryogenic-plant`, `lithium-processing`, and `electromagnetic-plant`) into corresponding research nodes to ensure valid technology graph progression and prevent uncraftable recipe unlocks.
+
+
+### Revision: Stage 1 v1 Engine Removal — Decouple Configuration, Entry Points & Debug
+**Date:** 2026-09-03 10:30 (EDT)
+**Context:** Execute Stage 1 of the v1 deprecation plan, establishing the v2 flow engine as the sole execution path by removing `FLOW_VERSION` startup gating, v1 imports in `control.lua`, legacy motion calculation code, and obsolete debug overlays.
+**Key Changes:**
+1. **Startup Setting Purge (`settings.lua`):** Removed `pneumatic-flow-version` startup setting definition, locking execution path strictly to the v2 flow engine.
+2. **Unconditional v2 Entry Point Registration (`control.lua`):** Removed legacy v1 module imports (`networks`, `networks-flow`, `port-renderer`, `port-finder`, `network-connect`, `network-disconnect`, `network-rotate`). Updated lifecycle hooks to unconditionally initialize v2 `flow_engine` and `v2_capsule_runner` event listeners and storage structures.
+3. **Capsule Runner Facade Alias (`scripts/capsules/capsule-runner.lua`):** Purged over 500 lines of legacy v1 motion calculation loops, pressure queries, and event handlers; converted script into a zero-allocation direct passthrough returning `require("scripts.flow.capsule-runner")`.
+4. **Debug Interface & Command Consolidation (`scripts/debug-manager.lua`):** Purged legacy v1 UI checkboxes (`pneumatic_debug_chk_flow`, `pneumatic_debug_chk_ports`) and commands (`/toggle-ports`). Re-mapped `/toggle-flow` and `/pt-toggle-flow` directly to control the v2 Alt Mode flow engine vector overlay.

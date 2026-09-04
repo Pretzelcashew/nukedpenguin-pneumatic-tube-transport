@@ -6,6 +6,7 @@ local active_device_scanner = require("scripts.active-device-scanner")
 local hub_manager = require("scripts.hubs.hub-manager")
 local pump_gui = require("scripts.pump-gui")
 local diverter_gui = require("scripts.diverter-gui")
+local util = require("util")
 
 local device_settings_copier = {}
 
@@ -66,7 +67,6 @@ local function on_paste_settings(event)
     local src_name = buffer.entity_name
     local dest_name = destination.name
 
-    -- 1. Pneumatic Pump -> Pneumatic Pump
     if src_name == "pneumatic-pump" and dest_name == "pneumatic-pump" then
         if pump_settings.copy(src_unit, dest_unit) then
             active_device_scanner.notify_settings_changed(destination)
@@ -75,7 +75,6 @@ local function on_paste_settings(event)
             end
         end
 
-    -- 2. Pneumatic Diverter -> Pneumatic Diverter
     elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
         if diverter_settings.copy(src_unit, dest_unit) then
             active_device_scanner.notify_settings_changed(destination)
@@ -84,7 +83,6 @@ local function on_paste_settings(event)
             end
         end
 
-    -- 3. Pneumatic Hub -> Pneumatic Hub
     elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
         if hub_settings.copy(src_unit, dest_unit) then
             hub_manager.notify_settings_changed(destination)
@@ -119,10 +117,52 @@ local function on_entity_settings_pasted(event)
     end
 end
 
+local function on_player_setup_blueprint(event)
+    local blueprint = event.stack or event.record
+    if not (blueprint and blueprint.set_blueprint_entity_tag) then return end
+
+    local mapping = event.mapping
+    if not mapping then return end
+
+    if type(mapping) == "userdata" and mapping.get then
+        mapping = mapping.get()
+    end
+    if type(mapping) ~= "table" then return end
+
+    for bp_index, entity in pairs(mapping) do
+        if entity and entity.valid and entity.unit_number then
+            local name = entity.name
+            if name == "pneumatic-pump" then
+                local s = pump_settings.get(entity.unit_number)
+                if s then
+                    blueprint.set_blueprint_entity_tag(bp_index, "pneumatic_settings", util.table.deepcopy(s))
+                end
+            elseif name == "pneumatic-diverter" then
+                local s = diverter_settings.get(entity.unit_number)
+                if s then
+                    local copy = util.table.deepcopy(s)
+                    if copy.ports then
+                        for i = 1, 4 do
+                            if copy.ports[i] then copy.ports[i]._compiled = nil end
+                        end
+                    end
+                    blueprint.set_blueprint_entity_tag(bp_index, "pneumatic_settings", copy)
+                end
+            elseif HUB_NAMES[name] then
+                local s = hub_settings.get(entity.unit_number)
+                if s then
+                    blueprint.set_blueprint_entity_tag(bp_index, "pneumatic_settings", util.table.deepcopy(s))
+                end
+            end
+        end
+    end
+end
+
 function device_settings_copier.register_events()
     events.on_event("pneumatic-copy-settings", on_copy_settings)
     events.on_event("pneumatic-paste-settings", on_paste_settings)
     events.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pasted)
+    events.on_event(defines.events.on_player_setup_blueprint, on_player_setup_blueprint)
 end
 
 return device_settings_copier

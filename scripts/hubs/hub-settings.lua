@@ -48,6 +48,14 @@ function hub_settings.copy(src_unit_number, dest_unit_number)
     return copy
 end
 
+function hub_settings.apply_blueprint_settings(unit_number, blueprint_settings)
+    if not (unit_number and blueprint_settings) then return nil end
+    storage.hub_settings = storage.hub_settings or {}
+    local copy = util.table.deepcopy(blueprint_settings)
+    storage.hub_settings[unit_number] = copy
+    return copy
+end
+
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target
     elseif operator == ">" then return val > target
@@ -60,16 +68,13 @@ local function evaluate_condition(val, operator, target)
 end
 
 function hub_settings.evaluate_circuit_condition(entity, condition, read_red, read_green)
-    -- Unconfigured signal cannot be evaluated
     if not condition or not condition.first_signal then
         return false
     end
 
-    -- Build connector parameters only for enabled channels
     local red_conn = read_red and defines.wire_connector_id.circuit_red or nil
     local green_conn = read_green and defines.wire_connector_id.circuit_green or nil
 
-    -- If no wire channels are enabled, signal defaults to 0
     if not red_conn and not green_conn then
         return evaluate_condition(0, condition.comparator or "<", condition.constant or 0)
     end
@@ -90,7 +95,6 @@ function hub_settings.can_send(entity)
     if not (entity and entity.valid) then return false end
     local settings = hub_settings.get(entity.unit_number)
 
-    -- Circuit network mode overrides manual state and evaluates signals directly
     if settings.use_circuit_send then
         return hub_settings.evaluate_circuit_condition(entity, settings.send_condition, settings.read_red, settings.read_green)
     end
@@ -102,7 +106,6 @@ function hub_settings.can_receive(entity)
     if not (entity and entity.valid) then return false end
     local settings = hub_settings.get(entity.unit_number)
 
-    -- Circuit network mode overrides manual state and evaluates signals directly
     if settings.use_circuit_receive then
         return hub_settings.evaluate_circuit_condition(entity, settings.receive_condition, settings.read_red, settings.read_green)
     end

@@ -47,6 +47,14 @@ function pump_settings.copy(src_unit_number, dest_unit_number)
     return copy
 end
 
+function pump_settings.apply_blueprint_settings(unit_number, blueprint_settings)
+    if not (unit_number and blueprint_settings) then return nil end
+    storage.pump_settings = storage.pump_settings or {}
+    local copy = util.table.deepcopy(blueprint_settings)
+    storage.pump_settings[unit_number] = copy
+    return copy
+end
+
 function pump_settings.get_proxy(entity)
     if not (entity and entity.valid) then return nil end
     local proxies = entity.surface.find_entities_filtered{

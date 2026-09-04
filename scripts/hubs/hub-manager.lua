@@ -15,20 +15,27 @@ function hub_manager.notify_settings_changed(entity)
     end
 end
 
--- Add a new hub to the active registry
 local function on_hub_built(event)
-    local entity = event.entity
+    local entity = event.entity or event.destination
     if not (entity and entity.valid) then return end
 
     local def = hub_defs.types[entity.name]
     if def and def.type == "hub" then
         storage.active_hubs = storage.active_hubs or {}
         storage.active_hubs[entity.unit_number] = entity
-        hub_settings.get(entity.unit_number)
+
+        if event.tags and event.tags.pneumatic_settings then
+            hub_settings.apply_blueprint_settings(entity.unit_number, event.tags.pneumatic_settings)
+        elseif event.source and event.source.valid then
+            hub_settings.copy(event.source.unit_number, entity.unit_number)
+        else
+            hub_settings.get(entity.unit_number)
+        end
+
+        hub_manager.notify_settings_changed(entity)
     end
 end
 
--- Remove a hub from active registry and settings
 local function on_hub_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
@@ -45,7 +52,6 @@ local function on_hub_removed(event)
     end
 end
 
--- Interleaved background scanner
 local function on_tick(event)
     if not storage.active_hubs then return end
 
@@ -61,19 +67,28 @@ local function on_tick(event)
     end
 end
 
--- Hook into Factorio's build events
-events.on_event(defines.events.on_built_entity, on_hub_built)
-events.on_event(defines.events.on_robot_built_entity, on_hub_built)
-events.on_event(defines.events.script_raised_built, on_hub_built)
-events.on_event(defines.events.script_raised_revive, on_hub_built)
+local build_events = {
+    defines.events.on_built_entity,
+    defines.events.on_robot_built_entity,
+    defines.events.script_raised_built,
+    defines.events.script_raised_revive
+}
+if defines.events.on_space_platform_built_entity then
+    table.insert(build_events, defines.events.on_space_platform_built_entity)
+end
+if defines.events.on_entity_cloned then
+    table.insert(build_events, defines.events.on_entity_cloned)
+end
 
--- Hook into Factorio's destruction events
+for _, id in ipairs(build_events) do
+    events.on_event(id, on_hub_built)
+end
+
 events.on_event(defines.events.on_player_mined_entity, on_hub_removed)
 events.on_event(defines.events.on_robot_mined_entity, on_hub_removed)
 events.on_event(defines.events.on_entity_died, on_hub_removed)
 events.on_event(defines.events.script_raised_destroy, on_hub_removed)
 
--- Hook interleaved tick loop
 events.on_event(defines.events.on_tick, on_tick)
 
 return hub_manager

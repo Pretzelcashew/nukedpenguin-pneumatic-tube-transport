@@ -87,6 +87,10 @@ active_device_scanner.register_device_type({
         pump_settings.get(entity.unit_number)
     end,
 
+    apply_blueprint_settings = function(entity, settings)
+        pump_settings.apply_blueprint_settings(entity.unit_number, settings)
+    end,
+
     check_and_update_state = function(entity, forced)
         local unit_number = entity.unit_number
         storage.pump_power_states = storage.pump_power_states or {}
@@ -119,6 +123,10 @@ active_device_scanner.register_device_type({
 
     init_settings = function(entity)
         diverter_settings.get(entity.unit_number)
+    end,
+
+    apply_blueprint_settings = function(entity, settings)
+        diverter_settings.apply_blueprint_settings(entity.unit_number, settings)
     end,
 
     check_and_update_state = function(entity, forced)
@@ -166,6 +174,7 @@ function active_device_scanner.register_events()
         defines.events.on_built_entity,
         defines.events.on_robot_built_entity,
         defines.events.script_raised_built,
+        defines.events.script_raised_revive,
         defines.events.on_space_platform_built_entity,
         defines.events.on_entity_cloned
     }
@@ -179,9 +188,20 @@ function active_device_scanner.register_events()
                     storage[spec.storage_key] = storage[spec.storage_key] or {}
                     storage[spec.storage_key][unit_number] = entity
 
-                    if spec.init_settings then
+                    if event.tags and event.tags.pneumatic_settings then
+                        if spec.apply_blueprint_settings then
+                            spec.apply_blueprint_settings(entity, event.tags.pneumatic_settings)
+                        end
+                    elseif event.source and event.source.valid then
+                        if spec.name == "pneumatic-pump" then
+                            pump_settings.copy(event.source.unit_number, unit_number)
+                        elseif spec.name == "pneumatic-diverter" then
+                            diverter_settings.copy(event.source.unit_number, unit_number)
+                        end
+                    elseif spec.init_settings then
                         spec.init_settings(entity)
                     end
+
                     if spec.check_and_update_state then
                         spec.check_and_update_state(entity, true)
                     end

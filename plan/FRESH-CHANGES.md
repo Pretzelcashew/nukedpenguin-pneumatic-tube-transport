@@ -179,3 +179,13 @@
 3. **Multi-Proxy Deduplication & Direction Sync (`scripts/proxy-manager.lua`):** Updated `on_created` to transfer wires from extra duplicate real/ghost proxies onto the primary real proxy (`existing[1]`) before pruning duplicates, enforcing strictly one real proxy per machine with synced direction and selection stack order.
 4. **Bidirectional Deconstruction Clean-up (`scripts/proxy-manager.lua`):** Updated `on_removed` to destroy both real proxy entities and ghost proxies when a host machine or host ghost is mined, deconstructed, killed, or script-destroyed.
 5. **Surface-Wide Orphan Purge Engine (`scripts/proxy-manager.lua`, `control.lua`):** Added `proxy_manager.purge_orphans()` scanning all surfaces for unanchored real/ghost proxies, hooking it into `setup_storage()` in `control.lua` to clean up legacy map orphans during `on_init` and `on_configuration_changed`.
+
+
+### Revision: Blueprint Orphan Proxy Purge & UI Lifecycle Integration
+**Date:** 2026-09-04 18:48 (EDT)
+**Context:** Automatically sanitize blueprints and blueprint books upon saving, setup, or GUI window teardown, purging orphan circuit proxies left behind when main devices (pumps or diverters) are deleted in the blueprint manager window.
+**Key Changes:**
+1. **Proxy Specification Registry Export (`scripts/proxy-manager.lua`):** Exposed `proxy_manager.get_registered_proxies()` and `proxy_manager.get_registered_mains()` to allow blueprint utility functions to query registered proxy names and positional offsets dynamically.
+2. **Blueprint Event Lifecycle & Handle Resolution (`scripts/device-settings-copier.lua`):** Subscribed to `defines.events.on_player_configured_blueprint` and `defines.events.on_gui_closed`. Implemented `get_blueprints_from_event_and_player` to target active blueprint handles across `event` payloads, `player.cursor_stack`, and `player.opened` frame references.
+3. **Orphan Proxy Purging & Re-Indexing Engine (`scripts/device-settings-copier.lua`):** Implemented `clean_blueprint_orphans` to inspect `bp_entities`, identify proxy entities lacking a corresponding main machine within a 0.05 tile radius, purge orphan records, re-index entity numbers (1 to N), and sanitize wire connections and metadata tags.
+4. **Type-Safe Object & Blueprint Book Traversal (`scripts/device-settings-copier.lua`):** Implemented `clean_container_or_blueprint` using `bp.object_name` guards to safely differentiate `LuaItemStack` and `LuaRecord` userdata, enabling recursive blueprint book traversal (`defines.inventory.item_main` and `record.contents`) while guarding against C++ `__index` exceptions.

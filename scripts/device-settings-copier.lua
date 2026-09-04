@@ -6,6 +6,7 @@ local active_device_scanner = require("scripts.active-device-scanner")
 local hub_manager = require("scripts.hubs.hub-manager")
 local pump_gui = require("scripts.pump-gui")
 local diverter_gui = require("scripts.diverter-gui")
+local proxy_manager = require("scripts.proxy-manager")
 local util = require("util")
 
 local device_settings_copier = {}
@@ -36,6 +37,208 @@ local function resolve_target_entity(entity)
         if main and main.valid then return main end
     end
     return nil
+end
+
+local function get_blueprints_from_event_and_player(event)
+    local blueprints = {}
+    local seen = {}
+
+    local function add_bp(bp)
+        if not bp then return end
+        if type(bp) == "userdata" and not bp.valid then return end
+        if seen[bp] then return end
+        seen[bp] = true
+        table.insert(blueprints, bp)
+    end
+
+    if event then
+        add_bp(event.stack)
+        add_bp(event.item)
+        add_bp(event.record)
+    end
+
+    local player = event and event.player_index and game.get_player(event.player_index)
+    if player and player.valid then
+        add_bp(player.cursor_stack)
+        add_bp(player.blueprint_to_setup)
+        if player.opened then
+            if type(player.opened) == "userdata" and player.opened.valid then
+                add_bp(player.opened)
+            end
+        end
+    end
+
+    return blueprints
+end
+
+function device_settings_copier.clean_blueprint_orphans(blueprint)
+    if not blueprint then return false end
+    if type(blueprint) == "userdata" and not blueprint.valid then return false end
+
+    local ok, bp_entities = pcall(function() return blueprint.get_blueprint_entities() end)
+    if not ok or not bp_entities or #bp_entities == 0 then return false end
+
+    local registered_proxies = proxy_manager.get_registered_proxies()
+    if not registered_proxies or not next(registered_proxies) then return false end
+
+    local main_entities = {}
+    for _, entity in ipairs(bp_entities) do
+        if entity and entity.name and entity.position then
+            table.insert(main_entities, entity)
+        end
+    end
+
+    local is_orphan = {}
+    local has_orphans = false
+
+    for i, entity in ipairs(bp_entities) do
+        local proxy_spec = registered_proxies[entity.name]
+        if proxy_spec and entity.position then
+            local px = entity.position.x or entity.position[1]
+            local py = entity.position.y or entity.position[2]
+
+            if px and py then
+                local offset_x = proxy_spec.offset and proxy_spec.offset.x or 0
+                local offset_y = proxy_spec.offset and proxy_spec.offset.y or 0
+                local expected_main_x = px - offset_x
+                local expected_main_y = py - offset_y
+
+                local found_main = false
+                for _, main_ent in ipairs(main_entities) do
+                    if main_ent.name == proxy_spec.main_entity_name and main_ent.position then
+                        local mx = main_ent.position.x or main_ent.position[1]
+                        local my = main_ent.position.y or main_ent.position[2]
+                        if mx and my and math.abs(mx - expected_main_x) < 0.05 and math.abs(my - expected_main_y) < 0.05 then
+                            found_main = true
+                            break
+                        end
+                    end
+                end
+
+                if not found_main then
+                    is_orphan[i] = true
+                    has_orphans = true
+                end
+            end
+        end
+    end
+
+    if not has_orphans then
+        return false
+    end
+
+    local new_entities = {}
+    local old_to_new = {}
+
+    for i, entity in ipairs(bp_entities) do
+        if not is_orphan[i] then
+            local new_index = #new_entities + 1
+            local old_num = entity.entity_number or i
+            old_to_new[old_num] = new_index
+            old_to_new[i] = new_index
+            table.insert(new_entities, entity)
+        end
+    end
+
+    for new_index, entity in ipairs(new_entities) do
+        entity.entity_number = new_index
+
+        if entity.tags then
+            if entity.tags.pneumatic_bp_index then
+                entity.tags.pneumatic_bp_index = new_index
+            end
+            if entity.tags.pneumatic_settings then
+                if entity.tags.pneumatic_settings.my_bp_index then
+                    entity.tags.pneumatic_settings.my_bp_index = new_index
+                end
+                if entity.tags.pneumatic_settings.wire_connections then
+                    local clean_wires = {}
+                    for _, wspec in ipairs(entity.tags.pneumatic_settings.wire_connections) do
+                        local new_target = old_to_new[wspec.target_bp_index]
+                        if new_target then
+                            wspec.target_bp_index = new_target
+                            table.insert(clean_wires, wspec)
+                        end
+                    end
+                    entity.tags.pneumatic_settings.wire_connections = #clean_wires > 0 and clean_wires or nil
+                end
+            end
+        end
+
+        if entity.wires then
+            local clean_bp_wires = {}
+            for _, wtuple in ipairs(entity.wires) do
+                local target_old = wtuple[3]
+                local target_new = old_to_new[target_old]
+                if target_new then
+                    wtuple[3] = target_new
+                    table.insert(clean_bp_wires, wtuple)
+                end
+            end
+            entity.wires = #clean_bp_wires > 0 and clean_bp_wires or nil
+        end
+    end
+
+    pcall(function() blueprint.set_blueprint_entities(new_entities) end)
+    return true
+end
+
+local function clean_container_or_blueprint(bp)
+    if not bp then return end
+    if type(bp) == "userdata" and not bp.valid then return end
+
+    local object_name = nil
+    pcall(function() object_name = bp.object_name end)
+
+    if object_name == "LuaItemStack" then
+        if not bp.valid_for_read then return end
+
+        local is_bp = false
+        pcall(function() is_bp = bp.is_blueprint end)
+        if is_bp then
+            device_settings_copier.clean_blueprint_orphans(bp)
+        end
+
+        local is_book = false
+        pcall(function() is_book = bp.is_blueprint_book end)
+        if is_book then
+            local ok, inv = pcall(function() return bp.get_inventory(defines.inventory.item_main) end)
+            if ok and inv and inv.valid then
+                for i = 1, #inv do
+                    local child = inv[i]
+                    if child and child.valid_for_read then
+                        clean_container_or_blueprint(child)
+                    end
+                end
+            end
+        end
+
+    elseif object_name == "LuaRecord" then
+        local ok_ent, has_entities = pcall(function() return bp.get_blueprint_entities ~= nil end)
+        if ok_ent and has_entities then
+            device_settings_copier.clean_blueprint_orphans(bp)
+        end
+
+        local ok_cont, contents = pcall(function() return bp.contents end)
+        if ok_cont and contents then
+            for _, child_rec in pairs(contents) do
+                clean_container_or_blueprint(child_rec)
+            end
+        end
+
+    else
+        local ok, has_get_bp = pcall(function() return bp.get_blueprint_entities ~= nil end)
+        if ok and has_get_bp then
+            device_settings_copier.clean_blueprint_orphans(bp)
+        end
+    end
+end
+
+local function on_blueprint_changed_event(event)
+    local bps = get_blueprints_from_event_and_player(event)
+    for _, bp in ipairs(bps) do
+        clean_container_or_blueprint(bp)
+    end
 end
 
 local function get_proxy_connector_id(connector_id)
@@ -174,7 +377,6 @@ local function on_player_setup_blueprint(event)
         end
     end
 
-    -- First pass: Ensure proxy entity records exist in bp_entities array
     for bp_index, entity in pairs(mapping) do
         if entity and entity.valid and entity.unit_number then
             local name = entity.name
@@ -211,7 +413,6 @@ local function on_player_setup_blueprint(event)
         end
     end
 
-    -- Second pass: Process settings, tags, and wire connections
     for bp_index, entity in pairs(mapping) do
         if entity and entity.valid and entity.unit_number then
             local name = entity.name
@@ -272,7 +473,6 @@ local function on_player_setup_blueprint(event)
                                                 bp_entities[target_bp_index].tags.pneumatic_bp_index = target_bp_index
                                             end
 
-                                            -- Add wire connections to proxy and target in bp_entities for native preview rendering
                                             if proxy_bp_entity then
                                                 local src_conn_id = get_proxy_connector_id(connector_id)
                                                 local tgt_conn_id = target_conn.wire_connector_id
@@ -313,6 +513,7 @@ local function on_player_setup_blueprint(event)
     end
 
     blueprint.set_blueprint_entities(bp_entities)
+    clean_container_or_blueprint(blueprint)
 end
 
 function device_settings_copier.process_entity_built_wire_tags(entity, tags)
@@ -391,6 +592,8 @@ function device_settings_copier.register_events()
     events.on_event("pneumatic-paste-settings", on_paste_settings)
     events.on_event(defines.events.on_entity_settings_pasted, on_entity_settings_pasted)
     events.on_event(defines.events.on_player_setup_blueprint, on_player_setup_blueprint)
+    events.on_event(defines.events.on_player_configured_blueprint, on_blueprint_changed_event)
+    events.on_event(defines.events.on_gui_closed, on_blueprint_changed_event)
 
     local build_events = {
         defines.events.on_built_entity,

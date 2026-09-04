@@ -13,6 +13,14 @@ function proxy_manager.register_pair(spec)
     registered_proxies[spec.proxy_entity_name] = spec
 end
 
+function proxy_manager.get_registered_proxies()
+    return registered_proxies
+end
+
+function proxy_manager.get_registered_mains()
+    return registered_mains
+end
+
 local build_events = {
     defines.events.on_built_entity,
     defines.events.on_robot_built_entity,
@@ -167,7 +175,6 @@ local function on_created(event)
         end
 
         if primary_proxy and primary_proxy.valid then
-            -- Merge wires from all ghost proxies onto primary_proxy before destroying ghosts
             for _, g in ipairs(ghost_proxies) do
                 if g.valid then
                     transfer_wire_connections(g, primary_proxy)
@@ -175,7 +182,6 @@ local function on_created(event)
                 end
             end
 
-            -- Merge wires from any duplicate real proxies onto primary_proxy before destroying
             for i = 2, #existing do
                 local dup = existing[i]
                 if dup and dup.valid then
@@ -203,7 +209,6 @@ local function on_created(event)
         end
 
         if not (main and main.valid) then
-            -- Orphan cleanup
             entity.destroy()
         else
             local existing = entity.surface.find_entities_filtered{
@@ -230,7 +235,6 @@ local function on_created(event)
                 end
                 entity.destroy()
 
-                -- Deduplicate extra real proxies, merging wires
                 for i = 2, #existing do
                     if existing[i].valid then
                         transfer_wire_connections(existing[i], primary_proxy)
@@ -238,7 +242,6 @@ local function on_created(event)
                     end
                 end
             else
-                -- Real proxy created/revived: merge other existing real proxies into this one
                 for _, p in ipairs(existing) do
                     if p.valid and p ~= entity then
                         transfer_wire_connections(p, entity)

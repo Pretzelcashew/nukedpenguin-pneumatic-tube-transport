@@ -78,7 +78,7 @@ function diverter_gui.open_slot_config(player, unit_number, port_index, slot_ind
     local settings = diverter_settings.get(unit_number)
     local port = settings and settings.ports and settings.ports[port_index]
     if not port then return end
-    local filter_data = port.filters[slot_index] or { comparator = "Any Quality", quality = "normal", item = nil }
+    local filter_data = port.filters[slot_index] or { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
 
     local config_frame = player.gui.screen.add{
         type = "frame",
@@ -217,7 +217,7 @@ function diverter_gui.open(player, entity)
         slots_flow.style.horizontal_spacing = 6
 
         for j = 1, 5 do
-            local filter_data = port_data.filters[j] or { comparator = "Any Quality", quality = "normal", item = nil }
+            local filter_data = port_data.filters[j] or { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
             gui_components.create_overlay_slot_button(slots_flow, {
                 button_name = "diverter_slot_" .. i .. "_" .. j,
                 item = filter_data.item,
@@ -262,6 +262,7 @@ local function on_gui_click(event)
             if filter then
                 local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
                 filter.comparator, filter.quality = gui_components.handle_quality_tier_click(config_frame, filter.comparator, chosen_tier)
+                filter.explicit_quality = true
 
                 diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)
                 notify_change(tags.unit_number)
@@ -271,7 +272,24 @@ local function on_gui_click(event)
     end
 
     if tags.slot_button_click and tags.unit_number and tags.port_index and tags.slot_index then
-        diverter_gui.open_slot_config(player, tags.unit_number, tags.port_index, tags.slot_index)
+        local settings = diverter_settings.get(tags.unit_number)
+        local port = settings and settings.ports and settings.ports[tags.port_index]
+        if port and port.filters and port.filters[tags.slot_index] then
+            local action = gui_components.handle_overlay_slot_click(event, port.filters[tags.slot_index])
+            if action == "cleared" then
+                local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
+                if config_frame and config_frame.valid then
+                    local cfg_tags = config_frame.tags or {}
+                    if cfg_tags.unit_number == tags.unit_number and cfg_tags.port_index == tags.port_index and cfg_tags.slot_index == tags.slot_index then
+                        diverter_gui.close_slot_config(player)
+                    end
+                end
+                diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, false)
+                notify_change(tags.unit_number)
+            else
+                diverter_gui.open_slot_config(player, tags.unit_number, tags.port_index, tags.slot_index)
+            end
+        end
         return
     end
 end
@@ -351,7 +369,14 @@ local function on_gui_elem_changed(event)
     end
 
     if element.name == "slot_config_item_button" and tags.slot_index and port.filters[tags.slot_index] then
-        port.filters[tags.slot_index].item = element.elem_value
+        local filter = port.filters[tags.slot_index]
+        gui_components.handle_filter_item_change(filter, element.elem_value)
+
+        local config_frame = player and player.gui.screen[SLOT_CONFIG_FRAME_NAME]
+        if config_frame and config_frame.valid then
+            gui_components.update_quality_control_bar(config_frame, filter.comparator, filter.quality)
+        end
+
         if player then
             diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)
         end
@@ -380,6 +405,12 @@ local function on_gui_selection_state_changed(event)
         local filter = port.filters[tags.slot_index]
         local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
         filter.comparator, filter.quality = gui_components.handle_quality_comparator_change(config_frame, element.selected_index, filter.quality)
+
+        if filter.comparator == "Any" or filter.comparator == "Any Quality" then
+            filter.explicit_quality = nil
+        else
+            filter.explicit_quality = true
+        end
 
         if player then
             diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)

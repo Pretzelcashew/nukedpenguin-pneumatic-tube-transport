@@ -29,11 +29,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [2] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [3] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [4] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [5] = { comparator = "Any Quality", quality = "normal", item = nil }
+                        [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
                 [2] = { -- Port 2: East
@@ -44,11 +44,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [2] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [3] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [4] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [5] = { comparator = "Any Quality", quality = "normal", item = nil }
+                        [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
                 [3] = { -- Port 3: South
@@ -59,11 +59,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [2] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [3] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [4] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [5] = { comparator = "Any Quality", quality = "normal", item = nil }
+                        [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
                 [4] = { -- Port 4: West
@@ -74,11 +74,11 @@ function diverter_settings.get(unit_number)
                     use_filters = false,
                     filter_mode = "whitelist",
                     filters = {
-                        [1] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [2] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [3] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [4] = { comparator = "Any Quality", quality = "normal", item = nil },
-                        [5] = { comparator = "Any Quality", quality = "normal", item = nil }
+                        [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                        [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 }
             }
@@ -98,22 +98,27 @@ function diverter_settings.get(unit_number)
                     end
                     if not p.filters then
                         p.filters = {
-                            [1] = { comparator = "Any Quality", quality = "normal", item = nil },
-                            [2] = { comparator = "Any Quality", quality = "normal", item = nil },
-                            [3] = { comparator = "Any Quality", quality = "normal", item = nil },
-                            [4] = { comparator = "Any Quality", quality = "normal", item = nil },
-                            [5] = { comparator = "Any Quality", quality = "normal", item = nil }
+                            [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                            [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                            [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                            [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
+                            [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                         }
                     else
                         for j = 1, 5 do
                             if not p.filters[j] then
-                                p.filters[j] = { comparator = "Any Quality", quality = "normal", item = nil }
+                                p.filters[j] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                             else
                                 if p.filters[j].comparator == nil then
                                     p.filters[j].comparator = "Any Quality"
                                 end
                                 if p.filters[j].quality == nil then
                                     p.filters[j].quality = "normal"
+                                end
+                                if p.filters[j].item ~= nil or (p.filters[j].comparator ~= "Any Quality" and p.filters[j].comparator ~= "Any") then
+                                    if p.filters[j].explicit_quality == nil then
+                                        p.filters[j].explicit_quality = true
+                                    end
                                 end
                             end
                         end

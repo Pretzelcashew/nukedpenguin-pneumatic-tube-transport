@@ -6,6 +6,7 @@ gui_components.QUALITY_TIERS = { "normal", "uncommon", "rare", "epic", "legendar
 
 gui_components.COLOR_ACTIVE = "[color=255,174,0]"
 gui_components.COLOR_INACTIVE = "[color=160,160,160]"
+gui_components.COLOR_WHITE = "[color=255,255,255]"
 gui_components.COLOR_END = "[/color]"
 
 --- Returns the 1-based index of a comparator string in COMPARATORS.
@@ -86,6 +87,13 @@ function gui_components.format_active_label(text, is_active)
     end
 end
 
+--- Formats caption text with white color tags for high-contrast slot button overlay rendering.
+--- @param text string
+--- @return string
+function gui_components.format_white_label(text)
+    return gui_components.COLOR_WHITE .. (text or "") .. gui_components.COLOR_END
+end
+
 --- Extracts item name and quality string from a string or table item specifier.
 --- @param item_value string|table|nil
 --- @return string|nil item_name, string|nil quality_name
@@ -97,6 +105,53 @@ function gui_components.get_item_name_and_quality(item_value)
         return item_value, nil
     end
     return nil, nil
+end
+
+--- Resets a filter slot data structure back to its unassigned default state.
+--- @param filter_data table|nil
+--- @return table
+function gui_components.clear_filter_slot(filter_data)
+    filter_data = filter_data or {}
+    filter_data.comparator = "Any Quality"
+    filter_data.quality = "normal"
+    filter_data.item = nil
+    filter_data.explicit_quality = nil
+    return filter_data
+end
+
+--- Reusable event handler for clicks on overlay slot buttons.
+--- Automatically clears the slot on right-click or returns "open_config" on left-click.
+--- @param event table GUI event object from on_gui_click
+--- @param filter_data table Filter slot data structure
+--- @return string action "cleared" | "open_config"
+function gui_components.handle_overlay_slot_click(event, filter_data)
+    if event and event.button == defines.mouse_button_type.right then
+        gui_components.clear_filter_slot(filter_data)
+        return "cleared"
+    end
+    return "open_config"
+end
+
+--- Reusable handler for item selection changes on filter slots.
+--- Applies native Factorio quality rules: defaults to '=' + 'normal' only if no explicit quality rule was previously chosen.
+--- @param filter_data table Filter slot data structure
+--- @param new_item string|table|nil The newly selected item
+--- @return table filter_data
+function gui_components.handle_filter_item_change(filter_data, new_item)
+    filter_data = filter_data or {}
+    if new_item then
+        if not filter_data.explicit_quality then
+            filter_data.comparator = "="
+            filter_data.quality = "normal"
+            filter_data.explicit_quality = true
+        end
+        filter_data.item = new_item
+    else
+        filter_data.item = nil
+        filter_data.comparator = "Any Quality"
+        filter_data.explicit_quality = nil
+    end
+    return filter_data
 end
 
 --- Creates a main GUI frame window for a player.
@@ -285,6 +340,7 @@ function gui_components.add_circuit_condition_panel(parent, config)
 end
 
 --- Creates a 40x40 square slot button with bottom-left corner badges and optional active selection outline.
+--- Configures mouse_button_filter to allow both Left and Right click interaction events.
 --- @param parent LuaGuiElement
 --- @param config table Configuration table: { button_name, item, comparator, quality, is_selected, tags, width, height }
 --- @return LuaGuiElement button
@@ -307,6 +363,7 @@ function gui_components.create_overlay_slot_button(parent, config)
         name = config.button_name or "filter_slot_button",
         style = button_style,
         sprite = sprite_path,
+        mouse_button_filter = { "left", "right" },
         tags = config.tags
     }
     button.style.width = config.width or 40
@@ -347,6 +404,7 @@ function gui_components.create_overlay_slot_button(parent, config)
 end
 
 --- Updates an existing overlay slot button's item sprite, comparator badge, and quality icon.
+--- Native behavior: Omits the '=' comparator label overlay and renders non-equal badges in native high-contrast white.
 --- Uses pneumatic_any_quality_badge for wildcard quality overlay rendering.
 --- @param button LuaGuiElement
 --- @param item string|table|nil Item name or specifier
@@ -399,16 +457,19 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
             end
         end
     else
-        local badge_label = bottom_flow.add{
-            type = "label",
-            name = "comparator_badge",
-            caption = gui_components.format_active_label(comp, true),
-            ignored_by_interaction = true
-        }
-        badge_label.style.font = "default-semibold"
-        badge_label.style.padding = 0
-        badge_label.style.margin = 0
-        badge_label.style.top_margin = -3
+        -- Native behavior: '=' comparator badge symbol is omitted, and non-equal symbols are rendered in white
+        if comp ~= "=" then
+            local badge_label = bottom_flow.add{
+                type = "label",
+                name = "comparator_badge",
+                caption = gui_components.format_white_label(comp),
+                ignored_by_interaction = true
+            }
+            badge_label.style.font = "default-semibold"
+            badge_label.style.padding = 0
+            badge_label.style.margin = 0
+            badge_label.style.top_margin = -3
+        end
 
         if (qual and qual ~= "" and qual ~= "normal") or (not item_name) then
             local q_sprite_path = gui_components.get_quality_sprite(qual)
@@ -620,7 +681,7 @@ function gui_components.handle_quality_tier_click(container, current_comparator,
 end
 
 --- Encapsulates the native-like behavior when the quality comparator dropdown choice changes.
---- If "Any Quality" is selected, grays out / unselects all quality tier selection buttons.
+--- Native behavior: Selecting "Any Quality" resets the remembered quality tier back to "normal".
 --- @param container LuaGuiElement Parent container frame
 --- @param selected_index integer Dropdown selected index
 --- @param current_quality string|nil Current active quality tier
@@ -628,6 +689,10 @@ end
 function gui_components.handle_quality_comparator_change(container, selected_index, current_quality)
     local comp = gui_components.get_quality_comparator_by_index(selected_index)
     local qual = current_quality or "normal"
+
+    if comp == "Any" or comp == "Any Quality" then
+        qual = "normal"
+    end
 
     gui_components.update_quality_control_bar(container, comp, qual)
     return comp, qual

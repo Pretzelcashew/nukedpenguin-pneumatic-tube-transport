@@ -79,3 +79,12 @@
 2. **Overlay Badge Texture Scaling (`scripts/utils/gui-components.lua`):** Enabled `stretch_image_to_widget_size = true` on overlay sprite elements in `update_overlay_slot_button`, scaling 64x64 wildcard badges and 32x32 quality tier icons down into clean 12x12 corner overlays.
 3. **Bottom-Left Corner Alignment & Padding (`scripts/utils/gui-components.lua`):** Constrained slot button inner layout flows to `34x34`, set `horizontal_align = "left"`, and applied baseline label offsets (`top_margin = -3`) to keep comparator operators and quality badges positioned neatly inside the bottom-left corner of the 40x40 slot box.
 4. **Encapsulated Quality Selection API (`scripts/utils/gui-components.lua`, `scripts/diverter-gui.lua`):** Added `gui_components.update_quality_tier_selection` to encapsulate radio button active selection styling, fully decoupling quality control bar state updates from machine GUI implementations.
+
+
+### Revision: Native Quality Comparator Selector Component Refactoring
+**Date:** 2026-09-03 22:27 (EDT)
+**Context:** Standardize and fully encapsulate native Factorio quality comparator and quality tier selector interaction rules inside the reusable UI widget library, eliminating machine-specific quality state orchestration in diverter GUIs.
+**Key Changes:**
+1. **Encapsulated Quality Control Bar Engine (`scripts/utils/gui-components.lua`):** Updated `add_quality_control_bar` to keep quality tier radio buttons unselected/grayed-out when initialized in `"Any Quality"` mode. Added `update_quality_control_bar`, `handle_quality_tier_click`, and `handle_quality_comparator_change` to manage control bar state transitions, dropdown synchronization, and button highlight styles centrally.
+2. **Native Quality Selector Rules (`scripts/utils/gui-components.lua`):** Implemented native Factorio quality selector behavior: selecting `"Any Quality"` on the dropdown grays out/unselects all quality tier selection buttons; clicking any quality tier radio button while on `"Any Quality"` automatically converts the comparator mode to `=` and selects the clicked tier.
+3. **Decoupled Diverter GUI Event Delegation (`scripts/diverter-gui.lua`):** Streamlined quality dropdown (`on_gui_selection_state_changed`) and quality tier click (`on_gui_click`) event listeners to delegate state transitions directly to `gui_components.handle_quality_comparator_change` and `gui_components.handle_quality_tier_click`.

@@ -436,6 +436,7 @@ function gui_components.add_quality_control_bar(parent, config)
     config = config or {}
     local curr_comp = config.comparator or "Any"
     local curr_qual = config.quality or "normal"
+    local is_any = (curr_comp == "Any" or curr_comp == "Any Quality")
 
     local deep_frame = parent.add{
         type = "frame",
@@ -483,7 +484,7 @@ function gui_components.add_quality_control_bar(parent, config)
         local capital_tier = tier:sub(1,1):upper() .. tier:sub(2)
 
         local btn_style = "slot_button"
-        if tier == curr_qual then
+        if (not is_any) and (tier == curr_qual) then
             if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
                 btn_style = "flib_selected_slot_button"
             else
@@ -529,16 +530,40 @@ function gui_components.add_quality_control_bar(parent, config)
     }
 end
 
---- Updates the visual selection style of quality tier radio buttons inside a container frame.
---- @param container LuaGuiElement Parent container containing quality_tier_radio_ buttons
---- @param selected_tier string The active quality tier ("normal", "uncommon", etc.)
-function gui_components.update_quality_tier_selection(container, selected_tier)
+--- Updates both dropdown selection and quality tier radio button highlights in a container frame.
+--- If comparator is "Any" or "Any Quality", unselects all quality tier buttons.
+--- @param container LuaGuiElement Parent container containing quality_comparator_dropdown and quality_tier_radio_ buttons
+--- @param comparator string|nil Comparator string ("Any", "Any Quality", "=", ">", etc.)
+--- @param quality string|nil Active quality tier ("normal", "uncommon", etc.)
+function gui_components.update_quality_control_bar(container, comparator, quality)
     if not (container and container.valid) then return end
+
+    local is_any = (comparator == "Any" or comparator == "Any Quality")
+
+    -- Update dropdown index if present
+    local comp_dd = container["quality_comparator_dropdown"]
+    if not (comp_dd and comp_dd.valid) then
+        local function find_dd(elem)
+            if not (elem and elem.valid) then return nil end
+            if elem.name == "quality_comparator_dropdown" then return elem end
+            for _, child in ipairs(elem.children) do
+                local found = find_dd(child)
+                if found then return found end
+            end
+            return nil
+        end
+        comp_dd = find_dd(container)
+    end
+
+    if comp_dd and comp_dd.valid then
+        comp_dd.selected_index = gui_components.get_quality_comparator_index(comparator)
+    end
+
+    -- Update quality tier radio buttons
     for _, tier in ipairs(gui_components.QUALITY_TIERS) do
         local btn_name = "quality_tier_radio_" .. tier
         local btn = container[btn_name]
         if not (btn and btn.valid) then
-            -- Fallback search if nested inside inner flows
             local function find_btn(elem)
                 if not (elem and elem.valid) then return nil end
                 if elem.name == btn_name then return elem end
@@ -553,7 +578,7 @@ function gui_components.update_quality_tier_selection(container, selected_tier)
 
         if btn and btn.valid then
             local b_style = "slot_button"
-            if tier == selected_tier then
+            if (not is_any) and (tier == quality) then
                 if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
                     b_style = "flib_selected_slot_button"
                 else
@@ -566,6 +591,46 @@ function gui_components.update_quality_tier_selection(container, selected_tier)
             btn.style.padding = 4
         end
     end
+end
+
+--- Updates the visual selection style of quality tier radio buttons inside a container frame.
+--- @param container LuaGuiElement Parent container
+--- @param selected_tier string The active quality tier ("normal", "uncommon", etc.)
+--- @param comparator string|nil Optional comparator ("Any Quality", "=", etc.)
+function gui_components.update_quality_tier_selection(container, selected_tier, comparator)
+    gui_components.update_quality_control_bar(container, comparator, selected_tier)
+end
+
+--- Encapsulates the native-like behavior when a quality tier button is clicked.
+--- If current comparator is "Any Quality" / "Any", clicking a quality tier automatically switches the comparator to "=".
+--- @param container LuaGuiElement Parent container frame
+--- @param current_comparator string|nil Current comparator string
+--- @param clicked_tier string The quality tier string clicked by the player
+--- @return string new_comparator, string new_quality
+function gui_components.handle_quality_tier_click(container, current_comparator, clicked_tier)
+    local comp = current_comparator or "Any Quality"
+    local qual = clicked_tier or "normal"
+
+    if comp == "Any" or comp == "Any Quality" then
+        comp = "="
+    end
+
+    gui_components.update_quality_control_bar(container, comp, qual)
+    return comp, qual
+end
+
+--- Encapsulates the native-like behavior when the quality comparator dropdown choice changes.
+--- If "Any Quality" is selected, grays out / unselects all quality tier selection buttons.
+--- @param container LuaGuiElement Parent container frame
+--- @param selected_index integer Dropdown selected index
+--- @param current_quality string|nil Current active quality tier
+--- @return string new_comparator, string new_quality
+function gui_components.handle_quality_comparator_change(container, selected_index, current_quality)
+    local comp = gui_components.get_quality_comparator_by_index(selected_index)
+    local qual = current_quality or "normal"
+
+    gui_components.update_quality_control_bar(container, comp, qual)
+    return comp, qual
 end
 
 --- Adds a labeled horizontal switch (e.g. Whitelist/Blacklist, Input/Output).

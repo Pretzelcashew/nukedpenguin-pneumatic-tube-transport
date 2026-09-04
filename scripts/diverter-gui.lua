@@ -263,23 +263,7 @@ local function on_gui_click(event)
 
                 local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
                 if config_frame then
-                    for _, tier in ipairs(gui_components.QUALITY_TIERS) do
-                        local btn = find_element_by_name(config_frame, "quality_tier_radio_" .. tier)
-                        if btn then
-                            local b_style = "slot_button"
-                            if tier == chosen_tier then
-                                if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
-                                    b_style = "flib_selected_slot_button"
-                                else
-                                    b_style = "yellow_slot_button"
-                                end
-                            end
-                            btn.style = b_style
-                            btn.style.width = 28
-                            btn.style.height = 28
-                            btn.style.padding = 2
-                        end
-                    end
+                    gui_components.update_quality_tier_selection(config_frame, chosen_tier)
                 end
 
                 diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)

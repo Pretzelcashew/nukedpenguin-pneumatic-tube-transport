@@ -319,8 +319,9 @@ function gui_components.create_overlay_slot_button(parent, config)
         direction = "vertical",
         ignored_by_interaction = true
     }
-    content_flow.style.width = 36
-    content_flow.style.height = 36
+    content_flow.style.width = 34
+    content_flow.style.height = 34
+    content_flow.style.padding = {1, 1, 1, 1}
     content_flow.style.vertical_spacing = 0
 
     local top_spacer = content_flow.add{
@@ -335,8 +336,9 @@ function gui_components.create_overlay_slot_button(parent, config)
         direction = "horizontal",
         ignored_by_interaction = true
     }
-    bottom_flow.style.height = 14
+    bottom_flow.style.height = 12
     bottom_flow.style.vertical_align = "bottom"
+    bottom_flow.style.horizontal_align = "left"
     bottom_flow.style.horizontal_spacing = 1
 
     gui_components.update_overlay_slot_button(button, config.item, config.comparator, config.quality, config.is_selected)
@@ -393,6 +395,7 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
                 }
                 q_sprite.style.width = 12
                 q_sprite.style.height = 12
+                q_sprite.style.stretch_image_to_widget_size = true
             end
         end
     else
@@ -402,9 +405,10 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
             caption = gui_components.format_active_label(comp, true),
             ignored_by_interaction = true
         }
-        badge_label.style.font = "default-bold"
+        badge_label.style.font = "default-semibold"
         badge_label.style.padding = 0
-        badge_label.style.top_margin = -2
+        badge_label.style.margin = 0
+        badge_label.style.top_margin = -3
 
         if (qual and qual ~= "" and qual ~= "normal") or (not item_name) then
             local q_sprite_path = gui_components.get_quality_sprite(qual)
@@ -417,6 +421,7 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
                 }
                 q_sprite.style.width = 12
                 q_sprite.style.height = 12
+                q_sprite.style.stretch_image_to_widget_size = true
             end
         end
     end
@@ -465,7 +470,7 @@ function gui_components.add_quality_control_bar(parent, config)
         selected_index = gui_components.get_quality_comparator_index(curr_comp),
         tags = config.tags
     }
-    comp_dd.style.width = 54
+    comp_dd.style.width = 68
 
     local radio_flow = bar_flow.add{
         type = "flow",
@@ -498,7 +503,7 @@ function gui_components.add_quality_control_bar(parent, config)
         }
         btn.style.width = 28
         btn.style.height = 28
-        btn.style.padding = 5
+        btn.style.padding = 4
 
         radio_buttons[tier] = btn
     end
@@ -522,6 +527,45 @@ function gui_components.add_quality_control_bar(parent, config)
         quality_buttons = radio_buttons,
         confirm_button = confirm_btn
     }
+end
+
+--- Updates the visual selection style of quality tier radio buttons inside a container frame.
+--- @param container LuaGuiElement Parent container containing quality_tier_radio_ buttons
+--- @param selected_tier string The active quality tier ("normal", "uncommon", etc.)
+function gui_components.update_quality_tier_selection(container, selected_tier)
+    if not (container and container.valid) then return end
+    for _, tier in ipairs(gui_components.QUALITY_TIERS) do
+        local btn_name = "quality_tier_radio_" .. tier
+        local btn = container[btn_name]
+        if not (btn and btn.valid) then
+            -- Fallback search if nested inside inner flows
+            local function find_btn(elem)
+                if not (elem and elem.valid) then return nil end
+                if elem.name == btn_name then return elem end
+                for _, child in ipairs(elem.children) do
+                    local found = find_btn(child)
+                    if found then return found end
+                end
+                return nil
+            end
+            btn = find_btn(container)
+        end
+
+        if btn and btn.valid then
+            local b_style = "slot_button"
+            if tier == selected_tier then
+                if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+                    b_style = "flib_selected_slot_button"
+                else
+                    b_style = "yellow_slot_button"
+                end
+            end
+            btn.style = b_style
+            btn.style.width = 28
+            btn.style.height = 28
+            btn.style.padding = 4
+        end
+    end
 end
 
 --- Adds a labeled horizontal switch (e.g. Whitelist/Blacklist, Input/Output).

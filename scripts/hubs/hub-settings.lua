@@ -1,3 +1,5 @@
+local util = require("util")
+
 local hub_settings = {}
 
 function hub_settings.get(unit_number)
@@ -33,6 +35,17 @@ function hub_settings.get(unit_number)
         if s.read_green == nil then s.read_green = true end
     end
     return storage.hub_settings[unit_number]
+end
+
+function hub_settings.copy(src_unit_number, dest_unit_number)
+    if not (src_unit_number and dest_unit_number) then return nil end
+    local src = hub_settings.get(src_unit_number)
+    if not src then return nil end
+
+    storage.hub_settings = storage.hub_settings or {}
+    local copy = util.table.deepcopy(src)
+    storage.hub_settings[dest_unit_number] = copy
+    return copy
 end
 
 local function evaluate_condition(val, operator, target)

@@ -1,3 +1,5 @@
+local util = require("util")
+
 local diverter_settings = {}
 
 diverter_settings.DEFAULT_CAPACITY = 2
@@ -128,6 +130,24 @@ function diverter_settings.get(unit_number)
         end
     end
     return storage.diverter_settings[unit_number]
+end
+
+function diverter_settings.copy(src_unit_number, dest_unit_number)
+    if not (src_unit_number and dest_unit_number) then return nil end
+    local src = diverter_settings.get(src_unit_number)
+    if not src then return nil end
+
+    storage.diverter_settings = storage.diverter_settings or {}
+    local copy = util.table.deepcopy(src)
+    if copy.ports then
+        for i = 1, 4 do
+            if copy.ports[i] then
+                copy.ports[i]._compiled = nil
+            end
+        end
+    end
+    storage.diverter_settings[dest_unit_number] = copy
+    return copy
 end
 
 function diverter_settings.get_capacity(unit_number)

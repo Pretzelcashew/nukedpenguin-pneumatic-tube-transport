@@ -66,6 +66,7 @@ data:extend({
     max_health = 250,
     collision_box = am2.collision_box,
     selection_box = am2.selection_box,
+    additional_pastable_entities = {"pneumatic-diverter"},
     gui_mode = "all", -- Kept operable so left-click / 'E' fires on_gui_opened
     energy_source = {
       type = "electric",

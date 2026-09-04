@@ -3,6 +3,7 @@ local liminal_surface = require("scripts.surfaces.liminal-surface")
 local debug_manager = require("scripts.debug-manager")
 local proxy_manager = require("scripts.proxy-manager")
 local active_device_scanner = require("scripts.active-device-scanner")
+local device_settings_copier = require("scripts.device-settings-copier")
 
 require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
@@ -19,6 +20,7 @@ local capsule_runner = require("scripts.capsules.capsule-runner")
 
 proxy_manager.register_events()
 active_device_scanner.register_events()
+device_settings_copier.register_events()
 flow_engine.register_events()
 capsule_runner.register_events()
 

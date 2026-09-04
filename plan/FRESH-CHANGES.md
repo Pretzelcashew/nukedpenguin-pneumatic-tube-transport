@@ -131,3 +131,13 @@
 **Context:** Resolve operator symbol clipping and selection arrow truncation inside circuit condition dropdown widgets across device configuration interfaces by expanding the default dropdown width in the UI component builder library.
 **Key Changes:**
 1. **Circuit Condition Panel Dropdown Width (`scripts/utils/gui-components.lua`):** Increased `comparator_width` default fallback from `40` to `55` pixels in `gui_components.add_circuit_condition_panel`, ensuring ample padding for all comparator symbols (`=`, `≥`, `≤`, `>`, `<`, `≠`) and dropdown arrows across Pneumatic Pump, Diverter, and Hub GUIs.
+
+
+### Revision: Reusable Device Settings Copy-Paste Engine & Custom Input Integration
+**Date:** 2026-09-04 09:42 (EDT)
+**Context:** Enable copying and pasting device configuration settings across Pneumatic Pumps, Diverters, and Hubs using native Factorio copy/paste controls (Shift + Right-Click / Left-Click), bypassing C++ engine restrictions on non-container prototypes.
+**Key Changes:**
+1. **Custom Input Control Bindings (`prototypes/custom-input.lua`):** Registered `pneumatic-copy-settings` and `pneumatic-paste-settings` custom inputs linked directly to native `copy-entity-settings` and `paste-entity-settings` controls to reliably capture copy/paste intent on `electric-energy-interface` prototypes.
+2. **Prototype Pastable Entity Registration (`prototypes/entity.lua`, `prototypes/pneumatic-diverter.lua`):** Configured `additional_pastable_entities` across `pneumatic-pump`, `pneumatic-diverter`, and `capsule-hub` prototypes to enable native cursor selection.
+3. **Centralized Settings Copier Engine (`scripts/device-settings-copier.lua`, `control.lua`):** Created `device-settings-copier.lua` listening to custom input and native `on_entity_settings_pasted` events. Copies settings between matching device types, notifies `active_device_scanner` or `hub_manager` for immediate state/flow re-evaluation, and refreshes open destination GUIs.
+4. **Deep-Copy Settings Persistence Helpers (`scripts/pump-settings.lua`, `scripts/diverter-settings.lua`, `scripts/hubs/hub-settings.lua`):** Added `.copy()` helpers backed by `util.table.deepcopy` to duplicate configuration data cleanly in `storage`, clearing compiled filter caches on destination diverter entities.

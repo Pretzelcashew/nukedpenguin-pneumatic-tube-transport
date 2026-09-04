@@ -1,3 +1,5 @@
+local util = require("util")
+
 local pump_settings = {}
 
 local function evaluate_condition(val, operator, target)
@@ -32,6 +34,17 @@ function pump_settings.get(unit_number)
         if s.read_green == nil then s.read_green = true end
     end
     return storage.pump_settings[unit_number]
+end
+
+function pump_settings.copy(src_unit_number, dest_unit_number)
+    if not (src_unit_number and dest_unit_number) then return nil end
+    local src = pump_settings.get(src_unit_number)
+    if not src then return nil end
+
+    storage.pump_settings = storage.pump_settings or {}
+    local copy = util.table.deepcopy(src)
+    storage.pump_settings[dest_unit_number] = copy
+    return copy
 end
 
 function pump_settings.get_proxy(entity)

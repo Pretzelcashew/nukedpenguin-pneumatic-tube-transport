@@ -320,7 +320,7 @@ function gui_components.add_circuit_condition_panel(parent, config)
         selected_index = gui_components.get_comparator_index(comparator),
         tags = config.tags
     }
-    comp_dropdown.style.width = config.comparator_width or 40
+    comp_dropdown.style.width = config.comparator_width or 55
 
     local const_tf = circuit_flow.add{
         type = "textfield",

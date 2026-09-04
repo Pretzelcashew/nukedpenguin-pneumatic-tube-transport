@@ -124,3 +124,10 @@
 2. **Default North Direction View (`scripts/diverter-gui.lua`):** Configured `diverter_gui.open` to default `initial_view` to Port 1 (North), presenting a single clean port configuration card when opening the interface to eliminate multi-card cognitive overload.
 3. **Dynamic Port Container Rendering (`scripts/diverter-gui.lua`):** Refactored `render_content_layout` to dynamically switch between a single card layout (`column_count = 1`) for individual cardinal directions and a 2x2 grid (`column_count = 2`) when viewing all direction ports simultaneously.
 4. **View Switching Event Delegation (`scripts/diverter-gui.lua`):** Added `view_port` tag event routing inside `on_gui_click` to handle direction view toggling while cleanly dismissing open modal filter slot configuration windows before re-rendering the layout.
+
+
+### Revision: Circuit Condition Dropdown Width Expansion
+**Date:** 2026-09-04 08:57 (EDT)
+**Context:** Resolve operator symbol clipping and selection arrow truncation inside circuit condition dropdown widgets across device configuration interfaces by expanding the default dropdown width in the UI component builder library.
+**Key Changes:**
+1. **Circuit Condition Panel Dropdown Width (`scripts/utils/gui-components.lua`):** Increased `comparator_width` default fallback from `40` to `55` pixels in `gui_components.add_circuit_condition_panel`, ensuring ample padding for all comparator symbols (`=`, `≥`, `≤`, `>`, `<`, `≠`) and dropdown arrows across Pneumatic Pump, Diverter, and Hub GUIs.

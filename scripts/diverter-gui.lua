@@ -7,7 +7,12 @@ local diverter_gui = {}
 
 local GUI_FRAME_NAME = "diverter_configuration_frame"
 local SLOT_CONFIG_FRAME_NAME = "filter_slot_config_frame"
-local PORT_DIRECTIONS = { "North", "East", "South", "West" }
+local PORT_DIRECTIONS = {
+    "North " .. gui_components.COLOR_BLUE .. "▲" .. gui_components.COLOR_END,
+    "East " .. gui_components.COLOR_BLUE .. "▶" .. gui_components.COLOR_END,
+    "South " .. gui_components.COLOR_BLUE .. "▼" .. gui_components.COLOR_END,
+    "West " .. gui_components.COLOR_BLUE .. "◀" .. gui_components.COLOR_END
+}
 
 local function notify_change(unit_number)
     local entity = storage.active_diverters and storage.active_diverters[unit_number]

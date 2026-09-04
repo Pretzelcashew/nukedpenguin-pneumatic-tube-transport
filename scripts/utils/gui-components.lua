@@ -7,6 +7,7 @@ gui_components.QUALITY_TIERS = { "normal", "uncommon", "rare", "epic", "legendar
 gui_components.COLOR_ACTIVE = "[color=255,174,0]"
 gui_components.COLOR_INACTIVE = "[color=160,160,160]"
 gui_components.COLOR_WHITE = "[color=255,255,255]"
+gui_components.COLOR_BLUE = "[color=100,200,255]"
 gui_components.COLOR_END = "[/color]"
 
 --- Returns the 1-based index of a comparator string in COMPARATORS.

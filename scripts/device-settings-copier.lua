@@ -38,6 +38,32 @@ local function resolve_target_entity(entity)
     return nil
 end
 
+local function get_proxy_connector_id(connector_id)
+    if defines and defines.wire_connector_id then
+        if connector_id == defines.wire_connector_id.circuit_red or
+           connector_id == defines.wire_connector_id.combinator_input_red or
+           connector_id == defines.wire_connector_id.combinator_output_red then
+            return defines.wire_connector_id.combinator_input_red or connector_id
+        elseif connector_id == defines.wire_connector_id.circuit_green or
+               connector_id == defines.wire_connector_id.combinator_input_green or
+               connector_id == defines.wire_connector_id.combinator_output_green then
+            return defines.wire_connector_id.combinator_input_green or connector_id
+        end
+    end
+    return connector_id
+end
+
+local function add_bp_wire(bp_entity, src_conn_id, target_bp_index, tgt_conn_id)
+    if not bp_entity then return end
+    bp_entity.wires = bp_entity.wires or {}
+    for _, w in ipairs(bp_entity.wires) do
+        if w[1] == src_conn_id and w[2] == src_conn_id and w[3] == target_bp_index and w[4] == tgt_conn_id then
+            return
+        end
+    end
+    table.insert(bp_entity.wires, { src_conn_id, src_conn_id, target_bp_index, tgt_conn_id })
+end
+
 local function on_copy_settings(event)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
@@ -128,7 +154,7 @@ end
 
 local function on_player_setup_blueprint(event)
     local blueprint = event.stack or event.record
-    if not (blueprint and blueprint.set_blueprint_entity_tag) then return end
+    if not blueprint then return end
 
     local mapping = event.mapping
     if not mapping then return end
@@ -138,6 +164,9 @@ local function on_player_setup_blueprint(event)
     end
     if type(mapping) ~= "table" then return end
 
+    local bp_entities = blueprint.get_blueprint_entities()
+    if not bp_entities then return end
+
     local unit_to_bp_index = {}
     for bp_index, entity in pairs(mapping) do
         if entity and entity.valid and entity.unit_number then
@@ -145,6 +174,44 @@ local function on_player_setup_blueprint(event)
         end
     end
 
+    -- First pass: Ensure proxy entity records exist in bp_entities array
+    for bp_index, entity in pairs(mapping) do
+        if entity and entity.valid and entity.unit_number then
+            local name = entity.name
+            if name == "entity-ghost" then name = entity.ghost_name end
+
+            local proxy = nil
+            local proxy_name = nil
+            if name == "pneumatic-pump" then
+                proxy = pump_settings.get_proxy(entity)
+                proxy_name = "pneumatic-pump-circuit-proxy"
+            elseif name == "pneumatic-diverter" then
+                proxy = diverter_settings.get_proxy(entity)
+                proxy_name = "pneumatic-diverter-circuit-proxy"
+            end
+
+            if proxy and proxy.valid and proxy.unit_number then
+                if not unit_to_bp_index[proxy.unit_number] then
+                    local proxy_bp_index = #bp_entities + 1
+                    unit_to_bp_index[proxy.unit_number] = proxy_bp_index
+                    local main_bp = bp_entities[bp_index]
+                    if main_bp then
+                        table.insert(bp_entities, {
+                            entity_number = proxy_bp_index,
+                            name = proxy_name,
+                            position = { x = main_bp.position.x, y = main_bp.position.y },
+                            direction = main_bp.direction,
+                            tags = {
+                                pneumatic_bp_index = proxy_bp_index
+                            }
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    -- Second pass: Process settings, tags, and wire connections
     for bp_index, entity in pairs(mapping) do
         if entity and entity.valid and entity.unit_number then
             local name = entity.name
@@ -180,6 +247,9 @@ local function on_player_setup_blueprint(event)
                 settings_copy.my_bp_index = bp_index
 
                 if proxy and proxy.valid then
+                    local proxy_bp_index = unit_to_bp_index[proxy.unit_number]
+                    local proxy_bp_entity = proxy_bp_index and bp_entities[proxy_bp_index]
+
                     local connectors = proxy.get_wire_connectors(false)
                     if connectors then
                         local wire_data = {}
@@ -196,7 +266,26 @@ local function on_player_setup_blueprint(event)
                                                 target_bp_index = target_bp_index,
                                                 target_connector_id = target_conn.wire_connector_id
                                             })
-                                            blueprint.set_blueprint_entity_tag(target_bp_index, "pneumatic_bp_index", target_bp_index)
+
+                                            if bp_entities[target_bp_index] then
+                                                bp_entities[target_bp_index].tags = bp_entities[target_bp_index].tags or {}
+                                                bp_entities[target_bp_index].tags.pneumatic_bp_index = target_bp_index
+                                            end
+
+                                            -- Add wire connections to proxy and target in bp_entities for native preview rendering
+                                            if proxy_bp_entity then
+                                                local src_conn_id = get_proxy_connector_id(connector_id)
+                                                local tgt_conn_id = target_conn.wire_connector_id
+                                                local target_owner_name = target_conn.owner.name
+                                                if target_owner_name == "pneumatic-pump-circuit-proxy" or target_owner_name == "pneumatic-diverter-circuit-proxy" then
+                                                    tgt_conn_id = get_proxy_connector_id(tgt_conn_id)
+                                                end
+
+                                                add_bp_wire(proxy_bp_entity, src_conn_id, target_bp_index, tgt_conn_id)
+                                                if bp_entities[target_bp_index] then
+                                                    add_bp_wire(bp_entities[target_bp_index], tgt_conn_id, proxy_bp_index, src_conn_id)
+                                                end
+                                            end
                                         end
                                     end
                                 end
@@ -206,13 +295,24 @@ local function on_player_setup_blueprint(event)
                             settings_copy.wire_connections = wire_data
                         end
                     end
+
+                    if proxy_bp_entity then
+                        proxy_bp_entity.tags = proxy_bp_entity.tags or {}
+                        proxy_bp_entity.tags.pneumatic_bp_index = proxy_bp_index
+                    end
                 end
 
-                blueprint.set_blueprint_entity_tag(bp_index, "pneumatic_settings", settings_copy)
-                blueprint.set_blueprint_entity_tag(bp_index, "pneumatic_bp_index", bp_index)
+                local main_bp_entity = bp_entities[bp_index]
+                if main_bp_entity then
+                    main_bp_entity.tags = main_bp_entity.tags or {}
+                    main_bp_entity.tags.pneumatic_settings = settings_copy
+                    main_bp_entity.tags.pneumatic_bp_index = bp_index
+                end
             end
         end
     end
+
+    blueprint.set_blueprint_entities(bp_entities)
 end
 
 function device_settings_copier.process_entity_built_wire_tags(entity, tags)

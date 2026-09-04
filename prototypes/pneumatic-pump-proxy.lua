@@ -10,13 +10,13 @@ proxy.name = "pneumatic-pump-circuit-proxy"
 proxy.icon = pump_icon
 proxy.icon_size = pump_icon_size
 proxy.flags = {
+  "player-creation",
   "placeable-off-grid",
-  "not-on-map",
   "not-deconstructable",
-  "not-blueprintable",
   "hide-alt-info",
   "no-copy-paste"
 }
+proxy.placeable_by = {item = "pneumatic-pump", count = 0}
 proxy.collision_box = {{0, 0}, {0, 0}}
 proxy.collision_mask = {layers = {}}
 proxy.selection_box = {{-0.3, -0.3}, {0.3, 0.3}}

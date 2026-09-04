@@ -65,7 +65,23 @@ local function on_created(event)
         name = spec.proxy_entity_name,
         position = pos
     }
-    if #existing == 0 then
+    if #existing > 0 then
+        for _, proxy in ipairs(existing) do
+            if proxy.valid then
+                proxy.direction = entity.direction
+                -- Re-indexes proxy to the top of the spatial selection stack above newly built/placed main entities
+                proxy.teleport(pos)
+            end
+        end
+    else
+        local ghost_proxies = entity.surface.find_entities_filtered{
+            ghost_name = spec.proxy_entity_name,
+            position = pos
+        }
+        for _, g in ipairs(ghost_proxies) do
+            if g.valid then g.destroy() end
+        end
+
         local proxy = entity.surface.create_entity{
             name = spec.proxy_entity_name,
             position = pos,
@@ -74,7 +90,6 @@ local function on_created(event)
         }
         if proxy then
             proxy.destructible = false
-            proxy.operable = false
         end
     end
 end
@@ -131,6 +146,7 @@ local function on_rotated(event)
     for _, proxy in ipairs(proxies) do
         if proxy.valid then
             proxy.direction = entity.direction
+            proxy.teleport(pos)
         end
     end
 end

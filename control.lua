@@ -50,6 +50,8 @@ local function setup_storage()
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
 
+    proxy_manager.purge_orphans()
+
     if storage.active_capsules and script.register_on_object_destroyed then
         for cap_id, cap_data in pairs(storage.active_capsules) do
             if cap_data.holder and cap_data.holder.valid then

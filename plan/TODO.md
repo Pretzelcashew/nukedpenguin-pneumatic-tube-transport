@@ -4,6 +4,11 @@
 
 ~add directional icons for the diverter gui to help mental fatigue
 
+~make hub, pump, and diverter settings blueprintable (as in the bp metadata is incorporate in the bp)
+
+
+
+
 address why rotating pumps flow dot layering is inconsistent when rotating (same with diverter), when normally it would show 9 in front but after rotation the 10 is prioritized. the goal is to be consistent rather than 'doing the right thing'
 
 consider rending order (like making flow under capsule render)
@@ -16,7 +21,7 @@ example scenario provided in image: where you'd want extra capsules for sending 
 ensure proper buildings make the correct capsule recipes, and they are located in the correct tabs (recharge spent refrigerated capsule is in the misc tab now, should be moved with the others, into pneumatic transport tab)
 
 
-make hub, pump, and diverter settings blueprintable (as in the bp metadata is incorporate in the bp)
+
 
 include capsule details in factoriopedia (like if it supports mixed cargo)
 
@@ -30,7 +35,7 @@ make copy settings more native feeling for diverters and pumps (sound and yellow
 consider breaking apart large files that are doing too many things (like flow-engine)
 
 
-investigate the inconsistent manner of which pneumatic entities trigger their copy/past settings (are hubs treated too special since their prototype allows native copy/paste events? or is this a necessary evil?)
+investigate the inconsistent manner of which pneumatic entities trigger their copy/paste settings (are hubs treated too special since their prototype allows native copy/paste events? or is this a necessary evil?)
 
 
 make circuit proxys included in blueprints (linked to their device in bp metadata so when placement occurs we dont create a duplicate proxy)

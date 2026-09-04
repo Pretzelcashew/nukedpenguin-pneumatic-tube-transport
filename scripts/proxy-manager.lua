@@ -48,7 +48,12 @@ local function on_created(event)
     local entity = event.entity or event.created_entity or event.destination
     if not (entity and entity.valid) then return end
 
-    local spec = registered_mains[entity.name]
+    local name = entity.name
+    if name == "entity-ghost" then
+        name = entity.ghost_name
+    end
+
+    local spec = registered_mains[name]
     if not spec then return end
 
     local pos = entity.position
@@ -78,7 +83,12 @@ local function on_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
 
-    local spec = registered_mains[entity.name]
+    local name = entity.name
+    if name == "entity-ghost" then
+        name = entity.ghost_name
+    end
+
+    local spec = registered_mains[name]
     if not spec then return end
 
     local pos = entity.position
@@ -101,7 +111,12 @@ local function on_rotated(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
 
-    local spec = registered_mains[entity.name]
+    local name = entity.name
+    if name == "entity-ghost" then
+        name = entity.ghost_name
+    end
+
+    local spec = registered_mains[name]
     if not spec then return end
 
     local pos = entity.position

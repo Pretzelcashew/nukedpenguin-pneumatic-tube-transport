@@ -241,21 +241,25 @@ local function get_item_name_and_quality(item_spec)
     return nil, "normal"
 end
 
-local function matches_filter_item(payload_item, payload_quality, slot_item, slot_comp)
-    if not (payload_item and slot_item) then return false end
+local function matches_filter_item(payload_item, payload_quality, slot_item, slot_comp, slot_quality)
+    if slot_item and slot_item ~= "" then
+        local payload_name, p_qual = get_item_name_and_quality(payload_item)
+        local slot_name = (type(slot_item) == "table" and slot_item.name) or slot_item
+        if payload_name ~= slot_name then
+            return false
+        end
+    end
+
+    local comp = slot_comp or "Any Quality"
+    if comp == "Any Quality" then
+        return true
+    end
 
     local payload_name, p_qual = get_item_name_and_quality(payload_item)
     if payload_quality then p_qual = payload_quality end
 
-    local slot_name, s_qual = get_item_name_and_quality(slot_item)
-
-    if payload_name ~= slot_name then
-        return false
-    end
-
-    local p_rank = QUALITY_RANKS[p_qual] or 1
-    local s_rank = QUALITY_RANKS[s_qual] or 1
-    local comp = slot_comp or "="
+    local p_rank = QUALITY_RANKS[p_qual or "normal"] or 1
+    local s_rank = QUALITY_RANKS[slot_quality or "normal"] or 1
 
     if comp == "=" or comp == "==" then
         return p_rank == s_rank
@@ -296,9 +300,10 @@ local function get_compiled_filter(port_setting)
             local slot = filters[i]
             if slot then
                 local item = slot.item or slot.signal
-                if item then
-                    local comp = slot.comparator or "="
-                    table.insert(active_slots, { item = item, comp = comp })
+                local comp = slot.comparator or "Any Quality"
+                local qual = slot.quality or "normal"
+                if item ~= nil or comp ~= "Any Quality" then
+                    table.insert(active_slots, { item = item, comp = comp, quality = qual })
                 end
             end
         end
@@ -320,8 +325,8 @@ local function evaluates_port_filter(port_setting, payload_item, payload_quality
         return true
     end
 
-    if not payload_item then
-        return compiled.is_blacklist
+    if not payload_item and #compiled.active_slots == 0 then
+        return true
     end
 
     local active_slots = compiled.active_slots
@@ -334,9 +339,9 @@ local function evaluates_port_filter(port_setting, payload_item, payload_quality
     local any_slot_matched = false
     for i = 1, num_active do
         local slot = active_slots[i]
-        local item_match = matches_filter_item(payload_item, payload_quality, slot.item, slot.comp)
+        local slot_matched = matches_filter_item(payload_item, payload_quality, slot.item, slot.comp, slot.quality)
 
-        if item_match then
+        if slot_matched then
             any_slot_matched = true
             if not compiled.is_blacklist then
                 return true

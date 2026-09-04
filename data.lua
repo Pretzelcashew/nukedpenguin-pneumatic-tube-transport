@@ -7,3 +7,14 @@ require("prototypes.shortcut")
 
 require("prototypes.pneumatic-diverter")
 require("prototypes.pneumatic-pump-proxy")
+
+data:extend({
+    {
+        type = "sprite",
+        name = "pneumatic_any_quality_badge",
+        filename = "__core__/graphics/icons/any-quality.png",
+        width = 64,
+        height = 64,
+        flags = { "icon" }
+    }
+})

@@ -1,6 +1,9 @@
 local gui_components = {}
 
 gui_components.COMPARATORS = { "=", "≥", "≤", ">", "<", "≠" }
+gui_components.QUALITY_COMPARATORS = { "Any", ">", "<", "=", "≥", "≤", "≠" }
+gui_components.QUALITY_TIERS = { "normal", "uncommon", "rare", "epic", "legendary" }
+
 gui_components.COLOR_ACTIVE = "[color=255,174,0]"
 gui_components.COLOR_INACTIVE = "[color=160,160,160]"
 gui_components.COLOR_END = "[/color]"
@@ -20,6 +23,55 @@ end
 --- @return string
 function gui_components.get_comparator_by_index(index)
     return gui_components.COMPARATORS[index] or "="
+end
+
+--- Returns the 1-based index of a quality comparator string in QUALITY_COMPARATORS.
+--- @param comp string|nil
+--- @return integer
+function gui_components.get_quality_comparator_index(comp)
+    if comp == "Any" or comp == "Any Quality" or comp == "any" then return 1 end
+    for i, v in ipairs(gui_components.QUALITY_COMPARATORS) do
+        if v == comp then return i end
+    end
+    return 1
+end
+
+--- Returns the quality comparator string at the given index.
+--- @param index integer|nil
+--- @return string
+function gui_components.get_quality_comparator_by_index(index)
+    return gui_components.QUALITY_COMPARATORS[index] or "Any"
+end
+
+--- Safely returns a validated sprite path for a quality tier or wildcard symbol.
+--- Returns our registered 'pneumatic_any_quality_badge' sprite prototype.
+--- @param quality_name string|nil
+--- @return string|nil
+function gui_components.get_quality_sprite(quality_name)
+    -- Handle Wildcard / Any Quality requests
+    if not quality_name or quality_name == "" or quality_name == "any" or quality_name == "Any Quality" or quality_name == "quality/any" then
+        if helpers and helpers.is_valid_sprite_path("pneumatic_any_quality_badge") then
+            return "pneumatic_any_quality_badge"
+        elseif helpers and helpers.is_valid_sprite_path("quality/quality-unknown") then
+            return "quality/quality-unknown"
+        elseif helpers and helpers.is_valid_sprite_path("utility/quality_icon") then
+            return "utility/quality_icon"
+        end
+        return "pneumatic_any_quality_badge"
+    end
+
+    -- Handle specific quality tiers (normal, uncommon, rare, epic, legendary)
+    local name_str = tostring(quality_name)
+    local path = name_str:sub(1, 8) == "quality/" and name_str or ("quality/" .. name_str)
+    if helpers and helpers.is_valid_sprite_path(path) then
+        return path
+    end
+
+    if quality_name == "normal" and helpers and helpers.is_valid_sprite_path("quality/normal") then
+        return "quality/normal"
+    end
+
+    return nil
 end
 
 --- Formats caption text with active or inactive color tags.
@@ -48,7 +100,6 @@ function gui_components.get_item_name_and_quality(item_value)
 end
 
 --- Creates a main GUI frame window for a player.
---- Supports both centered screen frames and relative anchored frames.
 --- @param player LuaPlayer
 --- @param anchor_spec table|nil Optional relative anchor spec
 --- @param frame_name string Name of the frame element
@@ -145,7 +196,7 @@ end
 
 --- Adds standard Red/Green wire channel checkboxes to a parent container.
 --- @param parent LuaGuiElement
---- @param config table Table with optional read_red_name, read_green_name, read_red_state, read_green_state, spacing, tags
+--- @param config table Table with configuration options
 --- @return LuaGuiElement wire_flow, LuaGuiElement red_cb, LuaGuiElement green_cb
 function gui_components.add_wire_channel_toggles(parent, config)
     config = config or {}
@@ -173,7 +224,6 @@ function gui_components.add_wire_channel_toggles(parent, config)
 end
 
 --- Adds a standard circuit network enable condition row.
---- Includes Circuit Enable checkbox, signal selector, comparator dropdown, and constant textfield.
 --- @param parent LuaGuiElement
 --- @param config table Configuration table
 --- @return LuaGuiElement circuit_flow, table elements_map
@@ -234,19 +284,28 @@ function gui_components.add_circuit_condition_panel(parent, config)
     }
 end
 
---- Creates a 40x40 square slot button with top-left corner comparator overlay and optional item sprite.
+--- Creates a 40x40 square slot button with bottom-left corner badges and optional active selection outline.
 --- @param parent LuaGuiElement
---- @param config table Configuration table: { button_name, item, comparator, tags, width, height }
+--- @param config table Configuration table: { button_name, item, comparator, quality, is_selected, tags, width, height }
 --- @return LuaGuiElement button
 function gui_components.create_overlay_slot_button(parent, config)
     config = config or {}
-    local item_name, quality_name = gui_components.get_item_name_and_quality(config.item)
+    local item_name = (type(config.item) == "table" and config.item.name) or (type(config.item) == "string" and config.item or nil)
     local sprite_path = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
+
+    local button_style = "slot_button"
+    if config.is_selected then
+        if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+            button_style = "flib_selected_slot_button"
+        else
+            button_style = "yellow_slot_button"
+        end
+    end
 
     local button = parent.add{
         type = "sprite-button",
         name = config.button_name or "filter_slot_button",
-        style = "slot_button",
+        style = button_style,
         sprite = sprite_path,
         tags = config.tags
     }
@@ -262,23 +321,13 @@ function gui_components.create_overlay_slot_button(parent, config)
     }
     content_flow.style.width = 36
     content_flow.style.height = 36
-    content_flow.style.vertical_spacing = 6
+    content_flow.style.vertical_spacing = 0
 
-    local top_flow = content_flow.add{
-        type = "flow",
-        name = "top_flow",
-        direction = "horizontal",
+    local top_spacer = content_flow.add{
+        type = "empty-widget",
         ignored_by_interaction = true
     }
-    top_flow.style.height = 14
-
-    local badge_label = top_flow.add{
-        type = "label",
-        name = "comparator_badge",
-        caption = gui_components.format_active_label(config.comparator or "=", true),
-        ignored_by_interaction = true
-    }
-    badge_label.style.font = "default-bold"
+    top_spacer.style.vertically_stretchable = true
 
     local bottom_flow = content_flow.add{
         type = "flow",
@@ -287,63 +336,192 @@ function gui_components.create_overlay_slot_button(parent, config)
         ignored_by_interaction = true
     }
     bottom_flow.style.height = 14
+    bottom_flow.style.vertical_align = "bottom"
+    bottom_flow.style.horizontal_spacing = 1
 
-    local spacer = bottom_flow.add{
-        type = "empty-widget",
-        ignored_by_interaction = true
-    }
-    spacer.style.horizontally_stretchable = true
-
-    if quality_name and quality_name ~= "" and quality_name ~= "normal" then
-        local q_sprite = bottom_flow.add{
-            type = "sprite",
-            name = "quality_badge",
-            sprite = "quality/" .. quality_name,
-            ignored_by_interaction = true
-        }
-        q_sprite.style.width = 14
-        q_sprite.style.height = 14
-    end
+    gui_components.update_overlay_slot_button(button, config.item, config.comparator, config.quality, config.is_selected)
 
     return button
 end
 
 --- Updates an existing overlay slot button's item sprite, comparator badge, and quality icon.
+--- Uses pneumatic_any_quality_badge for wildcard quality overlay rendering.
 --- @param button LuaGuiElement
---- @param item string|table|nil
---- @param comparator string|nil
-function gui_components.update_overlay_slot_button(button, item, comparator)
+--- @param item string|table|nil Item name or specifier
+--- @param comparator string|nil Comparator string ("Any", "Any Quality", ">", "<", "=", "≥", "≤", "≠")
+--- @param quality string|nil Quality tier ("normal", "uncommon", "rare", "epic", "legendary")
+--- @param is_selected boolean|nil Active selection highlight state
+function gui_components.update_overlay_slot_button(button, item, comparator, quality, is_selected)
     if not (button and button.valid) then return end
-    local item_name, quality_name = gui_components.get_item_name_and_quality(item)
+
+    local item_name = (type(item) == "table" and item.name) or (type(item) == "string" and item or nil)
     button.sprite = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
+
+    local button_style = "slot_button"
+    if is_selected then
+        if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+            button_style = "flib_selected_slot_button"
+        else
+            button_style = "yellow_slot_button"
+        end
+    end
+    button.style = button_style
+    button.style.width = 40
+    button.style.height = 40
+    button.style.padding = 0
 
     local content_flow = button["content_flow"]
     if not (content_flow and content_flow.valid) then return end
 
-    local top_flow = content_flow["top_flow"]
-    if top_flow and top_flow.valid then
-        local badge_label = top_flow["comparator_badge"]
-        if badge_label and badge_label.valid then
-            badge_label.caption = gui_components.format_active_label(comparator or "=", true)
-        end
-    end
-
     local bottom_flow = content_flow["bottom_flow"]
-    if bottom_flow and bottom_flow.valid then
-        local old_q = bottom_flow["quality_badge"]
-        if old_q and old_q.valid then old_q.destroy() end
+    if not (bottom_flow and bottom_flow.valid) then return end
 
-        if quality_name and quality_name ~= "" and quality_name ~= "normal" then
-            local q_sprite = bottom_flow.add{
-                type = "sprite",
-                name = "quality_badge",
-                sprite = "quality/" .. quality_name,
-                ignored_by_interaction = true
-            }
-            q_sprite.style.width = 14
-            q_sprite.style.height = 14
+    bottom_flow.clear()
+
+    local comp = comparator or "Any"
+    local qual = quality or "normal"
+
+    if comp == "Any" or comp == "Any Quality" then
+        if item_name then
+            local q_sprite_path = gui_components.get_quality_sprite("any")
+            if q_sprite_path then
+                local q_sprite = bottom_flow.add{
+                    type = "sprite",
+                    name = "quality_badge",
+                    sprite = q_sprite_path,
+                    ignored_by_interaction = true
+                }
+                q_sprite.style.width = 12
+                q_sprite.style.height = 12
+            end
+        end
+    else
+        local badge_label = bottom_flow.add{
+            type = "label",
+            name = "comparator_badge",
+            caption = gui_components.format_active_label(comp, true),
+            ignored_by_interaction = true
+        }
+        badge_label.style.font = "default-bold"
+        badge_label.style.padding = 0
+        badge_label.style.top_margin = -2
+
+        if (qual and qual ~= "" and qual ~= "normal") or (not item_name) then
+            local q_sprite_path = gui_components.get_quality_sprite(qual)
+            if q_sprite_path then
+                local q_sprite = bottom_flow.add{
+                    type = "sprite",
+                    name = "quality_badge",
+                    sprite = q_sprite_path,
+                    ignored_by_interaction = true
+                }
+                q_sprite.style.width = 12
+                q_sprite.style.height = 12
+            end
         end
     end
+end
+
+--- Adds the Factorio 2.0 Native Item & Quality Selector Control Bar Layout.
+--- Uses rich text tag [img=pneumatic_any_quality_badge] for the dropdown wildcard icon.
+--- @param parent LuaGuiElement
+--- @param config table Configuration table: { comparator, quality, tags }
+--- @return LuaGuiElement bar_frame, table elements_map
+function gui_components.add_quality_control_bar(parent, config)
+    config = config or {}
+    local curr_comp = config.comparator or "Any"
+    local curr_qual = config.quality or "normal"
+
+    local deep_frame = parent.add{
+        type = "frame",
+        direction = "horizontal",
+        style = "deep_frame_in_shallow_frame"
+    }
+    deep_frame.style.padding = 4
+    deep_frame.style.horizontally_stretchable = true
+
+    local bar_flow = deep_frame.add{
+        type = "flow",
+        direction = "horizontal"
+    }
+    bar_flow.style.vertical_align = "center"
+    bar_flow.style.horizontal_spacing = 8
+    bar_flow.style.horizontally_stretchable = true
+
+    local dropdown_items = {
+        "[img=pneumatic_any_quality_badge]",
+        ">",
+        "<",
+        "=",
+        "≥",
+        "≤",
+        "≠"
+    }
+
+    local comp_dd = bar_flow.add{
+        type = "drop-down",
+        name = "quality_comparator_dropdown",
+        items = dropdown_items,
+        selected_index = gui_components.get_quality_comparator_index(curr_comp),
+        tags = config.tags
+    }
+    comp_dd.style.width = 54
+
+    local radio_flow = bar_flow.add{
+        type = "flow",
+        direction = "horizontal"
+    }
+    radio_flow.style.horizontal_spacing = 0
+
+    local radio_buttons = {}
+    for i, tier in ipairs(gui_components.QUALITY_TIERS) do
+        local capital_tier = tier:sub(1,1):upper() .. tier:sub(2)
+
+        local btn_style = "slot_button"
+        if tier == curr_qual then
+            if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+                btn_style = "flib_selected_slot_button"
+            else
+                btn_style = "yellow_slot_button"
+            end
+        end
+
+        local q_sprite_path = gui_components.get_quality_sprite(tier) or ""
+
+        local btn = radio_flow.add{
+            type = "sprite-button",
+            name = "quality_tier_radio_" .. tier,
+            sprite = q_sprite_path,
+            style = btn_style,
+            tooltip = "Quality: " .. capital_tier,
+            tags = config.tags
+        }
+        btn.style.width = 28
+        btn.style.height = 28
+        btn.style.padding = 5
+
+        radio_buttons[tier] = btn
+    end
+
+    local spacer = bar_flow.add{ type = "empty-widget" }
+    spacer.style.horizontally_stretchable = true
+
+    local confirm_btn = bar_flow.add{
+        type = "sprite-button",
+        name = "quality_confirm_button",
+        sprite = "utility/check_mark",
+        style = "confirm_button",
+        tooltip = "Confirm (E)",
+        tags = config.tags
+    }
+    confirm_btn.style.width = 28
+    confirm_btn.style.height = 28
+
+    return deep_frame, {
+        comparator_dropdown = comp_dd,
+        quality_buttons = radio_buttons,
+        confirm_button = confirm_btn
+    }
 end
 
 --- Adds a labeled horizontal switch (e.g. Whitelist/Blacklist, Input/Output).
@@ -430,7 +608,7 @@ function gui_components.update_condition_comparator(condition_table, comparator)
     return condition_table
 end
 
---- Updates the constant field of a condition table from text or number input.
+--- Updates the constant field of a condition textfield.
 --- @param condition_table table|nil
 --- @param text_value string|number|nil
 --- @return table

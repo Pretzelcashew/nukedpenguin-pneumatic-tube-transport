@@ -105,3 +105,12 @@
 **Key Changes:**
 1. **Centralized UI Color Constants (`scripts/utils/gui-components.lua`):** Exported `COLOR_BLUE` (`"[color=100,200,255]"`) in the reusable UI widget library to standardize blue rich-text formatting across device configuration interfaces.
 2. **Diverter Port Direction Indicators (`scripts/diverter-gui.lua`):** Updated `PORT_DIRECTIONS` mapping to pair cardinal direction labels (`North`, `East`, `South`, `West`) with vibrant blue directional arrows (`▲`, `▶`, `▼`, `◀`), rendering clear spatial indicators on 2x2 port card headers and filter slot configuration modal titlebars.
+
+
+### Revision: Reusable Spatial Arrow Selector Widget Component
+**Date:** 2026-09-04 08:15 (EDT)
+**Context:** Introduce a modular 3x3 spatial `+` shape arrow selector widget component to the UI widget library (`scripts/utils/gui-components.lua`) to support directional device layout configuration interfaces with flexible part subscription.
+**Key Changes:**
+1. **Spatial Arrow Selector Builder (`scripts/utils/gui-components.lua`):** Implemented `gui_components.add_spatial_arrow_selector` rendering a 3x3 table grid with North (▲), West (◀), Center, East (▶), and South (▼) button positions aligned around empty spacer cells.
+2. **Flexible Part Subscription & Styling (`scripts/utils/gui-components.lua`):** Configured flexible part specifications supporting selective enabling/disabling of individual directions, custom button sizes, custom captions/sprites/tooltips, style overrides, selection highlights (`flib_selected_slot_button`), and tag merging.
+3. **Dynamic Widget Button Updates (`scripts/utils/gui-components.lua`):** Added `gui_components.update_spatial_arrow_button` to dynamically update captions, sprites, tooltips, interaction states, and active selection highlights on existing spatial selector buttons.

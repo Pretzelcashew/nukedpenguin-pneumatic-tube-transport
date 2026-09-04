@@ -699,6 +699,181 @@ function gui_components.handle_quality_comparator_change(container, selected_ind
     return comp, qual
 end
 
+--- Adds a spatial '+' shape arrow selector widget to a parent GUI container.
+--- Renders a 3x3 grid table with North, West, Center, East, and South button positions.
+--- Device GUIs can subscribe to/enable individual parts (north, west, center, east, south).
+--- @param parent LuaGuiElement Parent GUI element
+--- @param config table|nil Optional configuration table
+--- @return LuaGuiElement grid_table, table elements_map Map of created buttons { north, west, center, east, south }
+function gui_components.add_spatial_arrow_selector(parent, config)
+    config = config or {}
+    local button_size = config.button_size or 36
+    local name_prefix = config.name_prefix or "spatial_arrow"
+
+    local table_grid = parent.add{
+        type = "table",
+        name = config.grid_name or (name_prefix .. "_selector_grid"),
+        column_count = 3,
+        tags = config.tags
+    }
+    table_grid.style.horizontal_spacing = config.spacing or 2
+    table_grid.style.vertical_spacing = config.spacing or 2
+
+    local default_defs = {
+        north  = { caption = "▲", tooltip = "North" },
+        west   = { caption = "◀", tooltip = "West" },
+        center = { caption = "",  tooltip = "Center" },
+        east   = { caption = "▶", tooltip = "East" },
+        south  = { caption = "▼", tooltip = "South" }
+    }
+
+    local grid_sequence = {
+        false,     "north",  false,
+        "west",    "center", "east",
+        false,     "south",  false
+    }
+
+    local parts_config = config.parts
+    local elements_map = {}
+
+    for _, item in ipairs(grid_sequence) do
+        if not item then
+            local spacer = table_grid.add{
+                type = "empty-widget"
+            }
+            spacer.style.width = button_size
+            spacer.style.height = button_size
+        else
+            local part_key = item
+            local default_def = default_defs[part_key]
+            local part_spec = parts_config and parts_config[part_key]
+
+            local is_enabled = false
+            local spec_tbl = nil
+
+            if parts_config == nil then
+                is_enabled = true
+            elseif type(part_spec) == "boolean" then
+                is_enabled = part_spec
+            elseif type(part_spec) == "table" then
+                is_enabled = (part_spec.enabled ~= false)
+                spec_tbl = part_spec
+            end
+
+            if not is_enabled then
+                local spacer = table_grid.add{
+                    type = "empty-widget",
+                    name = name_prefix .. "_" .. part_key .. "_disabled_spacer"
+                }
+                spacer.style.width = button_size
+                spacer.style.height = button_size
+            else
+                spec_tbl = spec_tbl or {}
+                local btn_name = spec_tbl.name or (name_prefix .. "_" .. part_key)
+                local caption = spec_tbl.caption or default_def.caption
+                local sprite = spec_tbl.sprite or default_def.sprite
+                local tooltip = spec_tbl.tooltip or default_def.tooltip
+                local is_selected = spec_tbl.selected == true
+                local btn_enabled = spec_tbl.enabled_state ~= false
+
+                local merged_tags = {}
+                if config.tags then
+                    for k, v in pairs(config.tags) do merged_tags[k] = v end
+                end
+                if spec_tbl.tags then
+                    for k, v in pairs(spec_tbl.tags) do merged_tags[k] = v end
+                end
+                if merged_tags.spatial_part == nil then
+                    merged_tags.spatial_part = part_key
+                end
+
+                local style = spec_tbl.style
+                if not style then
+                    if is_selected then
+                        if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+                            style = "flib_selected_slot_button"
+                        else
+                            style = "yellow_slot_button"
+                        end
+                    else
+                        style = "slot_button"
+                    end
+                end
+
+                local elem_type = (sprite and sprite ~= "") and "sprite-button" or (spec_tbl.type or "sprite-button")
+
+                local button
+                if elem_type == "sprite-button" then
+                    button = table_grid.add{
+                        type = "sprite-button",
+                        name = btn_name,
+                        sprite = sprite or "",
+                        caption = caption,
+                        tooltip = tooltip,
+                        style = style,
+                        enabled = btn_enabled,
+                        tags = merged_tags
+                    }
+                else
+                    button = table_grid.add{
+                        type = "button",
+                        name = btn_name,
+                        caption = caption,
+                        tooltip = tooltip,
+                        style = style,
+                        enabled = btn_enabled,
+                        tags = merged_tags
+                    }
+                end
+
+                button.style.width = button_size
+                button.style.height = button_size
+                button.style.padding = 0
+
+                elements_map[part_key] = button
+            end
+        end
+    end
+
+    return table_grid, elements_map
+end
+
+--- Updates an existing spatial arrow selector button element.
+--- @param button LuaGuiElement
+--- @param config table Table with updates: { caption, sprite, tooltip, selected, enabled_state, style }
+function gui_components.update_spatial_arrow_button(button, config)
+    if not (button and button.valid) then return end
+    config = config or {}
+
+    if config.caption ~= nil then
+        button.caption = config.caption
+    end
+    if config.sprite ~= nil and button.type == "sprite-button" then
+        button.sprite = config.sprite
+    end
+    if config.tooltip ~= nil then
+        button.tooltip = config.tooltip
+    end
+    if config.enabled_state ~= nil then
+        button.enabled = config.enabled_state
+    end
+
+    if config.style then
+        button.style = config.style
+    elseif config.selected ~= nil then
+        local is_selected = config.selected == true
+        local style = "slot_button"
+        if is_selected then
+            if helpers and helpers.is_valid_sprite_path("style/flib_selected_slot_button") then
+                style = "flib_selected_slot_button"
+            else
+                style = "yellow_slot_button"
+            end
+        end
+        button.style = style
+    end
+end
+
 --- Adds a labeled horizontal switch (e.g. Whitelist/Blacklist, Input/Output).
 --- @param parent LuaGuiElement
 --- @param config table Configuration table

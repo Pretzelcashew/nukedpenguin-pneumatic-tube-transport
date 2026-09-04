@@ -114,3 +114,13 @@
 1. **Spatial Arrow Selector Builder (`scripts/utils/gui-components.lua`):** Implemented `gui_components.add_spatial_arrow_selector` rendering a 3x3 table grid with North (▲), West (◀), Center, East (▶), and South (▼) button positions aligned around empty spacer cells.
 2. **Flexible Part Subscription & Styling (`scripts/utils/gui-components.lua`):** Configured flexible part specifications supporting selective enabling/disabling of individual directions, custom button sizes, custom captions/sprites/tooltips, style overrides, selection highlights (`flib_selected_slot_button`), and tag merging.
 3. **Dynamic Widget Button Updates (`scripts/utils/gui-components.lua`):** Added `gui_components.update_spatial_arrow_button` to dynamically update captions, sprites, tooltips, interaction states, and active selection highlights on existing spatial selector buttons.
+
+
+### Revision: Directional Spatial Arrow Selector & Default Single-Port Diverter GUI
+**Date:** 2026-09-04 08:30 (EDT)
+**Context:** Overhaul Pneumatic Diverter GUI layout to incorporate the 3x3 spatial arrow selector widget alongside port configuration cards, enabling single-direction filtering to declutter the interface, center-button resetting to all 4 ports, and defaulting to North view upon window initialization.
+**Key Changes:**
+1. **Spatial Arrow Selector Integration (`scripts/diverter-gui.lua`):** Embedded a left-hand directional view card inside `render_content_layout` using `gui_components.add_spatial_arrow_selector`, mapping North (▲, Port 1), East (▶, Port 2), South (▼, Port 3), West (◀, Port 4), and Center ("All") selector buttons with active highlight styling.
+2. **Default North Direction View (`scripts/diverter-gui.lua`):** Configured `diverter_gui.open` to default `initial_view` to Port 1 (North), presenting a single clean port configuration card when opening the interface to eliminate multi-card cognitive overload.
+3. **Dynamic Port Container Rendering (`scripts/diverter-gui.lua`):** Refactored `render_content_layout` to dynamically switch between a single card layout (`column_count = 1`) for individual cardinal directions and a 2x2 grid (`column_count = 2`) when viewing all direction ports simultaneously.
+4. **View Switching Event Delegation (`scripts/diverter-gui.lua`):** Added `view_port` tag event routing inside `on_gui_click` to handle direction view toggling while cleanly dismissing open modal filter slot configuration windows before re-rendering the layout.

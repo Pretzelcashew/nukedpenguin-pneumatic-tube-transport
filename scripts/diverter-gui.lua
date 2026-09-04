@@ -122,39 +122,73 @@ function diverter_gui.open_slot_config(player, unit_number, port_index, slot_ind
     diverter_gui.refresh_main_slot_button(player, unit_number, port_index, slot_index, true)
 end
 
-function diverter_gui.open(player, entity)
-    if not (player and player.valid and entity and entity.valid) then return end
+function diverter_gui.render_content_layout(inner_frame, unit_number, current_view)
+    if not (inner_frame and inner_frame.valid) then return end
+    inner_frame.clear()
 
-    diverter_gui.close(player)
+    local settings = diverter_settings.get(unit_number)
+    if not settings then return end
 
-    local settings = diverter_settings.get(entity.unit_number)
+    local main_flow = inner_frame.add{
+        type = "flow",
+        name = "diverter_main_flow",
+        direction = "horizontal"
+    }
+    main_flow.style.vertical_align = "top"
+    main_flow.style.horizontal_spacing = 12
 
-    local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
-    if not main_frame then return end
+    -- Left panel: Spatial Arrow View Selector
+    local selector_card = gui_components.add_card_frame(main_flow, "vertical")
+    selector_card.style.vertical_align = "center"
 
-    gui_components.add_header(main_frame, "Pneumatic Diverter Configuration", "diverter_close_button", { unit_number = entity.unit_number })
+    local sel_title = selector_card.add{
+        type = "label",
+        caption = "Direction View",
+        style = "bold_label"
+    }
+    sel_title.style.bottom_margin = 4
 
-    gui_components.add_wire_channel_toggles(main_frame, {
-        read_red_name = "diverter_read_red",
-        read_green_name = "diverter_read_green",
-        read_red_state = settings.read_red ~= false,
-        read_green_state = settings.read_green ~= false,
-        tags = { unit_number = entity.unit_number }
-    })
-
-    local inner_frame = main_frame.add{
-        type = "frame",
-        style = "inside_shallow_frame_with_padding"
+    local parts_spec = {
+        north  = { selected = (current_view == 1), tags = { unit_number = unit_number, view_port = 1 } },
+        east   = { selected = (current_view == 2), tags = { unit_number = unit_number, view_port = 2 } },
+        south  = { selected = (current_view == 3), tags = { unit_number = unit_number, view_port = 3 } },
+        west   = { selected = (current_view == 4), tags = { unit_number = unit_number, view_port = 4 } },
+        center = { caption = "All", tooltip = "Show All Direction Ports", selected = (current_view == "all"), tags = { unit_number = unit_number, view_port = "all" } }
     }
 
-    local grid_table = inner_frame.add{
+    gui_components.add_spatial_arrow_selector(selector_card, {
+        name_prefix = "diverter_spatial",
+        button_size = 36,
+        spacing = 2,
+        parts = parts_spec,
+        tags = { unit_number = unit_number }
+    })
+
+    -- Right panel: Selected direction port configuration card(s)
+    local ports_container = main_flow.add{
+        type = "flow",
+        name = "diverter_ports_container",
+        direction = "vertical"
+    }
+
+    local active_ports = {}
+    if current_view == "all" then
+        active_ports = { 1, 2, 3, 4 }
+    elseif type(current_view) == "number" and current_view >= 1 and current_view <= 4 then
+        active_ports = { current_view }
+    else
+        active_ports = { 1 } -- Default fallback to North
+    end
+
+    local grid_table = ports_container.add{
         type = "table",
-        column_count = 2,
+        name = "ports_grid_table",
+        column_count = (current_view == "all" and 2 or 1),
         horizontal_spacing = 12,
         vertical_spacing = 12
     }
 
-    for i = 1, 4 do
+    for _, i in ipairs(active_ports) do
         local port_data = settings.ports[i]
         local dir_name = PORT_DIRECTIONS[i] or ("Port " .. i)
 
@@ -171,7 +205,7 @@ function diverter_gui.open(player, entity)
             name = "port_enable",
             caption = "Port " .. i .. " (" .. dir_name .. ")",
             state = port_data.enabled,
-            tags = { unit_number = entity.unit_number, port_index = i }
+            tags = { unit_number = unit_number, port_index = i }
         }
 
         local cond = port_data.enable_condition or { first_signal = nil, comparator = "=", constant = 0 }
@@ -185,7 +219,7 @@ function diverter_gui.open(player, entity)
             signal_button_name = "port_circuit_signal",
             comparator_dropdown_name = "port_circuit_comparator",
             constant_textfield_name = "port_circuit_constant",
-            tags = { unit_number = entity.unit_number, port_index = i }
+            tags = { unit_number = unit_number, port_index = i }
         })
 
         local is_pull = (port_data.mode == "input")
@@ -194,7 +228,7 @@ function diverter_gui.open(player, entity)
             is_left = is_pull,
             left_label = "Pull (Input)",
             right_label = "Push (Output)",
-            tags = { unit_number = entity.unit_number, port_index = i }
+            tags = { unit_number = unit_number, port_index = i }
         })
 
         card_frame.add{ type = "line", direction = "horizontal" }
@@ -206,7 +240,7 @@ function diverter_gui.open(player, entity)
             name = "port_use_filters",
             caption = "Use filters",
             state = port_data.use_filters,
-            tags = { unit_number = entity.unit_number, port_index = i }
+            tags = { unit_number = unit_number, port_index = i }
         }
 
         local is_whitelist = (port_data.filter_mode == "whitelist")
@@ -215,7 +249,7 @@ function diverter_gui.open(player, entity)
             is_left = is_whitelist,
             left_label = "Whitelist",
             right_label = "Blacklist",
-            tags = { unit_number = entity.unit_number, port_index = i }
+            tags = { unit_number = unit_number, port_index = i }
         })
 
         local slots_flow = card_frame.add{ type = "flow", direction = "horizontal" }
@@ -229,7 +263,7 @@ function diverter_gui.open(player, entity)
                 comparator = filter_data.comparator or "Any Quality",
                 quality = filter_data.quality or "normal",
                 tags = {
-                    unit_number = entity.unit_number,
+                    unit_number = unit_number,
                     port_index = i,
                     slot_index = j,
                     slot_button_click = true
@@ -237,6 +271,37 @@ function diverter_gui.open(player, entity)
             })
         end
     end
+end
+
+function diverter_gui.open(player, entity, initial_view)
+    if not (player and player.valid and entity and entity.valid) then return end
+
+    diverter_gui.close(player)
+
+    local current_view = initial_view or 1 -- Default to North (Port 1)
+    local unit_number = entity.unit_number
+    local settings = diverter_settings.get(unit_number)
+
+    local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
+    if not main_frame then return end
+
+    gui_components.add_header(main_frame, "Pneumatic Diverter Configuration", "diverter_close_button", { unit_number = unit_number })
+
+    gui_components.add_wire_channel_toggles(main_frame, {
+        read_red_name = "diverter_read_red",
+        read_green_name = "diverter_read_green",
+        read_red_state = settings.read_red ~= false,
+        read_green_state = settings.read_green ~= false,
+        tags = { unit_number = unit_number }
+    })
+
+    local inner_frame = main_frame.add{
+        type = "frame",
+        name = "diverter_inner_frame",
+        style = "inside_shallow_frame_with_padding"
+    }
+
+    diverter_gui.render_content_layout(inner_frame, unit_number, current_view)
 
     player.opened = main_frame
 end
@@ -255,6 +320,19 @@ local function on_gui_click(event)
 
     if element.name == "slot_config_close_button" or element.name == "quality_confirm_button" then
         diverter_gui.close_slot_config(player)
+        return
+    end
+
+    if tags.view_port ~= nil and tags.unit_number then
+        local main_frame = player.gui.screen[GUI_FRAME_NAME]
+        if main_frame and main_frame.valid then
+            diverter_gui.close_slot_config(player)
+            local current_view = tags.view_port
+            local inner_frame = find_element_by_name(main_frame, "diverter_inner_frame")
+            if inner_frame then
+                diverter_gui.render_content_layout(inner_frame, tags.unit_number, current_view)
+            end
+        end
         return
     end
 

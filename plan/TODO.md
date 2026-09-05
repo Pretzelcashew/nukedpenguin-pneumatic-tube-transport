@@ -12,7 +12,13 @@
 
 ~make circuit proxys included in blueprints (linked to their device in bp metadata so when placement occurs we dont create a duplicate proxy)
 
+~fix the situation where you would set an item filter in diverter when you already had a comparator and quality set, would clear the comparator/quality
 
+~fix the situaton where pasting a bp would sometimes link circuit wires between diverters or pumps you just pasted down with a blueprint nearby
+
+~add a copy/paste port settings feature for the diverter (a little button pair somewhere on each diverter port gui module)
+
+~consider reverting back to having the diverter's 'all' mode selected by default when opening the gui
 
 
 address why rotating pumps flow dot layering is inconsistent when rotating (same with diverter), when normally it would show 9 in front but after rotation the 10 is prioritized. the goal is to be consistent rather than 'doing the right thing'
@@ -47,16 +53,12 @@ investigate the inconsistent manner of which pneumatic entities trigger their co
 
 
 
-fix the situation where you would set an item filter in diverter when you already had a comparator and quality set, would clear the comparator/quality
 
-
-fix the situaton where pasting a bp would sometimes link circuit wires between diverters or pumps you just pasted down with a blueprint nearby
-
-add a copy/paste port settings feature for the diverter (a little button pair somewhere on each diverter port gui module)
-
-consider reverting back to having the diverter's 'all' mode selected by default when opening the gui
 
 
 
 
 make it so pressing esc cancels the item with quality and comparator gui rather than submitting into the diverter slot
+
+
+fix when clicking pneumpatic pump it doesnt open its gui

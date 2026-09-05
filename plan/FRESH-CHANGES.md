@@ -86,3 +86,10 @@
 1. **Blueprint Wire Tuple Format Fix (`scripts/device-settings-copier.lua`):** Corrected `add_bp_wire` tuple array formatting to insert `proxy_bp_entity.entity_number` as the first element (`[entity_from, wire_type_from, entity_to, wire_type_to]`) instead of `src_conn_id`. Passing `1` (red wire connector ID) in position 1 previously caused Factorio's C++ blueprint parser to decode Entity #1 as the source for every wire in the blueprint, producing spiderweb cross-links to the top-left machine.
 2. **Purged Persistent Pending Wire Queue (`scripts/device-settings-copier.lua`):** Removed `storage.bp_wire_cache` and `storage.pending_bp_wires` multi-tick storage buffers. Refactored `process_entity_built_wire_tags` to perform zero-state, instant spatial wire target resolution strictly on the build tick via `surface.find_entities_filtered` and relative distance matching (`is_valid_wire_target`), completely preventing cross-linking across separate blueprint stamps placed over time.
 3. **Strict Target Entity Validity Guards (`scripts/device-settings-copier.lua`):** Added explicit `unit_number` and `.valid` checks across target entity lookups and table index accesses, preventing C++ `__newindex` metamethod runtime exceptions when destroyed ghost proxies are processed during blueprint placement events.
+
+
+### Revision: Pneumatic Pump GUI Interaction Parity & Entity GUI Mode Fix
+**Date:** 2026-09-05 17:08 (EDT)
+**Context:** Resolve an issue where left-clicking or pressing `E` on physical `pneumatic-pump` entities failed to open the pump configuration GUI, requiring players to click its hidden circuit proxy.
+**Key Changes:**
+1. **Entity GUI Mode Activation (`prototypes/entity.lua`):** Added `gui_mode = "all"` to the `pneumatic-pump` `electric-energy-interface` prototype definition. This enables native entity interaction event dispatching (`on_gui_opened`) on left-click or `E` key presses, allowing `proxy-manager.lua` to intercept interactions and launch `pump-gui` in 1:1 functional parity with `pneumatic-diverter`.

@@ -239,6 +239,7 @@ data:extend({
     icon = "__base__/graphics/icons/pump.png",
     icon_size = 64,
     flags = {"placeable-neutral", "placeable-player", "player-creation"},
+    gui_mode = "all", -- Kept operable so left-click / 'E' fires on_gui_opened
     rotatable = true,
     fast_replaceable_group = "pneumatic-pump",
     additional_pastable_entities = {"pneumatic-pump"},
@@ -297,7 +298,7 @@ data:extend({
     minable = {mining_time = 0.2, result = "junction"},
     max_health = 100,
     collision_box = {{-0.4, -0.4}, {0.4, 0.4}},
-    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
+    selection_box = {{-0.5, -0.4}, {0.5, 0.4}},
     picture = {
       layers = {
         {
@@ -320,7 +321,7 @@ data:extend({
     minable = {mining_time = 0.2, result = "crossflow-junction"},
     max_health = 100,
     collision_box = {{-0.4, -0.4}, {0.4, 0.4}},
-    selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
+    selection_box = {{-0.5, -0.4}, {0.5, 0.4}},
     picture = {
       layers = {
         {

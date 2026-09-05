@@ -1,5 +1,6 @@
 local diverter_settings = require("scripts.diverter-settings")
 local port_defs = require("scripts.flow.port-defs")
+local gui_components = require("scripts.utils.gui-components")
 
 local diverter_renderer = {}
 
@@ -34,7 +35,7 @@ end
 
 --- Updates or creates Alt Mode filter overlays for a diverter entity.
 --- Renders up to 4 configured filter item icons per port in a clean, balanced 2x2 grid,
---- matching native Factorio Alt-mode filter icon scale and spacing.
+--- matching native Factorio Alt-mode filter icon scale, spacing, bottom-left comparators and quality badges.
 --- @param entity LuaEntity
 function diverter_renderer.update_render(entity)
     if not (entity and entity.valid) then return end
@@ -55,16 +56,20 @@ function diverter_renderer.update_render(entity)
     for port_index = 1, 4 do
         local port = settings.ports[port_index]
         if port and port.use_filters and port.filters then
-            local items = {}
+            local active_filters = {}
             for j = 1, 5 do
                 local filter = port.filters[j]
                 if filter and filter.item and filter.item ~= "" then
-                    table.insert(items, filter.item)
-                    if #items == 4 then break end
+                    table.insert(active_filters, {
+                        item = filter.item,
+                        comparator = filter.comparator or "Any Quality",
+                        quality = filter.quality or "normal"
+                    })
+                    if #active_filters == 4 then break end
                 end
             end
 
-            local item_count = #items
+            local item_count = #active_filters
             if item_count > 0 then
                 local port_def = port_definitions[port_index]
                 if port_def and port_def.offset then
@@ -100,7 +105,8 @@ function diverter_renderer.update_render(entity)
                     end
 
                     for idx = 1, item_count do
-                        local item_name = items[idx]
+                        local filter_entry = active_filters[idx]
+                        local item_name = filter_entry.item
                         local sprite_path = "item/" .. item_name
                         if helpers.is_valid_sprite_path(sprite_path) then
                             local off = offsets[idx]
@@ -144,6 +150,140 @@ function diverter_renderer.update_render(entity)
                                 only_in_alt_mode = true
                             }
                             table.insert(new_objs, sprite_obj)
+
+                            -- 4. Bottom-left corner comparator symbol and/or quality badge
+                            local comp = filter_entry.comparator or "Any Quality"
+                            local qual = filter_entry.quality or "normal"
+
+                            local show_comp = (comp ~= "=" and comp ~= "Any" and comp ~= "Any Quality")
+                            local comp_text = show_comp and comp or nil
+
+                            local badge_sprite = nil
+                            if comp == "Any" or comp == "Any Quality" then
+                                badge_sprite = gui_components.get_quality_sprite("any")
+                            elseif qual and qual ~= "" and qual ~= "normal" then
+                                badge_sprite = gui_components.get_quality_sprite(qual)
+                            end
+
+                            local has_badge = (badge_sprite and helpers.is_valid_sprite_path(badge_sprite))
+
+                            if comp_text and has_badge then
+                                -- Both comparator symbol and quality badge side-by-side at bottom-left
+                                local comp_x = cx - (scale * 0.36)
+                                local comp_y = cy + (scale * 0.26)
+                                local badge_x = cx - (scale * 0.14)
+                                local badge_y = cy + (scale * 0.28)
+                                local badge_scale = scale * 0.38
+
+                                local comp_shadow = rendering.draw_text{
+                                    text = comp_text,
+                                    surface = surface,
+                                    target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
+                                    color = { r = 0, g = 0, b = 0, a = 1 },
+                                    scale = scale * 0.85,
+                                    font = "default-semibold",
+                                    alignment = "center",
+                                    vertical_alignment = "middle",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, comp_shadow)
+
+                                local comp_obj = rendering.draw_text{
+                                    text = comp_text,
+                                    surface = surface,
+                                    target = { entity = entity, offset = { comp_x, comp_y } },
+                                    color = { r = 1, g = 1, b = 1, a = 1 },
+                                    scale = scale * 0.85,
+                                    font = "default-semibold",
+                                    alignment = "center",
+                                    vertical_alignment = "middle",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, comp_obj)
+
+                                local badge_outline = rendering.draw_sprite{
+                                    sprite = badge_sprite,
+                                    target = { entity = entity, offset = { badge_x, badge_y } },
+                                    surface = surface,
+                                    x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, badge_outline)
+
+                                local badge_sprite_obj = rendering.draw_sprite{
+                                    sprite = badge_sprite,
+                                    target = { entity = entity, offset = { badge_x, badge_y } },
+                                    surface = surface,
+                                    x_scale = badge_scale,
+                                    y_scale = badge_scale,
+                                    render_layer = "entity-info-icon-above",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, badge_sprite_obj)
+
+                            elseif comp_text then
+                                -- Comparator symbol only at bottom-left
+                                local comp_x = cx - (scale * 0.28)
+                                local comp_y = cy + (scale * 0.26)
+
+                                local comp_shadow = rendering.draw_text{
+                                    text = comp_text,
+                                    surface = surface,
+                                    target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
+                                    color = { r = 0, g = 0, b = 0, a = 1 },
+                                    scale = scale * 0.85,
+                                    font = "default-semibold",
+                                    alignment = "center",
+                                    vertical_alignment = "middle",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, comp_shadow)
+
+                                local comp_obj = rendering.draw_text{
+                                    text = comp_text,
+                                    surface = surface,
+                                    target = { entity = entity, offset = { comp_x, comp_y } },
+                                    color = { r = 1, g = 1, b = 1, a = 1 },
+                                    scale = scale * 0.85,
+                                    font = "default-semibold",
+                                    alignment = "center",
+                                    vertical_alignment = "middle",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, comp_obj)
+
+                            elseif has_badge then
+                                -- Quality badge only at bottom-left
+                                local badge_x = cx - (scale * 0.28)
+                                local badge_y = cy + (scale * 0.28)
+                                local badge_scale = scale * 0.40
+
+                                local badge_outline = rendering.draw_sprite{
+                                    sprite = badge_sprite,
+                                    target = { entity = entity, offset = { badge_x, badge_y } },
+                                    surface = surface,
+                                    x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, badge_outline)
+
+                                local badge_sprite_obj = rendering.draw_sprite{
+                                    sprite = badge_sprite,
+                                    target = { entity = entity, offset = { badge_x, badge_y } },
+                                    surface = surface,
+                                    x_scale = badge_scale,
+                                    y_scale = badge_scale,
+                                    render_layer = "entity-info-icon-above",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, badge_sprite_obj)
+                            end
                         end
                     end
                 end

@@ -213,6 +213,7 @@ end
 --- Reusable handler for item selection changes on filter slots.
 --- Applies native Factorio quality rules: defaults to '=' + 'normal' only if the slot is currently blank ("Any Quality").
 --- If a comparator/quality is already configured, selecting an item leaves them untouched.
+--- Clearing an item removes the item selection while preserving any explicitly configured quality settings.
 --- @param filter_data table Filter slot data structure
 --- @param new_item string|table|nil The newly selected item
 --- @return table filter_data
@@ -228,8 +229,11 @@ function gui_components.handle_filter_item_change(filter_data, new_item)
         filter_data.item = new_item
     else
         filter_data.item = nil
-        filter_data.comparator = "Any Quality"
-        filter_data.explicit_quality = nil
+        if filter_data.comparator == "Any Quality" or filter_data.comparator == "Any" or filter_data.comparator == nil then
+            filter_data.comparator = "Any Quality"
+            filter_data.quality = "normal"
+            filter_data.explicit_quality = nil
+        end
     end
     return filter_data
 end

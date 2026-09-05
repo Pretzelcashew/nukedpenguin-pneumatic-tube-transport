@@ -124,7 +124,10 @@ function diverter_settings.get(unit_number)
                                 if p.filters[j].quality == nil then
                                     p.filters[j].quality = "normal"
                                 end
-                                if p.filters[j].item ~= nil or (p.filters[j].comparator ~= "Any Quality" and p.filters[j].comparator ~= "Any") then
+                                if p.filters[j].comparator == "Any Quality" or p.filters[j].comparator == "Any" then
+                                    p.filters[j].quality = "normal"
+                                    p.filters[j].explicit_quality = nil
+                                elseif p.filters[j].item ~= nil or (p.filters[j].comparator ~= "Any Quality" and p.filters[j].comparator ~= "Any") then
                                     if p.filters[j].explicit_quality == nil then
                                         p.filters[j].explicit_quality = true
                                     end
@@ -302,7 +305,7 @@ function diverter_settings.evaluate_circuit_condition(proxy_entity, condition, r
         return evaluate_condition(0, condition.comparator or "=", condition.constant or 0)
     end
 
-    local val = 0
+    val = 0
     if red_conn and green_conn then
         val = proxy_entity.get_signal(condition.first_signal, red_conn, green_conn) or 0
     elseif red_conn then

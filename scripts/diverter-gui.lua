@@ -58,11 +58,16 @@ function diverter_gui.close_slot_config(player, should_apply)
             local settings = diverter_settings.get(unit_number)
             local port = settings and settings.ports and settings.ports[port_index]
             if port and port.filters and port.filters[slot_index] then
+                local comp = draft.comparator or "Any Quality"
+                local qual = draft.quality or "normal"
+                if comp == "Any Quality" or comp == "Any" then
+                    qual = "normal"
+                end
                 port.filters[slot_index] = {
                     item = draft.item,
-                    comparator = draft.comparator or "Any Quality",
-                    quality = draft.quality or "normal",
-                    explicit_quality = draft.explicit_quality
+                    comparator = comp,
+                    quality = qual,
+                    explicit_quality = (comp ~= "Any Quality" and comp ~= "Any") and draft.explicit_quality or nil
                 }
                 notify_change(unit_number)
             end
@@ -141,15 +146,21 @@ function diverter_gui.open_slot_config(player, unit_number, port_index, slot_ind
 
     local filter_data = port.filters[slot_index] or { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
 
+    local comp = filter_data.comparator or "Any Quality"
+    local qual = filter_data.quality or "normal"
+    if comp == "Any Quality" or comp == "Any" then
+        qual = "normal"
+    end
+
     -- Create an isolated draft working copy for the modal
     draft_filters[player.index] = {
         unit_number = unit_number,
         port_index = port_index,
         slot_index = slot_index,
         item = filter_data.item,
-        comparator = filter_data.comparator or "Any Quality",
-        quality = filter_data.quality or "normal",
-        explicit_quality = filter_data.explicit_quality
+        comparator = comp,
+        quality = qual,
+        explicit_quality = (comp ~= "Any Quality" and comp ~= "Any") and filter_data.explicit_quality or nil
     }
 
     local config_frame = player.gui.screen.add{
@@ -181,8 +192,8 @@ function diverter_gui.open_slot_config(player, unit_number, port_index, slot_ind
     }
 
     gui_components.add_quality_control_bar(card_frame, {
-        comparator = filter_data.comparator or "Any Quality",
-        quality = filter_data.quality or "normal",
+        comparator = comp,
+        quality = qual,
         tags = { unit_number = unit_number, port_index = port_index, slot_index = slot_index }
     })
 

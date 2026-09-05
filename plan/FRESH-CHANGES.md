@@ -102,3 +102,12 @@
 1. **Confirm GUI Custom Input Registration (`prototypes/custom-input.lua`):** Registered `pneumatic-confirm-gui` linked to Factorio's native `confirm-gui` control sequence (`linked_game_control = "confirm-gui"`) with `consuming = "none"`.
 2. **Tick-Based Confirm Event Tracking (`scripts/diverter-gui.lua`):** Subscribed to the `pneumatic-confirm-gui` custom input event to record the exact execution tick (`confirm_ticks[player_index] = event.tick`) when a player triggers the GUI confirmation key.
 3. **Confirm vs. Cancel Dismissal Logic (`scripts/diverter-gui.lua`):** Updated `on_gui_closed` to evaluate whether `confirm_ticks[event.player_index] == event.tick`. Pressing `E` (or clicking the checkmark) passes `should_apply = true` to commit draft filter settings, whereas pressing `Esc` (or closing without confirming) passes `should_apply = false` to discard draft changes without mutating entity settings.
+
+
+### Revision: Diverter Filter Draft Quality Synchronization & Standalone Quality Preservation
+**Date:** 2026-09-05 17:53 (EDT)
+**Context:** Prevent diverter slot configuration modals from silently holding ghost quality settings when clearing item selections, while maintaining full GUI and draft parity for standalone quality filters.
+**Key Changes:**
+1. **Item Clear Quality Preservation (`scripts/utils/gui-components.lua`):** Refactored `gui_components.handle_filter_item_change` so clearing an item selection preserves configured comparator and quality settings (updating GUI quality bar controls accordingly), while resetting quality to `"normal"` only if the comparator is set to `"Any Quality"`.
+2. **Draft & Modal Synchronization (`scripts/diverter-gui.lua`):** Updated `diverter_gui.open_slot_config` and `close_slot_config` to guarantee 1:1 synchronization between GUI widgets and draft state tables (`draft_filters`), ensuring submitted configurations strictly match the visual state of the modal window.
+3. **Stored Setting Normalization (`scripts/diverter-settings.lua`):** Enhanced `diverter_settings.get` to sanitize stored filter settings on load, enforcing `quality = "normal"` and clearing `explicit_quality` whenever a slot uses `"Any Quality"` without an item.

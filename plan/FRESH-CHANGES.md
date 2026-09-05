@@ -90,6 +90,6 @@
 
 ### Revision: Pneumatic Pump GUI Interaction Parity & Entity GUI Mode Fix
 **Date:** 2026-09-05 17:08 (EDT)
-**Context:** Resolve an issue where left-clicking or pressing `E` on physical `pneumatic-pump` entities failed to open the pump configuration GUI, requiring players to click its hidden circuit proxy.
+**Context:** Resolve an issue where left-clicking physical `pneumatic-pump` entities failed to open the pump configuration GUI, requiring players to click its hidden circuit proxy.
 **Key Changes:**
-1. **Entity GUI Mode Activation (`prototypes/entity.lua`):** Added `gui_mode = "all"` to the `pneumatic-pump` `electric-energy-interface` prototype definition. This enables native entity interaction event dispatching (`on_gui_opened`) on left-click or `E` key presses, allowing `proxy-manager.lua` to intercept interactions and launch `pump-gui` in 1:1 functional parity with `pneumatic-diverter`.
+1. **Entity GUI Mode Activation (`prototypes/entity.lua`):** Added `gui_mode = "all"` to the `pneumatic-pump` `electric-energy-interface` prototype definition. This enables native entity interaction event dispatching (`on_gui_opened`) when left-clicked, allowing `proxy-manager.lua` to intercept interactions and launch `pump-gui` in 1:1 functional parity with `pneumatic-diverter`.

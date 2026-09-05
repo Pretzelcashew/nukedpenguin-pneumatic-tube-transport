@@ -68,7 +68,7 @@ function diverter_gui.refresh_if_open(unit_number)
                 if inner_frame and inner_frame.valid and inner_frame.tags then
                     if inner_frame.tags.unit_number == unit_number then
                         diverter_gui.close_slot_config(player)
-                        local view = inner_frame.tags.current_view or 1
+                        local view = inner_frame.tags.current_view or "all"
                         diverter_gui.render_content_layout(inner_frame, unit_number, view)
                     end
                 end
@@ -298,7 +298,7 @@ function diverter_gui.open(player, entity, initial_view)
 
     diverter_gui.close(player)
 
-    local current_view = initial_view or 1 -- Default to North (Port 1)
+    local current_view = initial_view or "all"
     local unit_number = entity.unit_number
     local settings = diverter_settings.get(unit_number)
 

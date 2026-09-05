@@ -55,3 +55,8 @@ fix the situaton where pasting a bp would sometimes link circuit wires between d
 add a copy/paste port settings feature for the diverter (a little button pair somewhere on each diverter port gui module)
 
 consider reverting back to having the diverter's 'all' mode selected by default when opening the gui
+
+
+
+
+make it so pressing esc cancels the item with quality and comparator gui rather than submitting into the diverter slot

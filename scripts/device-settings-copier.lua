@@ -151,6 +151,12 @@ function device_settings_copier.clean_blueprint_orphans(blueprint)
                 if entity.tags.pneumatic_settings.my_bp_index then
                     entity.tags.pneumatic_settings.my_bp_index = new_index
                 end
+                if entity.tags.pneumatic_settings.proxy_bp_index then
+                    local new_proxy_target = old_to_new[entity.tags.pneumatic_settings.proxy_bp_index]
+                    if new_proxy_target then
+                        entity.tags.pneumatic_settings.proxy_bp_index = new_proxy_target
+                    end
+                end
                 if entity.tags.pneumatic_settings.wire_connections then
                     local clean_wires = {}
                     for _, wspec in ipairs(entity.tags.pneumatic_settings.wire_connections) do
@@ -256,15 +262,20 @@ local function get_proxy_connector_id(connector_id)
     return connector_id
 end
 
-local function add_bp_wire(bp_entity, src_conn_id, target_bp_index, tgt_conn_id)
-    if not bp_entity then return end
-    bp_entity.wires = bp_entity.wires or {}
-    for _, w in ipairs(bp_entity.wires) do
-        if w[1] == src_conn_id and w[2] == src_conn_id and w[3] == target_bp_index and w[4] == tgt_conn_id then
+local function add_bp_wire(proxy_bp_entity, src_conn_id, target_bp_index, tgt_conn_id)
+    if not (proxy_bp_entity and src_conn_id and target_bp_index and tgt_conn_id) then return end
+    proxy_bp_entity.wires = proxy_bp_entity.wires or {}
+
+    local src_ent_num = proxy_bp_entity.entity_number
+    if not src_ent_num then return end
+
+    -- Factorio 2.0 blueprint wire format: [ entity_from, wire_type_from, entity_to, wire_type_to ]
+    for _, w in ipairs(proxy_bp_entity.wires) do
+        if w[1] == src_ent_num and w[2] == src_conn_id and w[3] == target_bp_index and w[4] == tgt_conn_id then
             return
         end
     end
-    table.insert(bp_entity.wires, { src_conn_id, src_conn_id, target_bp_index, tgt_conn_id })
+    table.insert(proxy_bp_entity.wires, { src_ent_num, src_conn_id, target_bp_index, tgt_conn_id })
 end
 
 local function on_copy_settings(event)
@@ -451,6 +462,7 @@ local function on_player_setup_blueprint(event)
                 if proxy and proxy.valid then
                     local proxy_bp_index = unit_to_bp_index[proxy.unit_number]
                     local proxy_bp_entity = proxy_bp_index and bp_entities[proxy_bp_index]
+                    settings_copy.proxy_bp_index = proxy_bp_index
 
                     local connectors = proxy.get_wire_connectors(false)
                     if connectors then
@@ -463,10 +475,26 @@ local function on_player_setup_blueprint(event)
                                         local target_unit = target_conn.owner.unit_number
                                         local target_bp_index = unit_to_bp_index[target_unit]
                                         if target_bp_index then
+                                            local src_bp_ent = proxy_bp_entity or bp_entities[bp_index]
+                                            local tgt_bp_ent = bp_entities[target_bp_index]
+                                            local expected_dist = nil
+                                            if src_bp_ent and src_bp_ent.position and tgt_bp_ent and tgt_bp_ent.position then
+                                                local sx = src_bp_ent.position.x or src_bp_ent.position[1]
+                                                local sy = src_bp_ent.position.y or src_bp_ent.position[2]
+                                                local tx = tgt_bp_ent.position.x or tgt_bp_ent.position[1]
+                                                local ty = tgt_bp_ent.position.y or tgt_bp_ent.position[2]
+                                                if sx and sy and tx and ty then
+                                                    local dx = tx - sx
+                                                    local dy = ty - sy
+                                                    expected_dist = math.sqrt(dx * dx + dy * dy)
+                                                end
+                                            end
+
                                             table.insert(wire_data, {
                                                 source_connector_id = connector_id,
                                                 target_bp_index = target_bp_index,
-                                                target_connector_id = target_conn.wire_connector_id
+                                                target_connector_id = target_conn.wire_connector_id,
+                                                expected_distance = expected_dist
                                             })
 
                                             if bp_entities[target_bp_index] then
@@ -517,16 +545,32 @@ local function on_player_setup_blueprint(event)
     clean_container_or_blueprint(blueprint)
 end
 
+local function is_valid_wire_target(src_entity, src_pos, tgt_entity, expected_distance)
+    if not (src_entity and src_entity.valid and tgt_entity and tgt_entity.valid) then
+        return false
+    end
+    if src_entity == tgt_entity then
+        return false
+    end
+
+    local tp = tgt_entity.position
+    local sp = src_pos or src_entity.position
+    local dx = tp.x - sp.x
+    local dy = tp.y - sp.y
+    local actual_dist = math.sqrt(dx * dx + dy * dy)
+
+    if expected_distance then
+        return math.abs(actual_dist - expected_distance) < 0.15
+    else
+        return actual_dist <= 64.0
+    end
+end
+
 function device_settings_copier.process_entity_built_wire_tags(entity, tags)
     if not (entity and entity.valid and tags) then return end
 
-    local my_bp_index = tags.pneumatic_bp_index or (tags.pneumatic_settings and tags.pneumatic_settings.my_bp_index)
-    if not my_bp_index then return end
-
-    local surface_key = tostring(entity.surface.index)
-    storage.bp_wire_cache = storage.bp_wire_cache or {}
-    storage.bp_wire_cache[surface_key] = storage.bp_wire_cache[surface_key] or {}
-    storage.pending_bp_wires = storage.pending_bp_wires or {}
+    local settings = tags.pneumatic_settings
+    if not (settings and settings.wire_connections) then return end
 
     local name = entity.name
     if name == "entity-ghost" then name = entity.ghost_name end
@@ -538,43 +582,55 @@ function device_settings_copier.process_entity_built_wire_tags(entity, tags)
         target_for_wiring = diverter_settings.get_proxy(entity) or entity
     end
 
-    storage.bp_wire_cache[surface_key][my_bp_index] = target_for_wiring
+    if not (target_for_wiring and target_for_wiring.valid) then return end
 
-    local settings = tags.pneumatic_settings
-    if settings and settings.wire_connections and target_for_wiring.valid then
-        for _, wire_spec in ipairs(settings.wire_connections) do
-            local target_bp_index = wire_spec.target_bp_index
-            local cached_target = storage.bp_wire_cache[surface_key][target_bp_index]
+    local surface = entity.surface
+    local src_pos = target_for_wiring.position
 
-            if cached_target and cached_target.valid then
-                local src_conn = target_for_wiring.get_wire_connector(wire_spec.source_connector_id, true)
-                local tgt_conn = cached_target.get_wire_connector(wire_spec.target_connector_id, true)
-                if src_conn and tgt_conn then
-                    src_conn.connect_to(tgt_conn)
+    for _, wire_spec in ipairs(settings.wire_connections) do
+        local target_bp_index = wire_spec.target_bp_index
+        local expected_dist = wire_spec.expected_distance or 64.0
+        local search_radius = expected_dist + 1.0
+
+        local candidates = surface.find_entities_filtered{
+            position = src_pos,
+            radius = search_radius
+        }
+
+        local matched_target = nil
+        for _, candidate in ipairs(candidates) do
+            if candidate and candidate.valid and candidate ~= target_for_wiring then
+                local cand_target = candidate
+                local cand_name = candidate.name == "entity-ghost" and candidate.ghost_name or candidate.name
+                if cand_name == "pneumatic-pump" then
+                    cand_target = pump_settings.get_proxy(candidate) or candidate
+                elseif cand_name == "pneumatic-diverter" then
+                    cand_target = diverter_settings.get_proxy(candidate) or candidate
                 end
-            else
-                table.insert(storage.pending_bp_wires, {
-                    surface_key = surface_key,
-                    source_entity = target_for_wiring,
-                    source_connector_id = wire_spec.source_connector_id,
-                    target_bp_index = target_bp_index,
-                    target_connector_id = wire_spec.target_connector_id
-                })
+
+                if cand_target and cand_target.valid and cand_target ~= target_for_wiring then
+                    local cand_tags = candidate.tags
+                    if cand_tags then
+                        local cand_main_idx = cand_tags.pneumatic_bp_index or (cand_tags.pneumatic_settings and cand_tags.pneumatic_settings.my_bp_index)
+                        local cand_proxy_idx = cand_tags.pneumatic_settings and cand_tags.pneumatic_settings.proxy_bp_index
+
+                        if cand_main_idx == target_bp_index or cand_proxy_idx == target_bp_index then
+                            if is_valid_wire_target(target_for_wiring, src_pos, cand_target, wire_spec.expected_distance) then
+                                matched_target = cand_target
+                                break
+                            end
+                        end
+                    end
+                end
             end
         end
-    end
 
-    for i = #storage.pending_bp_wires, 1, -1 do
-        local pending = storage.pending_bp_wires[i]
-        if pending.surface_key == surface_key and pending.target_bp_index == my_bp_index then
-            if pending.source_entity and pending.source_entity.valid and target_for_wiring.valid then
-                local src_conn = pending.source_entity.get_wire_connector(pending.source_connector_id, true)
-                local tgt_conn = target_for_wiring.get_wire_connector(pending.target_connector_id, true)
-                if src_conn and tgt_conn then
-                    src_conn.connect_to(tgt_conn)
-                end
+        if matched_target and matched_target.valid then
+            local src_conn = target_for_wiring.get_wire_connector(wire_spec.source_connector_id, true)
+            local tgt_conn = matched_target.get_wire_connector(wire_spec.target_connector_id, true)
+            if src_conn and tgt_conn then
+                src_conn.connect_to(tgt_conn)
             end
-            table.remove(storage.pending_bp_wires, i)
         end
     end
 end

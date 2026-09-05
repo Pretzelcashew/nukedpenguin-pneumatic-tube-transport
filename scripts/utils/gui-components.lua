@@ -347,8 +347,6 @@ end
 --- @return LuaGuiElement button
 function gui_components.create_overlay_slot_button(parent, config)
     config = config or {}
-    local item_name = (type(config.item) == "table" and config.item.name) or (type(config.item) == "string" and config.item or nil)
-    local sprite_path = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
 
     local button_style = "slot_button"
     if config.is_selected then
@@ -363,7 +361,7 @@ function gui_components.create_overlay_slot_button(parent, config)
         type = "sprite-button",
         name = config.button_name or "filter_slot_button",
         style = button_style,
-        sprite = sprite_path,
+        sprite = "",
         mouse_button_filter = { "left", "right" },
         tags = config.tags
     }
@@ -406,7 +404,7 @@ end
 
 --- Updates an existing overlay slot button's item sprite, comparator badge, and quality icon.
 --- Native behavior: Omits the '=' comparator label overlay and renders non-equal badges in native high-contrast white.
---- Uses pneumatic_any_quality_badge for wildcard quality overlay rendering.
+--- Supports standalone quality filter button icon display when no item is selected.
 --- @param button LuaGuiElement
 --- @param item string|table|nil Item name or specifier
 --- @param comparator string|nil Comparator string ("Any", "Any Quality", ">", "<", "=", "≥", "≤", "≠")
@@ -416,7 +414,19 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
     if not (button and button.valid) then return end
 
     local item_name = (type(item) == "table" and item.name) or (type(item) == "string" and item or nil)
-    button.sprite = (item_name and item_name ~= "") and ("item/" .. item_name) or ""
+    local comp = comparator or "Any"
+    local qual = quality or "normal"
+
+    local has_item = (item_name ~= nil and item_name ~= "")
+    local has_quality = (comp ~= "Any" and comp ~= "Any Quality") or (qual ~= "normal")
+
+    if has_item then
+        button.sprite = "item/" .. item_name
+    elseif has_quality and (comp == "=" or comp == "Any" or comp == "Any Quality") then
+        button.sprite = gui_components.get_quality_sprite(qual) or ""
+    else
+        button.sprite = ""
+    end
 
     local button_style = "slot_button"
     if is_selected then
@@ -439,11 +449,8 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
 
     bottom_flow.clear()
 
-    local comp = comparator or "Any"
-    local qual = quality or "normal"
-
-    if comp == "Any" or comp == "Any Quality" then
-        if item_name then
+    if has_item then
+        if comp == "Any" or comp == "Any Quality" then
             local q_sprite_path = gui_components.get_quality_sprite("any")
             if q_sprite_path then
                 local q_sprite = bottom_flow.add{
@@ -456,10 +463,40 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
                 q_sprite.style.height = 12
                 q_sprite.style.stretch_image_to_widget_size = true
             end
+        else
+            -- Native behavior: '=' comparator badge symbol is omitted, and non-equal symbols are rendered in white
+            if comp ~= "=" then
+                local badge_label = bottom_flow.add{
+                    type = "label",
+                    name = "comparator_badge",
+                    caption = gui_components.format_white_label(comp),
+                    ignored_by_interaction = true
+                }
+                badge_label.style.font = "default-semibold"
+                badge_label.style.padding = 0
+                badge_label.style.margin = 0
+                badge_label.style.top_margin = -3
+            end
+
+            -- Native behavior: Non-equal comparators (<, >, ≥, ≤, ≠) ALWAYS show target quality badge (including normal); '=' shows only if non-normal
+            if (comp ~= "=") or (qual and qual ~= "" and qual ~= "normal") then
+                local q_sprite_path = gui_components.get_quality_sprite(qual)
+                if q_sprite_path then
+                    local q_sprite = bottom_flow.add{
+                        type = "sprite",
+                        name = "quality_badge",
+                        sprite = q_sprite_path,
+                        ignored_by_interaction = true
+                    }
+                    q_sprite.style.width = 12
+                    q_sprite.style.height = 12
+                    q_sprite.style.stretch_image_to_widget_size = true
+                end
+            end
         end
-    else
-        -- Native behavior: '=' comparator badge symbol is omitted, and non-equal symbols are rendered in white
-        if comp ~= "=" then
+    elseif has_quality then
+        -- Standalone Quality Filter: Side-by-side horizontal layout [ Comparator Symbol ] [ Quality Badge ]
+        if comp ~= "=" and comp ~= "Any" and comp ~= "Any Quality" then
             local badge_label = bottom_flow.add{
                 type = "label",
                 name = "comparator_badge",
@@ -470,9 +507,7 @@ function gui_components.update_overlay_slot_button(button, item, comparator, qua
             badge_label.style.padding = 0
             badge_label.style.margin = 0
             badge_label.style.top_margin = -3
-        end
 
-        if (qual and qual ~= "" and qual ~= "normal") or (not item_name) then
             local q_sprite_path = gui_components.get_quality_sprite(qual)
             if q_sprite_path then
                 local q_sprite = bottom_flow.add{

@@ -16,6 +16,8 @@ local PORT_DIRECTIONS = {
 
 -- Per-player draft working state for slot configuration modal
 local draft_filters = {}
+-- Tracks ticks when confirm-gui (E) was fired per player
+local confirm_ticks = {}
 
 local function notify_change(unit_number)
     local entity = storage.active_diverters and storage.active_diverters[unit_number]
@@ -656,12 +658,14 @@ local function on_gui_closed(event)
             local player = game.get_player(event.player_index)
             if not (player and player.valid) then return end
 
+            local was_confirmed = (confirm_ticks[event.player_index] == event.tick)
+
             if element.name == SLOT_CONFIG_FRAME_NAME then
-                diverter_gui.close_slot_config(player, true) -- Pressing E/Esc on modal confirms filter
+                diverter_gui.close_slot_config(player, was_confirmed)
             elseif element.name == GUI_FRAME_NAME then
                 local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
                 if config_frame and config_frame.valid then
-                    diverter_gui.close_slot_config(player, true)
+                    diverter_gui.close_slot_config(player, was_confirmed)
                 else
                     diverter_gui.close(player)
                 end
@@ -673,6 +677,13 @@ end
 active_device_scanner.on_settings_changed(function(entity)
     if entity and entity.valid and entity.name == "pneumatic-diverter" then
         diverter_gui.refresh_if_open(entity.unit_number)
+    end
+end)
+
+events.on_event("pneumatic-confirm-gui", function(event)
+    local player = game.get_player(event.player_index)
+    if player and player.valid then
+        confirm_ticks[event.player_index] = event.tick
     end
 end)
 

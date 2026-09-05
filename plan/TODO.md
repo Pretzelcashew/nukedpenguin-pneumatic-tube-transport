@@ -61,4 +61,7 @@ investigate the inconsistent manner of which pneumatic entities trigger their co
 make it so pressing esc cancels the item with quality and comparator gui rather than submitting into the diverter slot
 
 
-fix when clicking pneumpatic pump it doesnt open its gui
+~fix when clicking pneumpatic pump it doesnt open its gui
+
+
+fix that setting a quality in the diverter's item with quality comparator gui, and an item, but then clearing the item, and pressing submit, would ghost keep the quality until changing the comparator or item or quality

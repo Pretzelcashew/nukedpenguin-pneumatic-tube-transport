@@ -93,3 +93,12 @@
 **Context:** Resolve an issue where left-clicking physical `pneumatic-pump` entities failed to open the pump configuration GUI, requiring players to click its hidden circuit proxy.
 **Key Changes:**
 1. **Entity GUI Mode Activation (`prototypes/entity.lua`):** Added `gui_mode = "all"` to the `pneumatic-pump` `electric-energy-interface` prototype definition. This enables native entity interaction event dispatching (`on_gui_opened`) when left-clicked, allowing `proxy-manager.lua` to intercept interactions and launch `pump-gui` in 1:1 functional parity with `pneumatic-diverter`.
+
+
+### Revision: Native Confirm GUI Event Linking & Esc Modal Cancellation
+**Date:** 2026-09-05 17:32 (EDT)
+**Context:** Differentiate between pressing `E` (Confirm) and `Esc` (Cancel) when leaving the Diverter filter slot configuration modal, achieving 1:1 parity with native Factorio 2.0 GUI draft lifecycle conventions.
+**Key Changes:**
+1. **Confirm GUI Custom Input Registration (`prototypes/custom-input.lua`):** Registered `pneumatic-confirm-gui` linked to Factorio's native `confirm-gui` control sequence (`linked_game_control = "confirm-gui"`) with `consuming = "none"`.
+2. **Tick-Based Confirm Event Tracking (`scripts/diverter-gui.lua`):** Subscribed to the `pneumatic-confirm-gui` custom input event to record the exact execution tick (`confirm_ticks[player_index] = event.tick`) when a player triggers the GUI confirmation key.
+3. **Confirm vs. Cancel Dismissal Logic (`scripts/diverter-gui.lua`):** Updated `on_gui_closed` to evaluate whether `confirm_ticks[event.player_index] == event.tick`. Pressing `E` (or clicking the checkmark) passes `should_apply = true` to commit draft filter settings, whereas pressing `Esc` (or closing without confirming) passes `should_apply = false` to discard draft changes without mutating entity settings.

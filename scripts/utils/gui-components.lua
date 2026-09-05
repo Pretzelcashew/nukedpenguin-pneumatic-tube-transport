@@ -642,7 +642,7 @@ function gui_components.add_quality_control_bar(parent, config)
         name = "quality_confirm_button",
         sprite = "utility/check_mark",
         style = "confirm_button",
-        tooltip = "Confirm (E)",
+        tooltip = "Confirm",
         tags = config.tags
     }
     confirm_btn.style.width = 28

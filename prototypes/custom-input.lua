@@ -27,5 +27,12 @@ data:extend({
     linked_game_control = "paste-entity-settings",
     include_selected_prototype = true,
     consuming = "none"
+  },
+  {
+    type = "custom-input",
+    name = "pneumatic-confirm-gui",
+    key_sequence = "",
+    linked_game_control = "confirm-gui",
+    consuming = "none"
   }
 })

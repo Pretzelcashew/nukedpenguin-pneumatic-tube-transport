@@ -16,6 +16,18 @@ local SHADOW_SCALE_MULTIPLIER = 1.3
 local SHADOW_OFFSET_X = 0.04
 local SHADOW_OFFSET_Y = 0.04
 
+--- Resolves a valid sprite path for the blacklist 'no' symbol.
+--- Checks Factorio native utility sprite first, falling back to registered prototype.
+--- @return string|nil
+local function get_blacklist_sprite()
+    if helpers and helpers.is_valid_sprite_path("utility/filter_blacklist") then
+        return "utility/filter_blacklist"
+    elseif helpers and helpers.is_valid_sprite_path("pneumatic_filter_blacklist") then
+        return "pneumatic_filter_blacklist"
+    end
+    return nil
+end
+
 --- Clears and destroys active Alt Mode render objects for a given diverter unit number.
 --- @param unit_number number
 function diverter_renderer.clear_render(unit_number)
@@ -35,7 +47,8 @@ end
 
 --- Updates or creates Alt Mode filter overlays for a diverter entity.
 --- Renders up to 4 configured filter item icons per port in a clean, balanced 2x2 grid,
---- matching native Factorio Alt-mode filter icon scale, spacing, bottom-left comparators and quality badges.
+--- matching native Factorio Alt-mode filter icon scale, spacing, bottom-left comparators and quality badges,
+--- top-right blacklist indicators, and standalone empty-whitelist 'no' symbols.
 --- @param entity LuaEntity
 function diverter_renderer.update_render(entity)
     if not (entity and entity.valid) then return end
@@ -70,7 +83,10 @@ function diverter_renderer.update_render(entity)
             end
 
             local item_count = #active_filters
-            if item_count > 0 then
+            local is_blacklist = (port.filter_mode == "blacklist")
+
+            -- Native Factorio behavior: Render overlay if we have item filters assigned OR if we are in Whitelist mode with 0 items (blocking all)
+            if item_count > 0 or (not is_blacklist) then
                 local port_def = port_definitions[port_index]
                 if port_def and port_def.offset then
                     local base_pos = port_def.offset
@@ -86,204 +102,290 @@ function diverter_renderer.update_render(entity)
                         by = by - dir_y * PORT_INWARD_OFFSET
                     end
 
-                    local scale
-                    local offsets = {}
+                    if item_count > 0 then
+                        local scale
+                        local offsets = {}
 
-                    if item_count == 1 then
-                        scale = 0.52
-                        offsets[1] = { x = 0, y = 0 }
-                    elseif item_count == 2 then
-                        scale = 0.46
-                        offsets[1] = { x = -0.22, y = 0 }
-                        offsets[2] = { x =  0.22, y = 0 }
+                        if item_count == 1 then
+                            scale = 0.52
+                            offsets[1] = { x = 0, y = 0 }
+                        elseif item_count == 2 then
+                            scale = 0.46
+                            offsets[1] = { x = -0.22, y = 0 }
+                            offsets[2] = { x =  0.22, y = 0 }
+                        else
+                            scale = 0.42
+                            offsets[1] = { x = -0.22, y = -0.22 }
+                            offsets[2] = { x =  0.22, y = -0.22 }
+                            offsets[3] = { x = -0.22, y =  0.22 }
+                            offsets[4] = { x =  0.22, y =  0.22 }
+                        end
+
+                        for idx = 1, item_count do
+                            local filter_entry = active_filters[idx]
+                            local item_name = filter_entry.item
+                            local sprite_path = "item/" .. item_name
+                            if helpers.is_valid_sprite_path(sprite_path) then
+                                local off = offsets[idx]
+                                local cx = bx + off.x
+                                local cy = by + off.y
+
+                                -- 1. Solid pitch-black outline centered behind icon
+                                local outline_obj = rendering.draw_sprite{
+                                    sprite = sprite_path,
+                                    target = { entity = entity, offset = { cx, cy } },
+                                    surface = surface,
+                                    x_scale = scale * OUTLINE_SCALE_MULTIPLIER,
+                                    y_scale = scale * OUTLINE_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, outline_obj)
+
+                                -- 2. Solid pitch-black drop shadow offset down-right
+                                local shadow_obj = rendering.draw_sprite{
+                                    sprite = sprite_path,
+                                    target = { entity = entity, offset = { cx + SHADOW_OFFSET_X, cy + SHADOW_OFFSET_Y } },
+                                    surface = surface,
+                                    x_scale = scale * SHADOW_SCALE_MULTIPLIER,
+                                    y_scale = scale * SHADOW_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, shadow_obj)
+
+                                -- 3. Main item icon rendered in full color on top
+                                local sprite_obj = rendering.draw_sprite{
+                                    sprite = sprite_path,
+                                    target = { entity = entity, offset = { cx, cy } },
+                                    surface = surface,
+                                    x_scale = scale,
+                                    y_scale = scale,
+                                    render_layer = "entity-info-icon-above",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, sprite_obj)
+
+                                -- 4. Bottom-left corner comparator symbol and/or quality badge
+                                local comp = filter_entry.comparator or "Any Quality"
+                                local qual = filter_entry.quality or "normal"
+
+                                local show_comp = (comp ~= "=" and comp ~= "Any" and comp ~= "Any Quality")
+                                local comp_text = show_comp and comp or nil
+
+                                local badge_sprite = nil
+                                if comp == "Any" or comp == "Any Quality" then
+                                    badge_sprite = gui_components.get_quality_sprite("any")
+                                elseif qual and qual ~= "" and qual ~= "normal" then
+                                    badge_sprite = gui_components.get_quality_sprite(qual)
+                                end
+
+                                local has_badge = (badge_sprite and helpers.is_valid_sprite_path(badge_sprite))
+
+                                if comp_text and has_badge then
+                                    local comp_x = cx - (scale * 0.36)
+                                    local comp_y = cy + (scale * 0.26)
+                                    local badge_x = cx - (scale * 0.14)
+                                    local badge_y = cy + (scale * 0.28)
+                                    local badge_scale = scale * 0.38
+
+                                    local comp_shadow = rendering.draw_text{
+                                        text = comp_text,
+                                        surface = surface,
+                                        target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
+                                        color = { r = 0, g = 0, b = 0, a = 1 },
+                                        scale = scale * 0.85,
+                                        font = "default-semibold",
+                                        alignment = "center",
+                                        vertical_alignment = "middle",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, comp_shadow)
+
+                                    local comp_obj = rendering.draw_text{
+                                        text = comp_text,
+                                        surface = surface,
+                                        target = { entity = entity, offset = { comp_x, comp_y } },
+                                        color = { r = 1, g = 1, b = 1, a = 1 },
+                                        scale = scale * 0.85,
+                                        font = "default-semibold",
+                                        alignment = "center",
+                                        vertical_alignment = "middle",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, comp_obj)
+
+                                    local badge_outline = rendering.draw_sprite{
+                                        sprite = badge_sprite,
+                                        target = { entity = entity, offset = { badge_x, badge_y } },
+                                        surface = surface,
+                                        x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                        y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                        tint = BLACK_TINT,
+                                        render_layer = "entity-info-icon",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, badge_outline)
+
+                                    local badge_sprite_obj = rendering.draw_sprite{
+                                        sprite = badge_sprite,
+                                        target = { entity = entity, offset = { badge_x, badge_y } },
+                                        surface = surface,
+                                        x_scale = badge_scale,
+                                        y_scale = badge_scale,
+                                        render_layer = "entity-info-icon-above",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, badge_sprite_obj)
+
+                                elseif comp_text then
+                                    local comp_x = cx - (scale * 0.28)
+                                    local comp_y = cy + (scale * 0.26)
+
+                                    local comp_shadow = rendering.draw_text{
+                                        text = comp_text,
+                                        surface = surface,
+                                        target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
+                                        color = { r = 0, g = 0, b = 0, a = 1 },
+                                        scale = scale * 0.85,
+                                        font = "default-semibold",
+                                        alignment = "center",
+                                        vertical_alignment = "middle",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, comp_shadow)
+
+                                    local comp_obj = rendering.draw_text{
+                                        text = comp_text,
+                                        surface = surface,
+                                        target = { entity = entity, offset = { comp_x, comp_y } },
+                                        color = { r = 1, g = 1, b = 1, a = 1 },
+                                        scale = scale * 0.85,
+                                        font = "default-semibold",
+                                        alignment = "center",
+                                        vertical_alignment = "middle",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, comp_obj)
+
+                                elseif has_badge then
+                                    local badge_x = cx - (scale * 0.28)
+                                    local badge_y = cy + (scale * 0.28)
+                                    local badge_scale = scale * 0.40
+
+                                    local badge_outline = rendering.draw_sprite{
+                                        sprite = badge_sprite,
+                                        target = { entity = entity, offset = { badge_x, badge_y } },
+                                        surface = surface,
+                                        x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                        y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
+                                        tint = BLACK_TINT,
+                                        render_layer = "entity-info-icon",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, badge_outline)
+
+                                    local badge_sprite_obj = rendering.draw_sprite{
+                                        sprite = badge_sprite,
+                                        target = { entity = entity, offset = { badge_x, badge_y } },
+                                        surface = surface,
+                                        x_scale = badge_scale,
+                                        y_scale = badge_scale,
+                                        render_layer = "entity-info-icon-above",
+                                        only_in_alt_mode = true
+                                    }
+                                    table.insert(new_objs, badge_sprite_obj)
+                                end
+                            end
+                        end
+
+                        -- Render single top-right blacklist 'no' symbol indicator per port if port filter mode is blacklist
+                        if is_blacklist then
+                            local blacklist_sprite = get_blacklist_sprite()
+                            if blacklist_sprite then
+                                local bl_x = bx + (scale * 0.38)
+                                local bl_y = by - (scale * 0.38)
+                                local bl_scale = scale * 0.41
+
+                                local bl_outline = rendering.draw_sprite{
+                                    sprite = blacklist_sprite,
+                                    target = { entity = entity, offset = { bl_x, bl_y } },
+                                    surface = surface,
+                                    x_scale = bl_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    y_scale = bl_scale * OUTLINE_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, bl_outline)
+
+                                local bl_shadow = rendering.draw_sprite{
+                                    sprite = blacklist_sprite,
+                                    target = { entity = entity, offset = { bl_x + SHADOW_OFFSET_X, bl_y + SHADOW_OFFSET_Y } },
+                                    surface = surface,
+                                    x_scale = bl_scale * SHADOW_SCALE_MULTIPLIER,
+                                    y_scale = bl_scale * SHADOW_SCALE_MULTIPLIER,
+                                    tint = BLACK_TINT,
+                                    render_layer = "entity-info-icon",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, bl_shadow)
+
+                                local bl_sprite = rendering.draw_sprite{
+                                    sprite = blacklist_sprite,
+                                    target = { entity = entity, offset = { bl_x, bl_y } },
+                                    surface = surface,
+                                    x_scale = bl_scale,
+                                    y_scale = bl_scale,
+                                    render_layer = "entity-info-icon-above",
+                                    only_in_alt_mode = true
+                                }
+                                table.insert(new_objs, bl_sprite)
+                            end
+                        end
+
                     else
-                        scale = 0.42
-                        offsets[1] = { x = -0.22, y = -0.22 }
-                        offsets[2] = { x =  0.22, y = -0.22 }
-                        offsets[3] = { x = -0.22, y =  0.22 }
-                        offsets[4] = { x =  0.22, y =  0.22 }
-                    end
+                        -- Standalone "no" symbol when item_count == 0 and filter_mode is whitelist (blocks all)
+                        local blacklist_sprite = get_blacklist_sprite()
+                        if blacklist_sprite then
+                            local bl_scale = 0.33
 
-                    for idx = 1, item_count do
-                        local filter_entry = active_filters[idx]
-                        local item_name = filter_entry.item
-                        local sprite_path = "item/" .. item_name
-                        if helpers.is_valid_sprite_path(sprite_path) then
-                            local off = offsets[idx]
-                            local cx = bx + off.x
-                            local cy = by + off.y
-
-                            -- 1. Solid pitch-black outline centered behind icon
-                            local outline_obj = rendering.draw_sprite{
-                                sprite = sprite_path,
-                                target = { entity = entity, offset = { cx, cy } },
+                            local bl_outline = rendering.draw_sprite{
+                                sprite = blacklist_sprite,
+                                target = { entity = entity, offset = { bx, by } },
                                 surface = surface,
-                                x_scale = scale * OUTLINE_SCALE_MULTIPLIER,
-                                y_scale = scale * OUTLINE_SCALE_MULTIPLIER,
+                                x_scale = bl_scale * OUTLINE_SCALE_MULTIPLIER,
+                                y_scale = bl_scale * OUTLINE_SCALE_MULTIPLIER,
                                 tint = BLACK_TINT,
                                 render_layer = "entity-info-icon",
                                 only_in_alt_mode = true
                             }
-                            table.insert(new_objs, outline_obj)
+                            table.insert(new_objs, bl_outline)
 
-                            -- 2. Solid pitch-black drop shadow offset down-right
-                            local shadow_obj = rendering.draw_sprite{
-                                sprite = sprite_path,
-                                target = { entity = entity, offset = { cx + SHADOW_OFFSET_X, cy + SHADOW_OFFSET_Y } },
+                            local bl_shadow = rendering.draw_sprite{
+                                sprite = blacklist_sprite,
+                                target = { entity = entity, offset = { bx + SHADOW_OFFSET_X, by + SHADOW_OFFSET_Y } },
                                 surface = surface,
-                                x_scale = scale * SHADOW_SCALE_MULTIPLIER,
-                                y_scale = scale * SHADOW_SCALE_MULTIPLIER,
+                                x_scale = bl_scale * SHADOW_SCALE_MULTIPLIER,
+                                y_scale = bl_scale * SHADOW_SCALE_MULTIPLIER,
                                 tint = BLACK_TINT,
                                 render_layer = "entity-info-icon",
                                 only_in_alt_mode = true
                             }
-                            table.insert(new_objs, shadow_obj)
+                            table.insert(new_objs, bl_shadow)
 
-                            -- 3. Main item icon rendered in full color on top
-                            local sprite_obj = rendering.draw_sprite{
-                                sprite = sprite_path,
-                                target = { entity = entity, offset = { cx, cy } },
+                            local bl_sprite = rendering.draw_sprite{
+                                sprite = blacklist_sprite,
+                                target = { entity = entity, offset = { bx, by } },
                                 surface = surface,
-                                x_scale = scale,
-                                y_scale = scale,
+                                x_scale = bl_scale,
+                                y_scale = bl_scale,
                                 render_layer = "entity-info-icon-above",
                                 only_in_alt_mode = true
                             }
-                            table.insert(new_objs, sprite_obj)
-
-                            -- 4. Bottom-left corner comparator symbol and/or quality badge
-                            local comp = filter_entry.comparator or "Any Quality"
-                            local qual = filter_entry.quality or "normal"
-
-                            local show_comp = (comp ~= "=" and comp ~= "Any" and comp ~= "Any Quality")
-                            local comp_text = show_comp and comp or nil
-
-                            local badge_sprite = nil
-                            if comp == "Any" or comp == "Any Quality" then
-                                badge_sprite = gui_components.get_quality_sprite("any")
-                            elseif qual and qual ~= "" and qual ~= "normal" then
-                                badge_sprite = gui_components.get_quality_sprite(qual)
-                            end
-
-                            local has_badge = (badge_sprite and helpers.is_valid_sprite_path(badge_sprite))
-
-                            if comp_text and has_badge then
-                                -- Both comparator symbol and quality badge side-by-side at bottom-left
-                                local comp_x = cx - (scale * 0.36)
-                                local comp_y = cy + (scale * 0.26)
-                                local badge_x = cx - (scale * 0.14)
-                                local badge_y = cy + (scale * 0.28)
-                                local badge_scale = scale * 0.38
-
-                                local comp_shadow = rendering.draw_text{
-                                    text = comp_text,
-                                    surface = surface,
-                                    target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
-                                    color = { r = 0, g = 0, b = 0, a = 1 },
-                                    scale = scale * 0.85,
-                                    font = "default-semibold",
-                                    alignment = "center",
-                                    vertical_alignment = "middle",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, comp_shadow)
-
-                                local comp_obj = rendering.draw_text{
-                                    text = comp_text,
-                                    surface = surface,
-                                    target = { entity = entity, offset = { comp_x, comp_y } },
-                                    color = { r = 1, g = 1, b = 1, a = 1 },
-                                    scale = scale * 0.85,
-                                    font = "default-semibold",
-                                    alignment = "center",
-                                    vertical_alignment = "middle",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, comp_obj)
-
-                                local badge_outline = rendering.draw_sprite{
-                                    sprite = badge_sprite,
-                                    target = { entity = entity, offset = { badge_x, badge_y } },
-                                    surface = surface,
-                                    x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
-                                    y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
-                                    tint = BLACK_TINT,
-                                    render_layer = "entity-info-icon",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, badge_outline)
-
-                                local badge_sprite_obj = rendering.draw_sprite{
-                                    sprite = badge_sprite,
-                                    target = { entity = entity, offset = { badge_x, badge_y } },
-                                    surface = surface,
-                                    x_scale = badge_scale,
-                                    y_scale = badge_scale,
-                                    render_layer = "entity-info-icon-above",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, badge_sprite_obj)
-
-                            elseif comp_text then
-                                -- Comparator symbol only at bottom-left
-                                local comp_x = cx - (scale * 0.28)
-                                local comp_y = cy + (scale * 0.26)
-
-                                local comp_shadow = rendering.draw_text{
-                                    text = comp_text,
-                                    surface = surface,
-                                    target = { entity = entity, offset = { comp_x + 0.015, comp_y + 0.015 } },
-                                    color = { r = 0, g = 0, b = 0, a = 1 },
-                                    scale = scale * 0.85,
-                                    font = "default-semibold",
-                                    alignment = "center",
-                                    vertical_alignment = "middle",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, comp_shadow)
-
-                                local comp_obj = rendering.draw_text{
-                                    text = comp_text,
-                                    surface = surface,
-                                    target = { entity = entity, offset = { comp_x, comp_y } },
-                                    color = { r = 1, g = 1, b = 1, a = 1 },
-                                    scale = scale * 0.85,
-                                    font = "default-semibold",
-                                    alignment = "center",
-                                    vertical_alignment = "middle",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, comp_obj)
-
-                            elseif has_badge then
-                                -- Quality badge only at bottom-left
-                                local badge_x = cx - (scale * 0.28)
-                                local badge_y = cy + (scale * 0.28)
-                                local badge_scale = scale * 0.40
-
-                                local badge_outline = rendering.draw_sprite{
-                                    sprite = badge_sprite,
-                                    target = { entity = entity, offset = { badge_x, badge_y } },
-                                    surface = surface,
-                                    x_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
-                                    y_scale = badge_scale * OUTLINE_SCALE_MULTIPLIER,
-                                    tint = BLACK_TINT,
-                                    render_layer = "entity-info-icon",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, badge_outline)
-
-                                local badge_sprite_obj = rendering.draw_sprite{
-                                    sprite = badge_sprite,
-                                    target = { entity = entity, offset = { badge_x, badge_y } },
-                                    surface = surface,
-                                    x_scale = badge_scale,
-                                    y_scale = badge_scale,
-                                    render_layer = "entity-info-icon-above",
-                                    only_in_alt_mode = true
-                                }
-                                table.insert(new_objs, badge_sprite_obj)
-                            end
+                            table.insert(new_objs, bl_sprite)
                         end
                     end
                 end

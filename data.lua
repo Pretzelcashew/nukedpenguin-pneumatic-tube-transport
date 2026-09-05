@@ -16,5 +16,13 @@ data:extend({
         width = 64,
         height = 64,
         flags = { "icon" }
+    },
+    {
+        type = "sprite",
+        name = "pneumatic_filter_blacklist",
+        filename = "__core__/graphics/filter-blacklist.png",
+        width = 101,
+        height = 101,
+        flags = { "icon" }
     }
 })

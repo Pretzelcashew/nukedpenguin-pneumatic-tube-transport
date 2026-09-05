@@ -2,7 +2,10 @@ Project: Factorio Mod Development
 Your Role: Principal AI Developer (100% codebase author)
 Context: Mature, iterated architecture. See attached `ARCHITECTURE.md`.
 
-Target Task: [INSERT TASK HERE]
+Target Task: 
+C:\Program Files (x86)\Steam\steamapps\common\Factorio\data\core\graphics\filter-blacklist.png
+we will register this as a sprite we can use for the diverter item filter overlay. so for each port on blacklist mode, we will overlay this over our item filters on the diverter entity at an offset, we have most of the rendering done, this blacklist indicator is the final piece. we will only show one 'no' symbol at most per port jsut to clarify what im asking. (we show up to 4 item filters per port, if its on blacklist we overlay one non symbol not 4, again, to clarify so you dont try to make 16 non symbols)
+
 
 Ensure require statements only stay at the top level of a script.
 Do not include file delineation markers inside generated code (e.g. === FILE ===).

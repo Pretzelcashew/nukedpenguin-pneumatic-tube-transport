@@ -56,6 +56,8 @@ consider adding capsule counter entity (1x2, uses power, reads how many capsules
 
 
 
+make sure to update en locale to include recharge refrigerated capsule
+
 
 
 

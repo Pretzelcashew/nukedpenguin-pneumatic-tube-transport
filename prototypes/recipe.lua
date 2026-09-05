@@ -46,6 +46,8 @@ data:extend({
   {
     type = "recipe",
     name = "recharge-refrigerated-capsule",
+    subgroup = "pneumatic-capsules",
+    order = "c[refrigerated]-b[recharge]",
     categories = {"crafting-with-fluid"},
     enabled = false,
     energy_required = 2.0,

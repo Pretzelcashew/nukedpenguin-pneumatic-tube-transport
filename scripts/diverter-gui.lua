@@ -14,6 +14,9 @@ local PORT_DIRECTIONS = {
     "West " .. gui_components.COLOR_BLUE .. "◀" .. gui_components.COLOR_END
 }
 
+-- Per-player draft working state for slot configuration modal
+local draft_filters = {}
+
 local function notify_change(unit_number)
     local entity = storage.active_diverters and storage.active_diverters[unit_number]
     if entity and entity.valid then
@@ -31,16 +34,42 @@ local function find_element_by_name(element, name)
     return nil
 end
 
-function diverter_gui.close_slot_config(player)
+--- Closes the slot config modal.
+--- @param player LuaPlayer
+--- @param should_apply boolean If true, commits the draft filter state to diverter_settings; if false, discards draft.
+function diverter_gui.close_slot_config(player, should_apply)
     if not (player and player.valid) then return end
+    local p_index = player.index
+    local draft = draft_filters[p_index]
+
     local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
     if config_frame and config_frame.valid then
-        local tags = config_frame.tags or {}
-        if tags.unit_number and tags.port_index and tags.slot_index then
-            diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, false)
-        end
         config_frame.destroy()
     end
+
+    if draft then
+        local unit_number = draft.unit_number
+        local port_index = draft.port_index
+        local slot_index = draft.slot_index
+
+        if should_apply then
+            local settings = diverter_settings.get(unit_number)
+            local port = settings and settings.ports and settings.ports[port_index]
+            if port and port.filters and port.filters[slot_index] then
+                port.filters[slot_index] = {
+                    item = draft.item,
+                    comparator = draft.comparator or "Any Quality",
+                    quality = draft.quality or "normal",
+                    explicit_quality = draft.explicit_quality
+                }
+                notify_change(unit_number)
+            end
+        end
+
+        diverter_gui.refresh_main_slot_button(player, unit_number, port_index, slot_index, false)
+        draft_filters[p_index] = nil
+    end
+
     local main_frame = player.gui.screen[GUI_FRAME_NAME]
     if main_frame and main_frame.valid then
         player.opened = main_frame
@@ -49,7 +78,7 @@ end
 
 function diverter_gui.close(player)
     if not (player and player.valid) then return end
-    diverter_gui.close_slot_config(player)
+    diverter_gui.close_slot_config(player, false)
     if player.gui.screen[GUI_FRAME_NAME] then
         player.gui.screen[GUI_FRAME_NAME].destroy()
     end
@@ -67,9 +96,13 @@ function diverter_gui.refresh_if_open(unit_number)
                 local inner_frame = find_element_by_name(main_frame, "diverter_inner_frame")
                 if inner_frame and inner_frame.valid and inner_frame.tags then
                     if inner_frame.tags.unit_number == unit_number then
-                        diverter_gui.close_slot_config(player)
+                        local draft = draft_filters[player.index]
                         local view = inner_frame.tags.current_view or "all"
                         diverter_gui.render_content_layout(inner_frame, unit_number, view)
+
+                        if draft and draft.unit_number == unit_number then
+                            diverter_gui.refresh_main_slot_button(player, draft.unit_number, draft.port_index, draft.slot_index, true)
+                        end
                     end
                 end
             end
@@ -88,6 +121,7 @@ function diverter_gui.refresh_main_slot_button(player, unit_number, port_index, 
         local settings = diverter_settings.get(unit_number)
         local port = settings and settings.ports and settings.ports[port_index]
         local filter_data = port and port.filters and port.filters[slot_index]
+
         if filter_data then
             gui_components.update_overlay_slot_button(slot_btn, filter_data.item, filter_data.comparator, filter_data.quality, is_active)
         end
@@ -97,12 +131,24 @@ end
 function diverter_gui.open_slot_config(player, unit_number, port_index, slot_index)
     if not (player and player.valid) then return end
 
-    diverter_gui.close_slot_config(player)
+    diverter_gui.close_slot_config(player, false)
 
     local settings = diverter_settings.get(unit_number)
     local port = settings and settings.ports and settings.ports[port_index]
     if not port then return end
+
     local filter_data = port.filters[slot_index] or { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
+
+    -- Create an isolated draft working copy for the modal
+    draft_filters[player.index] = {
+        unit_number = unit_number,
+        port_index = port_index,
+        slot_index = slot_index,
+        item = filter_data.item,
+        comparator = filter_data.comparator or "Any Quality",
+        quality = filter_data.quality or "normal",
+        explicit_quality = filter_data.explicit_quality
+    }
 
     local config_frame = player.gui.screen.add{
         type = "frame",
@@ -338,15 +384,20 @@ local function on_gui_click(event)
         return
     end
 
-    if element.name == "slot_config_close_button" or element.name == "quality_confirm_button" then
-        diverter_gui.close_slot_config(player)
+    if element.name == "slot_config_close_button" then
+        diverter_gui.close_slot_config(player, false) -- Cancel draft on X
+        return
+    end
+
+    if element.name == "quality_confirm_button" then
+        diverter_gui.close_slot_config(player, true) -- Confirm draft on checkmark
         return
     end
 
     if tags.view_port ~= nil and tags.unit_number then
         local main_frame = player.gui.screen[GUI_FRAME_NAME]
         if main_frame and main_frame.valid then
-            diverter_gui.close_slot_config(player)
+            diverter_gui.close_slot_config(player, false)
             local current_view = tags.view_port
             local inner_frame = find_element_by_name(main_frame, "diverter_inner_frame")
             if inner_frame then
@@ -358,18 +409,11 @@ local function on_gui_click(event)
 
     if element.name:find("quality_tier_radio_") then
         local chosen_tier = element.name:gsub("quality_tier_radio_", "")
-        if tags.unit_number and tags.port_index and tags.slot_index then
-            local settings = diverter_settings.get(tags.unit_number)
-            local port = settings and settings.ports and settings.ports[tags.port_index]
-            local filter = port and port.filters and port.filters[tags.slot_index]
-            if filter then
-                local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
-                filter.comparator, filter.quality = gui_components.handle_quality_tier_click(config_frame, filter.comparator, chosen_tier)
-                filter.explicit_quality = true
-
-                diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)
-                notify_change(tags.unit_number)
-            end
+        local draft = draft_filters[player.index]
+        if draft then
+            local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
+            draft.comparator, draft.quality = gui_components.handle_quality_tier_click(config_frame, draft.comparator, chosen_tier)
+            draft.explicit_quality = true
         end
         return
     end
@@ -380,12 +424,9 @@ local function on_gui_click(event)
         if port and port.filters and port.filters[tags.slot_index] then
             local action = gui_components.handle_overlay_slot_click(event, port.filters[tags.slot_index])
             if action == "cleared" then
-                local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
-                if config_frame and config_frame.valid then
-                    local cfg_tags = config_frame.tags or {}
-                    if cfg_tags.unit_number == tags.unit_number and cfg_tags.port_index == tags.port_index and cfg_tags.slot_index == tags.slot_index then
-                        diverter_gui.close_slot_config(player)
-                    end
+                local draft = draft_filters[player.index]
+                if draft and draft.unit_number == tags.unit_number and draft.port_index == tags.port_index and draft.slot_index == tags.slot_index then
+                    diverter_gui.close_slot_config(player, false)
                 end
                 diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, false)
                 notify_change(tags.unit_number)
@@ -457,68 +498,68 @@ end
 local function on_gui_elem_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index) then return end
 
     local player = game.get_player(event.player_index)
-    local settings = diverter_settings.get(tags.unit_number)
-    local port = settings and settings.ports and settings.ports[tags.port_index]
-    if not port then return end
+    if not (player and player.valid) then return end
 
-    if element.name == "port_circuit_signal" then
-        port.enable_condition.first_signal = element.elem_value
-        notify_change(tags.unit_number)
+    local tags = element.tags or {}
+    if not tags.unit_number then return end
+
+    if element.name == "port_circuit_signal" and tags.port_index then
+        local settings = diverter_settings.get(tags.unit_number)
+        local port = settings and settings.ports and settings.ports[tags.port_index]
+        if port then
+            port.enable_condition.first_signal = element.elem_value
+            notify_change(tags.unit_number)
+        end
         return
     end
 
-    if element.name == "slot_config_item_button" and tags.slot_index and port.filters[tags.slot_index] then
-        local filter = port.filters[tags.slot_index]
-        gui_components.handle_filter_item_change(filter, element.elem_value)
+    if element.name == "slot_config_item_button" then
+        local draft = draft_filters[player.index]
+        if draft then
+            gui_components.handle_filter_item_change(draft, element.elem_value)
 
-        local config_frame = player and player.gui.screen[SLOT_CONFIG_FRAME_NAME]
-        if config_frame and config_frame.valid then
-            gui_components.update_quality_control_bar(config_frame, filter.comparator, filter.quality)
+            local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
+            if config_frame and config_frame.valid then
+                gui_components.update_quality_control_bar(config_frame, draft.comparator, draft.quality)
+            end
         end
-
-        if player then
-            diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)
-        end
-        notify_change(tags.unit_number)
     end
 end
 
 local function on_gui_selection_state_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index) then return end
 
     local player = game.get_player(event.player_index)
-    local settings = diverter_settings.get(tags.unit_number)
-    local port = settings and settings.ports and settings.ports[tags.port_index]
-    if not port then return end
+    if not (player and player.valid) then return end
 
-    if element.name == "port_circuit_comparator" then
-        port.enable_condition.comparator = gui_components.get_comparator_by_index(element.selected_index)
-        notify_change(tags.unit_number)
+    local tags = element.tags or {}
+    if not tags.unit_number then return end
+
+    if element.name == "port_circuit_comparator" and tags.port_index then
+        local settings = diverter_settings.get(tags.unit_number)
+        local port = settings and settings.ports and settings.ports[tags.port_index]
+        if port then
+            port.enable_condition.comparator = gui_components.get_comparator_by_index(element.selected_index)
+            notify_change(tags.unit_number)
+        end
         return
     end
 
-    if element.name == "quality_comparator_dropdown" and tags.slot_index and port.filters[tags.slot_index] then
-        local filter = port.filters[tags.slot_index]
-        local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
-        filter.comparator, filter.quality = gui_components.handle_quality_comparator_change(config_frame, element.selected_index, filter.quality)
+    if element.name == "quality_comparator_dropdown" then
+        local draft = draft_filters[player.index]
+        if draft then
+            local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
+            draft.comparator, draft.quality = gui_components.handle_quality_comparator_change(config_frame, element.selected_index, draft.quality)
 
-        if filter.comparator == "Any" or filter.comparator == "Any Quality" then
-            filter.explicit_quality = nil
-        else
-            filter.explicit_quality = true
+            if draft.comparator == "Any" or draft.comparator == "Any Quality" then
+                draft.explicit_quality = nil
+            else
+                draft.explicit_quality = true
+            end
         end
-
-        if player then
-            diverter_gui.refresh_main_slot_button(player, tags.unit_number, tags.port_index, tags.slot_index, true)
-        end
-        notify_change(tags.unit_number)
     end
 end
 
@@ -529,7 +570,7 @@ local function on_gui_text_changed(event)
     if not (tags and tags.unit_number and tags.port_index) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
-    local port = settings.ports[tags.port_index]
+    local port = settings and settings.ports and settings.ports[tags.port_index]
     if not port then return end
 
     if element.name == "port_circuit_constant" then
@@ -545,15 +586,15 @@ local function on_gui_closed(event)
             local player = game.get_player(event.player_index)
             if not (player and player.valid) then return end
 
-            if element.name == GUI_FRAME_NAME then
+            if element.name == SLOT_CONFIG_FRAME_NAME then
+                diverter_gui.close_slot_config(player, true) -- Pressing E/Esc on modal confirms filter
+            elseif element.name == GUI_FRAME_NAME then
                 local config_frame = player.gui.screen[SLOT_CONFIG_FRAME_NAME]
                 if config_frame and config_frame.valid then
-                    diverter_gui.close_slot_config(player)
+                    diverter_gui.close_slot_config(player, true)
                 else
                     diverter_gui.close(player)
                 end
-            elseif element.name == SLOT_CONFIG_FRAME_NAME then
-                diverter_gui.close_slot_config(player)
             end
         end
     end

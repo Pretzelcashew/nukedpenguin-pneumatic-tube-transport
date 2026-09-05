@@ -59,3 +59,12 @@
 **Context:** Default the Pneumatic Diverter configuration GUI to display all four directional port cards simultaneously ("All" mode) upon opening, rather than focusing single-port North view by default.
 **Key Changes:**
 1. **Default View State (`scripts/diverter-gui.lua`):** Updated `diverter_gui.open` and `diverter_gui.refresh_if_open` to default `current_view` to `"all"` instead of `1` (North port), rendering the full 4-port grid when opening the diverter interface without an explicit initial view parameter.
+
+
+### Revision: Filter Slot Draft State, Quality Preservation & Draggable Modal GUI
+**Date:** 2026-09-05 16:00 (EDT)
+**Context:** Achieve native Factorio 2.0 filter configuration behavior by preserving existing quality/comparator rules on item swaps, isolating modal editing inside a draft working state, and making filter configuration pop-ups fully draggable.
+**Key Changes:**
+1. **Comparator & Quality Preservation (`scripts/utils/gui-components.lua`):** Refactored `gui_components.handle_filter_item_change` so selecting an item defaults to `=` and `normal` quality only if the slot is currently blank (`"Any Quality"`). Pre-configured comparators and quality tiers are preserved intact when changing item selections.
+2. **Isolated Draft Filter State & Confirm Lifecycle (`scripts/diverter-gui.lua`):** Implemented a `draft_filters` working table in `diverter_gui.open_slot_config`. Interacting with items, quality radio buttons, or comparator dropdowns inside the modal updates only the draft without mutating persistent `diverter_settings` or leaking live updates to the machine. Drafts commit to the entity strictly upon clicking Confirm (✓) or pressing `E`/`Esc`, while clicking Cancel (X) discards unconfirmed changes.
+3. **Window Focus & Draggable Header Integration (`scripts/diverter-gui.lua` & `scripts/utils/gui-components.lua`):** Removed `player.opened` re-assignment inside `open_slot_config` to prevent Factorio's engine from triggering `on_gui_closed` on the main frame and destroying the modal pop-up on spawn. Enhanced `gui_components.add_header` with `drag_target = parent_frame` across header title flows and drag spacers, making modal filter windows fully draggable across the viewport.

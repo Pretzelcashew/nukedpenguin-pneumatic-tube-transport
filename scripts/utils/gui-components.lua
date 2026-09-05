@@ -211,18 +211,20 @@ function gui_components.handle_overlay_slot_click(event, filter_data)
 end
 
 --- Reusable handler for item selection changes on filter slots.
---- Applies native Factorio quality rules: defaults to '=' + 'normal' only if no explicit quality rule was previously chosen.
+--- Applies native Factorio quality rules: defaults to '=' + 'normal' only if the slot is currently blank ("Any Quality").
+--- If a comparator/quality is already configured, selecting an item leaves them untouched.
 --- @param filter_data table Filter slot data structure
 --- @param new_item string|table|nil The newly selected item
 --- @return table filter_data
 function gui_components.handle_filter_item_change(filter_data, new_item)
     filter_data = filter_data or {}
     if new_item then
-        if not filter_data.explicit_quality then
+        local comp = filter_data.comparator
+        if comp == "Any Quality" or comp == "Any" or comp == nil then
             filter_data.comparator = "="
             filter_data.quality = "normal"
-            filter_data.explicit_quality = true
         end
+        filter_data.explicit_quality = true
         filter_data.item = new_item
     else
         filter_data.item = nil
@@ -271,6 +273,7 @@ function gui_components.create_relative_window(player, anchor_spec, frame_name, 
 end
 
 --- Adds a standard titlebar header with title, drag handle, and close button.
+--- Configures drag targets so clicking anywhere on the header bar allows window dragging.
 --- @param parent_frame LuaGuiElement
 --- @param title_text string
 --- @param close_button_name string|nil
@@ -279,11 +282,13 @@ end
 function gui_components.add_header(parent_frame, title_text, close_button_name, tags)
     local title_flow = parent_frame.add{ type = "flow", direction = "horizontal" }
     title_flow.style.vertical_align = "center"
+    title_flow.drag_target = parent_frame
 
-    title_flow.add{
+    local title_label = title_flow.add{
         type = "label",
         style = "frame_title",
-        caption = title_text or ""
+        caption = title_text or "",
+        ignored_by_interaction = true
     }
 
     local drag_spacer = title_flow.add{

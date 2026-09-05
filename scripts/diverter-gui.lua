@@ -58,6 +58,25 @@ function diverter_gui.close(player)
     end
 end
 
+function diverter_gui.refresh_if_open(unit_number)
+    if not unit_number then return end
+    for _, player in pairs(game.players) do
+        if player and player.valid then
+            local main_frame = player.gui.screen[GUI_FRAME_NAME]
+            if main_frame and main_frame.valid then
+                local inner_frame = find_element_by_name(main_frame, "diverter_inner_frame")
+                if inner_frame and inner_frame.valid and inner_frame.tags then
+                    if inner_frame.tags.unit_number == unit_number then
+                        diverter_gui.close_slot_config(player)
+                        local view = inner_frame.tags.current_view or 1
+                        diverter_gui.render_content_layout(inner_frame, unit_number, view)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function diverter_gui.refresh_main_slot_button(player, unit_number, port_index, slot_index, is_active)
     if not (player and player.valid) then return end
     local main_frame = player.gui.screen[GUI_FRAME_NAME]
@@ -125,6 +144,7 @@ end
 function diverter_gui.render_content_layout(inner_frame, unit_number, current_view)
     if not (inner_frame and inner_frame.valid) then return end
     inner_frame.clear()
+    inner_frame.tags = { unit_number = unit_number, current_view = current_view }
 
     local settings = diverter_settings.get(unit_number)
     if not settings then return end
@@ -538,6 +558,12 @@ local function on_gui_closed(event)
         end
     end
 end
+
+active_device_scanner.on_settings_changed(function(entity)
+    if entity and entity.valid and entity.name == "pneumatic-diverter" then
+        diverter_gui.refresh_if_open(entity.unit_number)
+    end
+end)
 
 events.on_event(defines.events.on_gui_click, on_gui_click)
 events.on_event(defines.events.on_gui_closed, on_gui_closed)

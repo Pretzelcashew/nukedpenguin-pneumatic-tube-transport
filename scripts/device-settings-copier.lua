@@ -280,7 +280,8 @@ local function on_copy_settings(event)
     storage.player_copy_buffer = storage.player_copy_buffer or {}
     storage.player_copy_buffer[event.player_index] = {
         entity_name = name,
-        unit_number = selected.unit_number
+        unit_number = selected.unit_number,
+        direction = selected.direction
     }
 end
 
@@ -312,7 +313,7 @@ local function on_paste_settings(event)
         end
 
     elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
-        if diverter_settings.copy(src_unit, dest_unit) then
+        if diverter_settings.copy(src_unit, dest_unit, buffer.direction, destination.direction) then
             active_device_scanner.notify_settings_changed(destination)
             if player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
                 diverter_gui.open(player, destination)
@@ -343,7 +344,7 @@ local function on_entity_settings_pasted(event)
         end
 
     elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
-        diverter_settings.copy(source.unit_number, destination.unit_number)
+        diverter_settings.copy(source.unit_number, destination.unit_number, source.direction, destination.direction)
         active_device_scanner.notify_settings_changed(destination)
         if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
             diverter_gui.open(player, destination)

@@ -4,6 +4,13 @@ local diverter_settings = {}
 
 diverter_settings.DEFAULT_CAPACITY = 2
 
+local DIRECTION_TO_INDEX = {
+    [defines.direction.north] = 1,
+    [defines.direction.east]  = 2,
+    [defines.direction.south] = 3,
+    [defines.direction.west]  = 4
+}
+
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target
     elseif operator == ">" then return val > target
@@ -132,7 +139,72 @@ function diverter_settings.get(unit_number)
     return storage.diverter_settings[unit_number]
 end
 
-function diverter_settings.copy(src_unit_number, dest_unit_number)
+function diverter_settings.rotate_ports_by_steps(unit_number, steps)
+    if not unit_number or not steps then return nil end
+    steps = steps % 4
+    if steps == 0 then return nil end
+
+    local settings = diverter_settings.get(unit_number)
+    if not (settings and settings.ports) then return nil end
+
+    local old_ports = settings.ports
+    local new_ports = {}
+
+    for p = 1, 4 do
+        local new_p = ((p - 1 + steps) % 4) + 1
+        new_ports[new_p] = old_ports[p]
+        if new_ports[new_p] then
+            new_ports[new_p]._compiled = nil
+        end
+    end
+
+    settings.ports = new_ports
+    return settings
+end
+
+function diverter_settings.rotate_ports(unit_number, previous_direction, new_direction)
+    if not (unit_number and previous_direction and new_direction) then return nil end
+    local old_idx = DIRECTION_TO_INDEX[previous_direction]
+    local new_idx = DIRECTION_TO_INDEX[new_direction]
+    if old_idx and new_idx then
+        local steps = (new_idx - old_idx) % 4
+        if steps ~= 0 then
+            return diverter_settings.rotate_ports_by_steps(unit_number, steps)
+        end
+    end
+    return nil
+end
+
+function diverter_settings.flip_ports(unit_number, horizontal, vertical)
+    if not unit_number then return nil end
+    local settings = diverter_settings.get(unit_number)
+    if not (settings and settings.ports) then return nil end
+
+    local old_ports = settings.ports
+    local new_ports = {}
+    for i = 1, 4 do
+        new_ports[i] = old_ports[i]
+    end
+
+    if horizontal then
+        new_ports[2], new_ports[4] = new_ports[4], new_ports[2]
+    end
+
+    if vertical then
+        new_ports[1], new_ports[3] = new_ports[3], new_ports[1]
+    end
+
+    for i = 1, 4 do
+        if new_ports[i] then
+            new_ports[i]._compiled = nil
+        end
+    end
+
+    settings.ports = new_ports
+    return settings
+end
+
+function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction, dest_direction)
     if not (src_unit_number and dest_unit_number) then return nil end
     local src = diverter_settings.get(src_unit_number)
     if not src then return nil end
@@ -143,6 +215,22 @@ function diverter_settings.copy(src_unit_number, dest_unit_number)
         for i = 1, 4 do
             if copy.ports[i] then
                 copy.ports[i]._compiled = nil
+            end
+        end
+        if src_direction and dest_direction then
+            local old_idx = DIRECTION_TO_INDEX[src_direction]
+            local new_idx = DIRECTION_TO_INDEX[dest_direction]
+            if old_idx and new_idx then
+                local steps = (new_idx - old_idx) % 4
+                if steps ~= 0 then
+                    local old_ports = copy.ports
+                    local new_ports = {}
+                    for p = 1, 4 do
+                        local new_p = ((p - 1 + steps) % 4) + 1
+                        new_ports[new_p] = old_ports[p]
+                    end
+                    copy.ports = new_ports
+                end
             end
         end
     end

@@ -11,6 +11,7 @@ local SCAN_INTERVAL = 15
 
 local device_specs_by_name = {}
 local device_specs_list = {}
+local settings_changed_callbacks = {}
 
 local function clear_diverter_compiled_filters(unit_number)
     local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
@@ -20,6 +21,12 @@ local function clear_diverter_compiled_filters(unit_number)
                 d_settings.ports[i]._compiled = nil
             end
         end
+    end
+end
+
+function active_device_scanner.on_settings_changed(callback)
+    if type(callback) == "function" then
+        table.insert(settings_changed_callbacks, callback)
     end
 end
 
@@ -53,6 +60,10 @@ function active_device_scanner.notify_settings_changed(entity)
 
     if spec.name == "pneumatic-diverter" then
         diverter_renderer.update_render(entity)
+    end
+
+    for i = 1, #settings_changed_callbacks do
+        settings_changed_callbacks[i](entity)
     end
 
     flow_engine.enqueue_unit_ports(unit_number)
@@ -134,6 +145,15 @@ active_device_scanner.register_device_type({
         diverter_settings.apply_blueprint_settings(entity.unit_number, settings)
     end,
 
+    on_rotate = function(entity, event)
+        local unit_number = entity.unit_number
+        if event.previous_direction ~= nil then
+            diverter_settings.rotate_ports(unit_number, event.previous_direction, entity.direction)
+        elseif event.horizontal ~= nil or event.vertical ~= nil then
+            diverter_settings.flip_ports(unit_number, event.horizontal, event.vertical)
+        end
+    end,
+
     check_and_update_state = function(entity, forced)
         local unit_number = entity.unit_number
         storage.diverter_power_states = storage.diverter_power_states or {}
@@ -202,7 +222,7 @@ function active_device_scanner.register_events()
                         if spec.name == "pneumatic-pump" then
                             pump_settings.copy(event.source.unit_number, unit_number)
                         elseif spec.name == "pneumatic-diverter" then
-                            diverter_settings.copy(event.source.unit_number, unit_number)
+                            diverter_settings.copy(event.source.unit_number, unit_number, event.source.direction, entity.direction)
                         end
                     elseif spec.init_settings then
                         spec.init_settings(entity)
@@ -255,8 +275,14 @@ function active_device_scanner.register_events()
     for _, id in ipairs(rotate_events) do
         events.on_event(id, function(event)
             local entity = event.entity
-            if entity and entity.valid and device_specs_by_name[entity.name] then
-                active_device_scanner.notify_settings_changed(entity)
+            if entity and entity.valid then
+                local spec = device_specs_by_name[entity.name]
+                if spec then
+                    if spec.on_rotate then
+                        spec.on_rotate(entity, event)
+                    end
+                    active_device_scanner.notify_settings_changed(entity)
+                end
             end
         end)
     end

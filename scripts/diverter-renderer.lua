@@ -3,6 +3,18 @@ local port_defs = require("scripts.flow.port-defs")
 
 local diverter_renderer = {}
 
+--- Distance in tiles to shift filter icon overlays inward from port coordinates towards entity center (0,0),
+--- preventing overlap with flow indicator dots.
+local PORT_INWARD_OFFSET = 0.55
+
+--- Pitch-black solid tint for high-contrast outline and drop shadow
+local BLACK_TINT = { r = 0, g = 0, b = 0, a = 1.0 }
+
+local OUTLINE_SCALE_MULTIPLIER = 1.3
+local SHADOW_SCALE_MULTIPLIER = 1.3
+local SHADOW_OFFSET_X = 0.04
+local SHADOW_OFFSET_Y = 0.04
+
 --- Clears and destroys active Alt Mode render objects for a given diverter unit number.
 --- @param unit_number number
 function diverter_renderer.clear_render(unit_number)
@@ -60,6 +72,15 @@ function diverter_renderer.update_render(entity)
                     local bx = base_pos.x
                     local by = base_pos.y
 
+                    -- Shift base position inward towards entity center (0,0) to prevent flow dot overlap
+                    local dist = math.sqrt(bx * bx + by * by)
+                    if dist > 0 then
+                        local dir_x = bx / dist
+                        local dir_y = by / dist
+                        bx = bx - dir_x * PORT_INWARD_OFFSET
+                        by = by - dir_y * PORT_INWARD_OFFSET
+                    end
+
                     local scale
                     local offsets = {}
 
@@ -86,13 +107,40 @@ function diverter_renderer.update_render(entity)
                             local cx = bx + off.x
                             local cy = by + off.y
 
+                            -- 1. Solid pitch-black outline centered behind icon
+                            local outline_obj = rendering.draw_sprite{
+                                sprite = sprite_path,
+                                target = { entity = entity, offset = { cx, cy } },
+                                surface = surface,
+                                x_scale = scale * OUTLINE_SCALE_MULTIPLIER,
+                                y_scale = scale * OUTLINE_SCALE_MULTIPLIER,
+                                tint = BLACK_TINT,
+                                render_layer = "entity-info-icon",
+                                only_in_alt_mode = true
+                            }
+                            table.insert(new_objs, outline_obj)
+
+                            -- 2. Solid pitch-black drop shadow offset down-right
+                            local shadow_obj = rendering.draw_sprite{
+                                sprite = sprite_path,
+                                target = { entity = entity, offset = { cx + SHADOW_OFFSET_X, cy + SHADOW_OFFSET_Y } },
+                                surface = surface,
+                                x_scale = scale * SHADOW_SCALE_MULTIPLIER,
+                                y_scale = scale * SHADOW_SCALE_MULTIPLIER,
+                                tint = BLACK_TINT,
+                                render_layer = "entity-info-icon",
+                                only_in_alt_mode = true
+                            }
+                            table.insert(new_objs, shadow_obj)
+
+                            -- 3. Main item icon rendered in full color on top
                             local sprite_obj = rendering.draw_sprite{
                                 sprite = sprite_path,
                                 target = { entity = entity, offset = { cx, cy } },
                                 surface = surface,
                                 x_scale = scale,
                                 y_scale = scale,
-                                render_layer = "entity-info-icon",
+                                render_layer = "entity-info-icon-above",
                                 only_in_alt_mode = true
                             }
                             table.insert(new_objs, sprite_obj)

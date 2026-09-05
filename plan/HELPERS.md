@@ -3,7 +3,7 @@ Regex cite brackets remover
 \s*\[cite[^\]]*\]
 
 
-
+/c game.reload_script()
 
 
 Now make me a revision code block based on the changes we just made. 

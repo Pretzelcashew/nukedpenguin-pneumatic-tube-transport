@@ -238,6 +238,29 @@ function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction
     return copy
 end
 
+function diverter_settings.copy_port(unit_number, port_index)
+    if not (unit_number and port_index) then return nil end
+    local settings = diverter_settings.get(unit_number)
+    local port = settings and settings.ports and settings.ports[port_index]
+    if not port then return nil end
+
+    local copy = util.table.deepcopy(port)
+    copy._compiled = nil
+    return copy
+end
+
+function diverter_settings.paste_port(unit_number, port_index, src_port_data)
+    if not (unit_number and port_index and src_port_data) then return nil end
+    local settings = diverter_settings.get(unit_number)
+    local port = settings and settings.ports and settings.ports[port_index]
+    if not port then return nil end
+
+    local copy = util.table.deepcopy(src_port_data)
+    copy._compiled = nil
+    settings.ports[port_index] = copy
+    return copy
+end
+
 function diverter_settings.apply_blueprint_settings(unit_number, blueprint_settings)
     if not (unit_number and blueprint_settings) then return nil end
     storage.diverter_settings = storage.diverter_settings or {}

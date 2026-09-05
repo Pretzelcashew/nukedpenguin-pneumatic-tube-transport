@@ -254,6 +254,19 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
         vertical_spacing = 12
     }
 
+    local player_index = inner_frame.player_index
+    local has_clipboard = (player_index and storage.port_clipboard and storage.port_clipboard[player_index] ~= nil) or false
+
+    local copy_sprite = "utility/copy"
+    if helpers and not helpers.is_valid_sprite_path(copy_sprite) then
+        copy_sprite = helpers.is_valid_sprite_path("utility/export_slot") and "utility/export_slot" or ""
+    end
+
+    local paste_sprite = "utility/paste"
+    if helpers and not helpers.is_valid_sprite_path(paste_sprite) then
+        paste_sprite = helpers.is_valid_sprite_path("utility/import_slot") and "utility/import_slot" or ""
+    end
+
     for _, i in ipairs(active_ports) do
         local port_data = settings.ports[i]
         local dir_name = PORT_DIRECTIONS[i] or ("Port " .. i)
@@ -273,6 +286,36 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
             state = port_data.enabled,
             tags = { unit_number = unit_number, port_index = i }
         }
+
+        local header_spacer = header_flow.add{ type = "empty-widget" }
+        header_spacer.style.horizontally_stretchable = true
+
+        local copy_btn = header_flow.add{
+            type = "sprite-button",
+            name = "port_copy_button",
+            sprite = copy_sprite,
+            caption = (copy_sprite == "") and "Copy" or nil,
+            style = "tool_button",
+            tooltip = "Copy Port " .. i .. " settings",
+            tags = { unit_number = unit_number, port_index = i }
+        }
+        copy_btn.style.width = 24
+        copy_btn.style.height = 24
+        copy_btn.style.padding = 2
+
+        local paste_btn = header_flow.add{
+            type = "sprite-button",
+            name = "port_paste_button",
+            sprite = paste_sprite,
+            caption = (paste_sprite == "") and "Paste" or nil,
+            style = "tool_button",
+            tooltip = has_clipboard and ("Paste copied settings to Port " .. i) or "No port settings in clipboard",
+            enabled = has_clipboard,
+            tags = { unit_number = unit_number, port_index = i }
+        }
+        paste_btn.style.width = 24
+        paste_btn.style.height = 24
+        paste_btn.style.padding = 2
 
         local cond = port_data.enable_condition or { first_signal = nil, comparator = "=", constant = 0 }
         gui_components.add_circuit_condition_panel(card_frame, {
@@ -391,6 +434,33 @@ local function on_gui_click(event)
 
     if element.name == "quality_confirm_button" then
         diverter_gui.close_slot_config(player, true) -- Confirm draft on checkmark
+        return
+    end
+
+    if element.name == "port_copy_button" and tags.unit_number and tags.port_index then
+        local copied_port = diverter_settings.copy_port(tags.unit_number, tags.port_index)
+        if copied_port then
+            storage.port_clipboard = storage.port_clipboard or {}
+            storage.port_clipboard[player.index] = copied_port
+            player.create_local_flying_text{
+                text = "Port " .. tags.port_index .. " settings copied",
+                create_at_cursor = true
+            }
+            diverter_gui.refresh_if_open(tags.unit_number)
+        end
+        return
+    end
+
+    if element.name == "port_paste_button" and tags.unit_number and tags.port_index then
+        local clipboard = storage.port_clipboard and storage.port_clipboard[player.index]
+        if clipboard then
+            diverter_settings.paste_port(tags.unit_number, tags.port_index, clipboard)
+            notify_change(tags.unit_number)
+            player.create_local_flying_text{
+                text = "Pasted settings to Port " .. tags.port_index,
+                create_at_cursor = true
+            }
+        end
         return
     end
 

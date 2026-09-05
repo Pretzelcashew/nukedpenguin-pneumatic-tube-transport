@@ -4,6 +4,7 @@ local debug_manager = require("scripts.debug-manager")
 local proxy_manager = require("scripts.proxy-manager")
 local active_device_scanner = require("scripts.active-device-scanner")
 local device_settings_copier = require("scripts.device-settings-copier")
+local diverter_renderer = require("scripts.diverter-renderer")
 
 require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
@@ -51,6 +52,14 @@ local function setup_storage()
     storage.object_destruction_map = storage.object_destruction_map or {}
 
     proxy_manager.purge_orphans()
+
+    if storage.active_diverters then
+        for _, entity in pairs(storage.active_diverters) do
+            if entity and entity.valid then
+                diverter_renderer.update_render(entity)
+            end
+        end
+    end
 
     if storage.active_capsules and script.register_on_object_destroyed then
         for cap_id, cap_data in pairs(storage.active_capsules) do

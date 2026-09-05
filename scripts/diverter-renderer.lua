@@ -1,0 +1,112 @@
+local diverter_settings = require("scripts.diverter-settings")
+local port_defs = require("scripts.flow.port-defs")
+
+local diverter_renderer = {}
+
+--- Clears and destroys active Alt Mode render objects for a given diverter unit number.
+--- @param unit_number number
+function diverter_renderer.clear_render(unit_number)
+    if not unit_number then return end
+    storage.diverter_render_objects = storage.diverter_render_objects or {}
+    local old_objs = storage.diverter_render_objects[unit_number]
+    if old_objs then
+        for i = 1, #old_objs do
+            local obj = old_objs[i]
+            if obj and obj.valid then
+                obj.destroy()
+            end
+        end
+        storage.diverter_render_objects[unit_number] = nil
+    end
+end
+
+--- Updates or creates Alt Mode filter overlays for a diverter entity.
+--- Renders up to 4 configured filter item icons per port in a clean, balanced 2x2 grid,
+--- matching native Factorio Alt-mode filter icon scale and spacing.
+--- @param entity LuaEntity
+function diverter_renderer.update_render(entity)
+    if not (entity and entity.valid) then return end
+    local unit_number = entity.unit_number
+    if not unit_number then return end
+
+    diverter_renderer.clear_render(unit_number)
+
+    local settings = diverter_settings.get(unit_number)
+    if not (settings and settings.ports) then return end
+
+    local port_definitions = port_defs.get_ports(entity)
+    if not port_definitions then return end
+
+    local new_objs = {}
+    local surface = entity.surface
+
+    for port_index = 1, 4 do
+        local port = settings.ports[port_index]
+        if port and port.use_filters and port.filters then
+            local items = {}
+            for j = 1, 5 do
+                local filter = port.filters[j]
+                if filter and filter.item and filter.item ~= "" then
+                    table.insert(items, filter.item)
+                    if #items == 4 then break end
+                end
+            end
+
+            local item_count = #items
+            if item_count > 0 then
+                local port_def = port_definitions[port_index]
+                if port_def and port_def.offset then
+                    local base_pos = port_def.offset
+                    local bx = base_pos.x
+                    local by = base_pos.y
+
+                    local scale
+                    local offsets = {}
+
+                    if item_count == 1 then
+                        scale = 0.52
+                        offsets[1] = { x = 0, y = 0 }
+                    elseif item_count == 2 then
+                        scale = 0.46
+                        offsets[1] = { x = -0.22, y = 0 }
+                        offsets[2] = { x =  0.22, y = 0 }
+                    else
+                        scale = 0.42
+                        offsets[1] = { x = -0.22, y = -0.22 }
+                        offsets[2] = { x =  0.22, y = -0.22 }
+                        offsets[3] = { x = -0.22, y =  0.22 }
+                        offsets[4] = { x =  0.22, y =  0.22 }
+                    end
+
+                    for idx = 1, item_count do
+                        local item_name = items[idx]
+                        local sprite_path = "item/" .. item_name
+                        if helpers.is_valid_sprite_path(sprite_path) then
+                            local off = offsets[idx]
+                            local cx = bx + off.x
+                            local cy = by + off.y
+
+                            local sprite_obj = rendering.draw_sprite{
+                                sprite = sprite_path,
+                                target = { entity = entity, offset = { cx, cy } },
+                                surface = surface,
+                                x_scale = scale,
+                                y_scale = scale,
+                                render_layer = "entity-info-icon",
+                                only_in_alt_mode = true
+                            }
+                            table.insert(new_objs, sprite_obj)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #new_objs > 0 then
+        storage.diverter_render_objects = storage.diverter_render_objects or {}
+        storage.diverter_render_objects[unit_number] = new_objs
+    end
+end
+
+return diverter_renderer

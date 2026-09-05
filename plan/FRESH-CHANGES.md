@@ -189,3 +189,12 @@
 2. **Blueprint Event Lifecycle & Handle Resolution (`scripts/device-settings-copier.lua`):** Subscribed to `defines.events.on_player_configured_blueprint` and `defines.events.on_gui_closed`. Implemented `get_blueprints_from_event_and_player` to target active blueprint handles across `event` payloads, `player.cursor_stack`, and `player.opened` frame references.
 3. **Orphan Proxy Purging & Re-Indexing Engine (`scripts/device-settings-copier.lua`):** Implemented `clean_blueprint_orphans` to inspect `bp_entities`, identify proxy entities lacking a corresponding main machine within a 0.05 tile radius, purge orphan records, re-index entity numbers (1 to N), and sanitize wire connections and metadata tags.
 4. **Type-Safe Object & Blueprint Book Traversal (`scripts/device-settings-copier.lua`):** Implemented `clean_container_or_blueprint` using `bp.object_name` guards to safely differentiate `LuaItemStack` and `LuaRecord` userdata, enabling recursive blueprint book traversal (`defines.inventory.item_main` and `record.contents`) while guarding against C++ `__index` exceptions.
+
+
+### Revision: Alt-Mode Diverter Port Filter Overlay Renderer
+**Date:** 2026-09-04 20:45 (EDT)
+**Context:** Implement native-style Alt-Mode visible filter item overlays over Pneumatic Diverter ports, dynamically rendering configured port filters in adaptive 2x2 grids anchored directly to topological port offsets.
+**Key Changes:**
+1. **Diverter Port Overlay Renderer (`scripts/diverter-renderer.lua`):** Created `diverter_renderer` utilizing Factorio 2.0 `rendering.draw_sprite` APIs. Queries topological port coordinates directly from `port_defs.get_ports(entity)` to display up to 4 filter item icons per port in a clean 2x2 grid (`scale = 0.42`, `offset = 0.22`) with `only_in_alt_mode = true` on `render_layer = "entity-info-icon"`.
+2. **Scanner Lifecycle & Settings Integration (`scripts/active-device-scanner.lua`):** Integrated `diverter_renderer.update_render(entity)` triggers into `notify_settings_changed(entity)` and built event handlers (player build, robot build, script raised, revive, space platform, cloned). Added `diverter_renderer.clear_render(unit_number)` cleanup to device unregistration upon entity mining or destruction.
+3. **Control Initialization & Storage Sync (`control.lua`):** Required `diverter-renderer` at script top level and hooked an active diverter refresh scan into `setup_storage()`, ensuring filter overlays are automatically restored across world loading (`on_init`) and configuration migrations.

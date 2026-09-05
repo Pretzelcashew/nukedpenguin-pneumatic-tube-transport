@@ -3,6 +3,7 @@ local flow_engine = require("scripts.flow.flow-engine")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
+local diverter_renderer = require("scripts.diverter-renderer")
 
 local active_device_scanner = {}
 
@@ -48,6 +49,10 @@ function active_device_scanner.notify_settings_changed(entity)
     local unit_number = entity.unit_number
     if spec.check_and_update_state then
         spec.check_and_update_state(entity, true)
+    end
+
+    if spec.name == "pneumatic-diverter" then
+        diverter_renderer.update_render(entity)
     end
 
     flow_engine.enqueue_unit_ports(unit_number)
@@ -160,6 +165,7 @@ active_device_scanner.register_device_type({
     on_unregister = function(entity, unit_number)
         if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
         if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
+        diverter_renderer.clear_render(unit_number)
     end
 })
 
@@ -204,6 +210,10 @@ function active_device_scanner.register_events()
 
                     if spec.check_and_update_state then
                         spec.check_and_update_state(entity, true)
+                    end
+
+                    if spec.name == "pneumatic-diverter" then
+                        diverter_renderer.update_render(entity)
                     end
 
                     flow_engine.enqueue_unit_ports(unit_number)

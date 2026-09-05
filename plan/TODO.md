@@ -36,7 +36,7 @@ include capsule details in factoriopedia (like if it supports mixed cargo)
 
 
 
-make copy settings more native feeling for diverters and pumps (sound and yellow and green hover target outline)
+make copy settings more native feeling for diverters and pumps (sound and yellow and green hover target outline); essentially copying/pasting settings relies on the source entity to remain alive
 
 
 consider breaking apart large files that are doing too many things (like flow-engine)
@@ -47,3 +47,11 @@ investigate the inconsistent manner of which pneumatic entities trigger their co
 
 
 
+fix the situation where you would set an item filter in diverter when you already had a comparator and quality set, would clear the comparator/quality
+
+
+fix the situaton where pasting a bp would sometimes link circuit wires between diverters or pumps you just pasted down with a blueprint nearby
+
+add a copy/paste port settings feature for the diverter (a little button pair somewhere on each diverter port gui module)
+
+consider reverting back to having the diverter's 'all' mode selected by default when opening the gui

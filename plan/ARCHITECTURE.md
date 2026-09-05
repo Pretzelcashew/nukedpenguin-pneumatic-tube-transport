@@ -2,7 +2,7 @@
 **Mod Name:** `nukedpenguin-pneumatic-tube-transport`  
 **Factorio Target Version:** 2.1  
 **Author / Maintainer:** Collaborator / Nukedpenguin  
-**Description:** Architectural manifest, module map, event lifecycle table, global storage schema, and algorithmic specification for AI context and developer quick-reference.
+**Description:** Architectural manifest, module map, event lifecycle table, global storage schema, algorithmic specification, and rendering/z-index matrix for AI context and developer quick-reference.
 
 ---
 
@@ -401,7 +401,7 @@ storage = {
 4. **Time-Sliced Batching:** Queue processing is capped at `BATCH_SIZE = 50` steps per tick, spreading processing across frames during large entity placement or destruction events.
 5. **Drain Wavefront & Severing:** Disconnecting an entity or breaking a tube connection enqueues downstream ports into `storage.flow_queue`, triggering a frame-by-frame drain wave (`compute_port_flow_level`) that clears cut-off flow values to zero before returning the engine to sleep.
 6. **Dynamic Power & Circuit State Sensitivity:** Evaluates machine energy (`entity.energy > 0`), circuit enable conditions, and port modes in constant time. Unpowered or circuit-disabled ports drop emission to 0, triggering automatic downstream flow updates and queue wakeups via `enqueue_unit_ports`.
-7. **Granular Fast-Path Rendering Pipeline:** Bypasses full map redraws with targeted single-port (`update_port_render`) and single-edge (`update_edge_render`) rendering object mutations. Renders color-coded flow vectors (Cyan/Blue for positive pressure, Orange/Red for intake vacuum) directly on official rendering layers with `only_in_alt_mode = true`.
+7. **Granular Fast-Path Rendering Pipeline:** Bypasses full map redraws with targeted single-port (`update_port_render`) and single-edge (`update_edge_render`) rendering object mutations. Renders color-coded flow vectors (Cyan/Blue for positive pressure, Orange/Red for intake vacuum) directly on Factorio's script overlay pass with `only_in_alt_mode = true`.
 
 ### 5.2 $O(1)$ Spatial Occupancy Index & Target-Based Blocking Model (`capsule-queries.lua`)
 1. **Constant-Time Spatial Lookup Matrix:** `storage.occupancy` maintains multi-level spatial buckets indexed by `[unit_number][net_id][group]`. `get_capsule_count_at_entity_network`, `get_capsule_count_at_entity`, and `find_capsules_at_entity` execute in $O(1)$ constant time without linear scans over active capsules.
@@ -443,7 +443,7 @@ storage = {
 1. **Spoilability Detection at Packing:** During hub packing (`hub-packing.lua`), `is_stack_spoilable()` computes a `has_spoilable_items` flag persisted in `storage.active_capsules`.
 2. **Dynamic Spoilage Expiration Guard:** In `capsule-renderer.lua`, `get_dominant_item()` inspects active container slots using `is_stack_spoilable()`. If cargo spoils mid-flight, it updates `cap_data.dominant_item` to the spoiled product and flips `has_spoilable_items` to `false` once zero spoilable stacks remain.
 3. **0-Tick Scan Suppression:** Once `has_spoilable_items` transitions to `false`, 60-tick periodic inventory re-scans are permanently suppressed, serving cached dominant item icons directly from memory in $O(1)$ time.
-4. **Valid Render Layer Hierarchy & Distinct Color Overlay:** Debug rings and payload icons render on official C++ RenderLayers (`"entity-info-icon-above"` for rings/icons, `"wires-above"` for port markers, `"light-effect"` for HUD text). Each capsule variant displays a distinct RGBA debug border ring (`capsule_defs.get_debug_color()`), updating dynamically if a refrigerated capsule expires into a spent capsule mid-flight.
+4. **Valid Render Layer Hierarchy & Distinct Color Overlay:** Debug rings and payload icons render on official C++ RenderLayers (`"entity-info-icon-above"` for rings/icons, `"light-effect"` for HUD text). Each capsule variant displays a distinct RGBA debug border ring (`capsule_defs.get_debug_color()`), updating dynamically if a refrigerated capsule expires into a spent capsule mid-flight.
 
 ### 5.9 Fast-Looting Spilled Containers & 0-Tick Bar Enforcement (`hub-spill.lua`)
 1. **Fast-Looting Operability:** Spilled container entities (`visible-capsule-holder`) use `operable = true` to allow native Ctrl+Click fast-looting transfers.
@@ -500,3 +500,62 @@ storage = {
 | `/toggle-flow` | Toggles v2 visual flow vectors, pressure numbers, and spatial connection overlays in Alt Mode for the executing player (`storage.debug[player_index].new_flow`). Alias: `/pt-toggle-flow`. | `scripts/debug-manager.lua` |
 | `/toggle-capsules` | Toggles visual rendering overlay for active capsule positions and dominant payload item icons (`storage.debug[player_index].capsules`). Mutually exclusive with `/toggle-capsule-peek`. | `scripts/debug-manager.lua` |
 | `/toggle-capsule-peek` | Toggles entity-hover capsule peeking overlay in Alt Mode (`storage.debug[player_index].peek`), rendering item icons strictly for capsules occupying targeted pneumatic structures. Alias: `/capsule-peek`. Mutually exclusive with `/toggle-capsules`. | `scripts/debug-manager.lua` |
+
+---
+
+## 7. Render Layers, Selection Priorities & Visual Overlay Specification
+
+### 7.1 Runtime Script Render Layers (`rendering.draw_*`)
+
+> **Engine Note on Primitive vs. Sprite Rendering:**  
+> In Factorio's Lua API, explicit `render_layer` parameters are accepted by sprite/animation methods (`rendering.draw_sprite`, `rendering.draw_animation`, `rendering.draw_light`). Primitive vector shapes (`rendering.draw_circle`, `rendering.draw_line`, `rendering.draw_text`) are dispatched directly to Factorio's dedicated script rendering overlay pass (controlled vertically via `draw_on_ground = true/false`).
+
+| Render Layer Name / Target Pass | Module Source | Object Type | API Method | Alt-Mode Only? | Description & Target |
+| :--- | :--- | :--- | :--- | :---: | :--- |
+| `"light-effect"` | `capsule-renderer.lua` | Text | `rendering.draw_text` | No | Renders `" [Shift + E] Emergency Eject "` HUD text centered above riding passenger capsules (`scale = 0.9`, offset `y + 0.8`). |
+| `"entity-info-icon-above"` | `capsule-renderer.lua` | Circle | `rendering.draw_circle` | No (Debug) | Renders cyan passenger ring (`radius = 0.45`, `width = 3`) around player-occupied capsules. |
+| `"entity-info-icon-above"` | `capsule-renderer.lua` | Circle | `rendering.draw_circle` | No (Debug) | Renders capsule variant debug border ring (`radius = 0.35`, `width = 2`) using capsule RGBA debug colors. |
+| `"entity-info-icon-above"` | `capsule-renderer.lua` | Sprite | `rendering.draw_sprite` | No (Debug) | Renders dominant payload item icon (`"item/" .. item_name`, `scale = 0.55`) inside capsule debug ring. |
+| `"entity-info-icon-above"` | `capsule-renderer.lua` | Circle | `rendering.draw_circle` | No (Debug) | Renders filled color dot (`radius = 0.25`) for empty or unknown cargo capsules. |
+| `"entity-info-icon"` | `diverter-renderer.lua` | Sprite | `rendering.draw_sprite` | **Yes** | Renders up to 4 configured filter item icons per port in adaptive 2x2 grids (`scale = 0.42..0.52`). |
+| *Default Script Layer* | `flow-engine.lua` | Circle | `rendering.draw_circle` | **Yes** | Renders pressure marker circle (`radius = 0.15`, cyan/blue for positive pressure, orange/red for intake vacuum). |
+| *Default Script Layer* | `flow-engine.lua` | Text | `rendering.draw_text` | **Yes** | Renders pressure integer level text (`-10` to `+10`, white text, `scale = 0.7`) above flow node circles. |
+| *Default Script Layer* | `flow-engine.lua` | Line | `rendering.draw_line` | **Yes** | Renders flow vector connection lines (`width = 3`, cyan/orange) between adjacent connected tube ports. |
+
+---
+
+### 7.2 Spatial Selection Priority & Z-Index Stack
+
+| Selection Priority | Entity Name / Spec | Source File | Z-Index & Interaction Behavior |
+| :---: | :--- | :--- | :--- |
+| **60** | `pneumatic-pump-circuit-proxy`<br>`pneumatic-diverter-circuit-proxy` | `proxy-manager.lua` | Top selection stack priority. Re-inserted via `proxy.teleport(pos)` on build/rotate events to guarantee Red/Green wire tool and Wire Cutter targeting above base entities. |
+| **50** | `pneumatic-pump`<br>`pneumatic-diverter`<br>`capsule-hub-horizontal`<br>`capsule-hub-vertical`<br>`pneumatic-tube`<br>`junction`<br>`crossflow-junction` | `entity.lua`<br>`pneumatic-diverter.lua` | Standard physical machine and structure selection priority. |
+| **0** | `pneumatic-pump-circuit-proxy` (Raw proto)<br>`pneumatic-diverter-circuit-proxy` (Raw proto) | `pneumatic-pump-proxy.lua`<br>`pneumatic-diverter.lua` | Fallback prototype priority with `draw_selection_box = false` so invisible proxy boxes do not render. |
+
+---
+
+### 7.3 Prototype Sprite Priorities & Layer Composite Specs
+
+| Entity Prototype | Property Path | Priority Value | Scale & Tint Details |
+| :--- | :--- | :---: | :--- |
+| `pneumatic-tube` | `picture.north/east/south/west.layers[].priority` | `"extra-high"` | Scale `0.5`, green tint (`{r=0.5, g=0.9, b=0.5}`). |
+| `pneumatic-pump` | `pictures.north/east/south/west.priority` | `"high"` | Scale `0.5`, orange tint (`{r=1.0, g=0.7, b=0.3}`). |
+| `capsule-hub-horizontal` | `picture.layers[]` | Default | Dual steel chest composite, scale `0.5`, blue-grey tint (`{r=0.6, g=0.8, b=1.0}`). |
+| `capsule-hub-vertical` | `picture.layers[]` | Default | Dual steel chest composite, scale `0.5`, cyan-grey tint (`{r=0.4, g=0.9, b=0.9}`). |
+| `visible-capsule-holder` | `picture.layers[]` | Default | Iron chest composite, scale `0.25`. |
+| `junction` | `picture.layers[]` | Default | Iron chest composite, yellow tint (`{r=1.0, g=0.9, b=0.3}`). |
+| `crossflow-junction` | `picture.layers[]` | Default | Iron chest composite, purple tint (`{r=0.8, g=0.4, b=0.9}`). |
+| `pneumatic-diverter` | `animation.layers[]` | Default | Assembling machine 2 animation composite, emerald tint (`{r=0.25, g=0.80, b=0.60}`). |
+
+---
+
+### 7.4 Capsule Variant Debug Overlay Color Registry
+
+| Capsule Variant | Localized / Description | RGBA Color Code | Rendering Usage |
+| :--- | :--- | :--- | :--- |
+| `item-capsule` | Metallic Gold | `{ r = 1.0, g = 0.84, b = 0.0, a = 0.9 }` | Cargo capsule border ring/dot overlay. |
+| `biodegradable-capsule` | Emerald Green | `{ r = 0.2, g = 0.90, b = 0.2, a = 0.9 }` | Biodegradable capsule border ring/dot overlay. |
+| `refrigerated-capsule` | Frost Cyan | `{ r = 0.2, g = 0.85, b = 1.0, a = 0.9 }` | Cold capsule border ring/dot overlay. |
+| `spent-refrigerated-capsule` | Slate Grey | `{ r = 0.6, g = 0.65, b = 0.7, a = 0.9 }` | Spent refrigerated capsule border ring/dot overlay. |
+| `reinforced-capsule` | Violet Purple | `{ r = 0.8, g = 0.30, b = 1.0, a = 0.9 }` | Reinforced capsule border ring/dot overlay. |
+| `player-transit-capsule` | Crimson Orange | `{ r = 1.0, g = 0.40, b = 0.1, a = 0.9 }` | Passenger transit capsule border ring/dot overlay. |

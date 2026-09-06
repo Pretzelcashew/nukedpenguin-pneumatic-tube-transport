@@ -19,20 +19,29 @@ local function on_hub_built(event)
     local entity = event.entity or event.destination
     if not (entity and entity.valid) then return end
 
-    local def = hub_defs.types[entity.name]
-    if def and def.type == "hub" then
-        storage.active_hubs = storage.active_hubs or {}
-        storage.active_hubs[entity.unit_number] = entity
+    local is_ghost = (entity.name == "entity-ghost")
+    local real_name = is_ghost and entity.ghost_name or entity.name
 
-        if event.tags and event.tags.pneumatic_settings then
-            hub_settings.apply_blueprint_settings(entity.unit_number, event.tags.pneumatic_settings)
-        elseif event.source and event.source.valid then
-            hub_settings.copy(event.source.unit_number, entity.unit_number)
-        else
-            hub_settings.get(entity.unit_number)
+    local def = hub_defs.types[real_name]
+    if def and def.type == "hub" then
+        local unit_number = entity.unit_number
+
+        if not is_ghost then
+            storage.active_hubs = storage.active_hubs or {}
+            storage.active_hubs[unit_number] = entity
         end
 
-        hub_manager.notify_settings_changed(entity)
+        if event.tags and event.tags.pneumatic_settings then
+            hub_settings.apply_blueprint_settings(unit_number, event.tags.pneumatic_settings)
+        elseif event.source and event.source.valid then
+            hub_settings.copy(event.source.unit_number, unit_number)
+        else
+            hub_settings.get(unit_number)
+        end
+
+        if not is_ghost then
+            hub_manager.notify_settings_changed(entity)
+        end
     end
 end
 
@@ -40,9 +49,12 @@ local function on_hub_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
 
-    local unit_number = entity.unit_number
-    local def = hub_defs.types[entity.name]
+    local is_ghost = (entity.name == "entity-ghost")
+    local real_name = is_ghost and entity.ghost_name or entity.name
+
+    local def = hub_defs.types[real_name]
     if def then
+        local unit_number = entity.unit_number
         if storage.active_hubs then
             storage.active_hubs[unit_number] = nil
         end

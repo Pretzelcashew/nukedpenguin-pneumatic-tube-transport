@@ -50,7 +50,8 @@ end
 function active_device_scanner.notify_settings_changed(entity)
     if not (entity and entity.valid) then return end
 
-    local spec = device_specs_by_name[entity.name]
+    local name = entity.name == "entity-ghost" and entity.ghost_name or entity.name
+    local spec = device_specs_by_name[name]
     if not spec then return end
 
     local unit_number = entity.unit_number
@@ -58,7 +59,7 @@ function active_device_scanner.notify_settings_changed(entity)
         spec.check_and_update_state(entity, true)
     end
 
-    if spec.name == "pneumatic-diverter" then
+    if spec.name == "pneumatic-diverter" and entity.name ~= "entity-ghost" then
         diverter_renderer.update_render(entity)
     end
 
@@ -208,11 +209,17 @@ function active_device_scanner.register_events()
         events.on_event(id, function(event)
             local entity = event.entity or event.destination
             if entity and entity.valid then
-                local spec = device_specs_by_name[entity.name]
+                local is_ghost = (entity.name == "entity-ghost")
+                local real_name = is_ghost and entity.ghost_name or entity.name
+                local spec = device_specs_by_name[real_name]
+
                 if spec then
                     local unit_number = entity.unit_number
-                    storage[spec.storage_key] = storage[spec.storage_key] or {}
-                    storage[spec.storage_key][unit_number] = entity
+
+                    if not is_ghost then
+                        storage[spec.storage_key] = storage[spec.storage_key] or {}
+                        storage[spec.storage_key][unit_number] = entity
+                    end
 
                     if event.tags and event.tags.pneumatic_settings then
                         if spec.apply_blueprint_settings then
@@ -228,16 +235,18 @@ function active_device_scanner.register_events()
                         spec.init_settings(entity)
                     end
 
-                    if spec.check_and_update_state then
-                        spec.check_and_update_state(entity, true)
-                    end
+                    if not is_ghost then
+                        if spec.check_and_update_state then
+                            spec.check_and_update_state(entity, true)
+                        end
 
-                    if spec.name == "pneumatic-diverter" then
-                        diverter_renderer.update_render(entity)
-                    end
+                        if spec.name == "pneumatic-diverter" then
+                            diverter_renderer.update_render(entity)
+                        end
 
-                    flow_engine.enqueue_unit_ports(unit_number)
-                    capsule_runner.wake_parked_capsules(unit_number)
+                        flow_engine.enqueue_unit_ports(unit_number)
+                        capsule_runner.wake_parked_capsules(unit_number)
+                    end
                 end
             end
         end)
@@ -254,11 +263,18 @@ function active_device_scanner.register_events()
         events.on_event(id, function(event)
             local entity = event.entity
             if entity and entity.valid then
-                local spec = device_specs_by_name[entity.name]
+                local is_ghost = (entity.name == "entity-ghost")
+                local real_name = is_ghost and entity.ghost_name or entity.name
+                local spec = device_specs_by_name[real_name]
                 if spec then
                     local unit_number = entity.unit_number
                     if storage[spec.storage_key] then
                         storage[spec.storage_key][unit_number] = nil
+                    end
+                    if spec.name == "pneumatic-pump" and storage.pump_settings then
+                        storage.pump_settings[unit_number] = nil
+                    elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
+                        storage.diverter_settings[unit_number] = nil
                     end
                     if spec.on_unregister then
                         spec.on_unregister(entity, unit_number)
@@ -276,12 +292,16 @@ function active_device_scanner.register_events()
         events.on_event(id, function(event)
             local entity = event.entity
             if entity and entity.valid then
-                local spec = device_specs_by_name[entity.name]
+                local is_ghost = (entity.name == "entity-ghost")
+                local real_name = is_ghost and entity.ghost_name or entity.name
+                local spec = device_specs_by_name[real_name]
                 if spec then
                     if spec.on_rotate then
                         spec.on_rotate(entity, event)
                     end
-                    active_device_scanner.notify_settings_changed(entity)
+                    if not is_ghost then
+                        active_device_scanner.notify_settings_changed(entity)
+                    end
                 end
             end
         end)

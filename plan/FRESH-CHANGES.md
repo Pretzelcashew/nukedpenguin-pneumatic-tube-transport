@@ -146,3 +146,13 @@
 1. **Hub Settings State & Blueprint Sync (`scripts/hubs/hub-settings.lua`):** Added `nest_capsules = true` default setting to `hub_settings.get()`, ensuring property preservation across entity copy-paste (`hub_settings.copy`) and blueprint tag deserialization (`hub_settings.apply_blueprint_settings`).
 2. **Operational Mode GUI Checkbox (`scripts/hubs/hub-gui.lua`):** Added a "Nest capsules" checkbox to the Hub relative settings window, wiring `on_gui_checked_state_changed` to update `settings.nest_capsules` and invoke `hub_manager.notify_settings_changed()` to wake active scanners.
 3. **Inventory Packing Filter Pipeline (`scripts/hubs/hub-packing.lua`):** Updated `evaluate_inventory()` to filter candidate cargo stacks based on `nest_capsules`: restricting cargo choices strictly to registered capsule variants (`capsule_defs.types`) when enabled, or excluding capsule items when disabled.
+
+
+### Revision: Native-Style Live Source Entity Copy-Paste & Ghost Settings Parity
+**Date:** 2026-09-06 10:02 (EDT)
+**Context:** Align entity settings copy-paste mechanisms with Factorio 2.0 native behavior by tracking live source entities instead of static snapshots, requiring live source existence, and bringing 1:1 settings copy, rotate, and revival parity to ghost entities.
+**Key Changes:**
+1. **Live Entity Source Tracking (`scripts/device-settings-copier.lua`):** Updated `on_copy_settings` to store live `LuaEntity` references in `storage.player_copy_buffer`, evaluating live settings and relative entity directions dynamically at the tick of paste execution (`apply_live_settings_copy`).
+2. **Source Validity Guard (`scripts/device-settings-copier.lua`):** Added strict `source and source.valid` checks across custom hotkey and native `on_entity_settings_pasted` events, preventing paste operations if the source machine or ghost was destroyed or mined.
+3. **Ghost Proxy Target Resolution (`scripts/device-settings-copier.lua`):** Enhanced `resolve_target_entity` to inspect `ghost_name` when targeting ghost entities or clicking proxy circuit terminals overlaying unbuilt ghost structures.
+4. **Ghost Entity Settings Lifecycle (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Refactored build, destroy, and rotate event listeners to resolve ghost entity names (`is_ghost and entity.ghost_name or entity.name`), enabling blueprint tag deserialization, orientation rotation, revival transfer (`event.source`), and storage cleanup for ghost pumps, diverters, and hubs.

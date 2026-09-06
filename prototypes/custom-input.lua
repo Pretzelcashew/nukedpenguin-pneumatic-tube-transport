@@ -14,6 +14,13 @@ data:extend({
   },
   {
     type = "custom-input",
+    name = "pneumatic-shift-key",
+    key_sequence = "left-shift",
+    alternative_key_sequence = "right-shift",
+    consuming = "none"
+  },
+  {
+    type = "custom-input",
     name = "pneumatic-copy-settings",
     key_sequence = "",
     linked_game_control = "copy-entity-settings",

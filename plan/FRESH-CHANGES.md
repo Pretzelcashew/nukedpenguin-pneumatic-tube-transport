@@ -128,3 +128,12 @@
 1. **Spatial Position-Based Rendering (`scripts/flow/flow-engine.lua`):** Refactored Alt-Mode flow level visual overlays from individual port tracking (`pkey`) to unified spatial junction tracking (`pos_key`). `update_pos_render` guarantees exactly one circle and text object is rendered per physical tile coordinate, eliminating duplicate circle stacking and placement-order sensitivity.
 2. **Dominant Flow Level Selection (`scripts/flow/flow-engine.lua`):** Implemented `get_dominant_port_at_pos` to evaluate all overlapping ports at a tile location and display the dominant magnitude flow level (`math.abs(level)`), resolving ties in favor of positive pressure and active machine emitters.
 3. **Zero-Length Vector Suppression (`scripts/flow/flow-engine.lua`):** Updated `update_edge_render` to automatically discard zero-length vector line renders between co-located ports sharing the same `pos_key`.
+
+
+### Revision: Concise Capsule Item & Factoriopedia Descriptions & Maintenance Correction
+**Date:** 2026-09-05 20:27 (EDT)
+**Context:** Provide concise Factoriopedia and tooltip descriptions for all pneumatic transport capsule items, detailing capacity scaling, quality rules, spoilage mechanics, and correct maintenance crafting facilities.
+**Key Changes:**
+1. **Concise Capsule Locale Descriptions (`config.cfg`):** Updated `[item-description]` entries for all six capsule variants (`item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `spent-refrigerated-capsule`, `reinforced-capsule`, `player-transit-capsule`) with punchy multiline specs covering slot capacity scaling, quality rules, organic slot cost discounts, 90% cryo spoilage reduction, dissolution/rupture risks, and emergency player ejection controls (`__CONTROL__capsule-emergency-exit__`).
+2. **Assembling Machine Recharge Correction (`config.cfg`):** Corrected `refrigerated-capsule` and `spent-refrigerated-capsule` maintenance documentation to specify that coolant recharging with cold fluoroketone occurs at assembling machines.
+3. **Prototype Description Cleanup (`prototypes/item.lua`):** Removed unused `factoriopedia_description` properties from `ItemPrototype` and `ToolPrototype` definitions, ensuring Factoriopedia and item tooltips cleanly render the localized multiline descriptions directly from `[item-description]`.

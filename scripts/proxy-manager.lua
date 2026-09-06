@@ -38,7 +38,7 @@ local destroy_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
     defines.events.on_entity_died,
-    defines.events.script_raised_destroy
+    defines.script_raised_destroy
 }
 if defines.events.on_space_platform_mined_entity then
     table.insert(destroy_events, defines.events.on_space_platform_mined_entity)
@@ -337,7 +337,7 @@ local function on_rotated(event)
 
     local pos = entity.position
     if spec.offset then
-        pos = { x = pos.x + spec.offset.x, y = pos.y + spec.offset.y }
+        pos = { x = pos.x + spec.offset.x, y = spec.offset.y }
     end
 
     local proxies = entity.surface.find_entities_filtered{
@@ -357,19 +357,31 @@ local function on_gui_opened(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
 
+    local is_ghost = (entity.name == "entity-ghost")
+    local real_name = is_ghost and entity.ghost_name or entity.name
+
     local host_entity = nil
-    local spec = registered_mains[entity.name]
+    local spec = registered_mains[real_name]
 
     if spec then
         host_entity = entity
     else
-        spec = registered_proxies[entity.name]
+        spec = registered_proxies[real_name]
         if spec then
             local pos = entity.position
             if spec.offset then
                 pos = { x = pos.x - spec.offset.x, y = pos.y - spec.offset.y }
             end
             host_entity = entity.surface.find_entity(spec.main_entity_name, pos)
+            if not (host_entity and host_entity.valid) then
+                local ghost_mains = entity.surface.find_entities_filtered{
+                    ghost_name = spec.main_entity_name,
+                    position = pos
+                }
+                if ghost_mains and ghost_mains[1] and ghost_mains[1].valid then
+                    host_entity = ghost_mains[1]
+                end
+            end
         end
     end
 

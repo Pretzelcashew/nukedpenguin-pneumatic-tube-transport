@@ -316,31 +316,25 @@ local function apply_live_settings_copy(source, destination, player)
     if src_name == "pneumatic-pump" and dest_name == "pneumatic-pump" then
         if pump_settings.copy(source.unit_number, destination.unit_number) then
             success = true
-            if destination.name ~= "entity-ghost" then
-                active_device_scanner.notify_settings_changed(destination)
-                if player and player.valid and player.opened and player.opened.valid and player.opened.name == "pump_configuration_frame" then
-                    pump_gui.open(player, destination)
-                end
+            active_device_scanner.notify_settings_changed(destination)
+            if player and player.valid and player.opened and player.opened.valid and player.opened.name == "pump_configuration_frame" then
+                pump_gui.open(player, destination)
             end
         end
 
     elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
         if diverter_settings.copy(source.unit_number, destination.unit_number, source.direction, destination.direction) then
             success = true
-            if destination.name ~= "entity-ghost" then
-                active_device_scanner.notify_settings_changed(destination)
-                if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
-                    diverter_gui.open(player, destination)
-                end
+            active_device_scanner.notify_settings_changed(destination)
+            if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
+                diverter_gui.open(player, destination)
             end
         end
 
     elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
         if hub_settings.copy(source.unit_number, destination.unit_number) then
             success = true
-            if destination.name ~= "entity-ghost" then
-                hub_manager.notify_settings_changed(destination)
-            end
+            hub_manager.notify_settings_changed(destination)
         end
     end
 

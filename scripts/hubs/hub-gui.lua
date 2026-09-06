@@ -9,7 +9,8 @@ local hub_gui = {}
 local GUI_FRAME_NAME = "hub_operational_mode_frame"
 
 local function notify_change(unit_number)
-    local entity = storage.active_hubs and storage.active_hubs[unit_number]
+    local entity = (storage.active_hubs and storage.active_hubs[unit_number]) or
+                   (storage.ghost_hubs and storage.ghost_hubs[unit_number])
     if entity and entity.valid then
         hub_manager.notify_settings_changed(entity)
     end
@@ -26,7 +27,10 @@ local function on_gui_opened(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
 
-    local def = hub_defs.types[entity.name]
+    local is_ghost = (entity.name == "entity-ghost")
+    local real_name = is_ghost and entity.ghost_name or entity.name
+
+    local def = hub_defs.types[real_name]
     if not (def and def.type == "hub") then return end
 
     local player = game.get_player(event.player_index)

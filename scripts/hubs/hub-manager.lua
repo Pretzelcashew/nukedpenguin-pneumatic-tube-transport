@@ -26,7 +26,10 @@ local function on_hub_built(event)
     if def and def.type == "hub" then
         local unit_number = entity.unit_number
 
-        if not is_ghost then
+        if is_ghost then
+            storage.ghost_hubs = storage.ghost_hubs or {}
+            storage.ghost_hubs[unit_number] = entity
+        else
             storage.active_hubs = storage.active_hubs or {}
             storage.active_hubs[unit_number] = entity
         end
@@ -55,6 +58,9 @@ local function on_hub_removed(event)
     local def = hub_defs.types[real_name]
     if def then
         local unit_number = entity.unit_number
+        if storage.ghost_hubs then
+            storage.ghost_hubs[unit_number] = nil
+        end
         if storage.active_hubs then
             storage.active_hubs[unit_number] = nil
         end

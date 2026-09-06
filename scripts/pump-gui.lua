@@ -8,7 +8,8 @@ local pump_gui = {}
 local GUI_FRAME_NAME = "pump_configuration_frame"
 
 local function notify_change(unit_number)
-    local entity = storage.active_pumps and storage.active_pumps[unit_number]
+    local entity = (storage.active_pumps and storage.active_pumps[unit_number]) or
+                   (storage.ghost_devices and storage.ghost_devices[unit_number])
     if entity and entity.valid then
         active_device_scanner.notify_settings_changed(entity)
     end

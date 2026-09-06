@@ -216,7 +216,10 @@ function active_device_scanner.register_events()
                 if spec then
                     local unit_number = entity.unit_number
 
-                    if not is_ghost then
+                    if is_ghost then
+                        storage.ghost_devices = storage.ghost_devices or {}
+                        storage.ghost_devices[unit_number] = entity
+                    else
                         storage[spec.storage_key] = storage[spec.storage_key] or {}
                         storage[spec.storage_key][unit_number] = entity
                     end
@@ -235,11 +238,11 @@ function active_device_scanner.register_events()
                         spec.init_settings(entity)
                     end
 
-                    if not is_ghost then
-                        if spec.check_and_update_state then
-                            spec.check_and_update_state(entity, true)
-                        end
+                    if spec.check_and_update_state then
+                        spec.check_and_update_state(entity, true)
+                    end
 
+                    if not is_ghost then
                         if spec.name == "pneumatic-diverter" then
                             diverter_renderer.update_render(entity)
                         end
@@ -256,7 +259,7 @@ function active_device_scanner.register_events()
         defines.events.on_player_mined_entity,
         defines.events.on_robot_mined_entity,
         defines.events.on_entity_died,
-        defines.events.script_raised_destroy,
+        defines.script_raised_destroy,
         defines.events.on_space_platform_mined_entity
     }
     for _, id in ipairs(destroy_events) do
@@ -268,6 +271,9 @@ function active_device_scanner.register_events()
                 local spec = device_specs_by_name[real_name]
                 if spec then
                     local unit_number = entity.unit_number
+                    if storage.ghost_devices then
+                        storage.ghost_devices[unit_number] = nil
+                    end
                     if storage[spec.storage_key] then
                         storage[spec.storage_key][unit_number] = nil
                     end
@@ -299,9 +305,7 @@ function active_device_scanner.register_events()
                     if spec.on_rotate then
                         spec.on_rotate(entity, event)
                     end
-                    if not is_ghost then
-                        active_device_scanner.notify_settings_changed(entity)
-                    end
+                    active_device_scanner.notify_settings_changed(entity)
                 end
             end
         end)

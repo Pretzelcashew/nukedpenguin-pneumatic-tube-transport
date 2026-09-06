@@ -20,7 +20,8 @@ local draft_filters = {}
 local confirm_ticks = {}
 
 local function notify_change(unit_number)
-    local entity = storage.active_diverters and storage.active_diverters[unit_number]
+    local entity = (storage.active_diverters and storage.active_diverters[unit_number]) or
+                   (storage.ghost_devices and storage.ghost_devices[unit_number])
     if entity and entity.valid then
         active_device_scanner.notify_settings_changed(entity)
     end
@@ -686,8 +687,11 @@ local function on_gui_closed(event)
 end
 
 active_device_scanner.on_settings_changed(function(entity)
-    if entity and entity.valid and entity.name == "pneumatic-diverter" then
-        diverter_gui.refresh_if_open(entity.unit_number)
+    if entity and entity.valid then
+        local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+        if real_name == "pneumatic-diverter" then
+            diverter_gui.refresh_if_open(entity.unit_number)
+        end
     end
 end)
 

@@ -156,3 +156,13 @@
 2. **Source Validity Guard (`scripts/device-settings-copier.lua`):** Added strict `source and source.valid` checks across custom hotkey and native `on_entity_settings_pasted` events, preventing paste operations if the source machine or ghost was destroyed or mined.
 3. **Ghost Proxy Target Resolution (`scripts/device-settings-copier.lua`):** Enhanced `resolve_target_entity` to inspect `ghost_name` when targeting ghost entities or clicking proxy circuit terminals overlaying unbuilt ghost structures.
 4. **Ghost Entity Settings Lifecycle (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Refactored build, destroy, and rotate event listeners to resolve ghost entity names (`is_ghost and entity.ghost_name or entity.name`), enabling blueprint tag deserialization, orientation rotation, revival transfer (`event.source`), and storage cleanup for ghost pumps, diverters, and hubs.
+
+
+### Revision: Pneumatic Ghost Entity GUI Evoking, Live Settings & Copy-Paste Parity
+**Date:** 2026-09-06 10:34 (EDT)
+**Context:** Achieve 1:1 parity with native Factorio 2.0 ghost interactions by enabling configuration GUI opening, live setting updates, rotation sync, and copy-paste handling across ghost pumps, diverters, and hubs.
+**Key Changes:**
+1. **Ghost Entity Search & Proxy Resolution (`scripts/proxy-manager.lua` & `scripts/hubs/hub-gui.lua`):** Updated `on_gui_opened` to resolve `entity.ghost_name` and locate ghost main entities when clicking circuit proxies, allowing players to open configuration windows on unbuilt ghost entities.
+2. **O(1) Ghost Entity Tracking (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Added `storage.ghost_devices` and `storage.ghost_hubs` tables to record active ghost entities by `unit_number`, enabling instant entity resolution during GUI change events.
+3. **Ghost Live GUI Updates & Observer Sync (`scripts/pump-gui.lua`, `scripts/diverter-gui.lua`, `scripts/hubs/hub-gui.lua`):** Refactored `notify_change` to resolve ghost entities, triggering scanner notifications and live UI frame re-renders (`refresh_if_open`) whenever ghost settings are modified.
+4. **Ghost Rotation & Copy-Paste Parity (`scripts/active-device-scanner.lua` & `scripts/device-settings-copier.lua`):** Triggered setting updates on ghost rotation/flip events and un-guarded `apply_live_settings_copy` to notify observers and refresh open GUIs when pasting settings to ghost destinations.

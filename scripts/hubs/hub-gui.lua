@@ -132,6 +132,17 @@ local function on_gui_opened(event)
         state = settings.use_receive_lock,
         tags = { unit_number = entity.unit_number }
     }
+
+    -- Nest Capsules Section
+    local nest_flow = main_frame.add{ type = "flow", direction = "horizontal" }
+    nest_flow.style.top_margin = 4
+    nest_flow.add{
+        type = "checkbox",
+        name = "hub_nest_capsules",
+        caption = "Nest capsules",
+        state = settings.nest_capsules ~= false,
+        tags = { unit_number = entity.unit_number }
+    }
 end
 
 local function on_gui_checked_state_changed(event)
@@ -182,6 +193,8 @@ local function on_gui_checked_state_changed(event)
         end
     elseif element.name == "hub_use_receive_lock" then
         settings.use_receive_lock = element.state
+    elseif element.name == "hub_nest_capsules" then
+        settings.nest_capsules = element.state
     end
 
     notify_change(unit_number)

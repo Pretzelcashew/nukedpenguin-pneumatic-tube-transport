@@ -137,3 +137,12 @@
 1. **Concise Capsule Locale Descriptions (`config.cfg`):** Updated `[item-description]` entries for all six capsule variants (`item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `spent-refrigerated-capsule`, `reinforced-capsule`, `player-transit-capsule`) with punchy multiline specs covering slot capacity scaling, quality rules, organic slot cost discounts, 90% cryo spoilage reduction, dissolution/rupture risks, and emergency player ejection controls (`__CONTROL__capsule-emergency-exit__`).
 2. **Assembling Machine Recharge Correction (`config.cfg`):** Corrected `refrigerated-capsule` and `spent-refrigerated-capsule` maintenance documentation to specify that coolant recharging with cold fluoroketone occurs at assembling machines.
 3. **Prototype Description Cleanup (`prototypes/item.lua`):** Removed unused `factoriopedia_description` properties from `ItemPrototype` and `ToolPrototype` definitions, ensuring Factoriopedia and item tooltips cleanly render the localized multiline descriptions directly from `[item-description]`.
+
+
+### Revision: Pneumatic Hub Binary Nest Capsules Configuration Toggle
+**Date:** 2026-09-05 20:43 (EDT)
+**Context:** Enable players to configure Pneumatic Hubs to either exclusively nest capsule vessel items inside outgoing capsules or restrict packing strictly to non-capsule cargo items.
+**Key Changes:**
+1. **Hub Settings State & Blueprint Sync (`scripts/hubs/hub-settings.lua`):** Added `nest_capsules = true` default setting to `hub_settings.get()`, ensuring property preservation across entity copy-paste (`hub_settings.copy`) and blueprint tag deserialization (`hub_settings.apply_blueprint_settings`).
+2. **Operational Mode GUI Checkbox (`scripts/hubs/hub-gui.lua`):** Added a "Nest capsules" checkbox to the Hub relative settings window, wiring `on_gui_checked_state_changed` to update `settings.nest_capsules` and invoke `hub_manager.notify_settings_changed()` to wake active scanners.
+3. **Inventory Packing Filter Pipeline (`scripts/hubs/hub-packing.lua`):** Updated `evaluate_inventory()` to filter candidate cargo stacks based on `nest_capsules`: restricting cargo choices strictly to registered capsule variants (`capsule_defs.types`) when enabled, or excluding capsule items when disabled.

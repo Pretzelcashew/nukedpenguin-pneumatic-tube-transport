@@ -136,6 +136,8 @@ function hub_packing.evaluate_inventory(entity)
     local is_strict_capsule = (mq_setting == "strict" or mq_setting == "capsule")
     local is_vessel_lock = (mq_setting == "vessel")
 
+    local nest_capsules = settings.nest_capsules ~= false
+
     local grouped_inventory = {}
     local group_order = {}
 
@@ -152,7 +154,10 @@ function hub_packing.evaluate_inventory(entity)
 
             local vessel_lock_pass = not is_vessel_lock or (item_q_level == quality_level)
 
-            if avail_count > 0 and vessel_lock_pass and quality_filter.is_quality_allowed(item_q_name, item_q_level, quality_level, capsule_def.quality_filter) then
+            local is_capsule_item = capsule_defs.types[item_name] ~= nil
+            local nest_pass = (nest_capsules and is_capsule_item) or (not nest_capsules and not is_capsule_item)
+
+            if avail_count > 0 and vessel_lock_pass and nest_pass and quality_filter.is_quality_allowed(item_q_name, item_q_level, quality_level, capsule_def.quality_filter) then
                 local group_key = item_name
                 if not allow_mixed_quality or allow_consolidation or is_strict_capsule then
                     group_key = item_name .. "@" .. item_q_name

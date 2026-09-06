@@ -119,3 +119,12 @@
 **Key Changes:**
 1. **Recipe Subgroup & Tab Order (`prototypes/recipe.lua`):** Configured `subgroup = "pneumatic-capsules"` and `order = "c[refrigerated]-b[recharge]"` on `recharge-refrigerated-capsule`, moving the recipe out of the fallback "other/misc" subgroup and positioning it directly adjacent to the main refrigerated capsule recipe in the Pneumatic Transport crafting tab.
 2. **English Recipe Localization (`config.cfg`):** Added `recharge-refrigerated-capsule=Recharge Refrigerated Capsule` under `[recipe-name]` in the English locale file.
+
+
+### Revision: Spatial Junction Flow Overlay Consolidation & Z-Ordering Fix
+**Date:** 2026-09-05 20:01 (EDT)
+**Context:** Resolve duplicate overlapping overlay circles, garbled text z-index fighting, and placement-order visual inconsistencies at connected flow junctions.
+**Key Changes:**
+1. **Spatial Position-Based Rendering (`scripts/flow/flow-engine.lua`):** Refactored Alt-Mode flow level visual overlays from individual port tracking (`pkey`) to unified spatial junction tracking (`pos_key`). `update_pos_render` guarantees exactly one circle and text object is rendered per physical tile coordinate, eliminating duplicate circle stacking and placement-order sensitivity.
+2. **Dominant Flow Level Selection (`scripts/flow/flow-engine.lua`):** Implemented `get_dominant_port_at_pos` to evaluate all overlapping ports at a tile location and display the dominant magnitude flow level (`math.abs(level)`), resolving ties in favor of positive pressure and active machine emitters.
+3. **Zero-Length Vector Suppression (`scripts/flow/flow-engine.lua`):** Updated `update_edge_render` to automatically discard zero-length vector line renders between co-located ports sharing the same `pos_key`.

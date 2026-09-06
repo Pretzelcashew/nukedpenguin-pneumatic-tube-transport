@@ -141,16 +141,16 @@ function flow_engine.get_node_emitter_level(node)
 end
 
 --------------------------------------------------------------------------------
--- GRANULAR RENDER MANAGER (O(1) Per-Port Updates & Cleanup)
+-- SPATIAL SPOTTED RENDER MANAGER (Single Render Per Tile Junction Location)
 --------------------------------------------------------------------------------
 
-local function destroy_port_renders(pkey)
+local function destroy_pos_renders(pos_key)
     for p_idx, p_renders in pairs(storage.flow_renders or {}) do
-        local objs = p_renders[pkey]
+        local objs = p_renders[pos_key]
         if objs then
             if objs.circle and objs.circle.valid then objs.circle.destroy() end
             if objs.text and objs.text.valid then objs.text.destroy() end
-            p_renders[pkey] = nil
+            p_renders[pos_key] = nil
         end
     end
 end
@@ -165,12 +165,44 @@ local function destroy_edge_render(edge_key)
     end
 end
 
-local function update_port_render(pkey, level)
+local function get_dominant_port_at_pos(pos_key)
+    local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
+    if not grid_ports then return nil, 0 end
+
+    local best_node = nil
+    local max_mag = -1
+    local best_level = 0
+
+    for pkey, _ in pairs(grid_ports) do
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node then
+            local level = storage.flow_levels and storage.flow_levels[pkey] or 0
+            local mag = math.abs(level)
+            if mag > max_mag then
+                max_mag = mag
+                best_level = level
+                best_node = node
+            elseif mag == max_mag and max_mag > 0 then
+                if level > best_level then
+                    best_node = node
+                    best_level = level
+                elseif level == best_level and node.emitter and not (best_node and best_node.emitter) then
+                    best_node = node
+                    best_level = level
+                end
+            end
+        end
+    end
+
+    return best_node, best_level
+end
+
+local function update_pos_render(pos_key)
     if not is_debug_active("new_flow") then return end
 
-    local node = storage.flow_nodes and storage.flow_nodes[pkey]
-    if not node then
-        destroy_port_renders(pkey)
+    local node, level = get_dominant_port_at_pos(pos_key)
+    if not node or level == 0 then
+        destroy_pos_renders(pos_key)
         return
     end
 
@@ -180,49 +212,45 @@ local function update_port_render(pkey, level)
             storage.flow_renders[p_idx] = storage.flow_renders[p_idx] or {}
             local p_renders = storage.flow_renders[p_idx]
 
-            if level == 0 or not level then
-                destroy_port_renders(pkey)
+            local abs_level = math.abs(level)
+            local circle_color = (level > 0)
+                and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
+                or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
+
+            local pos = node.pos
+            local surface = game.surfaces[node.surface_name]
+
+            local current = p_renders[pos_key]
+            if current and current.circle and current.circle.valid and current.text and current.text.valid then
+                current.circle.color = circle_color
+                current.text.text = tostring(level)
             else
-                local abs_level = math.abs(level)
-                local circle_color = (level > 0)
-                    and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
-                    or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
-
-                local pos = node.pos
-                local surface = game.surfaces[node.surface_name]
-
-                local current = p_renders[pkey]
-                if current and current.circle and current.circle.valid and current.text and current.text.valid then
-                    current.circle.color = circle_color
-                    current.text.text = tostring(level)
-                else
-                    destroy_port_renders(pkey)
-                    if surface and surface.valid then
-                        local c_obj = rendering.draw_circle{
-                            color = circle_color,
-                            radius = 0.15,
-                            filled = true,
-                            target = pos,
-                            surface = surface,
-                            only_in_alt_mode = true,
-                            players = { player }
-                        }
-                        local t_obj = rendering.draw_text{
-                            text = tostring(level),
-                            surface = surface,
-                            target = {x = pos.x, y = pos.y - 0.25},
-                            color = {r = 1, g = 1, b = 1, a = 0.9},
-                            scale = 0.7,
-                            alignment = "center",
-                            only_in_alt_mode = true,
-                            players = { player }
-                        }
-                        p_renders[pkey] = { circle = c_obj, text = t_obj }
-                    end
+                destroy_pos_renders(pos_key)
+                if surface and surface.valid then
+                    local c_obj = rendering.draw_circle{
+                        color = circle_color,
+                        radius = 0.15,
+                        filled = true,
+                        target = pos,
+                        surface = surface,
+                        only_in_alt_mode = true,
+                        players = { player }
+                    }
+                    local t_obj = rendering.draw_text{
+                        text = tostring(level),
+                        surface = surface,
+                        target = {x = pos.x, y = pos.y - 0.25},
+                        color = {r = 1, g = 1, b = 1, a = 0.9},
+                        scale = 0.7,
+                        alignment = "center",
+                        only_in_alt_mode = true,
+                        players = { player }
+                    }
+                    p_renders[pos_key] = { circle = c_obj, text = t_obj }
                 end
             end
         else
-            destroy_port_renders(pkey)
+            destroy_pos_renders(pos_key)
         end
     end
 end
@@ -236,7 +264,12 @@ local function update_edge_render(key_a, key_b)
     local node_a = storage.flow_nodes and storage.flow_nodes[key_a]
     local node_b = storage.flow_nodes and storage.flow_nodes[key_b]
 
-    if level_a == 0 and level_b == 0 or not node_a or not node_b then
+    if (level_a == 0 and level_b == 0) or not node_a or not node_b then
+        destroy_edge_render(edge_key)
+        return
+    end
+
+    if node_a.pos_key == node_b.pos_key then
         destroy_edge_render(edge_key)
         return
     end
@@ -279,7 +312,7 @@ end
 function flow_engine.clear_all_renders(player_index)
     if player_index then
         if storage.flow_renders and storage.flow_renders[player_index] then
-            for pkey, objs in pairs(storage.flow_renders[player_index]) do
+            for pos_key, objs in pairs(storage.flow_renders[player_index]) do
                 if objs.circle and objs.circle.valid then objs.circle.destroy() end
                 if objs.text and objs.text.valid then objs.text.destroy() end
             end
@@ -299,12 +332,27 @@ function flow_engine.clear_all_renders(player_index)
 end
 
 function flow_engine.draw_all(player_index)
-    for pkey, level in pairs(storage.flow_levels or {}) do
-        update_port_render(pkey, level)
-        local neighbors = storage.flow_connections and storage.flow_connections[pkey]
-        if neighbors then
-            for n_key, _ in pairs(neighbors) do
-                update_edge_render(pkey, n_key)
+    local pos_keys = {}
+    local count = 0
+    for pos_key, _ in pairs(storage.flow_grid or {}) do
+        count = count + 1
+        pos_keys[count] = pos_key
+    end
+
+    table.sort(pos_keys)
+
+    for i = 1, count do
+        local pos_key = pos_keys[i]
+        update_pos_render(pos_key)
+        local grid_ports = storage.flow_grid[pos_key]
+        if grid_ports then
+            for pkey, _ in pairs(grid_ports) do
+                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                if neighbors then
+                    for n_key, _ in pairs(neighbors) do
+                        update_edge_render(pkey, n_key)
+                    end
+                end
             end
         end
     end
@@ -370,6 +418,7 @@ function flow_engine.connect_entity(entity)
 
         storage.flow_grid[pos_key][pkey] = true
         flow_engine.enqueue_port(pkey)
+        update_pos_render(pos_key)
     end
 end
 
@@ -407,9 +456,10 @@ function flow_engine.disconnect_entity(entity)
                 storage.flow_connections[pkey] = nil
             end
 
-            destroy_port_renders(pkey)
             if storage.flow_levels then storage.flow_levels[pkey] = nil end
             if storage.flow_nodes then storage.flow_nodes[pkey] = nil end
+
+            update_pos_render(pos_key)
         end
 
         flow_engine.enqueue_port(pkey)
@@ -601,9 +651,11 @@ function flow_engine.step(tick)
                 storage.flow_levels[pkey] = nil
             end
 
-            update_port_render(pkey, target_level)
-
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
+            if node then
+                update_pos_render(node.pos_key)
+            end
+
             if node and node.transmit then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then

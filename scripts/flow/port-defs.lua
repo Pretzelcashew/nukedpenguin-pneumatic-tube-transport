@@ -150,7 +150,8 @@ end
 
 function port_defs.get_ports(entity)
     if not (entity and entity.valid) then return nil end
-    local entity_ports = definitions[entity.name]
+    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    local entity_ports = definitions[real_name]
     if not entity_ports then return nil end
 
     local dir = entity.direction or defines.direction.north

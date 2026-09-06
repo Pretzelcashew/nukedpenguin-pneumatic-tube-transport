@@ -99,6 +99,10 @@ function hub_settings.can_send(entity)
     if not (entity and entity.valid) then return false end
     local settings = hub_settings.get(entity.unit_number)
 
+    if entity.name == "entity-ghost" then
+        return settings.can_send
+    end
+
     if settings.use_circuit_send then
         return hub_settings.evaluate_circuit_condition(entity, settings.send_condition, settings.read_red, settings.read_green)
     end
@@ -109,6 +113,10 @@ end
 function hub_settings.can_receive(entity)
     if not (entity and entity.valid) then return false end
     local settings = hub_settings.get(entity.unit_number)
+
+    if entity.name == "entity-ghost" then
+        return settings.can_receive
+    end
 
     if settings.use_circuit_receive then
         return hub_settings.evaluate_circuit_condition(entity, settings.receive_condition, settings.read_red, settings.read_green)

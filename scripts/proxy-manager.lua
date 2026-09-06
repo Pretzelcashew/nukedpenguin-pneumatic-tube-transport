@@ -38,7 +38,7 @@ local destroy_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
     defines.events.on_entity_died,
-    defines.script_raised_destroy
+    defines.events.script_raised_destroy
 }
 if defines.events.on_space_platform_mined_entity then
     table.insert(destroy_events, defines.events.on_space_platform_mined_entity)
@@ -271,23 +271,36 @@ local function on_removed(event)
             pos = { x = pos.x + main_spec.offset.x, y = pos.y + main_spec.offset.y }
         end
 
-        local proxies = entity.surface.find_entities_filtered{
-            name = main_spec.proxy_entity_name,
-            position = pos
-        }
-        for _, proxy in ipairs(proxies) do
-            if proxy.valid then
-                proxy.destroy()
+        local remaining_main = entity.surface.find_entity(main_spec.main_entity_name, pos)
+        if not (remaining_main and remaining_main.valid) then
+            local ghost_mains = entity.surface.find_entities_filtered{
+                ghost_name = main_spec.main_entity_name,
+                position = pos
+            }
+            if #ghost_mains > 0 then
+                remaining_main = ghost_mains[1]
             end
         end
 
-        local ghost_proxies = entity.surface.find_entities_filtered{
-            ghost_name = main_spec.proxy_entity_name,
-            position = pos
-        }
-        for _, g in ipairs(ghost_proxies) do
-            if g.valid then
-                g.destroy()
+        if not (remaining_main and remaining_main.valid) then
+            local proxies = entity.surface.find_entities_filtered{
+                name = main_spec.proxy_entity_name,
+                position = pos
+            }
+            for _, proxy in ipairs(proxies) do
+                if proxy.valid then
+                    proxy.destroy()
+                end
+            end
+
+            local ghost_proxies = entity.surface.find_entities_filtered{
+                ghost_name = main_spec.proxy_entity_name,
+                position = pos
+            }
+            for _, g in ipairs(ghost_proxies) do
+                if g.valid then
+                    g.destroy()
+                end
             end
         end
 

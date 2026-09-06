@@ -7,10 +7,19 @@ local capsule_runner = require("scripts.capsules.capsule-runner")
 
 local hub_manager = {}
 
+local function get_pos_key(surface, position)
+    if not (surface and position) then return nil end
+    local sname = type(surface) == "string" and surface or surface.name
+    local px = position.x or position[1] or 0
+    local py = position.y or position[2] or 0
+    return sname .. "@" .. px .. "," .. py
+end
+
 function hub_manager.notify_settings_changed(entity)
     if not (entity and entity.valid) then return end
     capsule_runner.wake_parked_capsules()
-    if hub_settings.can_send(entity) then
+    local is_ghost = (entity.name == "entity-ghost")
+    if not is_ghost and hub_settings.can_send(entity) then
         hub_packing.evaluate_inventory(entity)
     end
 end
@@ -25,20 +34,46 @@ local function on_hub_built(event)
     local def = hub_defs.types[real_name]
     if def and def.type == "hub" then
         local unit_number = entity.unit_number
+        local pos_key = get_pos_key(entity.surface, entity.position)
 
         if is_ghost then
             storage.ghost_hubs = storage.ghost_hubs or {}
             storage.ghost_hubs[unit_number] = entity
+            if pos_key then
+                storage.ghost_by_pos = storage.ghost_by_pos or {}
+                storage.ghost_by_pos[pos_key] = unit_number
+            end
         else
             storage.active_hubs = storage.active_hubs or {}
             storage.active_hubs[unit_number] = entity
         end
 
+        local ghost_unit_number = nil
+        if not is_ghost then
+            if pos_key and storage.ghost_by_pos then
+                ghost_unit_number = storage.ghost_by_pos[pos_key]
+            end
+            if not ghost_unit_number and event.source and event.source.valid then
+                ghost_unit_number = event.source.unit_number
+            end
+        end
+
+        local copied = false
         if event.tags and event.tags.pneumatic_settings then
             hub_settings.apply_blueprint_settings(unit_number, event.tags.pneumatic_settings)
-        elseif event.source and event.source.valid then
-            hub_settings.copy(event.source.unit_number, unit_number)
-        else
+            copied = true
+        elseif ghost_unit_number then
+            copied = (hub_settings.copy(ghost_unit_number, unit_number) ~= nil)
+
+            if pos_key and storage.ghost_by_pos then
+                storage.ghost_by_pos[pos_key] = nil
+            end
+            if storage.hub_settings then
+                storage.hub_settings[ghost_unit_number] = nil
+            end
+        end
+
+        if not copied then
             hub_settings.get(unit_number)
         end
 
@@ -58,6 +93,12 @@ local function on_hub_removed(event)
     local def = hub_defs.types[real_name]
     if def then
         local unit_number = entity.unit_number
+        if is_ghost then
+            local pos_key = get_pos_key(entity.surface, entity.position)
+            if pos_key and storage.ghost_by_pos then
+                storage.ghost_by_pos[pos_key] = nil
+            end
+        end
         if storage.ghost_hubs then
             storage.ghost_hubs[unit_number] = nil
         end

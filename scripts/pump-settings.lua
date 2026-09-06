@@ -92,6 +92,10 @@ function pump_settings.is_pump_enabled(entity)
     local settings = pump_settings.get(entity.unit_number)
     if not settings then return false end
 
+    if entity.name == "entity-ghost" then
+        return settings.enabled ~= false
+    end
+
     if settings.use_circuit_enable then
         local proxy = pump_settings.get_proxy(entity)
         if not proxy then return false end

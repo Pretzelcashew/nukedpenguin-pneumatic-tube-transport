@@ -405,6 +405,17 @@ function diverter_gui.open(player, entity, initial_view)
     local unit_number = entity.unit_number
     local settings = diverter_settings.get(unit_number)
 
+    if entity.name == "entity-ghost" then
+        storage.ghost_devices = storage.ghost_devices or {}
+        storage.ghost_devices[unit_number] = entity
+        if entity.surface and entity.position then
+            local sname = entity.surface.name
+            local pos_key = sname .. "@" .. entity.position.x .. "," .. entity.position.y
+            storage.ghost_by_pos = storage.ghost_by_pos or {}
+            storage.ghost_by_pos[pos_key] = unit_number
+        end
+    end
+
     local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
     if not main_frame then return end
 

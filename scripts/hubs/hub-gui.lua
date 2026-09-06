@@ -36,6 +36,11 @@ local function on_gui_opened(event)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
 
+    if is_ghost then
+        storage.ghost_hubs = storage.ghost_hubs or {}
+        storage.ghost_hubs[entity.unit_number] = entity
+    end
+
     hub_gui.close(player)
 
     local settings = hub_settings.get(entity.unit_number)

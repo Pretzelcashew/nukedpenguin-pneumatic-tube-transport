@@ -31,6 +31,11 @@ function pump_gui.open(player, entity)
 
     local settings = pump_settings.get(entity.unit_number)
 
+    if entity.name == "entity-ghost" then
+        storage.ghost_devices = storage.ghost_devices or {}
+        storage.ghost_devices[entity.unit_number] = entity
+    end
+
     local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
     if not main_frame then return end
 

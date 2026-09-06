@@ -305,7 +305,7 @@ function diverter_settings.evaluate_circuit_condition(proxy_entity, condition, r
         return evaluate_condition(0, condition.comparator or "=", condition.constant or 0)
     end
 
-    val = 0
+    local val = 0
     if red_conn and green_conn then
         val = proxy_entity.get_signal(condition.first_signal, red_conn, green_conn) or 0
     elseif red_conn then
@@ -322,6 +322,10 @@ function diverter_settings.is_port_enabled(entity, port_index)
     local settings = diverter_settings.get(entity.unit_number)
     local p_setting = settings and settings.ports and settings.ports[port_index]
     if not p_setting then return false end
+
+    if entity.name == "entity-ghost" then
+        return p_setting.enabled ~= false
+    end
 
     if p_setting.use_circuit_enable then
         local proxy = diverter_settings.get_proxy(entity)

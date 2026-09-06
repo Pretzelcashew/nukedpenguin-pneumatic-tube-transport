@@ -5,6 +5,7 @@ local proxy_manager = require("scripts.proxy-manager")
 local active_device_scanner = require("scripts.active-device-scanner")
 local device_settings_copier = require("scripts.device-settings-copier")
 local diverter_renderer = require("scripts.diverter-renderer")
+local copier_hotkey_debug = require("scripts.copier-hotkey-debug")
 
 require("scripts.hubs.hub-manager")
 require("scripts.hubs.hub-gui")
@@ -24,6 +25,7 @@ active_device_scanner.register_events()
 device_settings_copier.register_events()
 flow_engine.register_events()
 capsule_runner.register_events()
+copier_hotkey_debug.register_events()
 
 local function setup_storage()
     -- Clear legacy v1 storage tables

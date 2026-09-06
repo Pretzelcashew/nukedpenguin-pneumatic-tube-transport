@@ -146,3 +146,12 @@
 1. **Hub Settings State & Blueprint Sync (`scripts/hubs/hub-settings.lua`):** Added `nest_capsules = true` default setting to `hub_settings.get()`, ensuring property preservation across entity copy-paste (`hub_settings.copy`) and blueprint tag deserialization (`hub_settings.apply_blueprint_settings`).
 2. **Operational Mode GUI Checkbox (`scripts/hubs/hub-gui.lua`):** Added a "Nest capsules" checkbox to the Hub relative settings window, wiring `on_gui_checked_state_changed` to update `settings.nest_capsules` and invoke `hub_manager.notify_settings_changed()` to wake active scanners.
 3. **Inventory Packing Filter Pipeline (`scripts/hubs/hub-packing.lua`):** Updated `evaluate_inventory()` to filter candidate cargo stacks based on `nest_capsules`: restricting cargo choices strictly to registered capsule variants (`capsule_defs.types`) when enabled, or excluding capsule items when disabled.
+
+
+### Revision: Dedicated Shift Modifier Hotkey Listener & Custom Input Registration
+**Date:** 2026-09-06 00:11 (EDT)
+**Context:** Register a dedicated custom input control for Shift modifier tracking and implement a standalone debug listener to detect press and release events ahead of custom entity settings copy-paste overhauls.
+**Key Changes:**
+1. **Shift Key Custom Input Prototype (`prototypes/custom-input.lua`):** Registered `pneumatic-shift-key` prototype using `left-shift` default and `right-shift` alternative key sequences with `consuming = "none"` to capture modifier key presses without blocking native controls.
+2. **Modifier State Debug Listener (`scripts/copier-hotkey-debug.lua`):** Created a dedicated event listener and `on_tick` state scanner tracking modifier press/release lifecycle states, outputting `debug_print()` logs for `[Hotkey Debug] SHIFT` and `[Hotkey Debug] UNSHIFT`.
+3. **Control Entry Point Registration (`control.lua`):** Required `scripts/copier-hotkey-debug` at top-level and invoked `copier_hotkey_debug.register_events()` on initialization.

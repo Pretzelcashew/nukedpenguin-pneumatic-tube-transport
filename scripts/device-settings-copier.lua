@@ -269,7 +269,6 @@ local function add_bp_wire(proxy_bp_entity, src_conn_id, target_bp_index, tgt_co
     local src_ent_num = proxy_bp_entity.entity_number
     if not src_ent_num then return end
 
-    -- Factorio 2.0 blueprint wire format: [ entity_from, wire_type_from, entity_to, wire_type_to ]
     for _, w in ipairs(proxy_bp_entity.wires) do
         if w[1] == src_ent_num and w[2] == src_conn_id and w[3] == target_bp_index and w[4] == tgt_conn_id then
             return
@@ -290,9 +289,12 @@ local function on_copy_settings(event)
 
     storage.player_copy_buffer = storage.player_copy_buffer or {}
     storage.player_copy_buffer[event.player_index] = {
+        entity = selected,
         entity_name = name,
         unit_number = selected.unit_number,
-        direction = selected.direction
+        direction = selected.direction,
+        surface = selected.surface,
+        position = { x = selected.position.x, y = selected.position.y }
     }
 end
 
@@ -305,13 +307,39 @@ local function on_paste_settings(event)
 
     storage.player_copy_buffer = storage.player_copy_buffer or {}
     local buffer = storage.player_copy_buffer[event.player_index]
-    if not buffer or not buffer.unit_number then return end
+    if not buffer then return end
 
-    local src_unit = buffer.unit_number
+    local source_entity = buffer.entity
+    if not (source_entity and source_entity.valid) then
+        if buffer.surface and buffer.surface.valid and buffer.position then
+            local found = buffer.surface.find_entities_filtered{
+                position = buffer.position,
+                radius = 0.5
+            }
+            for _, ent in ipairs(found) do
+                local resolved = resolve_target_entity(ent)
+                if resolved and resolved.valid then
+                    local r_name = resolved.name == "entity-ghost" and resolved.ghost_name or resolved.name
+                    if r_name == buffer.entity_name then
+                        source_entity = resolved
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    if not (source_entity and source_entity.valid) then
+        return
+    end
+
+    local src_unit = source_entity.unit_number
+    local src_direction = source_entity.direction
+    local src_name = source_entity.name == "entity-ghost" and source_entity.ghost_name or source_entity.name
+
     local dest_unit = destination.unit_number
     if src_unit == dest_unit then return end
 
-    local src_name = buffer.entity_name
     local dest_name = destination.name
     if dest_name == "entity-ghost" then dest_name = destination.ghost_name end
 
@@ -324,7 +352,7 @@ local function on_paste_settings(event)
         end
 
     elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
-        if diverter_settings.copy(src_unit, dest_unit, buffer.direction, destination.direction) then
+        if diverter_settings.copy(src_unit, dest_unit, src_direction, destination.direction) then
             active_device_scanner.notify_settings_changed(destination)
             if player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
                 diverter_gui.open(player, destination)

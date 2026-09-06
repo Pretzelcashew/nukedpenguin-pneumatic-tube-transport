@@ -146,3 +146,12 @@
 1. **Hub Settings State & Blueprint Sync (`scripts/hubs/hub-settings.lua`):** Added `nest_capsules = true` default setting to `hub_settings.get()`, ensuring property preservation across entity copy-paste (`hub_settings.copy`) and blueprint tag deserialization (`hub_settings.apply_blueprint_settings`).
 2. **Operational Mode GUI Checkbox (`scripts/hubs/hub-gui.lua`):** Added a "Nest capsules" checkbox to the Hub relative settings window, wiring `on_gui_checked_state_changed` to update `settings.nest_capsules` and invoke `hub_manager.notify_settings_changed()` to wake active scanners.
 3. **Inventory Packing Filter Pipeline (`scripts/hubs/hub-packing.lua`):** Updated `evaluate_inventory()` to filter candidate cargo stacks based on `nest_capsules`: restricting cargo choices strictly to registered capsule variants (`capsule_defs.types`) when enabled, or excluding capsule items when disabled.
+
+
+### Revision: Live-Source Entity Copy-Paste Settings & Destroyed Source Guard
+**Date:** 2026-09-06 00:47 (EDT)
+**Context:** Align custom pneumatic entity settings copy-paste behavior with native Factorio pipette mechanics by querying live source entity configurations and orientations at the exact moment of pasting, while preventing state corruption from destroyed source entities.
+**Key Changes:**
+1. **Live Source Entity Tracking (`scripts/device-settings-copier.lua`):** Refactored `on_copy_settings` to store a reference to the live `selected` source `LuaEntity` alongside surface and position coordinates in `storage.player_copy_buffer[player_index]`, rather than freezing static orientation or settings snapshots at copy time.
+2. **Dynamic Live-Source Querying on Paste (`scripts/device-settings-copier.lua`):** Updated `on_paste_settings` to dynamically inspect the live source entity at paste execution time, reading current unit numbers, filter configurations, and cardinal orientations (`direction`) directly from the source machine or revived spatial entity.
+3. **Destroyed Source Entity Guard (`scripts/device-settings-copier.lua`):** Implemented an early-return guard in `on_paste_settings` that aborts the paste operation if the source entity has been destroyed or invalidated, ensuring destination entities remain completely untouched when pasting from dead sources.

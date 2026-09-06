@@ -28,20 +28,20 @@
 
 ~fix that setting a quality in the diverter's item with quality comparator gui, and an item, but then clearing the item, and pressing submit, would ghost keep the quality until changing the comparator or item or quality
 
+~address why rotating pumps flow dot layering is inconsistent when rotating (same with diverter), when normally it would show 9 in front but after rotation the 10 is prioritized. the goal is to be consistent rather than 'doing the right thing'
 
-
-
-
-address why rotating pumps flow dot layering is inconsistent when rotating (same with diverter), when normally it would show 9 in front but after rotation the 10 is prioritized. the goal is to be consistent rather than 'doing the right thing'
-
-
-consider adding a nest capsules toggle on hubs (on by default), which means hubs can attempt packing capsules, not that its prioritized in any order, just to make it easier to manage hubs where you want extra capsules in the hub for sending with but not trigger packing of capsules within capsules if you dont want. it can be done currently via circuit networks but i think a toggle for nest capsules would feel really nice to have.
+~consider adding a nest capsules toggle on hubs (on by default), which means hubs can attempt packing capsules, not that its prioritized in any order, just to make it easier to manage hubs where you want extra capsules in the hub for sending with but not trigger packing of capsules within capsules if you dont want. it can be done currently via circuit networks but i think a toggle for nest capsules would feel really nice to have.
 example scenario provided in image: where you'd want extra capsules for sending circuits or managing excess capsules by having a circuit toggle the enables nest capsules... in that case im starting to think it should be a binary feature, nest capsules on would mean hub can only pack capsules with capsules, and nest capsules off means you can only pack non capsule cargo ![alt text](image.png)
 
+~ensure proper buildings make the correct capsule recipes, and they are located in the correct tabs (recharge spent refrigerated capsule is in the misc tab now, should be moved with the others, into pneumatic transport tab)
 
-ensure proper buildings make the correct capsule recipes, and they are located in the correct tabs (recharge spent refrigerated capsule is in the misc tab now, should be moved with the others, into pneumatic transport tab)
+~include capsule details in factoriopedia (like if it supports mixed cargo)
 
-include capsule details in factoriopedia (like if it supports mixed cargo)
+~make sure to update en locale to include recharge refrigerated capsule
+
+
+
+
 
 make copy settings more native feeling for diverters and pumps (sound and yellow and green hover target outline); essentially copying/pasting settings relies on the source entity to remain alive
 
@@ -56,12 +56,14 @@ consider adding capsule counter entity (1x2, uses power, reads how many capsules
 
 
 
-make sure to update en locale to include recharge refrigerated capsule
+nest capsules should be off by default
+
+rotating the circuit proxy should rotated the device
+
+standardize scaling of registered sprites with sizes of similar native sprites (e.g. the any quality icon im using seems like 2 times too big, so other renderers in the game have to handle the scaling mischatch, making it messy)
 
 
 
 
-
-
-
+make ghosts have the custom settings
 

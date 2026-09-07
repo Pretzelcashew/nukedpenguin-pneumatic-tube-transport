@@ -140,6 +140,41 @@ local definitions = {
             { offset = {x =  0.0, y =  1.5}, group = 1, flow = 10 },
             { offset = {x = -1.5, y =  0.0}, group = 1, flow = 10 }
         }
+    },
+
+    ["pneumatic-capsule-counter"] = {
+        [defines.direction.north] = {
+            { offset = {x =  0.0, y = -1.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.0, y =  1.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 }
+        },
+        [defines.direction.south] = {
+            { offset = {x =  0.0, y = -1.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.0, y =  1.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 }
+        },
+        [defines.direction.east] = {
+            { offset = {x = -1.0, y =  0.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  1.0, y =  0.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 }
+        },
+        [defines.direction.west] = {
+            { offset = {x = -1.0, y =  0.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  1.0, y =  0.0}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y = -0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x = -0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 },
+            { offset = {x =  0.5, y =  0.5}, group = 1, transmit = false, cross_transit = false, sense = 15 }
+        }
     }
 }
 

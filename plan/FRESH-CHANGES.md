@@ -97,3 +97,13 @@
 3. **Channel-Isolated Signal Dispatch (`scripts/counters/counter-logic.lua` & `scripts/counters/counter-settings.lua`):** Added `counter_settings.get_channel_proxies` and updated `counter_logic.update_signals` to write Red-target signals strictly to the Red channel proxy and Green-target signals strictly to the Green channel proxy while keeping the main terminal proxy filters empty, eliminating cross-network signal bleed.
 4. **Active Scanner & Target Resolution (`scripts/active-device-scanner.lua` & `scripts/device-settings-copier.lua`):** Added sub-proxy names to `PROXY_NAMES` to bypass scanner tracking and updated `resolve_target_entity` to resolve sub-proxy handles back to the physical counter entity.
 5. **Locale Definitions & Top-Level Require Registration (`locale/en/config.cfg` & `control.lua`):** Added English entity, item, recipe, and technology captions and descriptions. Registered `counter-settings`, `counter-gui`, and `counter-logic` as top-level `require` statements in `control.lua`.
+
+
+### Revision: Hub Pressure Differential Enforcement & Cross-Transit Flow Isolation
+**Date:** 2026-09-07 18:03 (EDT)
+**Context:** Enforce strict positive pressure differential requirements for hub outbound capsule dispatch and cross-transit motion, preventing hubs from dumping capsules onto unpressurized or opposing-pressure target ports.
+**Key Changes:**
+1. **Per-Port Outbound Pressure Evaluation (`scripts/capsules/capsule-runner.lua`):** Refactored `find_best_hub_outbound_port` to measure pressure drops (`touching_level - target_level`) per individual touching port rather than applying a global hub entity maximum. Initialized `max_drop = 0` to require target ports to have strictly lower pressure than the hub's touching exit port.
+2. **Strict Outbound Injection Guard (`scripts/capsules/capsule-runner.lua`):** Updated `inject_from_hub` to abort and return `false` if no valid outbound port with a positive pressure drop is found, eliminating fallback dispatches onto unpressurized or opposing flow lines.
+3. **Cross-Transit Exit Port Isolation (`scripts/capsules/capsule-runner.lua`):** Updated `select_next_target` for `cross_transit` entities to calculate candidate pressure drops directly against the touching exit port (`level_exit - level_cand > 0`), preventing transiting capsules from exiting hubs into zero or negative pressure differential nodes.
+4. **Hub Packing Early Exit Guard (`scripts/hubs/hub-packing.lua`):** Added an early outbound port validation check to `hub_packing.evaluate_inventory`, aborting cargo extraction and liminal holder creation whenever no valid lower-pressure outbound route is available.

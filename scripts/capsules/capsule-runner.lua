@@ -544,22 +544,6 @@ function capsule_runner.select_next_target(capsule)
     local cand_count = get_candidate_hops(from_port_key, 1)
     if cand_count == 0 then return nil end
 
-    local level_from = storage.flow_levels and storage.flow_levels[from_port_key] or 0
-    if current_node.cross_transit then
-        local max_entity_level = level_from
-        local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
-        if unit_ports then
-            for i = 1, #unit_ports do
-                local pkey = unit_ports[i]
-                local p_lvl = storage.flow_levels and storage.flow_levels[pkey] or 0
-                if math.abs(p_lvl) > math.abs(max_entity_level) or p_lvl > max_entity_level then
-                    max_entity_level = p_lvl
-                end
-            end
-        end
-        level_from = max_entity_level
-    end
-
     local max_drop = 0
     scratch_best_count = 0
 
@@ -579,7 +563,10 @@ function capsule_runner.select_next_target(capsule)
                 local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
                 local level_cand = storage.flow_levels and storage.flow_levels[cand_key] or 0
 
-                local drop = level_from - level_cand
+                local exit_port = (current_node.cross_transit and via_port) or from_port_key
+                local level_exit = storage.flow_levels and storage.flow_levels[exit_port] or 0
+
+                local drop = level_exit - level_cand
 
                 if current_node.emitter and cand_node and cand_node.emitter then
                     local current_lvl = flow_engine.get_node_emitter_level(current_node)
@@ -601,7 +588,7 @@ function capsule_runner.select_next_target(capsule)
                                 local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
 
                                 local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
-                                local effective_from = (cand_emitter_lvl > 0) and cand_emitter_lvl or level_from
+                                local effective_from = (cand_emitter_lvl > 0) and cand_emitter_lvl or level_exit
                                 local d = effective_from - exit_level
                                 if d > best_downstream then
                                     best_downstream = d
@@ -696,32 +683,24 @@ function capsule_runner.find_best_hub_outbound_port(hub_entity, capsule_id)
 
     local fallback_port_key = (unit_ports and unit_ports[1]) or (unit_number .. ":1")
     local best_port_key = nil
-    local max_drop = -math.huge
+    local max_drop = 0
     local best_flow_level = 0
 
-    local max_hub_level = 0
     for port_index = 1, num_ports do
         local pkey = (unit_ports and unit_ports[port_index]) or (unit_number .. ":" .. port_index)
-        local p_lvl = storage.flow_levels and storage.flow_levels[pkey] or 0
-        if math.abs(p_lvl) > math.abs(max_hub_level) or p_lvl > max_hub_level then
-            max_hub_level = p_lvl
-        end
-    end
-
-    for port_index = 1, num_ports do
-        local pkey = (unit_ports and unit_ports[port_index]) or (unit_number .. ":" .. port_index)
+        local touching_level = storage.flow_levels and storage.flow_levels[pkey] or 0
         local neighbors = storage.flow_connections and storage.flow_connections[pkey]
 
         if neighbors and next(neighbors) ~= nil then
             for n_key in pairs(neighbors) do
                 local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
                 if n_node and (n_node.capsule_transmit or n_node.cross_transit or n_node.emitter) then
-                    local level = storage.flow_levels and storage.flow_levels[n_key] or 0
-                    local drop = max_hub_level - level
+                    local target_level = storage.flow_levels and storage.flow_levels[n_key] or 0
+                    local drop = touching_level - target_level
                     if drop > max_drop then
                         max_drop = drop
                         best_port_key = pkey
-                        best_flow_level = level
+                        best_flow_level = target_level
                     end
                 end
             end
@@ -735,7 +714,10 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     if not (entity and entity.valid) then return false end
 
     local best_port_key, fallback_port_key, flow_level = capsule_runner.find_best_hub_outbound_port(entity, capsule_id)
-    local target_port_key = best_port_key or fallback_port_key
+    if not best_port_key then
+        return false
+    end
+    local target_port_key = best_port_key
 
     local cap_data = capsule_manager.get(capsule_id)
     local dominant_item = (cap_data and cap_data.dominant_item) or capsule_renderer.get_dominant_item(capsule_id)
@@ -763,11 +745,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     mark_capsule_parked(new_capsule)
     capsule_runner.wake_parked_capsules(target_port_key)
 
-    if best_port_key then
-        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. " - " .. tostring(dominant_quality) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " port " .. tostring(target_port_key) .. " (flow level: " .. tostring(flow_level) .. ")")
-    else
-        debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. " - " .. tostring(dominant_quality) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " (parked at hub port " .. tostring(target_port_key) .. ")")
-    end
+    debug_print("[v2 Flow] Successfully packed capsule #" .. tostring(capsule_id) .. " (" .. tostring(dominant_item) .. " - " .. tostring(dominant_quality) .. ") onto v2 flow engine at hub " .. tostring(entity.unit_number) .. " port " .. tostring(target_port_key) .. " (flow level: " .. tostring(flow_level) .. ")")
 
     return true
 end

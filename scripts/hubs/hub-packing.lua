@@ -76,6 +76,9 @@ function hub_packing.evaluate_inventory(entity)
     local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
     if current_occupants >= max_capacity then return end
 
+    local best_outbound_port = capsule_runner.find_best_hub_outbound_port(entity)
+    if not best_outbound_port then return end
+
     local primary_slot = nil
     local capsule_def = nil
     local capsule_name = nil
@@ -359,7 +362,7 @@ function hub_packing.evaluate_inventory(entity)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then
-            capsule_manager.remove(capsule_id)
+            capsule_runner.remove_capsule(capsule_id)
         end
     end
 end

@@ -14,14 +14,45 @@ local PORT_DIRECTIONS = {
     "West " .. gui_components.COLOR_BLUE .. "◀" .. gui_components.COLOR_END
 }
 
--- Per-player draft working state for slot configuration modal
 local draft_filters = {}
--- Tracks ticks when confirm-gui (E) was fired per player
 local confirm_ticks = {}
 
+local function get_element_tags(element)
+    if not (element and element.valid) then return {} end
+    local merged_tags = {}
+
+    local curr = element
+    while curr and curr.valid do
+        if curr.tags then
+            for k, v in pairs(curr.tags) do
+                if merged_tags[k] == nil then
+                    merged_tags[k] = v
+                end
+            end
+        end
+        curr = curr.parent
+    end
+
+    return merged_tags
+end
+
 local function notify_change(unit_number)
+    if not unit_number then return end
     local entity = (storage.active_diverters and storage.active_diverters[unit_number]) or
                    (storage.ghost_devices and storage.ghost_devices[unit_number])
+    if not (entity and entity.valid) then
+        if storage.ghost_devices then
+            for _, g in pairs(storage.ghost_devices) do
+                if g and g.valid then
+                    local gid = diverter_settings.get_device_id(g)
+                    if gid == unit_number then
+                        entity = g
+                        break
+                    end
+                end
+            end
+        end
+    end
     if entity and entity.valid then
         active_device_scanner.notify_settings_changed(entity)
     end
@@ -37,9 +68,6 @@ local function find_element_by_name(element, name)
     return nil
 end
 
---- Closes the slot config modal.
---- @param player LuaPlayer
---- @param should_apply boolean If true, commits the draft filter state to diverter_settings; if false, discards draft.
 function diverter_gui.close_slot_config(player, should_apply)
     if not (player and player.valid) then return end
     local p_index = player.index
@@ -103,7 +131,8 @@ function diverter_gui.refresh_if_open(unit_number)
             if main_frame and main_frame.valid then
                 local inner_frame = find_element_by_name(main_frame, "diverter_inner_frame")
                 if inner_frame and inner_frame.valid and inner_frame.tags then
-                    if inner_frame.tags.unit_number == unit_number then
+                    local frame_id = inner_frame.tags.unit_number
+                    if frame_id == unit_number then
                         local draft = draft_filters[player.index]
                         local view = inner_frame.tags.current_view or "all"
                         diverter_gui.render_content_layout(inner_frame, unit_number, view)
@@ -153,7 +182,6 @@ function diverter_gui.open_slot_config(player, unit_number, port_index, slot_ind
         qual = "normal"
     end
 
-    -- Create an isolated draft working copy for the modal
     draft_filters[player.index] = {
         unit_number = unit_number,
         port_index = port_index,
@@ -212,12 +240,12 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
     local main_flow = inner_frame.add{
         type = "flow",
         name = "diverter_main_flow",
-        direction = "horizontal"
+        direction = "horizontal",
+        tags = { unit_number = unit_number }
     }
     main_flow.style.vertical_align = "top"
     main_flow.style.horizontal_spacing = 12
 
-    -- Left panel: Spatial Arrow View Selector
     local selector_card = gui_components.add_card_frame(main_flow, "vertical")
     selector_card.style.vertical_align = "center"
 
@@ -244,11 +272,11 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
         tags = { unit_number = unit_number }
     })
 
-    -- Right panel: Selected direction port configuration card(s)
     local ports_container = main_flow.add{
         type = "flow",
         name = "diverter_ports_container",
-        direction = "vertical"
+        direction = "vertical",
+        tags = { unit_number = unit_number }
     }
 
     local active_ports = {}
@@ -257,7 +285,7 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
     elseif type(current_view) == "number" and current_view >= 1 and current_view <= 4 then
         active_ports = { current_view }
     else
-        active_ports = { 1 } -- Default fallback to North
+        active_ports = { 1 }
     end
 
     local grid_table = ports_container.add{
@@ -265,7 +293,8 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
         name = "ports_grid_table",
         column_count = (current_view == "all" and 2 or 1),
         horizontal_spacing = 12,
-        vertical_spacing = 12
+        vertical_spacing = 12,
+        tags = { unit_number = unit_number }
     }
 
     local player_index = inner_frame.player_index
@@ -288,10 +317,15 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
         local card_frame = grid_table.add{
             type = "frame",
             direction = "vertical",
-            style = "bordered_frame"
+            style = "bordered_frame",
+            tags = { unit_number = unit_number, port_index = i }
         }
 
-        local header_flow = card_frame.add{ type = "flow", direction = "horizontal" }
+        local header_flow = card_frame.add{
+            type = "flow",
+            direction = "horizontal",
+            tags = { unit_number = unit_number, port_index = i }
+        }
         header_flow.style.vertical_align = "center"
         header_flow.add{
             type = "checkbox",
@@ -356,7 +390,11 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
 
         card_frame.add{ type = "line", direction = "horizontal" }
 
-        local filter_enable_flow = card_frame.add{ type = "flow", direction = "horizontal" }
+        local filter_enable_flow = card_frame.add{
+            type = "flow",
+            direction = "horizontal",
+            tags = { unit_number = unit_number, port_index = i }
+        }
         filter_enable_flow.style.vertical_align = "center"
         filter_enable_flow.add{
             type = "checkbox",
@@ -375,7 +413,11 @@ function diverter_gui.render_content_layout(inner_frame, unit_number, current_vi
             tags = { unit_number = unit_number, port_index = i }
         })
 
-        local slots_flow = card_frame.add{ type = "flow", direction = "horizontal" }
+        local slots_flow = card_frame.add{
+            type = "flow",
+            direction = "horizontal",
+            tags = { unit_number = unit_number, port_index = i }
+        }
         slots_flow.style.horizontal_spacing = 6
 
         for j = 1, 5 do
@@ -402,40 +444,35 @@ function diverter_gui.open(player, entity, initial_view)
     diverter_gui.close(player)
 
     local current_view = initial_view or "all"
-    local unit_number = entity.unit_number
-    local settings = diverter_settings.get(unit_number)
+    local dev_id = diverter_settings.get_device_id(entity)
+    local settings = diverter_settings.get(dev_id)
 
     if entity.name == "entity-ghost" then
         storage.ghost_devices = storage.ghost_devices or {}
-        storage.ghost_devices[unit_number] = entity
-        if entity.surface and entity.position then
-            local sname = entity.surface.name
-            local pos_key = sname .. "@" .. entity.position.x .. "," .. entity.position.y
-            storage.ghost_by_pos = storage.ghost_by_pos or {}
-            storage.ghost_by_pos[pos_key] = unit_number
-        end
+        storage.ghost_devices[dev_id] = entity
     end
 
     local main_frame = gui_components.create_relative_window(player, nil, GUI_FRAME_NAME)
     if not main_frame then return end
 
-    gui_components.add_header(main_frame, "Pneumatic Diverter Configuration", "diverter_close_button", { unit_number = unit_number })
+    gui_components.add_header(main_frame, "Pneumatic Diverter Configuration", "diverter_close_button", { unit_number = dev_id })
 
     gui_components.add_wire_channel_toggles(main_frame, {
         read_red_name = "diverter_read_red",
         read_green_name = "diverter_read_green",
         read_red_state = settings.read_red ~= false,
         read_green_state = settings.read_green ~= false,
-        tags = { unit_number = unit_number }
+        tags = { unit_number = dev_id }
     })
 
     local inner_frame = main_frame.add{
         type = "frame",
         name = "diverter_inner_frame",
-        style = "inside_shallow_frame_with_padding"
+        style = "inside_shallow_frame_with_padding",
+        tags = { unit_number = dev_id }
     }
 
-    diverter_gui.render_content_layout(inner_frame, unit_number, current_view)
+    diverter_gui.render_content_layout(inner_frame, dev_id, current_view)
 
     player.opened = main_frame
 end
@@ -443,7 +480,7 @@ end
 local function on_gui_click(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags or {}
+    local tags = get_element_tags(element)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
 
@@ -453,12 +490,12 @@ local function on_gui_click(event)
     end
 
     if element.name == "slot_config_close_button" then
-        diverter_gui.close_slot_config(player, false) -- Cancel draft on X
+        diverter_gui.close_slot_config(player, false)
         return
     end
 
     if element.name == "quality_confirm_button" then
-        diverter_gui.close_slot_config(player, true) -- Confirm draft on checkmark
+        diverter_gui.close_slot_config(player, true)
         return
     end
 
@@ -485,6 +522,7 @@ local function on_gui_click(event)
                 text = "Pasted settings to Port " .. tags.port_index,
                 create_at_cursor = true
             }
+            diverter_gui.refresh_if_open(tags.unit_number)
         end
         return
     end
@@ -536,8 +574,8 @@ end
 local function on_gui_checked_state_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags
-    if not (tags and tags.unit_number) then return end
+    local tags = get_element_tags(element)
+    if not tags.unit_number then return end
 
     local settings = diverter_settings.get(tags.unit_number)
 
@@ -552,7 +590,7 @@ local function on_gui_checked_state_changed(event)
     end
 
     if not tags.port_index then return end
-    local port = settings.ports[tags.port_index]
+    local port = settings.ports and settings.ports[tags.port_index]
     if not port then return end
 
     if element.name == "port_enable" then
@@ -569,11 +607,11 @@ end
 local function on_gui_switch_state_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index) then return end
+    local tags = get_element_tags(element)
+    if not (tags.unit_number and tags.port_index) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
-    local port = settings.ports[tags.port_index]
+    local port = settings and settings.ports and settings.ports[tags.port_index]
     if not port then return end
 
     if element.name == "port_direction_switch" then
@@ -597,7 +635,7 @@ local function on_gui_elem_changed(event)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
 
-    local tags = element.tags or {}
+    local tags = get_element_tags(element)
     if not tags.unit_number then return end
 
     if element.name == "port_circuit_signal" and tags.port_index then
@@ -630,7 +668,7 @@ local function on_gui_selection_state_changed(event)
     local player = game.get_player(event.player_index)
     if not (player and player.valid) then return end
 
-    local tags = element.tags or {}
+    local tags = get_element_tags(element)
     if not tags.unit_number then return end
 
     if element.name == "port_circuit_comparator" and tags.port_index then
@@ -661,8 +699,8 @@ end
 local function on_gui_text_changed(event)
     local element = event.element
     if not (element and element.valid) then return end
-    local tags = element.tags
-    if not (tags and tags.unit_number and tags.port_index) then return end
+    local tags = get_element_tags(element)
+    if not (tags.unit_number and tags.port_index) then return end
 
     local settings = diverter_settings.get(tags.unit_number)
     local port = settings and settings.ports and settings.ports[tags.port_index]
@@ -696,15 +734,6 @@ local function on_gui_closed(event)
         end
     end
 end
-
-active_device_scanner.on_settings_changed(function(entity)
-    if entity and entity.valid then
-        local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
-        if real_name == "pneumatic-diverter" then
-            diverter_gui.refresh_if_open(entity.unit_number)
-        end
-    end
-end)
 
 events.on_event("pneumatic-confirm-gui", function(event)
     local player = game.get_player(event.player_index)

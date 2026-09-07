@@ -13,16 +13,23 @@ local device_specs_by_name = {}
 local device_specs_list = {}
 local settings_changed_callbacks = {}
 
-local function get_pos_key(surface, position)
+local PROXY_NAMES = {
+    ["pneumatic-diverter-circuit-proxy"] = true,
+    ["pneumatic-pump-circuit-proxy"] = true
+}
+
+local function get_pos_key(surface, position, real_name)
     if not (surface and position) then return nil end
     local sname = type(surface) == "string" and surface or surface.name
     local px = position.x or position[1] or 0
     local py = position.y or position[2] or 0
-    return sname .. "@" .. px .. "," .. py
+    local prefix = real_name or "device"
+    return prefix .. "@" .. sname .. "@" .. px .. "," .. py
 end
 
 local function clear_diverter_compiled_filters(unit_number)
-    local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
+    local dev_id = diverter_settings.get_device_id(unit_number)
+    local d_settings = dev_id and storage.diverter_settings and storage.diverter_settings[dev_id]
     if d_settings and d_settings.ports then
         for i = 1, 4 do
             if d_settings.ports[i] then
@@ -60,6 +67,8 @@ function active_device_scanner.notify_settings_changed(entity)
 
     local is_ghost = (entity.name == "entity-ghost")
     local name = is_ghost and entity.ghost_name or entity.name
+    if PROXY_NAMES[name] or PROXY_NAMES[entity.name] then return end
+
     local spec = device_specs_by_name[name]
     if not spec then return end
 
@@ -114,11 +123,13 @@ active_device_scanner.register_device_type({
     storage_key = "active_pumps",
 
     init_settings = function(entity)
-        pump_settings.get(entity.unit_number)
+        local dev_id = pump_settings.get_device_id(entity)
+        pump_settings.get(dev_id)
     end,
 
     apply_blueprint_settings = function(entity, settings)
-        pump_settings.apply_blueprint_settings(entity.unit_number, settings)
+        local dev_id = pump_settings.get_device_id(entity)
+        pump_settings.apply_blueprint_settings(dev_id, settings)
     end,
 
     check_and_update_state = function(entity, forced)
@@ -152,19 +163,21 @@ active_device_scanner.register_device_type({
     storage_key = "active_diverters",
 
     init_settings = function(entity)
-        diverter_settings.get(entity.unit_number)
+        local dev_id = diverter_settings.get_device_id(entity)
+        diverter_settings.get(dev_id)
     end,
 
     apply_blueprint_settings = function(entity, settings)
-        diverter_settings.apply_blueprint_settings(entity.unit_number, settings)
+        local dev_id = diverter_settings.get_device_id(entity)
+        diverter_settings.apply_blueprint_settings(dev_id, settings)
     end,
 
     on_rotate = function(entity, event)
-        local unit_number = entity.unit_number
+        local dev_id = diverter_settings.get_device_id(entity)
         if event.previous_direction ~= nil then
-            diverter_settings.rotate_ports(unit_number, event.previous_direction, entity.direction)
+            diverter_settings.rotate_ports(dev_id, event.previous_direction, entity.direction)
         elseif event.horizontal ~= nil or event.vertical ~= nil then
-            diverter_settings.flip_ports(unit_number, event.horizontal, event.vertical)
+            diverter_settings.flip_ports(dev_id, event.horizontal, event.vertical)
         end
     end,
 
@@ -224,31 +237,48 @@ function active_device_scanner.register_events()
             if entity and entity.valid then
                 local is_ghost = (entity.name == "entity-ghost")
                 local real_name = is_ghost and entity.ghost_name or entity.name
+
+                if PROXY_NAMES[real_name] or PROXY_NAMES[entity.name] then return end
+
                 local spec = device_specs_by_name[real_name]
 
                 if spec then
-                    local unit_number = entity.unit_number
-                    local pos_key = get_pos_key(entity.surface, entity.position)
+                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
+                    local pos_key = get_pos_key(entity.surface, entity.position, real_name)
 
                     if is_ghost then
                         storage.ghost_devices = storage.ghost_devices or {}
-                        storage.ghost_devices[unit_number] = entity
+                        storage.ghost_devices[dev_id] = entity
                         if pos_key then
                             storage.ghost_by_pos = storage.ghost_by_pos or {}
-                            storage.ghost_by_pos[pos_key] = unit_number
+                            storage.ghost_by_pos[pos_key] = dev_id
                         end
+                        storage.ghost_directions = storage.ghost_directions or {}
+                        storage.ghost_directions[dev_id] = entity.direction
                     else
                         storage[spec.storage_key] = storage[spec.storage_key] or {}
-                        storage[spec.storage_key][unit_number] = entity
+                        storage[spec.storage_key][entity.unit_number] = entity
                     end
 
-                    local ghost_unit_number = nil
+                    local ghost_id = nil
                     if not is_ghost then
                         if pos_key and storage.ghost_by_pos then
-                            ghost_unit_number = storage.ghost_by_pos[pos_key]
+                            ghost_id = storage.ghost_by_pos[pos_key]
                         end
-                        if not ghost_unit_number and event.source and event.source.valid then
-                            ghost_unit_number = event.source.unit_number
+                        if not ghost_id and event.consumed_ghost and event.consumed_ghost.valid then
+                            ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(event.consumed_ghost) or pump_settings.get_device_id(event.consumed_ghost)
+                        end
+                        if not ghost_id and event.source and event.source.valid then
+                            ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(event.source) or pump_settings.get_device_id(event.source)
+                        end
+                        if not ghost_id then
+                            local ghosts = entity.surface.find_entities_filtered{
+                                ghost_name = real_name,
+                                position = entity.position
+                            }
+                            if ghosts and ghosts[1] and ghosts[1].valid then
+                                ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(ghosts[1]) or pump_settings.get_device_id(ghosts[1])
+                            end
                         end
                     end
 
@@ -258,21 +288,31 @@ function active_device_scanner.register_events()
                             spec.apply_blueprint_settings(entity, event.tags.pneumatic_settings)
                             copied = true
                         end
-                    elseif ghost_unit_number then
+                    elseif ghost_id and ghost_id ~= dev_id and not is_ghost then
+                        local src_dir = (storage.ghost_directions and storage.ghost_directions[ghost_id])
+                            or (event.consumed_ghost and event.consumed_ghost.valid and event.consumed_ghost.direction)
+                            or (event.source and event.source.valid and event.source.direction)
+                            or entity.direction
+
                         if spec.name == "pneumatic-pump" then
-                            copied = (pump_settings.copy(ghost_unit_number, unit_number) ~= nil)
+                            copied = (pump_settings.copy(ghost_id, dev_id) ~= nil)
                         elseif spec.name == "pneumatic-diverter" then
-                            local src_dir = event.source and event.source.valid and event.source.direction or entity.direction
-                            copied = (diverter_settings.copy(ghost_unit_number, unit_number, src_dir, entity.direction) ~= nil)
+                            copied = (diverter_settings.copy(ghost_id, dev_id, src_dir, entity.direction) ~= nil)
                         end
 
                         if pos_key and storage.ghost_by_pos then
                             storage.ghost_by_pos[pos_key] = nil
                         end
+                        if storage.ghost_directions then
+                            storage.ghost_directions[ghost_id] = nil
+                        end
+                        if storage.ghost_devices then
+                            storage.ghost_devices[ghost_id] = nil
+                        end
                         if storage.diverter_settings and spec.name == "pneumatic-diverter" then
-                            storage.diverter_settings[ghost_unit_number] = nil
+                            storage.diverter_settings[ghost_id] = nil
                         elseif storage.pump_settings and spec.name == "pneumatic-pump" then
-                            storage.pump_settings[ghost_unit_number] = nil
+                            storage.pump_settings[ghost_id] = nil
                         end
                     end
 
@@ -289,8 +329,8 @@ function active_device_scanner.register_events()
                             spec.check_and_update_state(entity, true)
                         end
 
-                        flow_engine.enqueue_unit_ports(unit_number)
-                        capsule_runner.wake_parked_capsules(unit_number)
+                        flow_engine.enqueue_unit_ports(entity.unit_number)
+                        capsule_runner.wake_parked_capsules(entity.unit_number)
                     end
                 end
             end
@@ -310,28 +350,40 @@ function active_device_scanner.register_events()
             if entity and entity.valid then
                 local is_ghost = (entity.name == "entity-ghost")
                 local real_name = is_ghost and entity.ghost_name or entity.name
+
+                if PROXY_NAMES[real_name] or PROXY_NAMES[entity.name] then return end
+
                 local spec = device_specs_by_name[real_name]
                 if spec then
-                    local unit_number = entity.unit_number
+                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
                     if is_ghost then
-                        local pos_key = get_pos_key(entity.surface, entity.position)
+                        local pos_key = get_pos_key(entity.surface, entity.position, real_name)
                         if pos_key and storage.ghost_by_pos then
                             storage.ghost_by_pos[pos_key] = nil
                         end
-                    end
-                    if storage.ghost_devices then
-                        storage.ghost_devices[unit_number] = nil
-                    end
-                    if storage[spec.storage_key] then
-                        storage[spec.storage_key][unit_number] = nil
-                    end
-                    if spec.name == "pneumatic-pump" and storage.pump_settings then
-                        storage.pump_settings[unit_number] = nil
-                    elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
-                        storage.diverter_settings[unit_number] = nil
+                        if storage.ghost_directions then
+                            storage.ghost_directions[dev_id] = nil
+                        end
+                        if storage.ghost_devices then
+                            storage.ghost_devices[dev_id] = nil
+                        end
+                        if spec.name == "pneumatic-pump" and storage.pump_settings then
+                            storage.pump_settings[dev_id] = nil
+                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
+                            storage.diverter_settings[dev_id] = nil
+                        end
+                    else
+                        if storage[spec.storage_key] and entity.unit_number then
+                            storage[spec.storage_key][entity.unit_number] = nil
+                        end
+                        if spec.name == "pneumatic-pump" and storage.pump_settings then
+                            storage.pump_settings[dev_id] = nil
+                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
+                            storage.diverter_settings[dev_id] = nil
+                        end
                     end
                     if spec.on_unregister then
-                        spec.on_unregister(entity, unit_number)
+                        spec.on_unregister(entity, entity.unit_number)
                     end
                 end
             end
@@ -348,10 +400,18 @@ function active_device_scanner.register_events()
             if entity and entity.valid then
                 local is_ghost = (entity.name == "entity-ghost")
                 local real_name = is_ghost and entity.ghost_name or entity.name
+
+                if PROXY_NAMES[real_name] or PROXY_NAMES[entity.name] then return end
+
                 local spec = device_specs_by_name[real_name]
                 if spec then
+                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
                     if spec.on_rotate then
                         spec.on_rotate(entity, event)
+                    end
+                    if is_ghost then
+                        storage.ghost_directions = storage.ghost_directions or {}
+                        storage.ghost_directions[dev_id] = entity.direction
                     end
                     active_device_scanner.notify_settings_changed(entity)
                 end

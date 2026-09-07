@@ -5,11 +5,39 @@ local diverter_settings = {}
 diverter_settings.DEFAULT_CAPACITY = 2
 
 local DIRECTION_TO_INDEX = {
-    [defines.direction.north] = 1,
-    [defines.direction.east]  = 2,
-    [defines.direction.south] = 3,
-    [defines.direction.west]  = 4
+    [0]  = 1, -- North
+    [1]  = 1,
+    [2]  = 2, -- East (4-way) or NE
+    [3]  = 4, -- West (4-way)
+    [4]  = 2, -- East (16-way)
+    [8]  = 3, -- South (16-way)
+    [12] = 4  -- West (16-way)
 }
+if defines and defines.direction then
+    DIRECTION_TO_INDEX[defines.direction.north] = 1
+    DIRECTION_TO_INDEX[defines.direction.east]  = 2
+    DIRECTION_TO_INDEX[defines.direction.south] = 3
+    DIRECTION_TO_INDEX[defines.direction.west]  = 4
+end
+
+local function get_device_id(entity)
+    if not entity then return nil end
+    if type(entity) == "number" or type(entity) == "string" then
+        return entity
+    end
+    if not entity.valid then return nil end
+    if entity.unit_number then
+        return entity.unit_number
+    end
+    local pos = entity.position
+    local sname = entity.surface and entity.surface.name or "unknown"
+    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    local px = pos and (pos.x or pos[1] or 0) or 0
+    local py = pos and (pos.y or pos[2] or 0) or 0
+    return "ghost@" .. real_name .. "@" .. sname .. "@" .. px .. "," .. py
+end
+
+diverter_settings.get_device_id = get_device_id
 
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target
@@ -23,20 +51,20 @@ local function evaluate_condition(val, operator, target)
 end
 
 function diverter_settings.get(unit_number)
+    local dev_id = get_device_id(unit_number)
+    if not dev_id then return nil end
+
     storage.diverter_settings = storage.diverter_settings or {}
-    if not storage.diverter_settings[unit_number] then
-        storage.diverter_settings[unit_number] = {
+    if not storage.diverter_settings[dev_id] then
+        storage.diverter_settings[dev_id] = {
             capacity = diverter_settings.DEFAULT_CAPACITY,
             read_red = true,
             read_green = true,
             ports = {
-                [1] = { -- Port 1: North
-                    enabled = true,
-                    use_circuit_enable = false,
+                [1] = {
+                    enabled = true, use_circuit_enable = false,
                     enable_condition = { first_signal = nil, comparator = "=", constant = 0 },
-                    mode = "input",
-                    use_filters = false,
-                    filter_mode = "whitelist",
+                    mode = "input", use_filters = false, filter_mode = "whitelist",
                     filters = {
                         [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
                         [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
@@ -45,13 +73,10 @@ function diverter_settings.get(unit_number)
                         [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
-                [2] = { -- Port 2: East
-                    enabled = true,
-                    use_circuit_enable = false,
+                [2] = {
+                    enabled = true, use_circuit_enable = false,
                     enable_condition = { first_signal = nil, comparator = "=", constant = 0 },
-                    mode = "input",
-                    use_filters = false,
-                    filter_mode = "whitelist",
+                    mode = "input", use_filters = false, filter_mode = "whitelist",
                     filters = {
                         [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
                         [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
@@ -60,13 +85,10 @@ function diverter_settings.get(unit_number)
                         [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
-                [3] = { -- Port 3: South
-                    enabled = true,
-                    use_circuit_enable = false,
+                [3] = {
+                    enabled = true, use_circuit_enable = false,
                     enable_condition = { first_signal = nil, comparator = "=", constant = 0 },
-                    mode = "input",
-                    use_filters = false,
-                    filter_mode = "whitelist",
+                    mode = "input", use_filters = false, filter_mode = "whitelist",
                     filters = {
                         [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
                         [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
@@ -75,13 +97,10 @@ function diverter_settings.get(unit_number)
                         [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
                     }
                 },
-                [4] = { -- Port 4: West
-                    enabled = true,
-                    use_circuit_enable = false,
+                [4] = {
+                    enabled = true, use_circuit_enable = false,
                     enable_condition = { first_signal = nil, comparator = "=", constant = 0 },
-                    mode = "input",
-                    use_filters = false,
-                    filter_mode = "whitelist",
+                    mode = "input", use_filters = false, filter_mode = "whitelist",
                     filters = {
                         [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
                         [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
@@ -93,7 +112,7 @@ function diverter_settings.get(unit_number)
             }
         }
     else
-        local s = storage.diverter_settings[unit_number]
+        local s = storage.diverter_settings[dev_id]
         if s.capacity == nil then s.capacity = diverter_settings.DEFAULT_CAPACITY end
         if s.read_red == nil then s.read_red = true end
         if s.read_green == nil then s.read_green = true end
@@ -101,53 +120,25 @@ function diverter_settings.get(unit_number)
             for i = 1, 4 do
                 local p = s.ports[i]
                 if p then
+                    if p.enabled == nil then p.enabled = true end
                     if p.use_circuit_enable == nil then p.use_circuit_enable = false end
-                    if p.enable_condition == nil then
-                        p.enable_condition = { first_signal = nil, comparator = "=", constant = 0 }
-                    end
-                    if not p.filters then
-                        p.filters = {
-                            [1] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
-                            [2] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
-                            [3] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
-                            [4] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil },
-                            [5] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
-                        }
-                    else
-                        for j = 1, 5 do
-                            if not p.filters[j] then
-                                p.filters[j] = { comparator = "Any Quality", quality = "normal", item = nil, explicit_quality = nil }
-                            else
-                                if p.filters[j].comparator == nil then
-                                    p.filters[j].comparator = "Any Quality"
-                                end
-                                if p.filters[j].quality == nil then
-                                    p.filters[j].quality = "normal"
-                                end
-                                if p.filters[j].comparator == "Any Quality" or p.filters[j].comparator == "Any" then
-                                    p.filters[j].quality = "normal"
-                                    p.filters[j].explicit_quality = nil
-                                elseif p.filters[j].item ~= nil or (p.filters[j].comparator ~= "Any Quality" and p.filters[j].comparator ~= "Any") then
-                                    if p.filters[j].explicit_quality == nil then
-                                        p.filters[j].explicit_quality = true
-                                    end
-                                end
-                            end
-                        end
-                    end
+                    if p.use_filters == nil then p.use_filters = false end
+                    if p.filter_mode == nil then p.filter_mode = "whitelist" end
+                    if p.mode == nil then p.mode = "input" end
                 end
             end
         end
     end
-    return storage.diverter_settings[unit_number]
+    return storage.diverter_settings[dev_id]
 end
 
 function diverter_settings.rotate_ports_by_steps(unit_number, steps)
-    if not unit_number or not steps then return nil end
+    local dev_id = get_device_id(unit_number)
+    if not dev_id or not steps then return nil end
     steps = steps % 4
     if steps == 0 then return nil end
 
-    local settings = diverter_settings.get(unit_number)
+    local settings = diverter_settings.get(dev_id)
     if not (settings and settings.ports) then return nil end
 
     local old_ports = settings.ports
@@ -166,21 +157,23 @@ function diverter_settings.rotate_ports_by_steps(unit_number, steps)
 end
 
 function diverter_settings.rotate_ports(unit_number, previous_direction, new_direction)
-    if not (unit_number and previous_direction and new_direction) then return nil end
+    local dev_id = get_device_id(unit_number)
+    if not (dev_id and previous_direction and new_direction) then return nil end
     local old_idx = DIRECTION_TO_INDEX[previous_direction]
     local new_idx = DIRECTION_TO_INDEX[new_direction]
     if old_idx and new_idx then
         local steps = (new_idx - old_idx) % 4
         if steps ~= 0 then
-            return diverter_settings.rotate_ports_by_steps(unit_number, steps)
+            return diverter_settings.rotate_ports_by_steps(dev_id, steps)
         end
     end
     return nil
 end
 
 function diverter_settings.flip_ports(unit_number, horizontal, vertical)
-    if not unit_number then return nil end
-    local settings = diverter_settings.get(unit_number)
+    local dev_id = get_device_id(unit_number)
+    if not dev_id then return nil end
+    local settings = diverter_settings.get(dev_id)
     if not (settings and settings.ports) then return nil end
 
     local old_ports = settings.ports
@@ -208,8 +201,10 @@ function diverter_settings.flip_ports(unit_number, horizontal, vertical)
 end
 
 function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction, dest_direction)
-    if not (src_unit_number and dest_unit_number) then return nil end
-    local src = diverter_settings.get(src_unit_number)
+    local src_id = get_device_id(src_unit_number)
+    local dest_id = get_device_id(dest_unit_number)
+    if not (src_id and dest_id) then return nil end
+    local src = diverter_settings.get(src_id)
     if not src then return nil end
 
     storage.diverter_settings = storage.diverter_settings or {}
@@ -237,13 +232,14 @@ function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction
             end
         end
     end
-    storage.diverter_settings[dest_unit_number] = copy
+    storage.diverter_settings[dest_id] = copy
     return copy
 end
 
 function diverter_settings.copy_port(unit_number, port_index)
-    if not (unit_number and port_index) then return nil end
-    local settings = diverter_settings.get(unit_number)
+    local dev_id = get_device_id(unit_number)
+    if not (dev_id and port_index) then return nil end
+    local settings = diverter_settings.get(dev_id)
     local port = settings and settings.ports and settings.ports[port_index]
     if not port then return nil end
 
@@ -253,8 +249,9 @@ function diverter_settings.copy_port(unit_number, port_index)
 end
 
 function diverter_settings.paste_port(unit_number, port_index, src_port_data)
-    if not (unit_number and port_index and src_port_data) then return nil end
-    local settings = diverter_settings.get(unit_number)
+    local dev_id = get_device_id(unit_number)
+    if not (dev_id and port_index and src_port_data) then return nil end
+    local settings = diverter_settings.get(dev_id)
     local port = settings and settings.ports and settings.ports[port_index]
     if not port then return nil end
 
@@ -265,7 +262,8 @@ function diverter_settings.paste_port(unit_number, port_index, src_port_data)
 end
 
 function diverter_settings.apply_blueprint_settings(unit_number, blueprint_settings)
-    if not (unit_number and blueprint_settings) then return nil end
+    local dev_id = get_device_id(unit_number)
+    if not (dev_id and blueprint_settings) then return nil end
     storage.diverter_settings = storage.diverter_settings or {}
     local copy = util.table.deepcopy(blueprint_settings)
     if copy.ports then
@@ -275,13 +273,14 @@ function diverter_settings.apply_blueprint_settings(unit_number, blueprint_setti
             end
         end
     end
-    storage.diverter_settings[unit_number] = copy
+    storage.diverter_settings[dev_id] = copy
     return copy
 end
 
 function diverter_settings.get_capacity(unit_number)
-    if not unit_number then return diverter_settings.DEFAULT_CAPACITY end
-    local s = storage.diverter_settings and storage.diverter_settings[unit_number]
+    local dev_id = get_device_id(unit_number)
+    if not dev_id then return diverter_settings.DEFAULT_CAPACITY end
+    local s = storage.diverter_settings and storage.diverter_settings[dev_id]
     return (s and s.capacity) or diverter_settings.DEFAULT_CAPACITY
 end
 
@@ -318,8 +317,11 @@ function diverter_settings.evaluate_circuit_condition(proxy_entity, condition, r
 end
 
 function diverter_settings.is_port_enabled(entity, port_index)
-    if not (entity and entity.valid and entity.unit_number) then return false end
-    local settings = diverter_settings.get(entity.unit_number)
+    if not (entity and entity.valid) then return false end
+    local dev_id = get_device_id(entity)
+    if not dev_id then return false end
+
+    local settings = diverter_settings.get(dev_id)
     local p_setting = settings and settings.ports and settings.ports[port_index]
     if not p_setting then return false end
 

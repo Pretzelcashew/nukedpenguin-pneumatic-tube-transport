@@ -40,7 +40,8 @@ data:extend({
       { type = "unlock-recipe", recipe = "capsule-hub-vertical" },
       { type = "unlock-recipe", recipe = "pneumatic-tube" },
       { type = "unlock-recipe", recipe = "pneumatic-pump" },
-      { type = "unlock-recipe", recipe = "junction" }
+      { type = "unlock-recipe", recipe = "junction" },
+      { type = "unlock-recipe", recipe = "pneumatic-capsule-counter" }
     },
     order = "c-a[pneumatic-transport]"
   },

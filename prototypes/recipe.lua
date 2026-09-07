@@ -180,5 +180,19 @@ data:extend({
     results = {
       {type = "item", name = "pneumatic-diverter", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "pneumatic-capsule-counter",
+    enabled = false,
+    energy_required = 3.0,
+    ingredients = {
+      {type = "item", name = "pneumatic-tube", amount = 2},
+      {type = "item", name = "advanced-circuit", amount = 5},
+      {type = "item", name = "arithmetic-combinator", amount = 1}
+    },
+    results = {
+      {type = "item", name = "pneumatic-capsule-counter", amount = 1}
+    }
   }
 })

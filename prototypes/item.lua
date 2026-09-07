@@ -15,6 +15,7 @@ local palette = {
   junction     = {r = 1.00, g = 0.90, b = 0.30, a = 1.0}, -- Junction Yellow
   crossflow    = {r = 0.80, g = 0.40, b = 0.90, a = 1.0}, -- Crossflow Purple
   diverter     = {r = 0.25, g = 0.80, b = 0.60, a = 1.0}, -- Diverter Emerald
+  counter      = {r = 0.30, g = 0.85, b = 0.70, a = 1.0}, -- Counter Teal
 }
 
 local function icon(path, tint)
@@ -110,6 +111,15 @@ data:extend({
     order = "g[hub-vertical]",
     stack_size = 5,
     place_result = "capsule-hub-vertical"
+  },
+  {
+    type = "item",
+    name = "pneumatic-capsule-counter",
+    icons = icon("__base__/graphics/icons/decider-combinator.png", palette.counter),
+    subgroup = "pneumatic-transport",
+    order = "h[counter]",
+    stack_size = 20,
+    place_result = "pneumatic-capsule-counter"
   },
 
   -- Capsule Vessels Line Items

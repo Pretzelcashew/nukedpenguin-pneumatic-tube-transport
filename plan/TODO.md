@@ -45,6 +45,7 @@ example scenario provided in image: where you'd want extra capsules for sending 
 
 ~fix en locale for all recipes that do not have an entry
 
+~consider removing pneumatic entity setting adoption of ghosts when placing over entity which would be a different bounding box shape or orientation. inother words, if the entity placed on the ghost isnt square on it dont adopt the settings from the ghost. (however, rotations and flips are fair game to adopt settings if they dont violate this principle)
 
 --------------------------------------------
 
@@ -54,7 +55,9 @@ consider adding capsule counter entity (1x2, uses power, reads how many capsules
 
 add ladder for going over pneumatic tubes with character
 
-consider removing pneumatic entity setting adoption of ghosts when placing over entity which would be a different bounding box shape or orientation. inother words, if the entity placed on the ghost isnt square on it dont adopt the settings from the ghost. (however, rotations and flips are fair game to adopt settings if they dont violate this principle)
+add a pneumatic gate which lets capsules through when closed
+
+
 
 
 

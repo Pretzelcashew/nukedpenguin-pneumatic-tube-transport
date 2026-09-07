@@ -1,5 +1,6 @@
 local events = require("scripts.events")
 local flow_engine = require("scripts.flow.flow-engine")
+local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
@@ -15,7 +16,8 @@ local settings_changed_callbacks = {}
 
 local PROXY_NAMES = {
     ["pneumatic-diverter-circuit-proxy"] = true,
-    ["pneumatic-pump-circuit-proxy"] = true
+    ["pneumatic-pump-circuit-proxy"] = true,
+    ["pneumatic-capsule-counter-circuit-proxy"] = true
 }
 
 local function get_pos_key(surface, position, real_name)
@@ -150,6 +152,7 @@ function active_device_scanner.notify_settings_changed(entity)
 
     if not is_ghost then
         flow_engine.enqueue_unit_ports(unit_number)
+        counter_range.enqueue_unit_ports(unit_number)
         capsule_runner.wake_parked_capsules(unit_number)
     end
 end
@@ -164,6 +167,7 @@ local function scan_active_devices()
                         local changed = spec.check_and_update_state(entity, false)
                         if changed then
                             flow_engine.enqueue_unit_ports(unit_number)
+                            counter_range.enqueue_unit_ports(unit_number)
                             capsule_runner.wake_parked_capsules(unit_number)
                         end
                     end
@@ -274,6 +278,31 @@ active_device_scanner.register_device_type({
         if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
         if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
         diverter_renderer.clear_render(unit_number)
+    end
+})
+
+active_device_scanner.register_device_type({
+    name = "pneumatic-capsule-counter",
+    entity_names = { "pneumatic-capsule-counter" },
+    storage_key = "active_counters",
+
+    check_and_update_state = function(entity, forced)
+        local unit_number = entity.unit_number
+        storage.counter_power_states = storage.counter_power_states or {}
+
+        local is_powered = (entity.energy > 0)
+        local last_power = storage.counter_power_states[unit_number]
+
+        if forced or is_powered ~= last_power then
+            storage.counter_power_states[unit_number] = is_powered
+            return true
+        end
+        return false
+    end,
+
+    on_unregister = function(entity, unit_number)
+        if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
+        counter_range.unregister_counter(unit_number)
     end
 })
 
@@ -431,6 +460,7 @@ function active_device_scanner.register_events()
                         end
 
                         flow_engine.enqueue_unit_ports(target_entity.unit_number)
+                        counter_range.enqueue_unit_ports(target_entity.unit_number)
                         capsule_runner.wake_parked_capsules(target_entity.unit_number)
                         active_device_scanner.notify_settings_changed(target_entity)
                     end
@@ -474,6 +504,7 @@ function active_device_scanner.register_events()
                         spec.check_and_update_state(entity, true)
                     end
                     flow_engine.enqueue_unit_ports(entity.unit_number)
+                    counter_range.enqueue_unit_ports(entity.unit_number)
                     capsule_runner.wake_parked_capsules(entity.unit_number)
                 end
                 active_device_scanner.notify_settings_changed(entity)

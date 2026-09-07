@@ -140,10 +140,6 @@ function flow_engine.get_node_emitter_level(node)
     return node.emitter
 end
 
---------------------------------------------------------------------------------
--- SPATIAL SPOTTED RENDER MANAGER (Single Render Per Tile Junction Location)
---------------------------------------------------------------------------------
-
 local function destroy_pos_renders(pos_key)
     for p_idx, p_renders in pairs(storage.flow_renders or {}) do
         local objs = p_renders[pos_key]
@@ -358,10 +354,6 @@ function flow_engine.draw_all(player_index)
     end
 end
 
---------------------------------------------------------------------------------
--- SPATIAL CONNECTION TOPOLOGY MANAGEMENT
---------------------------------------------------------------------------------
-
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if not registered_entities[entity.name] then return end
@@ -396,6 +388,7 @@ function flow_engine.connect_entity(entity)
             pos = {x = px, y = py},
             surface_name = surface_name,
             emitter = port.flow,
+            sense = port.sense,
             group = port.group,
             transmit = (port.transmit ~= false),
             cross_transit = (port.cross_transit == true)
@@ -562,12 +555,10 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
     if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
     if storage.diverter_settings then storage.diverter_settings[unit_number] = nil end
+    if storage.active_counters then storage.active_counters[unit_number] = nil end
+    if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
     if storage.spilled_containers then storage.spilled_containers[unit_number] = nil end
 end
-
---------------------------------------------------------------------------------
--- WAVEFRONT PROPAGATION STEPPER
---------------------------------------------------------------------------------
 
 local function compute_port_flow_level(pkey)
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
@@ -680,10 +671,6 @@ function flow_engine.step(tick)
         end
     end
 end
-
---------------------------------------------------------------------------------
--- EVENT REGISTRATION MANAGER
---------------------------------------------------------------------------------
 
 function flow_engine.register_events()
     events.on_event(defines.events.on_tick, function(event)

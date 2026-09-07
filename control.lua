@@ -17,12 +17,14 @@ require("scripts.capsules.capsule-inputs")
 
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
+local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 
 proxy_manager.register_events()
 active_device_scanner.register_events()
 device_settings_copier.register_events()
 flow_engine.register_events()
+counter_range.register_events()
 capsule_runner.register_events()
 
 local function setup_storage()
@@ -43,11 +45,14 @@ local function setup_storage()
     storage.active_diverters = storage.active_diverters or {}
     storage.diverter_power_states = storage.diverter_power_states or {}
     storage.diverter_port_states = storage.diverter_port_states or {}
+    storage.active_counters = storage.active_counters or {}
+    storage.counter_power_states = storage.counter_power_states or {}
     storage.bio_integrity_levels = storage.bio_integrity_levels or {}
 
     liminal_surface.init_storage()
 
     flow_engine.init_storage()
+    counter_range.init_storage()
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
 
@@ -85,6 +90,10 @@ local function setup_storage()
         for _, entity in ipairs(entities) do
             if entity.valid and entity.unit_number then
                 flow_engine.connect_entity(entity)
+                if entity.name == "pneumatic-capsule-counter" then
+                    storage.active_counters[entity.unit_number] = entity
+                    counter_range.register_counter(entity)
+                end
             end
         end
     end

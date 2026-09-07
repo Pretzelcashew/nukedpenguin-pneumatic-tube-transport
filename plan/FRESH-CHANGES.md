@@ -207,3 +207,11 @@
 1. **Self-Exclusion Removal Guard (`scripts/proxy-manager.lua`):** Updated `on_removed` to filter out `m ~= entity` and `g ~= entity` when evaluating remaining main or ghost entities at machine tile coordinates, preventing active destruction targets from falsely suppressing proxy removal.
 2. **Object Destruction Registration (`scripts/proxy-manager.lua`):** Registered main built and ghost entities with `script.register_on_object_destroyed` inside `on_created`, tracking registration IDs in `storage.proxy_destruction_map` alongside surface, spatial position, and proxy specification metadata.
 3. **Engine-Level Object Destroyed Callback (`scripts/proxy-manager.lua`):** Subscribed to `defines.events.on_object_destroyed` to catch C++ engine-level entity removals (such as super force building, fast replacement, and ghost cancellation). The callback evaluates remaining spatial main entities post-destruction and purges orphaned real and ghost circuit proxies when no host machine remains.
+
+
+### Revision: Complete English Locale Recipe Description Coverage
+**Date:** 2026-09-06 22:05 (EDT)
+**Context:** Achieve 100% English locale coverage for all pneumatic transport crafting recipes, ensuring detailed localized descriptions render cleanly in Factoriopedia and crafting menu tooltips.
+**Key Changes:**
+1. **Localized Recipe Description Section (`config.cfg`):** Added a dedicated `[recipe-description]` section to the English locale configuration file.
+2. **Comprehensive Recipe Description Entries (`config.cfg`):** Populated concise localized description strings for all 13 mod recipes (`item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `recharge-refrigerated-capsule`, `reinforced-capsule`, `player-transit-capsule`, `capsule-hub-horizontal`, `capsule-hub-vertical`, `pneumatic-tube`, `pneumatic-pump`, `junction`, `crossflow-junction`, and `pneumatic-diverter`), detailing operational roles, capsule behaviors, and thermal byproduct discharges.

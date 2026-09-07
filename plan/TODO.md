@@ -43,6 +43,7 @@ example scenario provided in image: where you'd want extra capsules for sending 
 
 ~~investigate the inconsistent manner of which pneumatic entities trigger their copy/paste settings (are hubs treated too special since their prototype allows native copy/paste events? or is this a necessary evil?)
 
+~fix en locale for all recipes that do not have an entry
 
 
 --------------------------------------------
@@ -55,7 +56,7 @@ add ladder for going over pneumatic tubes with character
 
 consider removing pneumatic entity setting adoption of ghosts when placing over entity which would be a different bounding box shape or orientation. inother words, if the entity placed on the ghost isnt square on it dont adopt the settings from the ghost. (however, rotations and flips are fair game to adopt settings if they dont violate this principle)
 
-fix en locale for all recipes that do not have an entry
+
 
 
 

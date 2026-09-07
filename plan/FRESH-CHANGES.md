@@ -215,3 +215,12 @@
 **Key Changes:**
 1. **Localized Recipe Description Section (`config.cfg`):** Added a dedicated `[recipe-description]` section to the English locale configuration file.
 2. **Comprehensive Recipe Description Entries (`config.cfg`):** Populated concise localized description strings for all 13 mod recipes (`item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `recharge-refrigerated-capsule`, `reinforced-capsule`, `player-transit-capsule`, `capsule-hub-horizontal`, `capsule-hub-vertical`, `pneumatic-tube`, `pneumatic-pump`, `junction`, `crossflow-junction`, and `pneumatic-diverter`), detailing operational roles, capsule behaviors, and thermal byproduct discharges.
+
+
+### Revision: Strict Ghost Settings Adoption, Spatial Bounding Box & Orientation Overlap
+**Date:** 2026-09-06 23:01 (EDT)
+**Context:** Prevent improper settings inheritance when placing physical entities or ghosts over ghosts with different bounding box shapes, orientation axes, or spatial offsets.
+**Key Changes:**
+1. **Strict Spatial Position Tolerance (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Tightened ghost spatial lookup distance matching from 1.2 tiles down to `< 0.1` tiles (`dx < 0.1, dy < 0.1`), preventing entities placed offset or 1 tile away from falsely adopting adjacent ghost configurations.
+2. **Orientation Axis Alignment Guard (`scripts/active-device-scanner.lua` & `scripts/diverter-settings.lua`):** Exported `diverter_settings.get_cardinal_index` to enforce orientation axis checks (`(g_idx % 2) == (e_idx % 2)`), ensuring 1x2 and 2x1 pumps only inherit settings when placed along matching orientation axes (blocking adoption when placing horizontal pumps over vertical ghost pumps).
+3. **Prototype Real-Name Compatibility (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Enforced exact prototype real-name equality (`g_real_name == real_name`) across ghost entity handles (`event.consumed_ghost`, `event.source`, or spatial lookup) prior to copying settings, preventing cross-prototype adoption between locked orientation hub variants (`capsule-hub-horizontal` vs `capsule-hub-vertical`).

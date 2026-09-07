@@ -37,6 +37,7 @@ local function on_hub_built(event)
         local pos_key = get_pos_key(entity.surface, entity.position)
 
         local ghost_unit_number = nil
+        local ghost_entity = nil
         if pos_key and storage.ghost_by_pos then
             ghost_unit_number = storage.ghost_by_pos[pos_key]
         end
@@ -50,7 +51,7 @@ local function on_hub_built(event)
                     local kx, ky = coords:match("^([^,]+),(.+)$")
                     if kx and ky then
                         local nx, ny = tonumber(kx), tonumber(ky)
-                        if nx and ny and math.abs(nx - px) < 1.2 and math.abs(ny - py) < 1.2 then
+                        if nx and ny and math.abs(nx - px) < 0.1 and math.abs(ny - py) < 0.1 then
                             ghost_unit_number = g_id
                             break
                         end
@@ -60,6 +61,7 @@ local function on_hub_built(event)
         end
         if not ghost_unit_number and event.source and event.source.valid then
             ghost_unit_number = event.source.unit_number
+            ghost_entity = event.source
         end
 
         if is_ghost then
@@ -75,10 +77,33 @@ local function on_hub_built(event)
             hub_settings.apply_blueprint_settings(unit_number, event.tags.pneumatic_settings)
             copied = true
         elseif ghost_unit_number and ghost_unit_number ~= unit_number then
-            copied = (hub_settings.copy(ghost_unit_number, unit_number) ~= nil)
+            local is_compatible = true
+            if not ghost_entity and storage.ghost_hubs then
+                ghost_entity = storage.ghost_hubs[ghost_unit_number]
+            end
+            if ghost_entity and ghost_entity.valid then
+                local g_real_name = (ghost_entity.name == "entity-ghost") and ghost_entity.ghost_name or ghost_entity.name
+                if g_real_name ~= real_name then
+                    is_compatible = false
+                end
+                local g_pos = ghost_entity.position
+                local e_pos = entity.position
+                local dx = math.abs((g_pos.x or g_pos[1]) - (e_pos.x or e_pos[1]))
+                local dy = math.abs((g_pos.y or g_pos[2]) - (e_pos.y or e_pos[2]))
+                if dx >= 0.1 or dy >= 0.1 then
+                    is_compatible = false
+                end
+            end
+
+            if is_compatible then
+                copied = (hub_settings.copy(ghost_unit_number, unit_number) ~= nil)
+            end
 
             if pos_key and storage.ghost_by_pos then
                 storage.ghost_by_pos[pos_key] = nil
+            end
+            if storage.ghost_hubs then
+                storage.ghost_hubs[ghost_unit_number] = nil
             end
             if storage.hub_settings then
                 storage.hub_settings[ghost_unit_number] = nil

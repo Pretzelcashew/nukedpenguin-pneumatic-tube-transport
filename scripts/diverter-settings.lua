@@ -20,6 +20,8 @@ local function get_cardinal_index(dir)
     return ((math.floor(dir / 4)) % 4) + 1
 end
 
+diverter_settings.get_cardinal_index = get_cardinal_index
+
 local function get_device_id(entity)
     if not entity then return nil end
     if type(entity) == "number" or type(entity) == "string" then

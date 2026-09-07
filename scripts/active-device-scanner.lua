@@ -28,7 +28,7 @@ local function get_pos_key(surface, position, real_name)
 end
 
 local function find_ghost_id_at_pos(surface, position, real_name, spec_name)
-    if not (surface and position) then return nil, nil end
+    if not (surface and position) then return nil, nil, nil end
     local sname = type(surface) == "string" and surface or surface.name
     local px = position.x or position[1] or 0
     local py = position.y or position[2] or 0
@@ -52,7 +52,7 @@ local function find_ghost_id_at_pos(surface, position, real_name, spec_name)
                     if kx and ky then
                         local nx = tonumber(kx)
                         local ny = tonumber(ky)
-                        if nx and ny and math.abs(nx - px) < 1.2 and math.abs(ny - py) < 1.2 then
+                        if nx and ny and math.abs(nx - px) < 0.1 and math.abs(ny - py) < 0.1 then
                             local g_dir = storage.ghost_directions and storage.ghost_directions[g_id]
                             return g_id, g_dir, pos_k
                         end
@@ -287,16 +287,24 @@ function active_device_scanner.register_events()
                     local ghost_id = nil
                     local ghost_dir = nil
                     local matched_pos_key = nil
+                    local ghost_entity = nil
 
                     ghost_id, ghost_dir, matched_pos_key = find_ghost_id_at_pos(entity.surface, entity.position, real_name, spec.name)
+                    if ghost_id and storage.ghost_devices then
+                        ghost_entity = storage.ghost_devices[ghost_id]
+                    end
 
                     if not ghost_id and event.consumed_ghost and event.consumed_ghost.valid then
-                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(event.consumed_ghost) or pump_settings.get_device_id(event.consumed_ghost)
-                        ghost_dir = event.consumed_ghost.direction
+                        local cg = event.consumed_ghost
+                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(cg) or pump_settings.get_device_id(cg)
+                        ghost_dir = cg.direction
+                        ghost_entity = cg
                     end
                     if not ghost_id and event.source and event.source.valid then
-                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(event.source) or pump_settings.get_device_id(event.source)
-                        ghost_dir = event.source.direction
+                        local src = event.source
+                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(src) or pump_settings.get_device_id(src)
+                        ghost_dir = src.direction
+                        ghost_entity = src
                     end
 
                     if is_ghost then
@@ -320,10 +328,35 @@ function active_device_scanner.register_events()
                             or (storage.ghost_directions and storage.ghost_directions[ghost_id])
                             or entity.direction
 
-                        if spec.name == "pneumatic-pump" then
-                            copied = (pump_settings.copy(ghost_id, dev_id) ~= nil)
-                        elseif spec.name == "pneumatic-diverter" then
-                            copied = (diverter_settings.copy(ghost_id, dev_id, src_dir, entity.direction) ~= nil)
+                        local is_compatible = true
+                        if ghost_entity and ghost_entity.valid then
+                            local g_pos = ghost_entity.position
+                            local e_pos = entity.position
+                            local dx = math.abs((g_pos.x or g_pos[1]) - (e_pos.x or e_pos[1]))
+                            local dy = math.abs((g_pos.y or g_pos[2]) - (e_pos.y or e_pos[2]))
+                            if dx >= 0.1 or dy >= 0.1 then
+                                is_compatible = false
+                            end
+                            local g_real_name = (ghost_entity.name == "entity-ghost") and ghost_entity.ghost_name or ghost_entity.name
+                            if g_real_name ~= real_name then
+                                is_compatible = false
+                            end
+                        end
+
+                        if is_compatible and spec.name == "pneumatic-pump" then
+                            local g_idx = diverter_settings.get_cardinal_index(src_dir)
+                            local e_idx = diverter_settings.get_cardinal_index(entity.direction)
+                            if (g_idx % 2) ~= (e_idx % 2) then
+                                is_compatible = false
+                            end
+                        end
+
+                        if is_compatible then
+                            if spec.name == "pneumatic-pump" then
+                                copied = (pump_settings.copy(ghost_id, dev_id) ~= nil)
+                            elseif spec.name == "pneumatic-diverter" then
+                                copied = (diverter_settings.copy(ghost_id, dev_id, src_dir, entity.direction) ~= nil)
+                            end
                         end
 
                         if matched_pos_key and storage.ghost_by_pos then

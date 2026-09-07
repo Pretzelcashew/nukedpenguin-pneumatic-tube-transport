@@ -36,33 +36,45 @@ local function on_hub_built(event)
         local unit_number = entity.unit_number
         local pos_key = get_pos_key(entity.surface, entity.position)
 
+        local ghost_unit_number = nil
+        if pos_key and storage.ghost_by_pos then
+            ghost_unit_number = storage.ghost_by_pos[pos_key]
+        end
+        if not ghost_unit_number and storage.ghost_by_pos then
+            local sname = entity.surface.name
+            local px = entity.position.x or entity.position[1] or 0
+            local py = entity.position.y or entity.position[2] or 0
+            for pos_k, g_id in pairs(storage.ghost_by_pos) do
+                local k_sname, coords = pos_k:match("^([^@]+)@(.+)$")
+                if k_sname == sname and coords then
+                    local kx, ky = coords:match("^([^,]+),(.+)$")
+                    if kx and ky then
+                        local nx, ny = tonumber(kx), tonumber(ky)
+                        if nx and ny and math.abs(nx - px) < 1.2 and math.abs(ny - py) < 1.2 then
+                            ghost_unit_number = g_id
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        if not ghost_unit_number and event.source and event.source.valid then
+            ghost_unit_number = event.source.unit_number
+        end
+
         if is_ghost then
             storage.ghost_hubs = storage.ghost_hubs or {}
             storage.ghost_hubs[unit_number] = entity
-            if pos_key then
-                storage.ghost_by_pos = storage.ghost_by_pos or {}
-                storage.ghost_by_pos[pos_key] = unit_number
-            end
         else
             storage.active_hubs = storage.active_hubs or {}
             storage.active_hubs[unit_number] = entity
-        end
-
-        local ghost_unit_number = nil
-        if not is_ghost then
-            if pos_key and storage.ghost_by_pos then
-                ghost_unit_number = storage.ghost_by_pos[pos_key]
-            end
-            if not ghost_unit_number and event.source and event.source.valid then
-                ghost_unit_number = event.source.unit_number
-            end
         end
 
         local copied = false
         if event.tags and event.tags.pneumatic_settings then
             hub_settings.apply_blueprint_settings(unit_number, event.tags.pneumatic_settings)
             copied = true
-        elseif ghost_unit_number then
+        elseif ghost_unit_number and ghost_unit_number ~= unit_number then
             copied = (hub_settings.copy(ghost_unit_number, unit_number) ~= nil)
 
             if pos_key and storage.ghost_by_pos then
@@ -71,6 +83,11 @@ local function on_hub_built(event)
             if storage.hub_settings then
                 storage.hub_settings[ghost_unit_number] = nil
             end
+        end
+
+        if is_ghost and pos_key then
+            storage.ghost_by_pos = storage.ghost_by_pos or {}
+            storage.ghost_by_pos[pos_key] = unit_number
         end
 
         if not copied then
@@ -94,19 +111,20 @@ local function on_hub_removed(event)
     if def then
         local unit_number = entity.unit_number
         if is_ghost then
+            if storage.ghost_hubs then
+                storage.ghost_hubs[unit_number] = nil
+            end
+        else
             local pos_key = get_pos_key(entity.surface, entity.position)
             if pos_key and storage.ghost_by_pos then
                 storage.ghost_by_pos[pos_key] = nil
             end
-        end
-        if storage.ghost_hubs then
-            storage.ghost_hubs[unit_number] = nil
-        end
-        if storage.active_hubs then
-            storage.active_hubs[unit_number] = nil
-        end
-        if storage.hub_settings then
-            storage.hub_settings[unit_number] = nil
+            if storage.active_hubs then
+                storage.active_hubs[unit_number] = nil
+            end
+            if storage.hub_settings then
+                storage.hub_settings[unit_number] = nil
+            end
         end
     end
 end

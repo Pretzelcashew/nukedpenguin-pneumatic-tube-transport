@@ -4,20 +4,20 @@ local diverter_settings = {}
 
 diverter_settings.DEFAULT_CAPACITY = 2
 
-local DIRECTION_TO_INDEX = {
-    [0]  = 1, -- North
-    [1]  = 1,
-    [2]  = 2, -- East (4-way) or NE
-    [3]  = 4, -- West (4-way)
-    [4]  = 2, -- East (16-way)
-    [8]  = 3, -- South (16-way)
-    [12] = 4  -- West (16-way)
-}
-if defines and defines.direction then
-    DIRECTION_TO_INDEX[defines.direction.north] = 1
-    DIRECTION_TO_INDEX[defines.direction.east]  = 2
-    DIRECTION_TO_INDEX[defines.direction.south] = 3
-    DIRECTION_TO_INDEX[defines.direction.west]  = 4
+local function get_cardinal_index(dir)
+    if not dir then return 1 end
+    if defines and defines.direction then
+        if dir == defines.direction.north then return 1 end
+        if dir == defines.direction.east then return 2 end
+        if dir == defines.direction.south then return 3 end
+        if dir == defines.direction.west then return 4 end
+    end
+    if dir == 0 then return 1
+    elseif dir == 1 or dir == 2 or dir == 4 then return 2
+    elseif dir == 3 or dir == 4 or dir == 8 then return 3
+    elseif dir == 6 or dir == 12 then return 4
+    end
+    return ((math.floor(dir / 4)) % 4) + 1
 end
 
 local function get_device_id(entity)
@@ -159,8 +159,8 @@ end
 function diverter_settings.rotate_ports(unit_number, previous_direction, new_direction)
     local dev_id = get_device_id(unit_number)
     if not (dev_id and previous_direction and new_direction) then return nil end
-    local old_idx = DIRECTION_TO_INDEX[previous_direction]
-    local new_idx = DIRECTION_TO_INDEX[new_direction]
+    local old_idx = get_cardinal_index(previous_direction)
+    local new_idx = get_cardinal_index(new_direction)
     if old_idx and new_idx then
         local steps = (new_idx - old_idx) % 4
         if steps ~= 0 then
@@ -204,7 +204,7 @@ function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction
     local src_id = get_device_id(src_unit_number)
     local dest_id = get_device_id(dest_unit_number)
     if not (src_id and dest_id) then return nil end
-    local src = diverter_settings.get(src_id)
+    local src = storage.diverter_settings and storage.diverter_settings[src_id]
     if not src then return nil end
 
     storage.diverter_settings = storage.diverter_settings or {}
@@ -216,8 +216,8 @@ function diverter_settings.copy(src_unit_number, dest_unit_number, src_direction
             end
         end
         if src_direction and dest_direction then
-            local old_idx = DIRECTION_TO_INDEX[src_direction]
-            local new_idx = DIRECTION_TO_INDEX[dest_direction]
+            local old_idx = get_cardinal_index(src_direction)
+            local new_idx = get_cardinal_index(dest_direction)
             if old_idx and new_idx then
                 local steps = (new_idx - old_idx) % 4
                 if steps ~= 0 then

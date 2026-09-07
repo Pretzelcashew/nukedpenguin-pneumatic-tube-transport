@@ -13,10 +13,32 @@ local function evaluate_condition(val, operator, target)
     return false
 end
 
+local function get_device_id(entity)
+    if not entity then return nil end
+    if type(entity) == "number" or type(entity) == "string" then
+        return entity
+    end
+    if not entity.valid then return nil end
+    if entity.unit_number then
+        return entity.unit_number
+    end
+    local pos = entity.position
+    local sname = entity.surface and entity.surface.name or "unknown"
+    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    local px = pos and (pos.x or pos[1] or 0) or 0
+    local py = pos and (pos.y or pos[2] or 0) or 0
+    return "ghost@" .. real_name .. "@" .. sname .. "@" .. px .. "," .. py
+end
+
+pump_settings.get_device_id = get_device_id
+
 function pump_settings.get(unit_number)
+    local dev_id = get_device_id(unit_number)
+    if not dev_id then return nil end
+
     storage.pump_settings = storage.pump_settings or {}
-    if not storage.pump_settings[unit_number] then
-        storage.pump_settings[unit_number] = {
+    if not storage.pump_settings[dev_id] then
+        storage.pump_settings[dev_id] = {
             enabled = true,
             use_circuit_enable = false,
             enable_condition = { first_signal = nil, comparator = "=", constant = 0 },
@@ -24,7 +46,7 @@ function pump_settings.get(unit_number)
             read_green = true
         }
     else
-        local s = storage.pump_settings[unit_number]
+        local s = storage.pump_settings[dev_id]
         if s.enabled == nil then s.enabled = true end
         if s.use_circuit_enable == nil then s.use_circuit_enable = false end
         if s.enable_condition == nil then
@@ -33,25 +55,28 @@ function pump_settings.get(unit_number)
         if s.read_red == nil then s.read_red = true end
         if s.read_green == nil then s.read_green = true end
     end
-    return storage.pump_settings[unit_number]
+    return storage.pump_settings[dev_id]
 end
 
 function pump_settings.copy(src_unit_number, dest_unit_number)
-    if not (src_unit_number and dest_unit_number) then return nil end
-    local src = pump_settings.get(src_unit_number)
+    local src_id = get_device_id(src_unit_number)
+    local dest_id = get_device_id(dest_unit_number)
+    if not (src_id and dest_id) then return nil end
+    local src = storage.pump_settings and storage.pump_settings[src_id]
     if not src then return nil end
 
     storage.pump_settings = storage.pump_settings or {}
     local copy = util.table.deepcopy(src)
-    storage.pump_settings[dest_unit_number] = copy
+    storage.pump_settings[dest_id] = copy
     return copy
 end
 
 function pump_settings.apply_blueprint_settings(unit_number, blueprint_settings)
-    if not (unit_number and blueprint_settings) then return nil end
+    local dev_id = get_device_id(unit_number)
+    if not (dev_id and blueprint_settings) then return nil end
     storage.pump_settings = storage.pump_settings or {}
     local copy = util.table.deepcopy(blueprint_settings)
-    storage.pump_settings[unit_number] = copy
+    storage.pump_settings[dev_id] = copy
     return copy
 end
 
@@ -88,8 +113,11 @@ function pump_settings.evaluate_circuit_condition(proxy_entity, condition, read_
 end
 
 function pump_settings.is_pump_enabled(entity)
-    if not (entity and entity.valid and entity.unit_number) then return false end
-    local settings = pump_settings.get(entity.unit_number)
+    if not (entity and entity.valid) then return false end
+    local dev_id = get_device_id(entity)
+    if not dev_id then return false end
+
+    local settings = pump_settings.get(dev_id)
     if not settings then return false end
 
     if entity.name == "entity-ghost" then

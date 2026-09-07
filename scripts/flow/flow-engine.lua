@@ -535,7 +535,9 @@ function flow_engine.connect_entity(entity)
             emitter = port.flow,
             sense = port.sense,
             group = port.group,
-            transmit = (port.transmit ~= false),
+            capsule_transmit = (port.capsule_transmit == true),
+            pressure_transmit = (port.pressure_transmit == true),
+            sense_transmit = (port.sense_transmit == true),
             cross_transit = (port.cross_transit == true)
         }
 
@@ -754,7 +756,7 @@ local function compute_port_counter_level(pkey)
         local check_node = storage.flow_nodes and storage.flow_nodes[check_pkey]
         if check_node then
             local is_self = (check_pkey == pkey)
-            local can_transmit_internally = node.transmit and check_node.transmit and (node.group ~= nil) and (check_node.group == node.group)
+            local can_transmit_internally = node.sense_transmit and check_node.sense_transmit and (node.group ~= nil) and (check_node.group == node.group)
 
             if is_self or can_transmit_internally then
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
@@ -831,7 +833,7 @@ local function compute_port_flow_level(pkey)
         local check_node = storage.flow_nodes and storage.flow_nodes[check_pkey]
         if check_node then
             local is_self = (check_pkey == pkey)
-            local can_transmit_internally = node.transmit and check_node.transmit and (node.group ~= nil) and (check_node.group == node.group)
+            local can_transmit_internally = node.pressure_transmit and check_node.pressure_transmit and (node.group ~= nil) and (check_node.group == node.group)
 
             if is_self or can_transmit_internally then
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
@@ -917,14 +919,17 @@ function flow_engine.step(tick)
         -- Propagation
         if flow_changed or range_changed then
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
-            if node and node.transmit then
+            if node then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then
                     for _, int_key in pairs(unit_ports) do
                         if int_key ~= pkey then
                             local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
-                            if int_node and int_node.transmit and int_node.group == node.group then
-                                flow_engine.enqueue_port(int_key)
+                            if int_node and int_node.group == node.group then
+                                if (flow_changed and node.pressure_transmit and int_node.pressure_transmit)
+                                   or (range_changed and node.sense_transmit and int_node.sense_transmit) then
+                                    flow_engine.enqueue_port(int_key)
+                                end
                             end
                         end
                     end

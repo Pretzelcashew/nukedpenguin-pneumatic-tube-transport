@@ -418,14 +418,14 @@ local function get_candidate_hops(from_port_key, tier)
                 end
             end
         else
-            if node.transmit and node.group ~= nil then
+            if node.capsule_transmit and node.group ~= nil then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
                 if unit_ports then
                     for i = 1, #unit_ports do
                         local int_key = unit_ports[i]
                         if int_key ~= from_port_key then
                             local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
-                            if int_node and int_node.transmit and int_node.group == node.group then
+                            if int_node and int_node.capsule_transmit and int_node.group == node.group then
                                 count = count + 1
                                 keys[count] = int_key
                                 vias[count] = from_port_key
@@ -476,6 +476,10 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
     local from_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
     local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
     if not (from_node and target_node) then return false end
+
+    if not (target_node.capsule_transmit or target_node.cross_transit or target_node.emitter) then
+        return false
+    end
 
     if target_node.emitter then
         local target_emitter_lvl = flow_engine.get_node_emitter_level(target_node)
@@ -710,12 +714,15 @@ function capsule_runner.find_best_hub_outbound_port(hub_entity, capsule_id)
 
         if neighbors and next(neighbors) ~= nil then
             for n_key in pairs(neighbors) do
-                local level = storage.flow_levels and storage.flow_levels[n_key] or 0
-                local drop = max_hub_level - level
-                if drop > max_drop then
-                    max_drop = drop
-                    best_port_key = pkey
-                    best_flow_level = level
+                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                if n_node and (n_node.capsule_transmit or n_node.cross_transit or n_node.emitter) then
+                    local level = storage.flow_levels and storage.flow_levels[n_key] or 0
+                    local drop = max_hub_level - level
+                    if drop > max_drop then
+                        max_drop = drop
+                        best_port_key = pkey
+                        best_flow_level = level
+                    end
                 end
             end
         end

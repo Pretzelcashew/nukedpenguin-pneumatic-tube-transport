@@ -12,6 +12,9 @@ require("scripts.diverter-settings")
 require("scripts.diverter-gui")
 require("scripts.pump-settings")
 require("scripts.pump-gui")
+require("scripts.counters.counter-settings")
+require("scripts.counters.counter-gui")
+require("scripts.counters.counter-logic")
 require("scripts.capsules.capsule-runner")
 require("scripts.capsules.capsule-inputs")
 
@@ -47,6 +50,7 @@ local function setup_storage()
     storage.diverter_port_states = storage.diverter_port_states or {}
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
+    storage.counter_settings = storage.counter_settings or {}
     storage.bio_integrity_levels = storage.bio_integrity_levels or {}
 
     liminal_surface.init_storage()

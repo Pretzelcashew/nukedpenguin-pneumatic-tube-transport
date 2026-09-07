@@ -1,5 +1,3 @@
--- File: scripts/active-device-scanner.lua
-
 local events = require("scripts.events")
 local flow_engine = require("scripts.flow.flow-engine")
 local counter_range = require("scripts.counters.counter-range")
@@ -21,7 +19,9 @@ local settings_changed_callbacks = {}
 local PROXY_NAMES = {
     ["pneumatic-diverter-circuit-proxy"] = true,
     ["pneumatic-pump-circuit-proxy"] = true,
-    ["pneumatic-capsule-counter-circuit-proxy"] = true
+    ["pneumatic-capsule-counter-circuit-proxy"] = true,
+    ["pneumatic-capsule-counter-red-proxy"] = true,
+    ["pneumatic-capsule-counter-green-proxy"] = true
 }
 
 local function get_spec_device_id(spec_name, entity)

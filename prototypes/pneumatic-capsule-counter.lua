@@ -29,8 +29,10 @@ if counter_pictures then
   apply_tint_to_sprite(counter_pictures.west, counter_tint)
 end
 
-local proxy = table.deepcopy(cc)
+local empty_sprite = util.empty_sprite()
 
+-- Main terminal circuit proxy (Selectable terminal where players connect wires)
+local proxy = table.deepcopy(cc)
 proxy.name = "pneumatic-capsule-counter-circuit-proxy"
 proxy.icon = counter_icon
 proxy.icon_size = counter_icon_size
@@ -50,8 +52,6 @@ proxy.draw_selection_box = false
 proxy.operable = true
 proxy.item_slot_count = 40
 proxy.minable = nil
-
-local empty_sprite = util.empty_sprite()
 proxy.sprites = {
   north = empty_sprite,
   east = empty_sprite,
@@ -59,6 +59,74 @@ proxy.sprites = {
   west = empty_sprite
 }
 proxy.activity_led_sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+
+-- Hidden Red channel circuit proxy (Emits Red wire signals strictly via internal Red wire)
+local red_proxy = table.deepcopy(cc)
+red_proxy.name = "pneumatic-capsule-counter-red-proxy"
+red_proxy.icon = counter_icon
+red_proxy.icon_size = counter_icon_size
+red_proxy.flags = {
+  "player-creation",
+  "placeable-off-grid",
+  "not-deconstructable",
+  "hide-alt-info",
+  "no-copy-paste"
+}
+red_proxy.placeable_by = {item = "pneumatic-capsule-counter", count = 0}
+red_proxy.collision_box = {{0, 0}, {0, 0}}
+red_proxy.collision_mask = {layers = {}}
+red_proxy.selection_box = {{0, 0}, {0, 0}}
+red_proxy.selection_priority = 0
+red_proxy.draw_selection_box = false
+red_proxy.operable = false
+red_proxy.item_slot_count = 40
+red_proxy.minable = nil
+red_proxy.sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+red_proxy.activity_led_sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+
+-- Hidden Green channel circuit proxy (Emits Green wire signals strictly via internal Green wire)
+local green_proxy = table.deepcopy(cc)
+green_proxy.name = "pneumatic-capsule-counter-green-proxy"
+green_proxy.icon = counter_icon
+green_proxy.icon_size = counter_icon_size
+green_proxy.flags = {
+  "player-creation",
+  "placeable-off-grid",
+  "not-deconstructable",
+  "hide-alt-info",
+  "no-copy-paste"
+}
+green_proxy.placeable_by = {item = "pneumatic-capsule-counter", count = 0}
+green_proxy.collision_box = {{0, 0}, {0, 0}}
+green_proxy.collision_mask = {layers = {}}
+green_proxy.selection_box = {{0, 0}, {0, 0}}
+green_proxy.selection_priority = 0
+green_proxy.draw_selection_box = false
+green_proxy.operable = false
+green_proxy.item_slot_count = 40
+green_proxy.minable = nil
+green_proxy.sprites = {
+  north = empty_sprite,
+  east = empty_sprite,
+  south = empty_sprite,
+  west = empty_sprite
+}
+green_proxy.activity_led_sprites = {
   north = empty_sprite,
   east = empty_sprite,
   south = empty_sprite,
@@ -92,6 +160,8 @@ data:extend({
     pictures = counter_pictures
   },
 
-  -- Circuit proxy combinator
-  proxy
+  -- Triple-Proxy circuit entities
+  proxy,
+  red_proxy,
+  green_proxy
 })

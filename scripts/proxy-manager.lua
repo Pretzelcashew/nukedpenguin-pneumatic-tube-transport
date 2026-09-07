@@ -12,6 +12,11 @@ function proxy_manager.register_pair(spec)
     if not (spec and spec.main_entity_name and spec.proxy_entity_name) then return end
     registered_mains[spec.main_entity_name] = spec
     registered_proxies[spec.proxy_entity_name] = spec
+    if spec.sub_proxies then
+        for _, sub_name in pairs(spec.sub_proxies) do
+            registered_proxies[sub_name] = spec
+        end
+    end
 end
 
 function proxy_manager.get_registered_proxies()
@@ -71,6 +76,70 @@ local function transfer_wire_connections(src_entity, dest_entity)
                     end
                 end
             end
+        end
+    end
+end
+
+local function get_wire_conn(entity, is_red)
+    if not (entity and entity.valid) then return nil end
+    local ids = {}
+    if is_red then
+        if defines and defines.wire_connector_id then
+            table.insert(ids, defines.wire_connector_id.circuit_red)
+            table.insert(ids, defines.wire_connector_id.combinator_input_red)
+            table.insert(ids, defines.wire_connector_id.combinator_output_red)
+        end
+        table.insert(ids, 1)
+    else
+        if defines and defines.wire_connector_id then
+            table.insert(ids, defines.wire_connector_id.circuit_green)
+            table.insert(ids, defines.wire_connector_id.combinator_input_green)
+            table.insert(ids, defines.wire_connector_id.combinator_output_green)
+        end
+        table.insert(ids, 2)
+    end
+    for _, id in ipairs(ids) do
+        if id then
+            local ok, conn = pcall(function() return entity.get_wire_connector(id, true) end)
+            if ok and conn then return conn end
+        end
+    end
+    return nil
+end
+
+local function connect_sub_proxies(primary_proxy, red_proxy, green_proxy)
+    if primary_proxy and primary_proxy.valid and red_proxy and red_proxy.valid then
+        local main_red = get_wire_conn(primary_proxy, true)
+        local sub_red = get_wire_conn(red_proxy, true)
+        if main_red and sub_red then
+            main_red.connect_to(sub_red)
+        end
+    end
+    if primary_proxy and primary_proxy.valid and green_proxy and green_proxy.valid then
+        local main_green = get_wire_conn(primary_proxy, false)
+        local sub_green = get_wire_conn(green_proxy, false)
+        if main_green and sub_green then
+            main_green.connect_to(sub_green)
+        end
+    end
+end
+
+local function destroy_all_proxies_at(surface, pos, spec)
+    if not (surface and surface.valid and pos and spec) then return end
+    local names = { spec.proxy_entity_name }
+    if spec.sub_proxies then
+        for _, sub_name in pairs(spec.sub_proxies) do
+            table.insert(names, sub_name)
+        end
+    end
+    for _, pname in ipairs(names) do
+        local proxies = surface.find_entities_filtered{ name = pname, position = pos }
+        for _, p in ipairs(proxies) do
+            if p.valid then p.destroy() end
+        end
+        local ghost_proxies = surface.find_entities_filtered{ ghost_name = pname, position = pos }
+        for _, g in ipairs(ghost_proxies) do
+            if g.valid then g.destroy() end
         end
     end
 end
@@ -149,6 +218,7 @@ local function on_created(event)
         storage.proxy_destruction_map[reg_id] = {
             main_name = main_spec.main_entity_name,
             proxy_name = main_spec.proxy_entity_name,
+            sub_proxies = main_spec.sub_proxies,
             surface = entity.surface,
             position = entity.position,
             offset = main_spec.offset
@@ -184,6 +254,53 @@ local function on_created(event)
             primary_proxy.direction = entity.direction
             primary_proxy.teleport(pos)
         end
+
+        local red_proxy = nil
+        local green_proxy = nil
+
+        if main_spec.sub_proxies then
+            if main_spec.sub_proxies.red then
+                local existing_red = entity.surface.find_entities_filtered{
+                    name = main_spec.sub_proxies.red,
+                    position = pos
+                }
+                red_proxy = existing_red[1]
+                if not (red_proxy and red_proxy.valid) then
+                    red_proxy = entity.surface.create_entity{
+                        name = main_spec.sub_proxies.red,
+                        position = pos,
+                        force = entity.force,
+                        direction = entity.direction
+                    }
+                    if red_proxy then red_proxy.destructible = false end
+                else
+                    red_proxy.direction = entity.direction
+                    red_proxy.teleport(pos)
+                end
+            end
+
+            if main_spec.sub_proxies.green then
+                local existing_green = entity.surface.find_entities_filtered{
+                    name = main_spec.sub_proxies.green,
+                    position = pos
+                }
+                green_proxy = existing_green[1]
+                if not (green_proxy and green_proxy.valid) then
+                    green_proxy = entity.surface.create_entity{
+                        name = main_spec.sub_proxies.green,
+                        position = pos,
+                        force = entity.force,
+                        direction = entity.direction
+                    }
+                    if green_proxy then green_proxy.destructible = false end
+                else
+                    green_proxy.direction = entity.direction
+                    green_proxy.teleport(pos)
+                end
+            end
+        end
+
+        connect_sub_proxies(primary_proxy, red_proxy, green_proxy)
 
         if primary_proxy and primary_proxy.valid then
             for _, g in ipairs(ghost_proxies) do
@@ -293,25 +410,10 @@ local function on_object_destroyed(event)
     end
 
     if not (remaining_main and remaining_main.valid) then
-        local proxies = surface.find_entities_filtered{
-            name = data.proxy_name,
-            position = pos
-        }
-        for _, proxy in ipairs(proxies) do
-            if proxy.valid then
-                proxy.destroy()
-            end
-        end
-
-        local ghost_proxies = surface.find_entities_filtered{
-            ghost_name = data.proxy_name,
-            position = pos
-        }
-        for _, g in ipairs(ghost_proxies) do
-            if g.valid then
-                g.destroy()
-            end
-        end
+        destroy_all_proxies_at(surface, pos, {
+            proxy_entity_name = data.proxy_name,
+            sub_proxies = data.sub_proxies
+        })
     end
 end
 
@@ -357,25 +459,7 @@ local function on_removed(event)
         end
 
         if not remaining_main then
-            local proxies = entity.surface.find_entities_filtered{
-                name = main_spec.proxy_entity_name,
-                position = pos
-            }
-            for _, proxy in ipairs(proxies) do
-                if proxy.valid then
-                    proxy.destroy()
-                end
-            end
-
-            local ghost_proxies = entity.surface.find_entities_filtered{
-                ghost_name = main_spec.proxy_entity_name,
-                position = pos
-            }
-            for _, g in ipairs(ghost_proxies) do
-                if g.valid then
-                    g.destroy()
-                end
-            end
+            destroy_all_proxies_at(entity.surface, pos, main_spec)
         end
 
     elseif proxy_spec then
@@ -410,24 +494,7 @@ local function on_removed(event)
         end
 
         if not main then
-            local proxies = entity.surface.find_entities_filtered{
-                name = proxy_spec.proxy_entity_name,
-                position = entity.position
-            }
-            for _, p in ipairs(proxies) do
-                if p.valid and p ~= entity then
-                    p.destroy()
-                end
-            end
-            local ghost_proxies = entity.surface.find_entities_filtered{
-                ghost_name = proxy_spec.proxy_entity_name,
-                position = entity.position
-            }
-            for _, g in ipairs(ghost_proxies) do
-                if g.valid and g ~= entity then
-                    g.destroy()
-                end
-            end
+            destroy_all_proxies_at(entity.surface, entity.position, proxy_spec)
         end
     end
 end
@@ -447,14 +514,23 @@ local function on_rotated(event)
         pos = { x = pos.x + spec.offset.x, y = pos.y + spec.offset.y }
     end
 
-    local proxies = entity.surface.find_entities_filtered{
-        name = spec.proxy_entity_name,
-        position = pos
-    }
-    for _, proxy in ipairs(proxies) do
-        if proxy.valid then
-            proxy.direction = entity.direction
-            proxy.teleport(pos)
+    local names = { spec.proxy_entity_name }
+    if spec.sub_proxies then
+        for _, sub_name in pairs(spec.sub_proxies) do
+            table.insert(names, sub_name)
+        end
+    end
+
+    for _, pname in ipairs(names) do
+        local proxies = entity.surface.find_entities_filtered{
+            name = pname,
+            position = pos
+        }
+        for _, proxy in ipairs(proxies) do
+            if proxy.valid then
+                proxy.direction = entity.direction
+                proxy.teleport(pos)
+            end
         end
     end
 end
@@ -532,6 +608,10 @@ proxy_manager.register_pair({
 proxy_manager.register_pair({
     main_entity_name = "pneumatic-capsule-counter",
     proxy_entity_name = "pneumatic-capsule-counter-circuit-proxy",
+    sub_proxies = {
+        red = "pneumatic-capsule-counter-red-proxy",
+        green = "pneumatic-capsule-counter-green-proxy"
+    },
     on_open_gui = function(player, entity)
         if counter_gui and counter_gui.open then
             counter_gui.open(player, entity)

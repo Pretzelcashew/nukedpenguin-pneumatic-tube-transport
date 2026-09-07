@@ -35,8 +35,8 @@ local function resolve_target_entity(entity)
     if TARGET_NAMES[name] then
         return entity
     end
-    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" or name == "pneumatic-capsule-counter-circuit-proxy" then
-        local main_name = name:gsub("-circuit-proxy", "")
+    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" or name == "pneumatic-capsule-counter-circuit-proxy" or name == "pneumatic-capsule-counter-red-proxy" or name == "pneumatic-capsule-counter-green-proxy" then
+        local main_name = name:gsub("%-circuit%-proxy", ""):gsub("%-red%-proxy", ""):gsub("%-green%-proxy", "")
         local main = entity.surface.find_entity(main_name, entity.position)
         if not (main and main.valid) then
             local ghosts = entity.surface.find_entities_filtered{

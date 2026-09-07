@@ -82,4 +82,18 @@ function counter_settings.get_proxy(entity)
     return proxies[1]
 end
 
+function counter_settings.get_channel_proxies(entity)
+    if not (entity and entity.valid) then return nil, nil, nil end
+    local main_proxy = counter_settings.get_proxy(entity)
+    local red_proxies = entity.surface.find_entities_filtered{
+        name = "pneumatic-capsule-counter-red-proxy",
+        position = entity.position
+    }
+    local green_proxies = entity.surface.find_entities_filtered{
+        name = "pneumatic-capsule-counter-green-proxy",
+        position = entity.position
+    }
+    return main_proxy, red_proxies[1], green_proxies[1]
+end
+
 return counter_settings

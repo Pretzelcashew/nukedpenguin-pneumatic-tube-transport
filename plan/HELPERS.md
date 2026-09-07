@@ -40,11 +40,10 @@ Include today's date YYYY-MM-DD HH:MM (EDT/EST)
 
 
 
-Please sync our documentation with the latest changelog updates by following these steps:
+Please sync our documentation with the latest changes by following these steps:
 
-1. **Update Architecture:** Modify `architecture.md` to fully reflect all unapplied changes listed in `changelog.md` (specifically, any items not yet marked as incorporated in the changelog table).
-2. **Mark as Applied:** Update `changelog.md` to clearly mark all of those newly processed items as applied/incorporated.
-3. **Output Format:** Provide the full, updated contents of both `architecture.md` and `changelog.md` in full, ready for me to copy and paste.
+1. **Update Architecture:** Modify `architecture.md` to fully reflect all changes listed in `fresh-changes.md`, incorporating the final net results and updated system architecture state.
+2. **Output Format:** Provide the full, updated contents of `architecture.md` ready for me to copy and paste.
 
 
 

@@ -27,6 +27,29 @@ local function get_pos_key(surface, position, real_name)
     return prefix .. "@" .. sname .. "@" .. px .. "," .. py
 end
 
+local function find_existing_real_at_pos(surface, position, real_name)
+    if not (surface and position and real_name) then return nil end
+    local px = position.x or position[1] or 0
+    local py = position.y or position[2] or 0
+    local reals = surface.find_entities_filtered{
+        name = real_name,
+        position = position,
+        radius = 0.1
+    }
+    if reals then
+        for _, r in ipairs(reals) do
+            if r.valid and r.name == real_name then
+                local rx = r.position.x or r.position[1] or 0
+                local ry = r.position.y or r.position[2] or 0
+                if math.abs(rx - px) < 0.1 and math.abs(ry - py) < 0.1 then
+                    return r
+                end
+            end
+        end
+    end
+    return nil
+end
+
 local function find_ghost_id_at_pos(surface, position, real_name, spec_name)
     if not (surface and position) then return nil, nil, nil end
     local sname = type(surface) == "string" and surface or surface.name
@@ -281,15 +304,22 @@ function active_device_scanner.register_events()
                 local spec = device_specs_by_name[real_name]
 
                 if spec then
-                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
-                    local pos_key = get_pos_key(entity.surface, entity.position, real_name)
+                    local existing_real = nil
+                    if is_ghost then
+                        existing_real = find_existing_real_at_pos(entity.surface, entity.position, real_name)
+                    end
+
+                    local target_entity = existing_real or entity
+                    local target_is_ghost = (target_entity.name == "entity-ghost")
+                    local target_dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(target_entity) or pump_settings.get_device_id(target_entity)
+                    local pos_key = get_pos_key(target_entity.surface, target_entity.position, real_name)
 
                     local ghost_id = nil
                     local ghost_dir = nil
                     local matched_pos_key = nil
                     local ghost_entity = nil
 
-                    ghost_id, ghost_dir, matched_pos_key = find_ghost_id_at_pos(entity.surface, entity.position, real_name, spec.name)
+                    ghost_id, ghost_dir, matched_pos_key = find_ghost_id_at_pos(target_entity.surface, target_entity.position, real_name, spec.name)
                     if ghost_id and storage.ghost_devices then
                         ghost_entity = storage.ghost_devices[ghost_id]
                     end
@@ -307,31 +337,38 @@ function active_device_scanner.register_events()
                         ghost_entity = src
                     end
 
-                    if is_ghost then
+                    if target_is_ghost then
                         storage.ghost_devices = storage.ghost_devices or {}
-                        storage.ghost_devices[dev_id] = entity
+                        storage.ghost_devices[target_dev_id] = target_entity
                         storage.ghost_directions = storage.ghost_directions or {}
-                        storage.ghost_directions[dev_id] = entity.direction
+                        storage.ghost_directions[target_dev_id] = target_entity.direction
                     else
                         storage[spec.storage_key] = storage[spec.storage_key] or {}
-                        storage[spec.storage_key][entity.unit_number] = entity
+                        storage[spec.storage_key][target_entity.unit_number] = target_entity
                     end
 
                     local copied = false
                     if event.tags and event.tags.pneumatic_settings then
                         if spec.apply_blueprint_settings then
-                            spec.apply_blueprint_settings(entity, event.tags.pneumatic_settings)
+                            if existing_real and existing_real.valid and existing_real.direction ~= entity.direction then
+                                local prev_dir = existing_real.direction
+                                existing_real.direction = entity.direction
+                                if spec.on_rotate then
+                                    spec.on_rotate(existing_real, { previous_direction = prev_dir })
+                                end
+                            end
+                            spec.apply_blueprint_settings(target_entity, event.tags.pneumatic_settings)
                             copied = true
                         end
-                    elseif ghost_id and ghost_id ~= dev_id then
+                    elseif ghost_id and ghost_id ~= target_dev_id then
                         local src_dir = ghost_dir
                             or (storage.ghost_directions and storage.ghost_directions[ghost_id])
-                            or entity.direction
+                            or target_entity.direction
 
                         local is_compatible = true
                         if ghost_entity and ghost_entity.valid then
                             local g_pos = ghost_entity.position
-                            local e_pos = entity.position
+                            local e_pos = target_entity.position
                             local dx = math.abs((g_pos.x or g_pos[1]) - (e_pos.x or e_pos[1]))
                             local dy = math.abs((g_pos.y or g_pos[2]) - (e_pos.y or e_pos[2]))
                             if dx >= 0.1 or dy >= 0.1 then
@@ -345,7 +382,7 @@ function active_device_scanner.register_events()
 
                         if is_compatible and spec.name == "pneumatic-pump" then
                             local g_idx = diverter_settings.get_cardinal_index(src_dir)
-                            local e_idx = diverter_settings.get_cardinal_index(entity.direction)
+                            local e_idx = diverter_settings.get_cardinal_index(target_entity.direction)
                             if (g_idx % 2) ~= (e_idx % 2) then
                                 is_compatible = false
                             end
@@ -353,9 +390,9 @@ function active_device_scanner.register_events()
 
                         if is_compatible then
                             if spec.name == "pneumatic-pump" then
-                                copied = (pump_settings.copy(ghost_id, dev_id) ~= nil)
+                                copied = (pump_settings.copy(ghost_id, target_dev_id) ~= nil)
                             elseif spec.name == "pneumatic-diverter" then
-                                copied = (diverter_settings.copy(ghost_id, dev_id, src_dir, entity.direction) ~= nil)
+                                copied = (diverter_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
                             end
                         end
 
@@ -375,28 +412,71 @@ function active_device_scanner.register_events()
                         end
                     end
 
-                    if is_ghost and pos_key then
+                    if target_is_ghost and pos_key then
                         storage.ghost_by_pos = storage.ghost_by_pos or {}
-                        storage.ghost_by_pos[pos_key] = dev_id
+                        storage.ghost_by_pos[pos_key] = target_dev_id
                     end
 
                     if not copied and spec.init_settings then
-                        spec.init_settings(entity)
+                        spec.init_settings(target_entity)
                     end
 
                     if spec.name == "pneumatic-diverter" then
-                        diverter_renderer.update_render(entity)
+                        diverter_renderer.update_render(target_entity)
                     end
 
-                    if not is_ghost then
+                    if not target_is_ghost then
                         if spec.check_and_update_state then
-                            spec.check_and_update_state(entity, true)
+                            spec.check_and_update_state(target_entity, true)
                         end
 
-                        flow_engine.enqueue_unit_ports(entity.unit_number)
-                        capsule_runner.wake_parked_capsules(entity.unit_number)
+                        flow_engine.enqueue_unit_ports(target_entity.unit_number)
+                        capsule_runner.wake_parked_capsules(target_entity.unit_number)
+                        active_device_scanner.notify_settings_changed(target_entity)
+                    end
+
+                    if existing_real and is_ghost and entity.valid then
+                        entity.destroy()
                     end
                 end
+            end
+        end)
+    end
+
+    if defines.events.on_blueprint_settings_pasted then
+        events.on_event(defines.events.on_blueprint_settings_pasted, function(event)
+            local entity = event.entity or event.destination
+            if not (entity and entity.valid) then return end
+
+            local is_ghost = (entity.name == "entity-ghost")
+            local real_name = is_ghost and entity.ghost_name or entity.name
+
+            if PROXY_NAMES[real_name] or PROXY_NAMES[entity.name] then return end
+
+            local spec = device_specs_by_name[real_name]
+            if not spec then return end
+
+            local tags = event.tags or (is_ghost and entity.tags)
+            if tags and tags.pneumatic_settings then
+                if event.previous_direction and entity.direction ~= event.previous_direction then
+                    if spec.on_rotate then
+                        spec.on_rotate(entity, { previous_direction = event.previous_direction })
+                    end
+                end
+                if spec.apply_blueprint_settings then
+                    spec.apply_blueprint_settings(entity, tags.pneumatic_settings)
+                end
+                if spec.name == "pneumatic-diverter" then
+                    diverter_renderer.update_render(entity)
+                end
+                if not is_ghost then
+                    if spec.check_and_update_state then
+                        spec.check_and_update_state(entity, true)
+                    end
+                    flow_engine.enqueue_unit_ports(entity.unit_number)
+                    capsule_runner.wake_parked_capsules(entity.unit_number)
+                end
+                active_device_scanner.notify_settings_changed(entity)
             end
         end)
     end

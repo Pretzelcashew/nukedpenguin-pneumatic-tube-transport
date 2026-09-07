@@ -15,6 +15,29 @@ local function get_pos_key(surface, position)
     return sname .. "@" .. px .. "," .. py
 end
 
+local function find_existing_real_hub_at_pos(surface, position, real_name)
+    if not (surface and position and real_name) then return nil end
+    local px = position.x or position[1] or 0
+    local py = position.y or position[2] or 0
+    local reals = surface.find_entities_filtered{
+        name = real_name,
+        position = position,
+        radius = 0.1
+    }
+    if reals then
+        for _, r in ipairs(reals) do
+            if r.valid and r.name == real_name then
+                local rx = r.position.x or r.position[1] or 0
+                local ry = r.position.y or r.position[2] or 0
+                if math.abs(rx - px) < 0.1 and math.abs(ry - py) < 0.1 then
+                    return r
+                end
+            end
+        end
+    end
+    return nil
+end
+
 function hub_manager.notify_settings_changed(entity)
     if not (entity and entity.valid) then return end
     capsule_runner.wake_parked_capsules()
@@ -33,8 +56,15 @@ local function on_hub_built(event)
 
     local def = hub_defs.types[real_name]
     if def and def.type == "hub" then
-        local unit_number = entity.unit_number
-        local pos_key = get_pos_key(entity.surface, entity.position)
+        local existing_real = nil
+        if is_ghost then
+            existing_real = find_existing_real_hub_at_pos(entity.surface, entity.position, real_name)
+        end
+
+        local target_entity = existing_real or entity
+        local target_is_ghost = (target_entity.name == "entity-ghost")
+        local unit_number = target_entity.unit_number
+        local pos_key = get_pos_key(target_entity.surface, target_entity.position)
 
         local ghost_unit_number = nil
         local ghost_entity = nil
@@ -42,9 +72,9 @@ local function on_hub_built(event)
             ghost_unit_number = storage.ghost_by_pos[pos_key]
         end
         if not ghost_unit_number and storage.ghost_by_pos then
-            local sname = entity.surface.name
-            local px = entity.position.x or entity.position[1] or 0
-            local py = entity.position.y or entity.position[2] or 0
+            local sname = target_entity.surface.name
+            local px = target_entity.position.x or target_entity.position[1] or 0
+            local py = target_entity.position.y or target_entity.position[2] or 0
             for pos_k, g_id in pairs(storage.ghost_by_pos) do
                 local k_sname, coords = pos_k:match("^([^@]+)@(.+)$")
                 if k_sname == sname and coords then
@@ -64,12 +94,12 @@ local function on_hub_built(event)
             ghost_entity = event.source
         end
 
-        if is_ghost then
+        if target_is_ghost then
             storage.ghost_hubs = storage.ghost_hubs or {}
-            storage.ghost_hubs[unit_number] = entity
+            storage.ghost_hubs[unit_number] = target_entity
         else
             storage.active_hubs = storage.active_hubs or {}
-            storage.active_hubs[unit_number] = entity
+            storage.active_hubs[unit_number] = target_entity
         end
 
         local copied = false
@@ -87,7 +117,7 @@ local function on_hub_built(event)
                     is_compatible = false
                 end
                 local g_pos = ghost_entity.position
-                local e_pos = entity.position
+                local e_pos = target_entity.position
                 local dx = math.abs((g_pos.x or g_pos[1]) - (e_pos.x or e_pos[1]))
                 local dy = math.abs((g_pos.y or g_pos[2]) - (e_pos.y or e_pos[2]))
                 if dx >= 0.1 or dy >= 0.1 then
@@ -110,7 +140,7 @@ local function on_hub_built(event)
             end
         end
 
-        if is_ghost and pos_key then
+        if target_is_ghost and pos_key then
             storage.ghost_by_pos = storage.ghost_by_pos or {}
             storage.ghost_by_pos[pos_key] = unit_number
         end
@@ -119,8 +149,12 @@ local function on_hub_built(event)
             hub_settings.get(unit_number)
         end
 
-        if not is_ghost then
-            hub_manager.notify_settings_changed(entity)
+        if not target_is_ghost then
+            hub_manager.notify_settings_changed(target_entity)
+        end
+
+        if existing_real and is_ghost and entity.valid then
+            entity.destroy()
         end
     end
 end
@@ -184,6 +218,26 @@ end
 
 for _, id in ipairs(build_events) do
     events.on_event(id, on_hub_built)
+end
+
+if defines.events.on_blueprint_settings_pasted then
+    events.on_event(defines.events.on_blueprint_settings_pasted, function(event)
+        local entity = event.entity or event.destination
+        if not (entity and entity.valid) then return end
+
+        local is_ghost = (entity.name == "entity-ghost")
+        local real_name = is_ghost and entity.ghost_name or entity.name
+
+        local def = hub_defs.types[real_name]
+        if def and def.type == "hub" then
+            local dev_id = hub_settings.get_device_id(entity)
+            local tags = event.tags or (is_ghost and entity.tags)
+            if tags and tags.pneumatic_settings then
+                hub_settings.apply_blueprint_settings(dev_id, tags.pneumatic_settings)
+                hub_manager.notify_settings_changed(entity)
+            end
+        end
+    end)
 end
 
 events.on_event(defines.events.on_player_mined_entity, on_hub_removed)

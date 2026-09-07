@@ -7,6 +7,7 @@ local hub_manager = require("scripts.hubs.hub-manager")
 local pump_gui = require("scripts.pump-gui")
 local diverter_gui = require("scripts.diverter-gui")
 local proxy_manager = require("scripts.proxy-manager")
+local diverter_renderer = require("scripts.diverter-renderer")
 local util = require("util")
 
 local device_settings_copier = {}
@@ -45,6 +46,33 @@ local function resolve_target_entity(entity)
         if main and main.valid then return main end
     end
     return nil
+end
+
+local function extract_settings_from_blueprint_source(source, destination)
+    if not (source and destination and destination.valid) then return nil, nil end
+
+    local dest_name = destination.name == "entity-ghost" and destination.ghost_name or destination.name
+    if not TARGET_NAMES[dest_name] then return nil, nil end
+
+    local bp_entities = nil
+    pcall(function()
+        if source.object_name == "LuaItemStack" and source.valid_for_read and source.is_blueprint then
+            bp_entities = source.get_blueprint_entities()
+        elseif source.object_name == "LuaRecord" then
+            bp_entities = source.get_blueprint_entities()
+        end
+    end)
+
+    if not bp_entities or #bp_entities == 0 then return nil, nil end
+
+    for _, bp_ent in ipairs(bp_entities) do
+        local bp_name = bp_ent.name == "entity-ghost" and bp_ent.ghost_name or bp_ent.name
+        if bp_name == dest_name and bp_ent.tags and bp_ent.tags.pneumatic_settings then
+            return bp_ent.tags.pneumatic_settings, bp_ent.direction
+        end
+    end
+
+    return nil, nil
 end
 
 local function get_blueprints_from_event_and_player(event)
@@ -297,48 +325,74 @@ local function on_copy_settings(event)
 end
 
 local function apply_live_settings_copy(source, destination, player)
-    source = resolve_target_entity(source)
     destination = resolve_target_entity(destination)
-
-    if not (source and source.valid and destination and destination.valid) then
+    if not (destination and destination.valid) then
         return false
     end
 
-    if source == destination or source.unit_number == destination.unit_number then
-        return false
-    end
-
-    local src_name = source.name == "entity-ghost" and source.ghost_name or source.name
     local dest_name = destination.name == "entity-ghost" and destination.ghost_name or destination.name
+    local source_entity = resolve_target_entity(source)
 
-    local success = false
+    if source_entity and source_entity.valid then
+        if source_entity == destination or source_entity.unit_number == destination.unit_number then
+            return false
+        end
 
-    if src_name == "pneumatic-pump" and dest_name == "pneumatic-pump" then
-        if pump_settings.copy(source.unit_number, destination.unit_number) then
-            success = true
-            active_device_scanner.notify_settings_changed(destination)
-            if player and player.valid and player.opened and player.opened.valid and player.opened.name == "pump_configuration_frame" then
-                pump_gui.open(player, destination)
+        local src_name = source_entity.name == "entity-ghost" and source_entity.ghost_name or source_entity.name
+        local success = false
+
+        if src_name == "pneumatic-pump" and dest_name == "pneumatic-pump" then
+            if pump_settings.copy(source_entity.unit_number, destination.unit_number) then
+                success = true
+                active_device_scanner.notify_settings_changed(destination)
+                if player and player.valid and player.opened and player.opened.valid and player.opened.name == "pump_configuration_frame" then
+                    pump_gui.open(player, destination)
+                end
+            end
+
+        elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
+            if diverter_settings.copy(source_entity.unit_number, destination.unit_number, source_entity.direction, destination.direction) then
+                success = true
+                active_device_scanner.notify_settings_changed(destination)
+                if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
+                    diverter_gui.open(player, destination)
+                end
+            end
+
+        elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
+            if hub_settings.copy(source_entity.unit_number, destination.unit_number) then
+                success = true
+                hub_manager.notify_settings_changed(destination)
             end
         end
 
-    elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
-        if diverter_settings.copy(source.unit_number, destination.unit_number, source.direction, destination.direction) then
-            success = true
-            active_device_scanner.notify_settings_changed(destination)
-            if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
-                diverter_gui.open(player, destination)
+        return success
+    else
+        local bp_settings, bp_direction = extract_settings_from_blueprint_source(source, destination)
+        if bp_settings then
+            if dest_name == "pneumatic-pump" then
+                pump_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                active_device_scanner.notify_settings_changed(destination)
+                return true
+            elseif dest_name == "pneumatic-diverter" then
+                if bp_direction and destination.direction ~= bp_direction then
+                    local prev_dir = destination.direction
+                    destination.direction = bp_direction
+                    diverter_settings.rotate_ports(destination.unit_number, prev_dir, bp_direction)
+                end
+                diverter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                diverter_renderer.update_render(destination)
+                active_device_scanner.notify_settings_changed(destination)
+                return true
+            elseif HUB_NAMES[dest_name] then
+                hub_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                hub_manager.notify_settings_changed(destination)
+                return true
             end
-        end
-
-    elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
-        if hub_settings.copy(source.unit_number, destination.unit_number) then
-            success = true
-            hub_manager.notify_settings_changed(destination)
         end
     end
 
-    return success
+    return false
 end
 
 local function on_paste_settings(event)
@@ -357,7 +411,7 @@ local function on_paste_settings(event)
         end
     end
 
-    if source and source.valid then
+    if source then
         apply_live_settings_copy(source, destination, player)
     end
 end
@@ -367,7 +421,7 @@ local function on_entity_settings_pasted(event)
     local source = event.source
     local destination = event.destination
 
-    if player and player.valid and source and source.valid then
+    if player and player.valid and source and type(source) == "userdata" and source.valid then
         storage.player_copy_buffer = storage.player_copy_buffer or {}
         storage.player_copy_buffer[player.index] = source
     end
@@ -670,6 +724,10 @@ function device_settings_copier.register_events()
     }
     for _, id in ipairs(build_events) do
         events.on_event(id, on_entity_built_wire_check)
+    end
+
+    if defines.events.on_blueprint_settings_pasted then
+        events.on_event(defines.events.on_blueprint_settings_pasted, on_entity_built_wire_check)
     end
 end
 

@@ -7,6 +7,7 @@ local capsule_runner = require("scripts.capsules.capsule-runner")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
 local counter_settings = require("scripts.counters.counter-settings")
+local counter_logic = require("scripts.counters.counter-logic")
 local diverter_renderer = require("scripts.diverter-renderer")
 
 local active_device_scanner = {}
@@ -159,6 +160,8 @@ function active_device_scanner.notify_settings_changed(entity)
 
     if spec.name == "pneumatic-diverter" then
         diverter_renderer.update_render(entity)
+    elseif spec.name == "pneumatic-capsule-counter" and not is_ghost then
+        counter_logic.update_signals(entity)
     end
 
     for i = 1, #settings_changed_callbacks do
@@ -183,6 +186,9 @@ local function scan_active_devices()
                             flow_engine.enqueue_unit_ports(unit_number)
                             capsule_runner.wake_parked_capsules(unit_number)
                         end
+                    end
+                    if spec.on_scan then
+                        spec.on_scan(entity)
                     end
                 else
                     storage_table[unit_number] = nil
@@ -318,9 +324,14 @@ active_device_scanner.register_device_type({
 
         if forced or is_powered ~= last_power then
             storage.counter_power_states[unit_number] = is_powered
+            counter_logic.update_signals(entity)
             return true
         end
         return false
+    end,
+
+    on_scan = function(entity)
+        counter_logic.update_signals(entity)
     end,
 
     on_unregister = function(entity, unit_number)

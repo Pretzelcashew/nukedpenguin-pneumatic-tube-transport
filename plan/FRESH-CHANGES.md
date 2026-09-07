@@ -107,3 +107,11 @@
 2. **Strict Outbound Injection Guard (`scripts/capsules/capsule-runner.lua`):** Updated `inject_from_hub` to abort and return `false` if no valid outbound port with a positive pressure drop is found, eliminating fallback dispatches onto unpressurized or opposing flow lines.
 3. **Cross-Transit Exit Port Isolation (`scripts/capsules/capsule-runner.lua`):** Updated `select_next_target` for `cross_transit` entities to calculate candidate pressure drops directly against the touching exit port (`level_exit - level_cand > 0`), preventing transiting capsules from exiting hubs into zero or negative pressure differential nodes.
 4. **Hub Packing Early Exit Guard (`scripts/hubs/hub-packing.lua`):** Added an early outbound port validation check to `hub_packing.evaluate_inventory`, aborting cargo extraction and liminal holder creation whenever no valid lower-pressure outbound route is available.
+
+
+### Revision: Pneumatic Capsule Counter Signal Picker Clearing & Quality Preservation
+**Date:** 2026-09-07 18:24 (EDT)
+**Context:** Fix an issue where clearing the total count signal picker in the Capsule Counter GUI instantly reverted to default signal-C, and ensure selected signal quality is preserved on circuit proxy output filters.
+**Key Changes:**
+1. **Signal Clear Persistence & Fallback Removal (`scripts/counters/counter-settings.lua` & `scripts/counters/counter-logic.lua`):** Removed hardcoded fallback initializations (`signal-C`) from existing settings retrieval (`counter_settings.get`), blueprint settings application, and logic signal evaluation. Clearing the choose-elem-button in `counter-gui.lua` now persists `total_signal = nil` without being overwritten on GUI refresh or tick scans.
+2. **Quality-Aware Circuit Signal Emission (`scripts/counters/counter-logic.lua`):** Updated `counter_logic.update_signals` to extract `total_signal.quality` dynamically rather than hardcoding `"normal"` quality during channel signal aggregation, correctly reflecting chosen signal quality levels on output circuit proxy filters.

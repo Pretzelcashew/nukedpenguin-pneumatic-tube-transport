@@ -38,7 +38,7 @@ function counter_logic.update_signals(counter_entity)
     local vessels_target = settings and settings.vessels_target or "green"
     local cargo_target = settings and settings.cargo_target or "red"
     local total_target = settings and settings.total_target or "green"
-    local total_signal = settings and settings.total_signal or { type = "virtual", name = "signal-C" }
+    local total_signal = settings and settings.total_signal
 
     if vessels_target == "off" and cargo_target == "off" and total_target == "off" then
         apply_filters_to_proxy(main_proxy, {})
@@ -138,13 +138,25 @@ function counter_logic.update_signals(counter_entity)
         end
     end
 
-    if total_target ~= "off" and total_capsules_count > 0 and total_signal and total_signal.name then
-        local stype = total_signal.type or "virtual"
-        if total_target == "red" or total_target == "both" then
-            add_channel_signal(red_signal_totals, stype, total_signal.name, "normal", total_capsules_count)
+    if total_target ~= "off" and total_capsules_count > 0 and total_signal then
+        local stype, sname, squal
+        if type(total_signal) == "string" then
+            stype = "virtual"
+            sname = total_signal
+            squal = "normal"
+        elseif type(total_signal) == "table" and total_signal.name then
+            stype = total_signal.type or "virtual"
+            sname = total_signal.name
+            squal = total_signal.quality or "normal"
         end
-        if total_target == "green" or total_target == "both" then
-            add_channel_signal(green_signal_totals, stype, total_signal.name, "normal", total_capsules_count)
+
+        if sname then
+            if total_target == "red" or total_target == "both" then
+                add_channel_signal(red_signal_totals, stype, sname, squal, total_capsules_count)
+            end
+            if total_target == "green" or total_target == "both" then
+                add_channel_signal(green_signal_totals, stype, sname, squal, total_capsules_count)
+            end
         end
     end
 

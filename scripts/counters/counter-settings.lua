@@ -38,9 +38,6 @@ function counter_settings.get(unit_number)
         if s.vessels_target == nil then s.vessels_target = "green" end
         if s.cargo_target == nil then s.cargo_target = "red" end
         if s.total_target == nil then s.total_target = "green" end
-        if s.total_signal == nil then
-            s.total_signal = { type = "virtual", name = "signal-C" }
-        end
     end
     return storage.counter_settings[dev_id]
 end
@@ -66,9 +63,6 @@ function counter_settings.apply_blueprint_settings(unit_number, blueprint_settin
     if copy.vessels_target == nil then copy.vessels_target = "green" end
     if copy.cargo_target == nil then copy.cargo_target = "red" end
     if copy.total_target == nil then copy.total_target = "green" end
-    if copy.total_signal == nil then
-        copy.total_signal = { type = "virtual", name = "signal-C" }
-    end
     storage.counter_settings[dev_id] = copy
     return copy
 end

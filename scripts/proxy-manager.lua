@@ -1,6 +1,7 @@
 local events = require("scripts.events")
 local pump_gui = require("scripts.pump-gui")
 local diverter_gui = require("scripts.diverter-gui")
+local counter_gui = nil
 
 local proxy_manager = {}
 
@@ -277,7 +278,7 @@ local function on_object_destroyed(event)
 
     local pos = data.position
     if data.offset then
-        pos = { x = pos.x + data.offset.x, y = pos.y + data.offset.y }
+        pos = { x = pos.x + data.offset.x, y = data.offset.y }
     end
 
     local remaining_main = surface.find_entity(data.main_name, pos)
@@ -443,7 +444,7 @@ local function on_rotated(event)
 
     local pos = entity.position
     if spec.offset then
-        pos = { x = pos.x + spec.offset.x, y = spec.offset.y }
+        pos = { x = pos.x + spec.offset.x, y = pos.y + spec.offset.y }
     end
 
     local proxies = entity.surface.find_entities_filtered{
@@ -526,6 +527,16 @@ proxy_manager.register_pair({
     main_entity_name = "pneumatic-diverter",
     proxy_entity_name = "pneumatic-diverter-circuit-proxy",
     on_open_gui = diverter_gui.open
+})
+
+proxy_manager.register_pair({
+    main_entity_name = "pneumatic-capsule-counter",
+    proxy_entity_name = "pneumatic-capsule-counter-circuit-proxy",
+    on_open_gui = function(player, entity)
+        if counter_gui and counter_gui.open then
+            counter_gui.open(player, entity)
+        end
+    end
 })
 
 return proxy_manager

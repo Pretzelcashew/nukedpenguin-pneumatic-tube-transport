@@ -1,11 +1,14 @@
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
+local counter_settings = require("scripts.counters.counter-settings")
 local hub_settings = require("scripts.hubs.hub-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local hub_manager = require("scripts.hubs.hub-manager")
 local pump_gui = require("scripts.pump-gui")
 local diverter_gui = require("scripts.diverter-gui")
+local ok_cgui, counter_gui = pcall(require, "scripts.counters.counter-gui")
+if not ok_cgui then counter_gui = nil end
 local proxy_manager = require("scripts.proxy-manager")
 local diverter_renderer = require("scripts.diverter-renderer")
 local util = require("util")
@@ -20,6 +23,7 @@ local HUB_NAMES = {
 local TARGET_NAMES = {
     ["pneumatic-pump"] = true,
     ["pneumatic-diverter"] = true,
+    ["pneumatic-capsule-counter"] = true,
     ["capsule-hub-horizontal"] = true,
     ["capsule-hub-vertical"] = true
 }
@@ -31,7 +35,7 @@ local function resolve_target_entity(entity)
     if TARGET_NAMES[name] then
         return entity
     end
-    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" then
+    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" or name == "pneumatic-capsule-counter-circuit-proxy" then
         local main_name = name:gsub("-circuit-proxy", "")
         local main = entity.surface.find_entity(main_name, entity.position)
         if not (main and main.valid) then
@@ -359,6 +363,17 @@ local function apply_live_settings_copy(source, destination, player)
                 end
             end
 
+        elseif src_name == "pneumatic-capsule-counter" and dest_name == "pneumatic-capsule-counter" then
+            if counter_settings.copy(source_entity.unit_number, destination.unit_number) then
+                success = true
+                active_device_scanner.notify_settings_changed(destination)
+                if player and player.valid and player.opened and player.opened.valid and player.opened.name == "counter_configuration_frame" then
+                    if counter_gui and counter_gui.open then
+                        counter_gui.open(player, destination)
+                    end
+                end
+            end
+
         elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
             if hub_settings.copy(source_entity.unit_number, destination.unit_number) then
                 success = true
@@ -382,6 +397,10 @@ local function apply_live_settings_copy(source, destination, player)
                 end
                 diverter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
                 diverter_renderer.update_render(destination)
+                active_device_scanner.notify_settings_changed(destination)
+                return true
+            elseif dest_name == "pneumatic-capsule-counter" then
+                counter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif HUB_NAMES[dest_name] then
@@ -464,6 +483,9 @@ local function on_player_setup_blueprint(event)
             elseif name == "pneumatic-diverter" then
                 proxy = diverter_settings.get_proxy(entity)
                 proxy_name = "pneumatic-diverter-circuit-proxy"
+            elseif name == "pneumatic-capsule-counter" then
+                proxy = counter_settings.get_proxy(entity)
+                proxy_name = "pneumatic-capsule-counter-circuit-proxy"
             end
 
             if proxy and proxy.valid and proxy.unit_number then
@@ -511,6 +533,11 @@ local function on_player_setup_blueprint(event)
                     end
                 end
                 proxy = diverter_settings.get_proxy(entity)
+
+            elseif name == "pneumatic-capsule-counter" then
+                local s = counter_settings.get(entity.unit_number)
+                if s then settings_copy = util.table.deepcopy(s) end
+                proxy = counter_settings.get_proxy(entity)
 
             elseif HUB_NAMES[name] then
                 local s = hub_settings.get(entity.unit_number)
@@ -568,7 +595,7 @@ local function on_player_setup_blueprint(event)
                                                 local src_conn_id = get_proxy_connector_id(connector_id)
                                                 local tgt_conn_id = target_conn.wire_connector_id
                                                 local target_owner_name = target_conn.owner.name
-                                                if target_owner_name == "pneumatic-pump-circuit-proxy" or target_owner_name == "pneumatic-diverter-circuit-proxy" then
+                                                if target_owner_name == "pneumatic-pump-circuit-proxy" or target_owner_name == "pneumatic-diverter-circuit-proxy" or target_owner_name == "pneumatic-capsule-counter-circuit-proxy" then
                                                     tgt_conn_id = get_proxy_connector_id(tgt_conn_id)
                                                 end
 
@@ -642,6 +669,8 @@ function device_settings_copier.process_entity_built_wire_tags(entity, tags)
         target_for_wiring = pump_settings.get_proxy(entity) or entity
     elseif name == "pneumatic-diverter" then
         target_for_wiring = diverter_settings.get_proxy(entity) or entity
+    elseif name == "pneumatic-capsule-counter" then
+        target_for_wiring = counter_settings.get_proxy(entity) or entity
     end
 
     if not (target_for_wiring and target_for_wiring.valid) then return end
@@ -668,6 +697,8 @@ function device_settings_copier.process_entity_built_wire_tags(entity, tags)
                     cand_target = pump_settings.get_proxy(candidate) or candidate
                 elseif cand_name == "pneumatic-diverter" then
                     cand_target = diverter_settings.get_proxy(candidate) or candidate
+                elseif cand_name == "pneumatic-capsule-counter" then
+                    cand_target = counter_settings.get_proxy(candidate) or candidate
                 end
 
                 if cand_target and cand_target.valid and cand_target ~= target_for_wiring then

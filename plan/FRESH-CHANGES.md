@@ -51,3 +51,12 @@
 1. **State Persistence Module (`scripts/counters/counter-settings.lua`):** Created `counter-settings.lua` maintaining `storage.counter_settings[dev_id]` with default schema (`vessels_target = "green"`, `cargo_target = "red"`, `total_target = "green"`, `total_signal = { type = "virtual", name = "signal-C" }`).
 2. **Spatial Identification & Proxy Resolution (`scripts/counters/counter-settings.lua`):** Implemented `counter_settings.get_device_id` supporting real unit numbers and ghost string formats (`ghost@...`), and `counter_settings.get_proxy` to locate the associated `pneumatic-capsule-counter-circuit-proxy`.
 3. **Copy-Paste & Blueprint Deserialization (`scripts/counters/counter-settings.lua`):** Implemented `counter_settings.copy` for deep-copying settings between entities/ghosts and `counter_settings.apply_blueprint_settings` for restoring configuration tables from blueprint tags.
+
+
+### Revision: Pneumatic Capsule Counter Copy-Paste & Blueprint Serialization
+**Date:** 2026-09-07 14:52 (EDT)
+**Context:** Implement Task 7 of the Capsule Counter plan, integrating pneumatic capsule counter entities into active device scanning, live copy-paste workflows, ghost settings adoption, and blueprint tag serialization.
+**Key Changes:**
+1. **Target Registration & Live Copy-Paste (`scripts/device-settings-copier.lua`):** Added `pneumatic-capsule-counter` to `TARGET_NAMES`, mapped `pneumatic-capsule-counter-circuit-proxy` target resolution to the main entity, implemented live entity copy-paste handling, and added top-level safe loading for `counter-gui`.
+2. **Blueprint Serialization & Wire Target Resolution (`scripts/device-settings-copier.lua`):** Updated `on_player_setup_blueprint` to serialize counter settings tags (`pneumatic_settings`), append proxy entities, and record 4-tuple wire connections. Updated `process_entity_built_wire_tags` to restore proxy circuit wire links upon blueprint placement.
+3. **Active Scanner Hooks & Ghost Settings Adoption (`scripts/active-device-scanner.lua`):** Added `init_settings` and `apply_blueprint_settings` hooks to the `pneumatic-capsule-counter` scanner spec, enabled device ID resolution, and integrated ghost-to-real settings adoption, blueprint pasting, and storage cleanup on entity removal or rotation.

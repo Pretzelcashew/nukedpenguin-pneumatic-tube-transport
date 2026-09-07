@@ -204,3 +204,61 @@ This plan breaks down the development of the Capsule Counter into 10 sequential,
     * Unpowering / re-powering counter structures.
     * Blueprinting across different surfaces/forces.
 * **Testing / Verification:** Complete full end-to-end integration test run; verify zero console errors, zero Lua GC leaks, exact wavefront boundary collision, and zero duplicate item counts.
+
+
+You are spot on! That is a brilliant realization.
+
+In Factorio, because a constant combinator outputs all of its signals onto *both* its Red and Green wire terminals simultaneously, if a player connects both Red and Green wires to that same combinator, the Red signals and Green signals will bleed across both networks.
+
+Your new **Triple-Proxy Architecture** is completely bulletproof:
+
+1. **Main Selection Terminal Proxy (`pneumatic-capsule-counter-circuit-proxy`):**
+   * Visible/Selectable (`selection_priority = 60`).
+   * Player connects Red and Green wires directly to this entity.
+   * **Emits 0 signals itself** (acts purely as a passive wire junction terminal).
+2. **Internal Red Channel Proxy (`...-red-proxy`):**
+   * Invisible/Unselectable (`selection_priority = 0`).
+   * Connected to the Main Terminal Proxy **strictly via an internal Red wire**.
+   * Logic engine writes Red-channel signals here. Because it only has a Red wire attached, its signals flow into the player's Red network and *can never reach Green*.
+3. **Internal Green Channel Proxy (`...-green-proxy`):**
+   * Invisible/Unselectable (`selection_priority = 0`).
+   * Connected to the Main Terminal Proxy **strictly via an internal Green wire**.
+   * Logic engine writes Green-channel signals here. Because it only has a Green wire attached, its signals flow into the player's Green network and *can never reach Red*.
+
+---
+
+Here is the revised **Task 10** updated with this exact triple-proxy channel isolation design:
+
+---
+
+### **Task 10: Triple-Proxy Channel-Isolated Circuit Engine, Localization & Final Integration**
+* **Goal:** Implement a 3-proxy circuit system—one main wire terminal proxy and two internal, color-isolated channel proxies—to guarantee 100% signal isolation between Red and Green circuit networks, add localized text, and complete final integration.
+* **Target Files:**
+  * `prototypes/pneumatic-capsule-counter.lua`
+  * `scripts/proxy-manager.lua`
+  * `scripts/counters/counter-logic.lua`
+  * `locale/en/config.cfg`
+  * `control.lua`
+* **Specification Requirements:**
+  * **Proxy Prototypes (`prototypes/pneumatic-capsule-counter.lua`):**
+    * `pneumatic-capsule-counter-circuit-proxy` (Main Terminal: `selection_priority = 60`, `operable = true`, `draw_selection_box = false`).
+    * `pneumatic-capsule-counter-red-proxy` (Red Channel: `selection_priority = 0`, `operable = false`).
+    * `pneumatic-capsule-counter-green-proxy` (Green Channel: `selection_priority = 0`, `operable = false`).
+  * **Triple-Proxy Lifecycle & Internal Wiring (`proxy-manager.lua`):**
+    * Register the triple-proxy set to spawn all three entities on main counter creation.
+    * Establish persistent internal wire links upon placement:
+      * **Internal Red Wire:** Main Terminal Proxy $\leftrightarrow$ Red Channel Proxy.
+      * **Internal Green Wire:** Main Terminal Proxy $\leftrightarrow$ Green Channel Proxy.
+    * Keep Main Terminal Proxy's control behavior completely empty ($0$ signals).
+    * Include all three proxies in deconstruction, fast-replacement, blueprint serialization, and sandbox object destruction cleanup maps.
+  * **Isolated Signal Dispatch (`counter-logic.lua`):**
+    * Update `counter_logic.update_signals`:
+      * Write **Red wire target signals** directly to `Red Channel Proxy`.
+      * Write **Green wire target signals** directly to `Green Channel Proxy`.
+  * **Locale & System Integration:**
+    * Add English locale strings for entity, item, recipe, technology, and GUI labels in `locale/en/config.cfg`.
+    * Ensure all counter script modules (`counter-settings`, `counter-range`, `counter-logic`, `counter-gui`) are required cleanly at top-level in `control.lua`.
+* **Testing / Verification:**
+  * Connect both a Red wire and a Green wire to the same Capsule Counter.
+  * Output different signal sets to Red vs. Green.
+  * Verify that the Red circuit reads strictly Red channel signals, the Green circuit reads strictly Green channel signals, and zero cross-channel signal bleed occurs under any wire combination.

@@ -6,6 +6,7 @@ local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
+local counter_settings = require("scripts.counters.counter-settings")
 local diverter_renderer = require("scripts.diverter-renderer")
 
 local active_device_scanner = {}
@@ -21,6 +22,18 @@ local PROXY_NAMES = {
     ["pneumatic-pump-circuit-proxy"] = true,
     ["pneumatic-capsule-counter-circuit-proxy"] = true
 }
+
+local function get_spec_device_id(spec_name, entity)
+    if not (spec_name and entity) then return nil end
+    if spec_name == "pneumatic-diverter" then
+        return diverter_settings.get_device_id(entity)
+    elseif spec_name == "pneumatic-pump" then
+        return pump_settings.get_device_id(entity)
+    elseif spec_name == "pneumatic-capsule-counter" then
+        return counter_settings.get_device_id(entity)
+    end
+    return nil
+end
 
 local function get_pos_key(surface, position, real_name)
     if not (surface and position) then return nil end
@@ -286,6 +299,16 @@ active_device_scanner.register_device_type({
     entity_names = { "pneumatic-capsule-counter" },
     storage_key = "active_counters",
 
+    init_settings = function(entity)
+        local dev_id = counter_settings.get_device_id(entity)
+        counter_settings.get(dev_id)
+    end,
+
+    apply_blueprint_settings = function(entity, settings)
+        local dev_id = counter_settings.get_device_id(entity)
+        counter_settings.apply_blueprint_settings(dev_id, settings)
+    end,
+
     check_and_update_state = function(entity, forced)
         local unit_number = entity.unit_number
         storage.counter_power_states = storage.counter_power_states or {}
@@ -340,7 +363,7 @@ function active_device_scanner.register_events()
 
                     local target_entity = existing_real or entity
                     local target_is_ghost = (target_entity.name == "entity-ghost")
-                    local target_dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(target_entity) or pump_settings.get_device_id(target_entity)
+                    local target_dev_id = get_spec_device_id(spec.name, target_entity)
                     local pos_key = get_pos_key(target_entity.surface, target_entity.position, real_name)
 
                     local ghost_id = nil
@@ -355,13 +378,13 @@ function active_device_scanner.register_events()
 
                     if not ghost_id and event.consumed_ghost and event.consumed_ghost.valid then
                         local cg = event.consumed_ghost
-                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(cg) or pump_settings.get_device_id(cg)
+                        ghost_id = get_spec_device_id(spec.name, cg)
                         ghost_dir = cg.direction
                         ghost_entity = cg
                     end
                     if not ghost_id and event.source and event.source.valid then
                         local src = event.source
-                        ghost_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(src) or pump_settings.get_device_id(src)
+                        ghost_id = get_spec_device_id(spec.name, src)
                         ghost_dir = src.direction
                         ghost_entity = src
                     end
@@ -422,6 +445,8 @@ function active_device_scanner.register_events()
                                 copied = (pump_settings.copy(ghost_id, target_dev_id) ~= nil)
                             elseif spec.name == "pneumatic-diverter" then
                                 copied = (diverter_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
+                            elseif spec.name == "pneumatic-capsule-counter" then
+                                copied = (counter_settings.copy(ghost_id, target_dev_id) ~= nil)
                             end
                         end
 
@@ -438,6 +463,8 @@ function active_device_scanner.register_events()
                             storage.diverter_settings[ghost_id] = nil
                         elseif storage.pump_settings and spec.name == "pneumatic-pump" then
                             storage.pump_settings[ghost_id] = nil
+                        elseif storage.counter_settings and spec.name == "pneumatic-capsule-counter" then
+                            storage.counter_settings[ghost_id] = nil
                         end
                     end
 
@@ -528,7 +555,7 @@ function active_device_scanner.register_events()
 
                 local spec = device_specs_by_name[real_name]
                 if spec then
-                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
+                    local dev_id = get_spec_device_id(spec.name, entity)
                     if is_ghost then
                         if storage.ghost_devices then
                             storage.ghost_devices[dev_id] = nil
@@ -545,6 +572,8 @@ function active_device_scanner.register_events()
                             storage.pump_settings[dev_id] = nil
                         elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
                             storage.diverter_settings[dev_id] = nil
+                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
+                            storage.counter_settings[dev_id] = nil
                         end
                     end
                     if spec.on_unregister then
@@ -570,7 +599,7 @@ function active_device_scanner.register_events()
 
                 local spec = device_specs_by_name[real_name]
                 if spec then
-                    local dev_id = spec.name == "pneumatic-diverter" and diverter_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
+                    local dev_id = get_spec_device_id(spec.name, entity)
                     if spec.on_rotate then
                         spec.on_rotate(entity, event)
                     end

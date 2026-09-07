@@ -143,6 +143,16 @@ local function on_created(event)
     if not (main_spec or proxy_spec) then return end
 
     if main_spec then
+        local reg_id = script.register_on_object_destroyed(entity)
+        storage.proxy_destruction_map = storage.proxy_destruction_map or {}
+        storage.proxy_destruction_map[reg_id] = {
+            main_name = main_spec.main_entity_name,
+            proxy_name = main_spec.proxy_entity_name,
+            surface = entity.surface,
+            position = entity.position,
+            offset = main_spec.offset
+        }
+
         local pos = entity.position
         if main_spec.offset then
             pos = { x = pos.x + main_spec.offset.x, y = pos.y + main_spec.offset.y }
@@ -255,6 +265,55 @@ local function on_created(event)
     end
 end
 
+local function on_object_destroyed(event)
+    if not storage.proxy_destruction_map then return end
+    local reg_id = event.registration_number
+    local data = storage.proxy_destruction_map[reg_id]
+    if not data then return end
+    storage.proxy_destruction_map[reg_id] = nil
+
+    local surface = data.surface
+    if not (surface and surface.valid) then return end
+
+    local pos = data.position
+    if data.offset then
+        pos = { x = pos.x + data.offset.x, y = pos.y + data.offset.y }
+    end
+
+    local remaining_main = surface.find_entity(data.main_name, pos)
+    if not (remaining_main and remaining_main.valid) then
+        local ghost_mains = surface.find_entities_filtered{
+            ghost_name = data.main_name,
+            position = pos
+        }
+        if ghost_mains and ghost_mains[1] and ghost_mains[1].valid then
+            remaining_main = ghost_mains[1]
+        end
+    end
+
+    if not (remaining_main and remaining_main.valid) then
+        local proxies = surface.find_entities_filtered{
+            name = data.proxy_name,
+            position = pos
+        }
+        for _, proxy in ipairs(proxies) do
+            if proxy.valid then
+                proxy.destroy()
+            end
+        end
+
+        local ghost_proxies = surface.find_entities_filtered{
+            ghost_name = data.proxy_name,
+            position = pos
+        }
+        for _, g in ipairs(ghost_proxies) do
+            if g.valid then
+                g.destroy()
+            end
+        end
+    end
+end
+
 local function on_removed(event)
     local entity = event.entity
     if not (entity and entity.valid) then return end
@@ -271,18 +330,32 @@ local function on_removed(event)
             pos = { x = pos.x + main_spec.offset.x, y = pos.y + main_spec.offset.y }
         end
 
-        local remaining_main = entity.surface.find_entity(main_spec.main_entity_name, pos)
-        if not (remaining_main and remaining_main.valid) then
+        local remaining_main = nil
+        local mains = entity.surface.find_entities_filtered{
+            name = main_spec.main_entity_name,
+            position = pos
+        }
+        for _, m in ipairs(mains) do
+            if m.valid and m ~= entity then
+                remaining_main = m
+                break
+            end
+        end
+
+        if not remaining_main then
             local ghost_mains = entity.surface.find_entities_filtered{
                 ghost_name = main_spec.main_entity_name,
                 position = pos
             }
-            if #ghost_mains > 0 then
-                remaining_main = ghost_mains[1]
+            for _, g in ipairs(ghost_mains) do
+                if g.valid and g ~= entity then
+                    remaining_main = g
+                    break
+                end
             end
         end
 
-        if not (remaining_main and remaining_main.valid) then
+        if not remaining_main then
             local proxies = entity.surface.find_entities_filtered{
                 name = main_spec.proxy_entity_name,
                 position = pos
@@ -310,29 +383,49 @@ local function on_removed(event)
             main_pos = { x = main_pos.x - proxy_spec.offset.x, y = main_pos.y - proxy_spec.offset.y }
         end
 
-        local main = entity.surface.find_entity(proxy_spec.main_entity_name, main_pos)
-        if not (main and main.valid) then
+        local main = nil
+        local mains = entity.surface.find_entities_filtered{
+            name = proxy_spec.main_entity_name,
+            position = main_pos
+        }
+        for _, m in ipairs(mains) do
+            if m.valid and m ~= entity then
+                main = m
+                break
+            end
+        end
+
+        if not main then
             local ghost_mains = entity.surface.find_entities_filtered{
                 ghost_name = proxy_spec.main_entity_name,
                 position = main_pos
             }
-            if #ghost_mains > 0 then main = ghost_mains[1] end
+            for _, g in ipairs(ghost_mains) do
+                if g.valid and g ~= entity then
+                    main = g
+                    break
+                end
+            end
         end
 
-        if not (main and main.valid) then
+        if not main then
             local proxies = entity.surface.find_entities_filtered{
                 name = proxy_spec.proxy_entity_name,
                 position = entity.position
             }
             for _, p in ipairs(proxies) do
-                if p.valid then p.destroy() end
+                if p.valid and p ~= entity then
+                    p.destroy()
+                end
             end
             local ghost_proxies = entity.surface.find_entities_filtered{
                 ghost_name = proxy_spec.proxy_entity_name,
                 position = entity.position
             }
             for _, g in ipairs(ghost_proxies) do
-                if g.valid then g.destroy() end
+                if g.valid and g ~= entity then
+                    g.destroy()
+                end
             end
         end
     end
@@ -419,6 +512,7 @@ function proxy_manager.register_events()
         events.on_event(id, on_rotated)
     end
 
+    events.on_event(defines.events.on_object_destroyed, on_object_destroyed)
     events.on_event(defines.events.on_gui_opened, on_gui_opened)
 end
 

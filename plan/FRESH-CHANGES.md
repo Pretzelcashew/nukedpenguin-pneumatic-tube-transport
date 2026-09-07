@@ -198,3 +198,12 @@
 3. **Pre-Registration Ghost Proximity Search (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Added `find_ghost_id_at_pos` spatial search (1.2 tile radius) to resolve preceding ghost settings prior to updating `storage.ghost_by_pos`, preventing newly placed entities from overwriting spatial lookup keys before reading settings.
 4. **Ghost-on-Ghost & Flip Settings Inheritance (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Removed `not is_ghost` guards from build event copy logic, allowing replacement ghosts spawned when flipping (`F`) or rotating (`R`) existing ghosts to inherit and adapt settings from preceding ghosts at the same tile coordinate.
 5. **Deferred Ghost Settings Purge (`scripts/active-device-scanner.lua` & `scripts/hubs/hub-manager.lua`):** Deferred ghost settings deletion during ghost destruction events, preserving configuration tables in `storage` across engine entity replacement ticks.
+
+
+### Revision: Object Destruction Tracking & Circuit Proxy Cleanup for Super Force Building
+**Date:** 2026-09-06 20:56 (EDT)
+**Context:** Resolve lingering orphan circuit proxy entities left behind when built or ghost diverters and pumps are mined, destroyed, or super force built over.
+**Key Changes:**
+1. **Self-Exclusion Removal Guard (`scripts/proxy-manager.lua`):** Updated `on_removed` to filter out `m ~= entity` and `g ~= entity` when evaluating remaining main or ghost entities at machine tile coordinates, preventing active destruction targets from falsely suppressing proxy removal.
+2. **Object Destruction Registration (`scripts/proxy-manager.lua`):** Registered main built and ghost entities with `script.register_on_object_destroyed` inside `on_created`, tracking registration IDs in `storage.proxy_destruction_map` alongside surface, spatial position, and proxy specification metadata.
+3. **Engine-Level Object Destroyed Callback (`scripts/proxy-manager.lua`):** Subscribed to `defines.events.on_object_destroyed` to catch C++ engine-level entity removals (such as super force building, fast replacement, and ghost cancellation). The callback evaluates remaining spatial main entities post-destruction and purges orphaned real and ghost circuit proxies when no host machine remains.

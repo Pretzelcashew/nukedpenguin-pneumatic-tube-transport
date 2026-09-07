@@ -1,4 +1,7 @@
+-- File: scripts/debug-manager.lua
+
 local flow_engine = require("scripts.flow.flow-engine")
+local counter_range = require("scripts.counters.counter-range")
 local events = require("scripts.events")
 
 local debug_manager = {}
@@ -12,6 +15,7 @@ local function get_debug(player_index)
         storage.debug[player_index] = {
             master = true,
             new_flow = true,
+            counter_range = true,
             capsules = true,
             peek = false,
             prints = false,
@@ -23,6 +27,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].new_flow == nil then
             storage.debug[player_index].new_flow = true
+        end
+        if storage.debug[player_index].counter_range == nil then
+            storage.debug[player_index].counter_range = true
         end
     end
     return storage.debug[player_index]
@@ -49,6 +56,7 @@ local function update_player_shortcuts(player_index)
     safe_set_shortcut_toggled(player, "pt-toggle-debug", master)
     safe_set_shortcut_toggled(player, "pt-toggle-flow", master and (dbg.new_flow == true))
     safe_set_shortcut_toggled(player, "pt-toggle-new-flow", master and (dbg.new_flow == true))
+    safe_set_shortcut_toggled(player, "pt-toggle-counter-range", master and (dbg.counter_range == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsules", master and (dbg.capsules == true))
     safe_set_shortcut_toggled(player, "pt-toggle-capsule-peek", master and (dbg.peek == true))
 end
@@ -137,6 +145,12 @@ function debug_manager.refresh_panel(player_index)
     if chk_new_flow then
         chk_new_flow.enabled = master
         chk_new_flow.state = master and (dbg.new_flow == true)
+    end
+
+    local chk_counter_range = content.pneumatic_debug_chk_counter_range
+    if chk_counter_range then
+        chk_counter_range.enabled = master
+        chk_counter_range.state = master and (dbg.counter_range == true)
     end
 
     local chk_capsules = content.pneumatic_debug_chk_capsules
@@ -238,6 +252,14 @@ function debug_manager.open_panel(player_index)
 
     content_frame.add{
         type = "checkbox",
+        name = "pneumatic_debug_chk_counter_range",
+        caption = "Counter Range Overlay (Alt Mode)",
+        state = master and (dbg.counter_range == true),
+        enabled = master
+    }
+
+    content_frame.add{
+        type = "checkbox",
         name = "pneumatic_debug_chk_capsules",
         caption = {"gui-debug.toggle-capsules"},
         state = master and (dbg.capsules == true),
@@ -296,6 +318,12 @@ local function toggle_master(player_index)
         flow_engine.clear_all_renders(player_index)
     end
 
+    if is_debug_active("counter_range", player_index) then
+        counter_range.draw_all(player_index)
+    else
+        counter_range.clear_all_renders(player_index)
+    end
+
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Master: " .. (dbg.master and "[ENABLED]" or "[DISABLED]"))
@@ -329,6 +357,24 @@ local function toggle_new_flow(player_index)
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Flow Overlay: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
+end
+
+local function toggle_counter_range(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.counter_range = not dbg.counter_range
+
+    if is_debug_active("counter_range", player_index) then
+        counter_range.draw_all(player_index)
+    else
+        counter_range.clear_all_renders(player_index)
+    end
+
+    update_player_shortcuts(player_index)
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] Counter Range Overlay: " .. (dbg.counter_range and "[ENABLED]" or "[DISABLED]"))
 end
 
 local function toggle_capsules(player_index)
@@ -392,6 +438,7 @@ commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) 
 commands.add_command("toggle-prints", "Toggle game debug prints", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-new-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("toggle-counter-range", "Toggle counter range overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_counter_range(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
@@ -401,6 +448,7 @@ commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered 
 commands.add_command("pt-toggle-debug", "Toggle master debug state (Alias)", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-new-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-counter-range", "Toggle counter range overlay (Alias)", function(cmd) if cmd.player_index then toggle_counter_range(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
@@ -446,6 +494,11 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
         else
             flow_engine.clear_all_renders(p_idx)
         end
+        if is_debug_active("counter_range", p_idx) then
+            counter_range.draw_all(p_idx)
+        else
+            counter_range.clear_all_renders(p_idx)
+        end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_new_flow" then
@@ -454,6 +507,15 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
             flow_engine.draw_all(p_idx)
         else
             flow_engine.clear_all_renders(p_idx)
+        end
+        update_player_shortcuts(p_idx)
+        debug_manager.refresh_panel(p_idx)
+    elseif name == "pneumatic_debug_chk_counter_range" then
+        dbg.counter_range = element.state
+        if is_debug_active("counter_range", p_idx) then
+            counter_range.draw_all(p_idx)
+        else
+            counter_range.clear_all_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)

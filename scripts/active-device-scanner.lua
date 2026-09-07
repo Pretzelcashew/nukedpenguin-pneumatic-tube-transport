@@ -1,3 +1,5 @@
+-- File: scripts/active-device-scanner.lua
+
 local events = require("scripts.events")
 local flow_engine = require("scripts.flow.flow-engine")
 local counter_range = require("scripts.counters.counter-range")
@@ -152,7 +154,6 @@ function active_device_scanner.notify_settings_changed(entity)
 
     if not is_ghost then
         flow_engine.enqueue_unit_ports(unit_number)
-        counter_range.enqueue_unit_ports(unit_number)
         capsule_runner.wake_parked_capsules(unit_number)
     end
 end
@@ -167,7 +168,6 @@ local function scan_active_devices()
                         local changed = spec.check_and_update_state(entity, false)
                         if changed then
                             flow_engine.enqueue_unit_ports(unit_number)
-                            counter_range.enqueue_unit_ports(unit_number)
                             capsule_runner.wake_parked_capsules(unit_number)
                         end
                     end
@@ -460,7 +460,6 @@ function active_device_scanner.register_events()
                         end
 
                         flow_engine.enqueue_unit_ports(target_entity.unit_number)
-                        counter_range.enqueue_unit_ports(target_entity.unit_number)
                         capsule_runner.wake_parked_capsules(target_entity.unit_number)
                         active_device_scanner.notify_settings_changed(target_entity)
                     end
@@ -504,7 +503,6 @@ function active_device_scanner.register_events()
                         spec.check_and_update_state(entity, true)
                     end
                     flow_engine.enqueue_unit_ports(entity.unit_number)
-                    counter_range.enqueue_unit_ports(entity.unit_number)
                     capsule_runner.wake_parked_capsules(entity.unit_number)
                 end
                 active_device_scanner.notify_settings_changed(entity)

@@ -1,3 +1,5 @@
+-- File: scripts/flow/flow-engine.lua
+
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local pump_settings = require("scripts.pump-settings")
@@ -9,6 +11,27 @@ local flow_engine = {}
 
 local BATCH_SIZE = 50
 local MAX_FLOW = 10
+local DEFAULT_RANGE_SEED = 15
+
+local OWNER_PALETTE = {
+    {r = 0.30, g = 0.85, b = 0.70}, -- Teal (counter primary)
+    {r = 0.20, g = 0.70, b = 1.00}, -- Electric cyan
+    {r = 0.90, g = 0.40, b = 0.95}, -- Bright magenta
+    {r = 0.30, g = 0.90, b = 0.35}, -- Emerald green
+    {r = 1.00, g = 0.65, b = 0.15}, -- Bright amber
+    {r = 1.00, g = 0.30, b = 0.40}, -- Coral red
+    {r = 0.60, g = 0.50, b = 1.00}, -- Lavender blue
+    {r = 0.85, g = 0.95, b = 0.20}, -- Lemon yellow
+}
+
+local function get_owner_color(unit_number)
+    if not unit_number then
+        return {r = 0.30, g = 0.85, b = 0.70, a = 0.8}
+    end
+    local idx = ((unit_number - 1) % #OWNER_PALETTE) + 1
+    local col = OWNER_PALETTE[idx]
+    return {r = col.r, g = col.g, b = col.b, a = 0.8}
+end
 
 local registered_entities = {}
 for _, name in ipairs(port_defs.registered_names) do
@@ -17,14 +40,6 @@ end
 
 local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
-end
-
-local function parse_port_key(key)
-    local u, p = key:match("(%d+):(%d+)")
-    if u and p then
-        return tonumber(u), tonumber(p)
-    end
-    return nil, nil
 end
 
 local function make_pos_key(surface_name, x, y)
@@ -48,6 +63,14 @@ function flow_engine.init_storage()
     storage.flow_edge_renders = storage.flow_edge_renders or {}
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
+
+    -- Counter Range Wavefront Fields
+    storage.counter_levels = storage.counter_levels or {}
+    storage.counter_owners = storage.counter_owners or {}
+    storage.counter_owned_nodes = storage.counter_owned_nodes or {}
+    storage.active_counters = storage.active_counters or {}
+    storage.counter_power_states = storage.counter_power_states or {}
+    storage.counter_renders = storage.counter_renders or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -151,6 +174,17 @@ local function destroy_pos_renders(pos_key)
     end
 end
 
+local function destroy_counter_renders(pos_key)
+    for p_idx, p_renders in pairs(storage.counter_renders or {}) do
+        local objs = p_renders[pos_key]
+        if objs then
+            if objs.circle and objs.circle.valid then objs.circle.destroy() end
+            if objs.text and objs.text.valid then objs.text.destroy() end
+            p_renders[pos_key] = nil
+        end
+    end
+end
+
 local function destroy_edge_render(edge_key)
     for p_idx, e_renders in pairs(storage.flow_edge_renders or {}) do
         local line_obj = e_renders[edge_key]
@@ -169,7 +203,7 @@ local function get_dominant_port_at_pos(pos_key)
     local max_mag = -1
     local best_level = 0
 
-    for pkey, _ in pairs(grid_ports) do
+    for pkey in pairs(grid_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
         if node then
             local level = storage.flow_levels and storage.flow_levels[pkey] or 0
@@ -191,6 +225,84 @@ local function get_dominant_port_at_pos(pos_key)
     end
 
     return best_node, best_level
+end
+
+local function get_dominant_counter_at_pos(pos_key)
+    local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
+    if not grid_ports then return nil, 0, nil end
+
+    local best_node = nil
+    local max_level = 0
+    local best_owner = nil
+
+    for pkey in pairs(grid_ports) do
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node then
+            local level = storage.counter_levels and storage.counter_levels[pkey] or 0
+            local owner = storage.counter_owners and storage.counter_owners[pkey]
+            if level > max_level and owner ~= nil then
+                max_level = level
+                best_owner = owner
+                best_node = node
+            end
+        end
+    end
+
+    return best_node, max_level, best_owner
+end
+
+local function update_counter_pos_render(pos_key)
+    if not (is_debug_active and is_debug_active("counter_range")) then return end
+
+    local node, level, owner = get_dominant_counter_at_pos(pos_key)
+    if not node or level == 0 or owner == nil then
+        destroy_counter_renders(pos_key)
+        return
+    end
+
+    for _, player in pairs(game.players) do
+        local p_idx = player.index
+        if is_debug_active("counter_range", p_idx) then
+            storage.counter_renders[p_idx] = storage.counter_renders[p_idx] or {}
+            local p_renders = storage.counter_renders[p_idx]
+
+            local circle_color = get_owner_color(owner)
+            local pos = node.pos
+            local surface = game.surfaces[node.surface_name]
+
+            local current = p_renders[pos_key]
+            if current and current.circle and current.circle.valid and current.text and current.text.valid then
+                current.circle.color = circle_color
+                current.text.text = tostring(level)
+            else
+                destroy_counter_renders(pos_key)
+                if surface and surface.valid then
+                    local c_obj = rendering.draw_circle{
+                        color = circle_color,
+                        radius = 0.15,
+                        filled = true,
+                        target = pos,
+                        surface = surface,
+                        only_in_alt_mode = true,
+                        players = { player }
+                    }
+                    local t_obj = rendering.draw_text{
+                        text = tostring(level),
+                        surface = surface,
+                        target = {x = pos.x, y = pos.y - 0.25},
+                        color = {r = 1, g = 1, b = 1, a = 0.9},
+                        scale = 0.7,
+                        alignment = "center",
+                        only_in_alt_mode = true,
+                        players = { player }
+                    }
+                    p_renders[pos_key] = { circle = c_obj, text = t_obj }
+                end
+            end
+        else
+            destroy_counter_renders(pos_key)
+        end
+    end
 end
 
 local function update_pos_render(pos_key)
@@ -305,6 +417,22 @@ local function update_edge_render(key_a, key_b)
     end
 end
 
+function flow_engine.clear_counter_renders(player_index)
+    if player_index then
+        if storage.counter_renders and storage.counter_renders[player_index] then
+            for pos_key, objs in pairs(storage.counter_renders[player_index]) do
+                if objs.circle and objs.circle.valid then objs.circle.destroy() end
+                if objs.text and objs.text.valid then objs.text.destroy() end
+            end
+            storage.counter_renders[player_index] = {}
+        end
+    else
+        for _, player in pairs(game.players) do
+            flow_engine.clear_counter_renders(player.index)
+        end
+    end
+end
+
 function flow_engine.clear_all_renders(player_index)
     if player_index then
         if storage.flow_renders and storage.flow_renders[player_index] then
@@ -320,6 +448,7 @@ function flow_engine.clear_all_renders(player_index)
             end
             storage.flow_edge_renders[player_index] = {}
         end
+        flow_engine.clear_counter_renders(player_index)
     else
         for _, player in pairs(game.players) do
             flow_engine.clear_all_renders(player.index)
@@ -327,10 +456,25 @@ function flow_engine.clear_all_renders(player_index)
     end
 end
 
+function flow_engine.draw_all_counters(player_index)
+    local pos_keys = {}
+    local count = 0
+    for pos_key in pairs(storage.flow_grid or {}) do
+        count = count + 1
+        pos_keys[count] = pos_key
+    end
+
+    table.sort(pos_keys)
+
+    for i = 1, count do
+        update_counter_pos_render(pos_keys[i])
+    end
+end
+
 function flow_engine.draw_all(player_index)
     local pos_keys = {}
     local count = 0
-    for pos_key, _ in pairs(storage.flow_grid or {}) do
+    for pos_key in pairs(storage.flow_grid or {}) do
         count = count + 1
         pos_keys[count] = pos_key
     end
@@ -340,12 +484,13 @@ function flow_engine.draw_all(player_index)
     for i = 1, count do
         local pos_key = pos_keys[i]
         update_pos_render(pos_key)
+        update_counter_pos_render(pos_key)
         local grid_ports = storage.flow_grid[pos_key]
         if grid_ports then
-            for pkey, _ in pairs(grid_ports) do
+            for pkey in pairs(grid_ports) do
                 local neighbors = storage.flow_connections and storage.flow_connections[pkey]
                 if neighbors then
-                    for n_key, _ in pairs(neighbors) do
+                    for n_key in pairs(neighbors) do
                         update_edge_render(pkey, n_key)
                     end
                 end
@@ -396,7 +541,7 @@ function flow_engine.connect_entity(entity)
 
         storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}
 
-        for existing_pkey, _ in pairs(storage.flow_grid[pos_key]) do
+        for existing_pkey in pairs(storage.flow_grid[pos_key]) do
             local existing_node = storage.flow_nodes[existing_pkey]
             if existing_node and existing_node.unit_number ~= unit_number then
                 storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
@@ -412,6 +557,7 @@ function flow_engine.connect_entity(entity)
         storage.flow_grid[pos_key][pkey] = true
         flow_engine.enqueue_port(pkey)
         update_pos_render(pos_key)
+        update_counter_pos_render(pos_key)
     end
 end
 
@@ -436,7 +582,7 @@ function flow_engine.disconnect_entity(entity)
 
             local neighbors = storage.flow_connections and storage.flow_connections[pkey]
             if neighbors then
-                for n_key, _ in pairs(neighbors) do
+                for n_key in pairs(neighbors) do
                     if storage.flow_connections[n_key] then
                         storage.flow_connections[n_key][pkey] = nil
                         if next(storage.flow_connections[n_key]) == nil then
@@ -449,10 +595,20 @@ function flow_engine.disconnect_entity(entity)
                 storage.flow_connections[pkey] = nil
             end
 
+            if storage.counter_owners and storage.counter_owners[pkey] then
+                local owner = storage.counter_owners[pkey]
+                if storage.counter_owned_nodes and storage.counter_owned_nodes[owner] then
+                    storage.counter_owned_nodes[owner][pkey] = nil
+                end
+                storage.counter_owners[pkey] = nil
+            end
+
             if storage.flow_levels then storage.flow_levels[pkey] = nil end
+            if storage.counter_levels then storage.counter_levels[pkey] = nil end
             if storage.flow_nodes then storage.flow_nodes[pkey] = nil end
 
             update_pos_render(pos_key)
+            update_counter_pos_render(pos_key)
         end
 
         flow_engine.enqueue_port(pkey)
@@ -542,6 +698,7 @@ function flow_engine.handle_object_destroyed(unit_number)
         capsule_manager.remove(capsule_id)
     end
 
+    flow_engine.enqueue_unit_ports(unit_number)
     flow_engine.disconnect_entity({ unit_number = unit_number })
 
     if storage.active_hubs then storage.active_hubs[unit_number] = nil end
@@ -558,6 +715,101 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.active_counters then storage.active_counters[unit_number] = nil end
     if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
     if storage.spilled_containers then storage.spilled_containers[unit_number] = nil end
+end
+
+local function compute_port_counter_level(pkey)
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+    if not node then return 0, nil end
+
+    local unit_number = node.unit_number
+
+    if storage.active_counters and storage.active_counters[unit_number] then
+        local counter_entity = storage.active_counters[unit_number]
+        if not (counter_entity and counter_entity.valid) then
+            return 0, nil
+        end
+
+        local is_powered = (counter_entity.energy > 0)
+        local last_power = storage.counter_power_states[unit_number]
+        if last_power ~= is_powered then
+            storage.counter_power_states[unit_number] = is_powered
+            flow_engine.enqueue_unit_ports(unit_number)
+        end
+
+        if not is_powered then
+            return 0, nil
+        end
+
+        local seed = node.sense or DEFAULT_RANGE_SEED
+        return seed, unit_number
+    end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if not unit_ports then return 0, nil end
+
+    local max_cand_level = 0
+    local winning_owner = nil
+
+    for _, check_pkey in pairs(unit_ports) do
+        local check_node = storage.flow_nodes and storage.flow_nodes[check_pkey]
+        if check_node then
+            local is_self = (check_pkey == pkey)
+            local can_transmit_internally = node.transmit and check_node.transmit and (node.group ~= nil) and (check_node.group == node.group)
+
+            if is_self or can_transmit_internally then
+                local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
+                if neighbors then
+                    for n_key in pairs(neighbors) do
+                        local n_level = storage.counter_levels and storage.counter_levels[n_key] or 0
+                        local n_owner = storage.counter_owners and storage.counter_owners[n_key]
+
+                        if n_level > 1 and n_owner ~= nil and storage.active_counters and storage.active_counters[n_owner] and storage.counter_power_states[n_owner] ~= false then
+                            local cand_level = n_level - 1
+                            if cand_level > max_cand_level then
+                                max_cand_level = cand_level
+                                winning_owner = n_owner
+                            elseif cand_level == max_cand_level and cand_level > 0 then
+                                if winning_owner == nil or n_owner < winning_owner then
+                                    winning_owner = n_owner
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if max_cand_level == 0 or winning_owner == nil then
+        return 0, nil
+    end
+
+    return max_cand_level, winning_owner
+end
+
+local function set_port_counter_ownership(pkey, target_level, target_owner)
+    local current_level = storage.counter_levels and storage.counter_levels[pkey] or 0
+    local current_owner = storage.counter_owners and storage.counter_owners[pkey]
+
+    if target_level == current_level and target_owner == current_owner then
+        return false
+    end
+
+    if current_owner and storage.counter_owned_nodes and storage.counter_owned_nodes[current_owner] then
+        storage.counter_owned_nodes[current_owner][pkey] = nil
+    end
+
+    if target_level > 0 and target_owner ~= nil then
+        storage.counter_levels[pkey] = target_level
+        storage.counter_owners[pkey] = target_owner
+        storage.counter_owned_nodes[target_owner] = storage.counter_owned_nodes[target_owner] or {}
+        storage.counter_owned_nodes[target_owner][pkey] = true
+    else
+        storage.counter_levels[pkey] = nil
+        storage.counter_owners[pkey] = nil
+    end
+
+    return true
 end
 
 local function compute_port_flow_level(pkey)
@@ -584,7 +836,7 @@ local function compute_port_flow_level(pkey)
             if is_self or can_transmit_internally then
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
                 if neighbors then
-                    for n_key, _ in pairs(neighbors) do
+                    for n_key in pairs(neighbors) do
                         local n_level = storage.flow_levels and storage.flow_levels[n_key] or 0
                         if n_level > 1 then
                             local incoming = n_level - 1
@@ -621,7 +873,7 @@ function flow_engine.step(tick)
     local batch = {}
     local batch_count = 0
 
-    for pkey, _ in pairs(storage.flow_queue) do
+    for pkey in pairs(storage.flow_queue) do
         batch_count = batch_count + 1
         batch[batch_count] = pkey
         storage.flow_queue[pkey] = nil
@@ -632,12 +884,15 @@ function flow_engine.step(tick)
 
     for i = 1, batch_count do
         local pkey = batch[i]
-        local target_level = compute_port_flow_level(pkey)
-        local current_level = storage.flow_levels and storage.flow_levels[pkey] or 0
 
-        if target_level ~= current_level then
-            if target_level ~= 0 then
-                storage.flow_levels[pkey] = target_level
+        -- Evaluate Pressure Flow
+        local target_flow = compute_port_flow_level(pkey)
+        local current_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
+        local flow_changed = (target_flow ~= current_flow)
+
+        if flow_changed then
+            if target_flow ~= 0 then
+                storage.flow_levels[pkey] = target_flow
             else
                 storage.flow_levels[pkey] = nil
             end
@@ -646,7 +901,22 @@ function flow_engine.step(tick)
             if node then
                 update_pos_render(node.pos_key)
             end
+        end
 
+        -- Evaluate Counter Sensing Range
+        local target_range, target_owner = compute_port_counter_level(pkey)
+        local range_changed = set_port_counter_ownership(pkey, target_range, target_owner)
+
+        if range_changed then
+            local node = storage.flow_nodes and storage.flow_nodes[pkey]
+            if node then
+                update_counter_pos_render(node.pos_key)
+            end
+        end
+
+        -- Propagation
+        if flow_changed or range_changed then
+            local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node and node.transmit then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then
@@ -663,9 +933,11 @@ function flow_engine.step(tick)
 
             local neighbors = storage.flow_connections and storage.flow_connections[pkey]
             if neighbors then
-                for n_key, _ in pairs(neighbors) do
+                for n_key in pairs(neighbors) do
                     flow_engine.enqueue_port(n_key)
-                    update_edge_render(pkey, n_key)
+                    if flow_changed then
+                        update_edge_render(pkey, n_key)
+                    end
                 end
             end
         end
@@ -710,7 +982,7 @@ function flow_engine.register_events()
 
     for _, event_id in ipairs(build_events) do
         events.on_event(event_id, function(event)
-            local entity = event.entity
+            local entity = event.entity or event.destination
             if entity and entity.valid then
                 flow_engine.connect_entity(entity)
             end

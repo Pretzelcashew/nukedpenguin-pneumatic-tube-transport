@@ -180,3 +180,12 @@
 3. **Prototype & Recipe Declarations (`prototypes/item.lua` & `prototypes/recipe.lua`):** Registered `electromagnetic-capsule` item prototype (stack size 1, subgroup `pneumatic-capsules`, order `f[electromagnetic]`) with a Holmium pink-magenta tint, and added its crafting recipe requiring 5 superconductors, 2 low-density structures, and 10 scrap.
 4. **Technology Research Node (`prototypes/technology.lua`):** Created the `electromagnetic-capsule` research node (prerequisites: `electromagnetic-science-pack`, `pneumatic-transport`, `electromagnetic-plant`; 250 cycles @ 45s) unlocking the electromagnetic capsule recipe, featuring the superconductor icon with Holmium pink-magenta tinting.
 5. **Locale Definitions (`locale/en/config.cfg`):** Added English localized names and descriptions for the electromagnetic capsule item, recipe, and technology while updating reinforced capsule descriptions to reflect the strict full-capacity bulk transport rule.
+
+
+### Revision: Stack-Proportional Fractional Capacity & Smart Post-Packing Inventory Bar Clamping
+**Date:** 2026-09-08 09:42 (EDT)
+**Context:** Implement the `mixed_quantity` capacity accounting flag for electromagnetic capsules to scale slot costs by item stack size, and replace static upfront inventory bar clamping guesswork on liminal holders with dynamic post-packing clamping.
+**Key Changes:**
+1. **Electromagnetic Capsule Fractional Capacity Schema (`scripts/capsules/capsule-definitions.lua`):** Added `mixed_quantity = true` to `electromagnetic-capsule` prototype definition and explicitly set `mixed_quantity = false` across all other capsule prototypes.
+2. **Fractional Slot Cost Planning Engine (`scripts/hubs/packing/cargo-planner.lua`):** Updated `plan_single_type_cargo` in `cargo-planner.lua` to calculate per-item unit slot costs (`base_slot_cost / stack_size`) when `mixed_quantity` is enabled, enabling partial item stacks to consume fractional capsule volume proportional to their item count.
+3. **Smart Dynamic Post-Packing Inventory Bar Clamping (`scripts/hubs/hub-packing.lua`):** Replaced static upfront inventory bar clamping math on the hidden liminal holder with dynamic post-packing clamping. Transfers primary shell and cargo extractions using full inventory depth (`max_search = #dest_inv`), evaluates the highest occupied slot index (`last_occupied_slot`), and sets `dest_inv.set_bar(last_occupied_slot + 1)` to lock trailing empty slots cleanly.

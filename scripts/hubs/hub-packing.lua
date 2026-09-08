@@ -243,25 +243,7 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- Dynamically bound holder cargohold size to exact maximum physical slot capacity
-    local min_slot_cost = 1.0
-    if capsule_def.slot_costs then
-        for _, cost in pairs(capsule_def.slot_costs) do
-            if type(cost) == "number" and cost > 0 and cost < min_slot_cost then
-                min_slot_cost = cost
-            end
-        end
-    end
-
-    local max_physical_cargo_slots = (min_slot_cost > 0) and math.floor(max_cargo_slots / min_slot_cost) or max_cargo_slots
-    local required_holder_slots = self_slot_cost + math.max(0, max_physical_cargo_slots)
-
-    if dest_inv and dest_inv.supports_bar() and required_holder_slots > 0 then
-        local bar_limit = math.min(#dest_inv + 1, required_holder_slots + 1)
-        dest_inv.set_bar(bar_limit)
-    end
-
-    local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
+    local max_search = #dest_inv
     local has_spoilable_items = false
 
     -- 1. Insert and Track Primary Capsule Shell Slot FIRST into dest_inv
@@ -350,6 +332,17 @@ function hub_packing.evaluate_inventory(entity)
 
             item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
         end
+    end
+
+    -- 3. Smart Post-Packing Inventory Bar Clamping
+    if dest_inv and dest_inv.supports_bar() then
+        local last_occupied_slot = 0
+        for i = 1, #dest_inv do
+            if dest_inv[i].valid_for_read then
+                last_occupied_slot = i
+            end
+        end
+        dest_inv.set_bar(math.max(1, last_occupied_slot + 1))
     end
 
     local dominant_payload_item = dominant_cargo_item or capsule_name

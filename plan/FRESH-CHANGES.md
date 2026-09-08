@@ -197,3 +197,12 @@
 **Key Changes:**
 1. **Quality-Clamped Multi-Cargo Schema (`scripts/capsules/capsule-definitions.lua`):** Configured `item-capsule` with `mixed_cargo = true`, `mixed_quality = "any"`, `quality_filter = "ceil"`, `minimum_cargo = 2`, and `full_stacks = true`. Enables multi-item and multi-quality transport clamped to the capsule's quality tier while requiring full item stacks and dispatching as soon as 1 full stack is loaded.
 2. **Locale Description Alignment (`locale/en/config.cfg`):** Updated localized English item description for `item-capsule` to explicitly communicate its full-stack, quality-clamped mixed cargo capacity rules.
+
+
+### Revision: Biological Capsule Restrictions & Normalized Base Cargo Capacity
+**Date:** 2026-09-08 11:33 (EDT)
+**Context:** Restrict refrigerated capsules strictly to biological cargo and normalize baseline stack capacities across all capsule variants to establish a clear quality scaling progression and eliminate capacity power spikes.
+**Key Changes:**
+1. **Refrigerated Biological Restriction & Schema Alignment (`scripts/capsules/capsule-definitions.lua` & `scripts/hubs/hub-packing.lua`):** Configured `bio_only = true` on `refrigerated-capsule` and `spent-refrigerated-capsule` prototypes and added a `bio_only` validation check (`not capsule_def.bio_only or capsule_defs.is_bio_item(item_name)`) to the item candidate loop in `hub-packing.lua` to exclude non-biological items from loading into refrigerated shells.
+2. **Normalized Base Capacity & Quality Scaling Schema (`scripts/capsules/capsule-definitions.lua`):** Standardized base cargo capacities across all capsule prototypes: set Standard, Biodegradable, Refrigerated, Spent Refrigerated, and Electromagnetic capsules to base capacity 1 stack (`cargo_capacity = 1`, `quality_affected_capacity = 1`), and Reinforced capsules to base capacity 2 stacks (`cargo_capacity = 2`, `quality_affected_capacity = 2`).
+3. **Locale Description Updates (`locale/en/config.cfg`):** Updated English localized descriptions for `refrigerated-capsule`, `spent-refrigerated-capsule`, `reinforced-capsule`, and `electromagnetic-capsule` to clearly communicate biological cargo restrictions and updated stack capacity scaling rules.

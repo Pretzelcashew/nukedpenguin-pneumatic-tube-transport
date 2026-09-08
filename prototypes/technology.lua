@@ -1,9 +1,10 @@
 local palette = {
-  transport   = {r = 0.40, g = 0.70, b = 0.90, a = 1.0}, -- Pressure Cyan
-  specialized = {r = 0.85, g = 0.45, b = 0.95, a = 1.0}, -- Advanced Purple
-  bio         = {r = 0.40, g = 0.85, b = 0.40, a = 1.0}, -- Leaf Green
-  reinforced  = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
-  refrigerated= {r = 0.40, g = 0.80, b = 1.00, a = 1.0}, -- Cryo Cyan
+  transport       = {r = 0.40, g = 0.70, b = 0.90, a = 1.0}, -- Pressure Cyan
+  specialized     = {r = 0.85, g = 0.45, b = 0.95, a = 1.0}, -- Advanced Purple
+  bio             = {r = 0.40, g = 0.85, b = 0.40, a = 1.0}, -- Leaf Green
+  reinforced      = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
+  electromagnetic = {r = 0.85, g = 0.35, b = 0.95, a = 1.0}, -- Holmium Pink-Magenta
+  refrigerated    = {r = 0.40, g = 0.80, b = 1.00, a = 1.0}, -- Cryo Cyan
 }
 
 local function tech_icon(path, tint, size)
@@ -145,6 +146,32 @@ data:extend({
       { type = "unlock-recipe", recipe = "reinforced-capsule" }
     },
     order = "c-b[reinforced-capsule]"
+  },
+
+  -- Fulgora Planet Unlocks: Electromagnetic Capsule (Requires electromagnetic science pack & electromagnetic plant)
+  {
+    type = "technology",
+    name = "electromagnetic-capsule",
+    icons = tech_icon("__space-age__/graphics/icons/superconductor.png", palette.electromagnetic, 64),
+    prerequisites = {
+      "electromagnetic-science-pack",
+      "pneumatic-transport",
+      "electromagnetic-plant"
+    },
+    unit = {
+      count = 250,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1},
+        {"chemical-science-pack", 1},
+        {"electromagnetic-science-pack", 1}
+      },
+      time = 45
+    },
+    effects = {
+      { type = "unlock-recipe", recipe = "electromagnetic-capsule" }
+    },
+    order = "c-b[electromagnetic-capsule]"
   },
 
   -- Aquilo Planet Unlocks: Refrigerated Capsule & Recharge (Requires cryogenic plant, lithium processing, electromagnetic plant & LDS)

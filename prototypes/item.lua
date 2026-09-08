@@ -1,11 +1,12 @@
 local palette = {
   -- Capsule items
-  standard     = {r = 0.85, g = 0.70, b = 0.70, a = 1.0}, -- Silvery-Red
-  bio          = {r = 0.40, g = 0.85, b = 0.40, a = 1.0}, -- Leaf Green
-  refrigerated = {r = 0.40, g = 0.80, b = 1.00, a = 1.0}, -- Cryo Cyan
-  spent        = {r = 0.50, g = 0.55, b = 0.60, a = 1.0}, -- Dim Slate
-  reinforced   = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
-  player       = {r = 0.90, g = 0.35, b = 0.85, a = 1.0}, -- Magenta
+  standard        = {r = 0.85, g = 0.70, b = 0.70, a = 1.0}, -- Silvery-Red
+  bio             = {r = 0.40, g = 0.85, b = 0.40, a = 1.0}, -- Leaf Green
+  refrigerated    = {r = 0.40, g = 0.80, b = 1.00, a = 1.0}, -- Cryo Cyan
+  spent           = {r = 0.50, g = 0.55, b = 0.60, a = 1.0}, -- Dim Slate
+  reinforced      = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
+  electromagnetic = {r = 0.85, g = 0.35, b = 0.95, a = 1.0}, -- Holmium Pink-Magenta
+  player          = {r = 0.90, g = 0.35, b = 0.85, a = 1.0}, -- Magenta
 
   -- Synced entity tints
   hub_h        = {r = 0.60, g = 0.80, b = 1.00, a = 1.0}, -- Light Blue (Horizontal Hub)
@@ -166,10 +167,18 @@ data:extend({
   },
   {
     type = "item",
+    name = "electromagnetic-capsule",
+    icons = icon("__space-age__/graphics/icons/superconductor.png", palette.electromagnetic),
+    subgroup = "pneumatic-capsules",
+    order = "f[electromagnetic]",
+    stack_size = 1
+  },
+  {
+    type = "item",
     name = "player-transit-capsule",
     icons = icon("__base__/graphics/icons/car.png", palette.player),
     subgroup = "pneumatic-capsules",
-    order = "f[player]",
+    order = "g[player]",
     stack_size = 1
   }
 })

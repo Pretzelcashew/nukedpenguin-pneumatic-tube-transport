@@ -78,6 +78,20 @@ data:extend({
   },
   {
     type = "recipe",
+    name = "electromagnetic-capsule",
+    enabled = false,
+    energy_required = 4.0,
+    ingredients = {
+      {type = "item", name = "superconductor", amount = 5},
+      {type = "item", name = "low-density-structure", amount = 2},
+      {type = "item", name = "scrap", amount = 10}
+    },
+    results = {
+      {type = "item", name = "electromagnetic-capsule", amount = 1}
+    }
+  },
+  {
+    type = "recipe",
     name = "player-transit-capsule",
     enabled = false,
     energy_required = 5.0,

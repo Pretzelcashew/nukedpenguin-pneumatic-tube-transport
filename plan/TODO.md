@@ -51,6 +51,12 @@ example scenario provided in image: where you'd want extra capsules for sending 
 
 ~make nest capsules off by default
 
+~ensure all technology has an en locale so 'unknown key' doesnt keep appearing
+
+~remove any mention of the old v1 engine in the project
+
+~make a capsule counter research that require the circuit network tech and the initial pneumatic tech, in order to be able to craft capsule counters
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
@@ -59,12 +65,10 @@ add ladder for going over pneumatic tubes with character
 
 add a pneumatic gate which lets capsules through when closed
 
-~ensure all technology has an en locale so 'unknown key' doesnt keep appearing
+make reinforced capsule's role more distinct, enforce strict bulk transport, all same item type, same quality, must use all slots to pack (dont forget to update descs)
 
-remove any mention of the old v1 engine in the project
-
-make a capsule counter research that require the circuit network tech and the initial pneumatic tech, in order to be able to craft capsule counters
-
+add a new capsule type unlocked on fulgora, designed to be the true mixer, zero restrictions on packing, can be any items, any quantity, any quality, (so you could load 1 single copper cable and be packed, or 23 rare iron gears, plus 27 uncommon LDS, plus 100 normal stone bricks), begins with 2 base slot capacity.
+crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and locale, item descs, balance. do not have overly wordy descs.
 
 
 

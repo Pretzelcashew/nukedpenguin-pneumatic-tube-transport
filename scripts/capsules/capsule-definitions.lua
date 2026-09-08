@@ -134,12 +134,34 @@ capsule_definitions.types = {
         debug_color = { r = 0.8, g = 0.3, b = 1.0, a = 0.9 }, -- Violet Purple
         cargo_capacity = 5,                 -- Exactly 5 net cargo slots
         quality_affected_capacity = 2,      -- +2 cargo slots per quality tier
-        mixed_cargo = true,
-        mixed_quality = "any",
+        mixed_cargo = false,                -- Strictly single item type
+        mixed_quality = "strict",           -- Uniform quality tier across all cargo
         quality_filter = "any",
-        minimum_cargo = 2,
-        full_stacks = true,
-        consolidate_stacks = true,
+        minimum_cargo = "ceil",             -- Must fill ALL cargo slots completely to pack
+        full_stacks = true,                 -- Full stacks required
+        consolidate_stacks = true,          -- Consolidate partial stacks into full stacks
+        include_self = true,
+        destroy_self = false,
+        destroy_holder_if_empty = true,
+        holder_type = "invisible-capsule-holder",
+        spill_contents = {
+            units = true,
+            mode = "container",
+            container = "visible-capsule-holder",
+            mark_for_deconstruction = true
+        }
+    },
+    ["electromagnetic-capsule"] = {
+        type = "capsule",
+        debug_color = { r = 0.85, g = 0.35, b = 0.95, a = 0.9 }, -- Holmium Pink-Magenta
+        cargo_capacity = 2,                 -- Exactly 2 base net cargo slots
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
+        mixed_cargo = true,                 -- Mix any item types
+        mixed_quality = "any",              -- Mix any qualities
+        quality_filter = "any",
+        minimum_cargo = 1,                  -- Pack at least 1 item or partial stack
+        full_stacks = false,                -- Partial stacks allowed
+        consolidate_stacks = false,         -- No full stack restriction
         include_self = true,
         destroy_self = false,
         destroy_holder_if_empty = true,

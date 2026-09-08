@@ -169,3 +169,14 @@
 **Key Changes:**
 1. **Capsule Counter Dedicated Research (`prototypes/technology.lua` & `locale/en/config.cfg`):** Created the `capsule-counter` technology node (prerequisites: `pneumatic-transport`, `circuit-network`; 100 cycles @ 30s) unlocking the `pneumatic-capsule-counter` recipe. Unlinked the counter unlock from baseline `pneumatic-transport` technology. Added localized English title and description while updating `pneumatic-transport` locale text to reflect the decoupled research tree.
 2. **Legacy v1 Flow Engine Cleanup (`locale/en/config.cfg`, `settings.lua` & `control.lua`):** Removed obsolete `pneumatic-flow-version` mod setting locale keys from `config.cfg`. Purged lingering comments referencing legacy v1 flow network graph/builder settings across `settings.lua` and `control.lua`.
+
+
+### Revision: Reinforced Capsule Bulk Enforcement & Electromagnetic Capsule Fulgora Integration
+**Date:** 2026-09-08 09:14 (EDT)
+**Context:** Enforce strict single-type full-capacity bulk transport for reinforced capsules and implement the Fulgora electromagnetic capsule allowing unrestricted mixed-cargo transit.
+**Key Changes:**
+1. **Reinforced Capsule Bulk Constraint Enforcement (`scripts/capsules/capsule-definitions.lua` & `locale/en/config.cfg`):** Refactored `reinforced-capsule` properties (`mixed_cargo = false`, `mixed_quality = "strict"`, `minimum_cargo = "ceil"`, `full_stacks = true`) to enforce strict bulk transport, requiring all cargo slots to be completely filled with a single item type of uniform quality before packing.
+2. **Electromagnetic Capsule Definition (`scripts/capsules/capsule-definitions.lua`):** Registered `electromagnetic-capsule` with 2 net usable cargo slots (+1 per quality tier), configured with `mixed_cargo = true`, `mixed_quality = "any"`, `minimum_cargo = 1`, and `full_stacks = false` to enable unrestricted mixing of item types, partial stack quantities, and qualities.
+3. **Prototype & Recipe Declarations (`prototypes/item.lua` & `prototypes/recipe.lua`):** Registered `electromagnetic-capsule` item prototype (stack size 1, subgroup `pneumatic-capsules`, order `f[electromagnetic]`) with a Holmium pink-magenta tint, and added its crafting recipe requiring 5 superconductors, 2 low-density structures, and 10 scrap.
+4. **Technology Research Node (`prototypes/technology.lua`):** Created the `electromagnetic-capsule` research node (prerequisites: `electromagnetic-science-pack`, `pneumatic-transport`, `electromagnetic-plant`; 250 cycles @ 45s) unlocking the electromagnetic capsule recipe, featuring the superconductor icon with Holmium pink-magenta tinting.
+5. **Locale Definitions (`locale/en/config.cfg`):** Added English localized names and descriptions for the electromagnetic capsule item, recipe, and technology while updating reinforced capsule descriptions to reflect the strict full-capacity bulk transport rule.

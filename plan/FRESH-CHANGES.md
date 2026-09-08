@@ -124,3 +124,12 @@
 1. **Domain-Specific Render Management (`scripts/flow/flow-engine.lua`):** Created `flow_engine.clear_flow_renders` and `flow_engine.draw_flow` to manipulate pressure flow circles, text labels, and vector lines independently from counter sensing range overlays.
 2. **Per-Player Overlay Destruction Bounds (`scripts/flow/flow-engine.lua`):** Refactored `destroy_pos_renders`, `destroy_counter_renders`, and `destroy_edge_render` to support optional `player_index` targeting, preventing single-player overlay clears from destroying rendering objects for other players in multiplayer.
 3. **Decoupled Debug Command & GUI Toggles (`scripts/debug-manager.lua`):** Refactored `toggle_new_flow`, `toggle_counter_range`, `toggle_master`, and GUI event handlers to call domain-specific draw/clear methods rather than blanket `clear_all_renders`, preserving counter range overlays when flow overlays are disabled.
+
+
+### Revision: Hub Capsule Nesting Default Off & Setting Encapsulation
+**Date:** 2026-09-07 22:02 (EDT)
+**Context:** Change the hub capsule nesting default state to disabled (`false`) and encapsulate status checks behind a centralized settings helper function, ensuring newly placed hubs immediately transport standard cargo and eliminating duplicated fallback logic.
+**Key Changes:**
+1. **Default State & Helper Registration (`scripts/hubs/hub-settings.lua`):** Updated the default `nest_capsules` property to `false` across storage initialization, copy-paste cloning, and blueprint tag deserialization routines. Registered `hub_settings.is_nesting_enabled` helper function to centralize truth evaluation.
+2. **Packing Engine Integration (`scripts/hubs/hub-packing.lua`):** Refactored `evaluate_inventory` to inspect nesting permissions via `hub_settings.is_nesting_enabled`, allowing hubs to default to standard item cargo packing upon placement without requiring manual GUI intervention.
+3. **GUI State Alignment (`scripts/hubs/hub-gui.lua`):** Updated relative container GUI initialization to set the "Nest capsules" checkbox state directly from `hub_settings.is_nesting_enabled`.

@@ -149,7 +149,7 @@ local function on_gui_opened(event)
         type = "checkbox",
         name = "hub_nest_capsules",
         caption = "Nest capsules",
-        state = settings.nest_capsules ~= false,
+        state = hub_settings.is_nesting_enabled(entity.unit_number),
         tags = { unit_number = entity.unit_number }
     }
 end

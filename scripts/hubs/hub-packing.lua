@@ -139,7 +139,7 @@ function hub_packing.evaluate_inventory(entity)
     local is_strict_capsule = (mq_setting == "strict" or mq_setting == "capsule")
     local is_vessel_lock = (mq_setting == "vessel")
 
-    local nest_capsules = settings.nest_capsules ~= false
+    local nest_capsules = hub_settings.is_nesting_enabled(unit_number)
 
     local grouped_inventory = {}
     local group_order = {}

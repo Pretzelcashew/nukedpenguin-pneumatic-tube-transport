@@ -43,7 +43,7 @@ function hub_settings.get(unit_number)
                 constant = 0
             },
             use_receive_lock = true,
-            nest_capsules = true,
+            nest_capsules = false,
             read_red = true,
             read_green = true
         }
@@ -54,11 +54,16 @@ function hub_settings.get(unit_number)
         if s.use_circuit_receive == nil then s.use_circuit_receive = false end
         if s.receive_condition == nil then s.receive_condition = { first_signal = nil, comparator = "<", constant = 0 } end
         if s.use_receive_lock == nil then s.use_receive_lock = true end
-        if s.nest_capsules == nil then s.nest_capsules = true end
+        if s.nest_capsules == nil then s.nest_capsules = false end
         if s.read_red == nil then s.read_red = true end
         if s.read_green == nil then s.read_green = true end
     end
     return storage.hub_settings[dev_id]
+end
+
+function hub_settings.is_nesting_enabled(entity_or_id)
+    local settings = hub_settings.get(entity_or_id)
+    return settings and settings.nest_capsules == true or false
 end
 
 function hub_settings.copy(src_unit_number, dest_unit_number)
@@ -70,7 +75,7 @@ function hub_settings.copy(src_unit_number, dest_unit_number)
 
     storage.hub_settings = storage.hub_settings or {}
     local copy = util.table.deepcopy(src)
-    if copy.nest_capsules == nil then copy.nest_capsules = true end
+    if copy.nest_capsules == nil then copy.nest_capsules = false end
     storage.hub_settings[dest_id] = copy
     return copy
 end
@@ -80,7 +85,7 @@ function hub_settings.apply_blueprint_settings(unit_number, blueprint_settings)
     if not (dev_id and blueprint_settings) then return nil end
     storage.hub_settings = storage.hub_settings or {}
     local copy = util.table.deepcopy(blueprint_settings)
-    if copy.nest_capsules == nil then copy.nest_capsules = true end
+    if copy.nest_capsules == nil then copy.nest_capsules = false end
     storage.hub_settings[dev_id] = copy
     return copy
 end

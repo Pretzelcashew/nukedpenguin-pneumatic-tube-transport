@@ -5,6 +5,7 @@ local palette = {
   reinforced      = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
   electromagnetic = {r = 0.85, g = 0.35, b = 0.95, a = 1.0}, -- Holmium Pink-Magenta
   refrigerated    = {r = 0.40, g = 0.80, b = 1.00, a = 1.0}, -- Cryo Cyan
+  vacuum          = {r = 0.30, g = 0.50, b = 0.90, a = 1.0}, -- Deep Vacuum Blue
 }
 
 local function tech_icon(path, tint, size)
@@ -202,5 +203,31 @@ data:extend({
       { type = "unlock-recipe", recipe = "recharge-refrigerated-capsule" }
     },
     order = "c-b[refrigerated-capsule]"
+  },
+
+  -- Space Science Technology: Vacuum Capsule
+  {
+    type = "technology",
+    name = "vacuum-capsule",
+    icons = tech_icon("__base__/graphics/technology/space-science-pack.png", palette.vacuum),
+    prerequisites = {
+      "space-science-pack",
+      "pneumatic-transport"
+    },
+    unit = {
+      count = 250,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1},
+        {"chemical-science-pack", 1},
+        {"space-science-pack", 1}
+      },
+      time = 45
+    },
+    effects = {
+      { type = "unlock-recipe", recipe = "vacuum-capsule" },
+      { type = "unlock-recipe", recipe = "recharge-vacuum-capsule" }
+    },
+    order = "c-b[vacuum-capsule]"
   }
 })

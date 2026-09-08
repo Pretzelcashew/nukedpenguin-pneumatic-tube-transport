@@ -181,6 +181,53 @@ capsule_definitions.types = {
             mark_for_deconstruction = true
         }
     },
+    ["vacuum-capsule"] = {
+        type = "capsule",
+        debug_color = { r = 0.3, g = 0.5, b = 0.95, a = 0.9 }, -- Deep Vacuum Blue
+        cargo_capacity = 1,                 -- Exactly 1 net cargo slot
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
+        mixed_cargo = true,
+        mixed_quantity = false,
+        mixed_quality = "any",
+        quality_filter = "ceil",            -- Cargo quality clamped to capsule's quality tier
+        minimum_cargo = 2,                  -- Requires at least 1 full cargo stack + vessel slot
+        full_stacks = true,                 -- Full stacks required
+        consolidate_stacks = true,          -- Consolidate partial stacks into full stacks
+        include_self = true,
+        destroy_self = false,
+        spent_capsule_item = "spent-vacuum-capsule",
+        destroy_holder_if_empty = true,
+        holder_type = "invisible-capsule-holder",
+        spill_contents = {
+            units = true,
+            mode = "container",
+            container = "visible-capsule-holder",
+            mark_for_deconstruction = true
+        }
+    },
+    ["spent-vacuum-capsule"] = {
+        type = "capsule",
+        debug_color = { r = 0.4, g = 0.45, b = 0.6, a = 0.9 }, -- Dim Vacuum Slate
+        cargo_capacity = 1,                 -- Exactly 1 net cargo slot
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
+        mixed_cargo = true,
+        mixed_quantity = false,
+        mixed_quality = "any",
+        quality_filter = "ceil",            -- Cargo quality clamped to capsule's quality tier
+        minimum_cargo = 2,                  -- Requires at least 1 full cargo stack + vessel slot
+        full_stacks = true,                 -- Full stacks required
+        consolidate_stacks = true,          -- Consolidate partial stacks into full stacks
+        include_self = true,
+        destroy_self = false,
+        destroy_holder_if_empty = true,
+        holder_type = "invisible-capsule-holder",
+        spill_contents = {
+            units = true,
+            mode = "container",
+            container = "visible-capsule-holder",
+            mark_for_deconstruction = true
+        }
+    },
     ["player-transit-capsule"] = {
         type = "capsule",
         is_player_transit = true,

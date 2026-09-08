@@ -92,6 +92,38 @@ data:extend({
   },
   {
     type = "recipe",
+    name = "vacuum-capsule",
+    enabled = false,
+    energy_required = 4.0,
+    ingredients = {
+      {type = "item", name = "processing-unit", amount = 2},
+      {type = "item", name = "low-density-structure", amount = 2},
+      {type = "item", name = "accumulator", amount = 1}
+    },
+    results = {
+      {type = "item", name = "vacuum-capsule", amount = 1}
+    }
+  },
+  {
+    type = "recipe",
+    name = "recharge-vacuum-capsule",
+    subgroup = "pneumatic-capsules",
+    order = "g[vacuum]-b[recharge]",
+    enabled = false,
+    energy_required = 2.0,
+    icons = {
+      { icon = "__base__/graphics/icons/accumulator.png", icon_size = 64, tint = {r = 0.30, g = 0.50, b = 0.90, a = 1.0} }
+    },
+    ingredients = {
+      {type = "item", name = "spent-vacuum-capsule", amount = 1},
+      {type = "item", name = "battery", amount = 2}
+    },
+    results = {
+      {type = "item", name = "vacuum-capsule", amount = 1}
+    }
+  },
+  {
+    type = "recipe",
     name = "player-transit-capsule",
     enabled = false,
     energy_required = 5.0,

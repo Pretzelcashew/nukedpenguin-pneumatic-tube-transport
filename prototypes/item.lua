@@ -6,6 +6,8 @@ local palette = {
   spent           = {r = 0.50, g = 0.55, b = 0.60, a = 1.0}, -- Dim Slate
   reinforced      = {r = 1.00, g = 0.65, b = 0.20, a = 1.0}, -- Bronze
   electromagnetic = {r = 0.85, g = 0.35, b = 0.95, a = 1.0}, -- Holmium Pink-Magenta
+  vacuum          = {r = 0.30, g = 0.50, b = 0.90, a = 1.0}, -- Deep Vacuum Blue
+  spent_vacuum    = {r = 0.40, g = 0.45, b = 0.55, a = 1.0}, -- Dim Vacuum Slate
   player          = {r = 0.90, g = 0.35, b = 0.85, a = 1.0}, -- Magenta
 
   -- Synced entity tints
@@ -174,11 +176,28 @@ data:extend({
     stack_size = 1
   },
   {
+    type = "tool",
+    name = "vacuum-capsule",
+    icons = icon("__base__/graphics/icons/accumulator.png", palette.vacuum),
+    subgroup = "pneumatic-capsules",
+    order = "g[vacuum]",
+    stack_size = 1,
+    durability = 100
+  },
+  {
+    type = "item",
+    name = "spent-vacuum-capsule",
+    icons = icon("__base__/graphics/icons/accumulator.png", palette.spent_vacuum),
+    subgroup = "pneumatic-capsules",
+    order = "h[spent-vacuum]",
+    stack_size = 1
+  },
+  {
     type = "item",
     name = "player-transit-capsule",
     icons = icon("__base__/graphics/icons/car.png", palette.player),
     subgroup = "pneumatic-capsules",
-    order = "g[player]",
+    order = "i[player]",
     stack_size = 1
   }
 })

@@ -37,8 +37,8 @@ capsule_definitions.types = {
     ["item-capsule"] = {
         type = "capsule",
         debug_color = { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }, -- Metallic Gold
-        base_capacity = 2,
-        quality_affected_capacity = 1,
+        cargo_capacity = 1,                 -- Exactly 1 net cargo slot
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         mixed_cargo = false,
         mixed_quality = "strict",
         quality_filter = "any",            
@@ -60,8 +60,8 @@ capsule_definitions.types = {
     ["biodegradable-capsule"] = {
         type = "capsule",
         debug_color = { r = 0.2, g = 0.9, b = 0.2, a = 0.9 }, -- Emerald Green
-        base_capacity = 3,
-        quality_affected_capacity = 1,
+        cargo_capacity = 1,                 -- Exactly 1 net cargo slot (2 bio items or 1 inorganic)
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         mixed_cargo = false,
         mixed_quality = "strict",
         quality_filter = "any",
@@ -86,8 +86,8 @@ capsule_definitions.types = {
     ["refrigerated-capsule"] = {
         type = "capsule",
         debug_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.9 }, -- Frost Cyan
-        base_capacity = 3,
-        quality_affected_capacity = 1,
+        cargo_capacity = 2,                 -- Exactly 2 net cargo slots
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         mixed_cargo = true,
         mixed_quality = "any",
         quality_filter = "any",
@@ -110,8 +110,8 @@ capsule_definitions.types = {
     ["spent-refrigerated-capsule"] = {
         type = "capsule",
         debug_color = { r = 0.6, g = 0.65, b = 0.7, a = 0.9 }, -- Slate Grey
-        base_capacity = 3,
-        quality_affected_capacity = 1,
+        cargo_capacity = 2,                 -- Exactly 2 net cargo slots
+        quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         mixed_cargo = true,
         mixed_quality = "any",
         quality_filter = "any",
@@ -133,8 +133,8 @@ capsule_definitions.types = {
     ["reinforced-capsule"] = {
         type = "capsule",
         debug_color = { r = 0.8, g = 0.3, b = 1.0, a = 0.9 }, -- Violet Purple
-        base_capacity = 6,
-        quality_affected_capacity = 2,
+        cargo_capacity = 5,                 -- Exactly 5 net cargo slots
+        quality_affected_capacity = 2,      -- +2 cargo slots per quality tier
         mixed_cargo = true,
         mixed_quality = "any",
         quality_filter = "any",
@@ -156,7 +156,7 @@ capsule_definitions.types = {
         type = "capsule",
         is_player_transit = true,
         debug_color = { r = 1.0, g = 0.4, b = 0.1, a = 0.9 }, -- Crimson Orange
-        base_capacity = 0,
+        cargo_capacity = 0,                 -- Exactly 0 cargo slots
         quality_affected_capacity = 0,
         mixed_cargo = false,
         mixed_quality = "any",

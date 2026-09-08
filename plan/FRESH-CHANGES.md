@@ -143,3 +143,11 @@
 2. **Single-Use Dissolution & Unpacking (`scripts/hubs/hub-unpacking.lua`):** Updated `can_insert_all` to ignore primary shell slots for `destroy_self` capsules when checking destination chest capacity, clearing the shell (`holder_inv[ignore_slot].clear()`) upon arrival prior to cargo stack transfers.
 3. **In-Transit Spill Dissolution (`scripts/hubs/hub-spill.lua`):** Updated `spill_capsule` to inspect `capsule_def.destroy_self` and clear primary shell slots prior to spilling cargo onto the ground or into spill containers, dissolving bio capsule shells cleanly during mid-transit ruptures or entity destructions.
 4. **Net Cargo Stack Locale Tooltips (`locale/en/config.cfg`):** Updated item descriptions for `item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `spent-refrigerated-capsule`, and `reinforced-capsule` to report net usable cargo stack counts (1, 1, 2, 2, 5) matching actual cargohold limits.
+
+
+### Revision: Explicit Net Cargo Capacity Schema & Liminal Bar Limit Refactor
+**Date:** 2026-09-07 23:20 (EDT)
+**Context:** Standardize capsule capacity declarations around explicit net usable cargo slots (`cargo_capacity`) and adjust liminal holder inventory bar limits in `hub-packing.lua` to dynamically accommodate fractional-cost items.
+**Key Changes:**
+1. **Explicit Net Cargo Capacity Schema (`scripts/capsules/capsule-definitions.lua`):** Replaced total-container offset properties (`base_capacity` with `include_self = true`) across all capsule prototypes with explicit net usable cargo capacities (`cargo_capacity`), declaring that normal bio and standard item capsules hold 1 net cargo slot, refrigerated capsules hold 2, reinforced capsules hold 5, and player transit capsules hold 0.
+2. **Fractional Slot Cost Bar Limit Calculation (`scripts/hubs/hub-packing.lua`):** Fixed a bug where `dest_inv.set_bar()` derived physical container slot limits directly from total capacity rather than dividing by `min_slot_cost`. Calculating physical holder slots via `math.floor(max_cargo_slots / min_slot_cost)` unlocks the necessary container slots (e.g., 3 physical slots for 1 primary shell + 2 bio items at 0.5 cost) without payload truncation.

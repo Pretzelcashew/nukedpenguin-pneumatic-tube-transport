@@ -120,13 +120,12 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     local quality_bonus = quality_level * (capsule_def.quality_affected_capacity or 0)
-    local total_capacity = capsule_def.base_capacity + quality_bonus
-    local self_slot_cost = capsule_def.include_self and 1 or 0
-    local max_cargo_slots = total_capacity - self_slot_cost
+    local max_cargo_slots = capsule_def.cargo_capacity + quality_bonus
+    local self_slot_cost = 1
 
     local required_min_slots = 0
     if type(capsule_def.minimum_cargo) == "string" and capsule_def.minimum_cargo:lower() == "ceil" then
-        required_min_slots = total_capacity
+        required_min_slots = max_cargo_slots + self_slot_cost
     elseif type(capsule_def.minimum_cargo) == "number" then
         required_min_slots = capsule_def.minimum_cargo
     end
@@ -244,8 +243,19 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- Dynamically bound holder cargohold size to exact total capacity
-    local required_holder_slots = math.max(total_capacity, self_slot_cost)
+    -- Dynamically bound holder cargohold size to exact maximum physical slot capacity
+    local min_slot_cost = 1.0
+    if capsule_def.slot_costs then
+        for _, cost in pairs(capsule_def.slot_costs) do
+            if type(cost) == "number" and cost > 0 and cost < min_slot_cost then
+                min_slot_cost = cost
+            end
+        end
+    end
+
+    local max_physical_cargo_slots = (min_slot_cost > 0) and math.floor(max_cargo_slots / min_slot_cost) or max_cargo_slots
+    local required_holder_slots = self_slot_cost + math.max(0, max_physical_cargo_slots)
+
     if dest_inv and dest_inv.supports_bar() and required_holder_slots > 0 then
         local bar_limit = math.min(#dest_inv + 1, required_holder_slots + 1)
         dest_inv.set_bar(bar_limit)

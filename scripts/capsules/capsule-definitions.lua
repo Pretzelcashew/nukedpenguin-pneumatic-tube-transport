@@ -60,7 +60,7 @@ capsule_definitions.types = {
     ["biodegradable-capsule"] = {
         type = "capsule",
         debug_color = { r = 0.2, g = 0.9, b = 0.2, a = 0.9 }, -- Emerald Green
-        base_capacity = 2,
+        base_capacity = 3,
         quality_affected_capacity = 1,
         mixed_cargo = false,
         mixed_quality = "strict",

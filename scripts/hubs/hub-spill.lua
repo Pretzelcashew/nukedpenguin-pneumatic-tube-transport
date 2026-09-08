@@ -113,55 +113,65 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
         if holder and holder.valid then
             local holder_inv = holder.get_inventory(defines.inventory.chest)
 
-            -- Mode: "container" -> Unloads cargo into chest entity, spills overflow onto floor
-            if mode == "container" and container_proto and holder_inv and not holder_inv.is_empty() then
-                local container_entity = surface.create_entity{
-                    name = container_proto,
-                    position = position,
-                    force = effective_force,
-                    raise_built = true
-                }
-
-                if container_entity and container_entity.valid then
-                    container_entity.operable = true -- Operable: Enables Ctrl+Click fast-looting
-
-                    if mark_decon then
-                        container_entity.order_deconstruction(effective_force)
-                    end
-
-                    local container_inv = container_entity.get_inventory(defines.inventory.chest)
-                    if container_inv then
-                        local max_container_slot = #container_inv
-                        for i = 1, #holder_inv do
-                            local stack = holder_inv[i]
-                            if stack and stack.valid_for_read then
-                                local transferred = item_transfer_handler.transfer_stack(stack, container_inv, max_container_slot)
-                                if not transferred and stack.valid_for_read then
-                                    item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
-                                    stack.clear()
-                                end
-                            end
-                        end
-
-                        if container_inv.is_empty() then
-                            container_entity.destroy()
-                        else
-                            if container_inv.supports_bar() then
-                                container_inv.set_bar(1) -- Lock all slots against manual insertion while allowing item extraction
-                            end
-                            storage.spilled_containers = storage.spilled_containers or {}
-                            storage.spilled_containers[container_entity.unit_number] = container_entity
-                        end
+            if holder_inv and not holder_inv.is_empty() then
+                -- Clear primary capsule shell if destroy_self is enabled (e.g. biodegradable capsule) so it dissolves on spill
+                if capsule_def.destroy_self and capsule_data.primary_slot then
+                    local p_slot = capsule_data.primary_slot
+                    if holder_inv[p_slot] and holder_inv[p_slot].valid_for_read then
+                        holder_inv[p_slot].clear()
                     end
                 end
 
-            -- Mode: "ground" -> Spills cargo directly onto the floor and marks for deconstruction
-            elseif holder_inv and not holder_inv.is_empty() then
-                for i = 1, #holder_inv do
-                    local stack = holder_inv[i]
-                    if stack and stack.valid_for_read then
-                        item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
-                        stack.clear()
+                -- Mode: "container" -> Unloads cargo into chest entity, spills overflow onto floor
+                if mode == "container" and container_proto then
+                    local container_entity = surface.create_entity{
+                        name = container_proto,
+                        position = position,
+                        force = effective_force,
+                        raise_built = true
+                    }
+
+                    if container_entity and container_entity.valid then
+                        container_entity.operable = true -- Operable: Enables Ctrl+Click fast-looting
+
+                        if mark_decon then
+                            container_entity.order_deconstruction(effective_force)
+                        end
+
+                        local container_inv = container_entity.get_inventory(defines.inventory.chest)
+                        if container_inv then
+                            local max_container_slot = #container_inv
+                            for i = 1, #holder_inv do
+                                local stack = holder_inv[i]
+                                if stack and stack.valid_for_read then
+                                    local transferred = item_transfer_handler.transfer_stack(stack, container_inv, max_container_slot)
+                                    if not transferred and stack.valid_for_read then
+                                        item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
+                                        stack.clear()
+                                    end
+                                end
+                            end
+
+                            if container_inv.is_empty() then
+                                container_entity.destroy()
+                            else
+                                if container_inv.supports_bar() then
+                                    container_inv.set_bar(1) -- Lock all slots against manual insertion while allowing item extraction
+                                end
+                                storage.spilled_containers = storage.spilled_containers or {}
+                                storage.spilled_containers[container_entity.unit_number] = container_entity
+                            end
+                        end
+                    end
+
+                -- Mode: "ground" -> Spills cargo directly onto the floor and marks for deconstruction
+                else
+                    for i = 1, #holder_inv do
+                        local stack = holder_inv[i]
+                        if stack and stack.valid_for_read then
+                            item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
+                            stack.clear()
+                        end
                     end
                 end
             end

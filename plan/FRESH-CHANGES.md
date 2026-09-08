@@ -133,3 +133,13 @@
 1. **Default State & Helper Registration (`scripts/hubs/hub-settings.lua`):** Updated the default `nest_capsules` property to `false` across storage initialization, copy-paste cloning, and blueprint tag deserialization routines. Registered `hub_settings.is_nesting_enabled` helper function to centralize truth evaluation.
 2. **Packing Engine Integration (`scripts/hubs/hub-packing.lua`):** Refactored `evaluate_inventory` to inspect nesting permissions via `hub_settings.is_nesting_enabled`, allowing hubs to default to standard item cargo packing upon placement without requiring manual GUI intervention.
 3. **GUI State Alignment (`scripts/hubs/hub-gui.lua`):** Updated relative container GUI initialization to set the "Nest capsules" checkbox state directly from `hub_settings.is_nesting_enabled`.
+
+
+### Revision: Bio Capsule Shell Lifecycle & Net Cargo Capacity Tooltips
+**Date:** 2026-09-07 22:42 (EDT)
+**Context:** Refactor single-use capsule lifecycle so biological primary capsule shells travel in-transit with cargo, dissolve strictly upon destination unpacking or spills, and accurately report net cargo stack capacities in locale tooltips.
+**Key Changes:**
+1. **Primary Shell Packing Priority (`scripts/hubs/hub-packing.lua`):** Swapped holder inventory insertion order to transfer primary capsule shells (`include_self`) into slot 1 before cargo extractions, preventing bio capsule shells from being displaced or destroyed at the origin hub during packing.
+2. **Single-Use Dissolution & Unpacking (`scripts/hubs/hub-unpacking.lua`):** Updated `can_insert_all` to ignore primary shell slots for `destroy_self` capsules when checking destination chest capacity, clearing the shell (`holder_inv[ignore_slot].clear()`) upon arrival prior to cargo stack transfers.
+3. **In-Transit Spill Dissolution (`scripts/hubs/hub-spill.lua`):** Updated `spill_capsule` to inspect `capsule_def.destroy_self` and clear primary shell slots prior to spilling cargo onto the ground or into spill containers, dissolving bio capsule shells cleanly during mid-transit ruptures or entity destructions.
+4. **Net Cargo Stack Locale Tooltips (`locale/en/config.cfg`):** Updated item descriptions for `item-capsule`, `biodegradable-capsule`, `refrigerated-capsule`, `spent-refrigerated-capsule`, and `reinforced-capsule` to report net usable cargo stack counts (1, 1, 2, 2, 5) matching actual cargohold limits.

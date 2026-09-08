@@ -244,49 +244,17 @@ function hub_packing.evaluate_inventory(entity)
     }
     local dest_inv = holder.get_inventory(defines.inventory.chest)
 
-    -- Dynamically bound holder cargohold size to exact capsule capacity
+    -- Dynamically bound holder cargohold size to exact total capacity
     local required_holder_slots = math.max(total_capacity, self_slot_cost)
     if dest_inv and dest_inv.supports_bar() and required_holder_slots > 0 then
         local bar_limit = math.min(#dest_inv + 1, required_holder_slots + 1)
         dest_inv.set_bar(bar_limit)
     end
 
-    -- 1. Insert Cargo Extractions First, track dominant payload item name & quality
-    local dominant_cargo_item = nil
-    local dominant_cargo_quality = "normal"
-    local max_cargo_count = 0
-    local cargo_counts = {}
+    local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
     local has_spoilable_items = false
 
-    local max_search = (dest_inv and dest_inv.supports_bar()) and (dest_inv.get_bar() - 1) or #dest_inv
-
-    for _, ext in ipairs(packing_plan.extractions) do
-        local stack = inventory[ext.slot_index]
-        if stack and stack.valid_for_read then
-            local item_name = stack.name
-            local item_q_name = stack.quality and stack.quality.name or "normal"
-            local original_count = stack.count
-            local amount_to_transfer = math.min(ext.count, original_count)
-
-            if is_stack_spoilable(stack) then
-                has_spoilable_items = true
-            end
-
-            cargo_counts[item_name] = (cargo_counts[item_name] or 0) + amount_to_transfer
-            if cargo_counts[item_name] > max_cargo_count then
-                max_cargo_count = cargo_counts[item_name]
-                dominant_cargo_item = item_name
-                dominant_cargo_quality = item_q_name
-            end
-
-            item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
-        end
-    end
-
-    local dominant_payload_item = dominant_cargo_item or capsule_name
-    local dominant_payload_quality = dominant_cargo_quality or quality_name or "normal"
-
-    -- 2. Insert and Track Primary Capsule Shell Slot
+    -- 1. Insert and Track Primary Capsule Shell Slot FIRST into dest_inv
     local primary_holder_slot = nil
     local primary_stack = inventory[primary_slot]
     if primary_stack and primary_stack.valid_for_read then
@@ -294,7 +262,7 @@ function hub_packing.evaluate_inventory(entity)
             has_spoilable_items = true
         end
 
-        if capsule_def.include_self and not capsule_def.destroy_self then
+        if capsule_def.include_self then
             local target_slot = nil
             for i = 1, max_search do
                 if not dest_inv[i].valid_for_read then
@@ -303,15 +271,9 @@ function hub_packing.evaluate_inventory(entity)
                 end
             end
 
-            local transferred = false
-            if target_slot then
-                if dest_inv[target_slot].transfer_stack(primary_stack, 1) then
-                    transferred = true
-                    primary_holder_slot = target_slot
-                end
-            end
-
-            if not transferred then
+            if target_slot and dest_inv[target_slot].transfer_stack(primary_stack, 1) then
+                primary_holder_slot = target_slot
+            else
                 local src_grid = primary_stack.grid
                 local stack_spec = item_transfer_handler.build_stack_spec(primary_stack, 1)
 
@@ -342,7 +304,7 @@ function hub_packing.evaluate_inventory(entity)
                     end
                 end
             end
-        elseif capsule_def.include_self or capsule_def.destroy_self then
+        elseif capsule_def.destroy_self then
             if primary_stack.count > 1 then
                 primary_stack.count = primary_stack.count - 1
             else
@@ -350,6 +312,38 @@ function hub_packing.evaluate_inventory(entity)
             end
         end
     end
+
+    -- 2. Insert Cargo Extractions SECOND into dest_inv, track dominant payload item name & quality
+    local dominant_cargo_item = nil
+    local dominant_cargo_quality = "normal"
+    local max_cargo_count = 0
+    local cargo_counts = {}
+
+    for _, ext in ipairs(packing_plan.extractions) do
+        local stack = inventory[ext.slot_index]
+        if stack and stack.valid_for_read then
+            local item_name = stack.name
+            local item_q_name = stack.quality and stack.quality.name or "normal"
+            local original_count = stack.count
+            local amount_to_transfer = math.min(ext.count, original_count)
+
+            if is_stack_spoilable(stack) then
+                has_spoilable_items = true
+            end
+
+            cargo_counts[item_name] = (cargo_counts[item_name] or 0) + amount_to_transfer
+            if cargo_counts[item_name] > max_cargo_count then
+                max_cargo_count = cargo_counts[item_name]
+                dominant_cargo_item = item_name
+                dominant_cargo_quality = item_q_name
+            end
+
+            item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
+        end
+    end
+
+    local dominant_payload_item = dominant_cargo_item or capsule_name
+    local dominant_payload_quality = dominant_cargo_quality or quality_name or "normal"
 
     if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() and not passenger then
         local pos = holder.position

@@ -207,7 +207,7 @@ return capsule_definitions
 | `full_stacks` | Boolean | `false` | Require cargo items to be full stacks |
 | `consolidate_stacks` | Boolean | `false` | Combine partial stacks virtually into full stacks |
 | `include_self` | Boolean | `true` | Primary capsule occupies 1 slot in holder |
-| `destroy_self` | Boolean | `false` | Delete primary capsule instead of saving to holder |
+| `destroy_self` | Boolean | `false` | Dissolve/delete primary capsule upon unpacking or spill (single-use container) |
 | `destroy_holder_if_empty` | Boolean | `false` | Delete holder if no items were packed |
 | `destroy_holder_if_primary_expires` | Boolean | `false` | Delete holder if main capsule spoils or vanishes |
 | `holder_type` | String | `"invisible-capsule-holder"` | Prototype name of liminal entity |

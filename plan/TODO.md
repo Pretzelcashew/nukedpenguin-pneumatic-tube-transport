@@ -49,6 +49,8 @@ example scenario provided in image: where you'd want extra capsules for sending 
 
 ~consider adding capsule counter entity (1x2, uses power, reads how many capsules are currently in a tube segment. it emits a signal, all the capsules' primary capsule type and quality, can select which wire color to output on, red or green), determine if we need a circuit proxy for this entity, and what kind it has to be.
 
+~make nest capsules off by default
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
@@ -57,7 +59,7 @@ add ladder for going over pneumatic tubes with character
 
 add a pneumatic gate which lets capsules through when closed
 
-make nest capsules off by default
+
 
 
 

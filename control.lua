@@ -31,7 +31,7 @@ counter_range.register_events()
 capsule_runner.register_events()
 
 local function setup_storage()
-    -- Clear legacy v1 storage tables
+    -- Clear legacy storage tables
     storage.networks = nil
     storage.port_connections = nil
     storage.port_pressures = nil

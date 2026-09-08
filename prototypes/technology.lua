@@ -36,10 +36,32 @@ data:extend({
       { type = "unlock-recipe", recipe = "capsule-hub-vertical" },
       { type = "unlock-recipe", recipe = "pneumatic-tube" },
       { type = "unlock-recipe", recipe = "pneumatic-pump" },
-      { type = "unlock-recipe", recipe = "junction" },
-      { type = "unlock-recipe", recipe = "pneumatic-capsule-counter" }
+      { type = "unlock-recipe", recipe = "junction" }
     },
     order = "c-a[pneumatic-transport]"
+  },
+
+  -- Capsule Counter Research Tech
+  {
+    type = "technology",
+    name = "capsule-counter",
+    icons = tech_icon("__base__/graphics/technology/circuit-network.png", palette.transport),
+    prerequisites = {
+      "pneumatic-transport",
+      "circuit-network"
+    },
+    unit = {
+      count = 100,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1}
+      },
+      time = 30
+    },
+    effects = {
+      { type = "unlock-recipe", recipe = "pneumatic-capsule-counter" }
+    },
+    order = "c-a[capsule-counter]"
   },
 
   -- Advanced Pneumatic Infrastructure Tech

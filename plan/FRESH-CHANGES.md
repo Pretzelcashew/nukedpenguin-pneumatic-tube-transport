@@ -161,3 +161,11 @@
 2. **Technology Tree Streamlining (`prototypes/technology.lua`):** Removed the four `bio-capsule-integrity-1` through `4` upgrade technology nodes, retaining strictly the baseline `biodegradable-capsule` research unlock node.
 3. **Locale Completion & Rupture Text Purge (`locale/en/config.cfg`):** Removed all item and technology locale descriptions referencing transit rupture risks and integrity upgrades. Added missing localized technology captions and descriptions for `biodegradable-capsule`, `reinforced-capsule`, and `refrigerated-capsule` to eliminate "Unknown key" UI rendering errors.
 4. **Storage Cleanup (`control.lua`):** Deprecated `storage.bio_integrity_levels` persistent tracking table across runtime initialization and configuration change handlers.
+
+
+### Revision: Capsule Counter Dedicated Technology & Legacy Engine Purge
+**Date:** 2026-09-08 08:36 (EDT)
+**Context:** Introduce a dedicated research node for the Pneumatic Capsule Counter requiring Circuit Network technology, while purging residual legacy v1 flow engine references from settings, locale, and runtime comments.
+**Key Changes:**
+1. **Capsule Counter Dedicated Research (`prototypes/technology.lua` & `locale/en/config.cfg`):** Created the `capsule-counter` technology node (prerequisites: `pneumatic-transport`, `circuit-network`; 100 cycles @ 30s) unlocking the `pneumatic-capsule-counter` recipe. Unlinked the counter unlock from baseline `pneumatic-transport` technology. Added localized English title and description while updating `pneumatic-transport` locale text to reflect the decoupled research tree.
+2. **Legacy v1 Flow Engine Cleanup (`locale/en/config.cfg`, `settings.lua` & `control.lua`):** Removed obsolete `pneumatic-flow-version` mod setting locale keys from `config.cfg`. Purged lingering comments referencing legacy v1 flow network graph/builder settings across `settings.lua` and `control.lua`.

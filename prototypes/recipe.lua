@@ -19,12 +19,12 @@ data:extend({
     enabled = false,
     energy_required = 1.0,
     ingredients = {
-      {type = "item", name = "carbon-fiber", amount = 1},
-      {type = "item", name = "jelly", amount = 2},
-      {type = "fluid", name = "sulfuric-acid", amount = 4}
+      {type = "item", name = "yumako-mash", amount = 1},
+      {type = "item", name = "jelly", amount = 1},
+      {type = "item", name = "spoilage", amount = 2}
     },
     results = {
-      {type = "item", name = "biodegradable-capsule", amount = 4}
+      {type = "item", name = "biodegradable-capsule", amount = 10}
     }
   },
   {
@@ -50,6 +50,7 @@ data:extend({
     order = "c[refrigerated]-b[recharge]",
     categories = {"crafting-with-fluid"},
     enabled = false,
+    allow_productivity = false,
     energy_required = 2.0,
     icons = {
       { icon = "__space-age__/graphics/icons/ice.png", icon_size = 64, tint = {r = 0.40, g = 0.80, b = 1.00, a = 1.0} }
@@ -110,13 +111,13 @@ data:extend({
     subgroup = "pneumatic-capsules",
     order = "g[vacuum]-b[recharge]",
     enabled = false,
+    allow_productivity = false,
     energy_required = 2.0,
     icons = {
       { icon = "__base__/graphics/icons/accumulator.png", icon_size = 64, tint = {r = 0.30, g = 0.50, b = 0.90, a = 1.0} }
     },
     ingredients = {
-      {type = "item", name = "spent-vacuum-capsule", amount = 1},
-      {type = "item", name = "battery", amount = 2}
+      {type = "item", name = "spent-vacuum-capsule", amount = 1}
     },
     results = {
       {type = "item", name = "vacuum-capsule", amount = 1}

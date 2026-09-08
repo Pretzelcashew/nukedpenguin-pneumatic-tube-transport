@@ -89,7 +89,7 @@ capsule_definitions.types = {
         debug_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.9 }, -- Frost Cyan
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
-        durability = 100,                   -- Base cooling charges
+        durability = 600,                   -- Base cooling charges (600s / 10 minutes of active refrigeration)
         bio_only = true,                    -- Biological items only
         mixed_cargo = true,
         mixed_quantity = false,
@@ -188,7 +188,7 @@ capsule_definitions.types = {
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         siphon_belts = true,                -- Vacuum siphon belt extraction capability
-        durability = 100,                   -- Base vacuum charges
+        durability = 500,                   -- Base vacuum charges (500 items siphoned or deposited)
         mixed_cargo = true,
         mixed_quantity = false,
         mixed_quality = "any",
@@ -276,11 +276,11 @@ end
 --- @param quality_arg string|table|LuaQualityPrototype|nil
 --- @return number max_charges
 function capsule_definitions.get_max_charges(def_or_name, quality_arg)
-    if not def_or_name then return 100 end
+    if not def_or_name then return 600 end
     local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
-    if not def then return 100 end
+    if not def then return 600 end
 
-    local base_durability = def.durability or 100
+    local base_durability = def.durability or 600
 
     local level = 0
     if quality_arg then

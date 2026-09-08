@@ -95,16 +95,14 @@ data:extend({
     order = "c-a[specialized-pneumatic-capsules]"
   },
 
-  -- Gleba Planet Unlocks: Biocapsule (Requires carbon fiber & sulfur processing)
+  -- Gleba Planet Unlocks: Biocapsule (Requires agricultural science pack)
   {
     type = "technology",
     name = "biodegradable-capsule",
     icons = tech_icon("__base__/graphics/technology/fluid-handling.png", palette.bio),
     prerequisites = {
       "agricultural-science-pack",
-      "pneumatic-transport",
-      "carbon-fiber",
-      "sulfur-processing"
+      "pneumatic-transport"
     },
     unit = {
       count = 250,

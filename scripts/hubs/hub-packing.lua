@@ -111,6 +111,19 @@ function hub_packing.evaluate_inventory(entity)
     local is_siphon_capsule = capsule_def.siphon_belts or (capsule_name == "vacuum-capsule")
     if is_siphon_capsule then
         belt_siphon.siphon_to_chest(entity)
+        -- Re-verify primary stack state after siphoning in case of tool conversion or stack changes
+        local stack = inventory[primary_slot]
+        if stack and stack.valid_for_read then
+            local def = capsule_defs.types[stack.name]
+            if def then
+                capsule_def = def
+                capsule_name = stack.name
+                if stack.quality then
+                    quality_level = stack.quality.level or quality_filter.QUALITY_LEVELS[stack.quality.name] or 0
+                    quality_name = stack.quality.name or "normal"
+                end
+            end
+        end
     end
 
     local max_capacity = hub_def.capsule_capacity or 1

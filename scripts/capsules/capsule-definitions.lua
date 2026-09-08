@@ -187,6 +187,7 @@ capsule_definitions.types = {
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         siphon_belts = true,                -- Vacuum siphon belt extraction capability
+        durability = 100,                   -- Tool max durability
         mixed_cargo = true,
         mixed_quantity = false,
         mixed_quality = "any",

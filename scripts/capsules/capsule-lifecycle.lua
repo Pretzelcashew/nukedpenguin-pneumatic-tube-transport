@@ -28,7 +28,7 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
         end
     end
 
-    -- 3. Refrigerated Capsule Spoilage Modifier & Tool Durability Drain
+    -- 3. Refrigerated Capsule Spoilage Modifier & Charge Drain
     local modifier = def.spoilage_modifier or 1.0
     if modifier < 1.0 and ((game.tick + id) % 60 == 0) then
         if phys_capsule.holder and phys_capsule.holder.valid then
@@ -84,35 +84,36 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                     end
                 end
 
-                -- Deduct tool durability strictly from the primary capsule shell slot
+                -- Deduct charge strictly from the primary capsule shell slot via stack.health
                 if actively_cooling and phys_capsule.primary_slot then
                     local p_slot = phys_capsule.primary_slot
                     if p_slot <= max_slot then
                         local stack = inv[p_slot]
-                        if stack and stack.valid_for_read and stack.is_tool then
+                        if stack and stack.valid_for_read then
                             local caps_def = capsule_defs.types[stack.name]
                             if caps_def and caps_def.spoilage_modifier and caps_def.spoilage_modifier < 1.0 then
-                                local current_durability = stack.durability or (stack.prototype and stack.prototype.durability)
-                                if current_durability then
-                                    local new_durability = current_durability - 1
+                                local max_charges = caps_def.durability or 100
+                                local cur_health = stack.health or 1.0
+                                local cur_charges = math.floor((cur_health * max_charges) + 0.5)
 
-                                    if new_durability <= 0 then
-                                        local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
-                                        local quality = stack.quality
-                                        local src_grid = stack.grid
-                                        inv[p_slot].clear()
-                                        inv[p_slot].set_stack({
-                                            name = spent_item_name,
-                                            count = 1,
-                                            quality = quality
-                                        })
-                                        if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
-                                            item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])
-                                        end
-                                        phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
-                                    else
-                                        stack.durability = new_durability
+                                local new_charges = cur_charges - 1
+
+                                if new_charges <= 0 then
+                                    local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
+                                    local quality = stack.quality
+                                    local src_grid = stack.grid
+                                    inv[p_slot].clear()
+                                    inv[p_slot].set_stack({
+                                        name = spent_item_name,
+                                        count = 1,
+                                        quality = quality
+                                    })
+                                    if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
+                                        item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])
                                     end
+                                    phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
+                                else
+                                    stack.health = math.max(0.01, new_charges / max_charges)
                                 end
                             end
                         end

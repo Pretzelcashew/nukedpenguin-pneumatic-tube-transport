@@ -90,12 +90,36 @@ function item_transfer_handler.transfer_stack(src_stack, dest_inv, max_dest_slot
 
     if max_slot <= 0 then return false end
 
+    -- Guard: Tool items with durability are strictly placed into EMPTY slots to prevent native C++ durability merging
+    if src_stack.is_tool and src_stack.durability then
+        for j = 1, max_slot do
+            local dest_slot = dest_inv[j]
+            if dest_slot and dest_slot.valid and not dest_slot.valid_for_read then
+                local src_grid = src_stack.grid
+                local stack_spec = item_transfer_handler.build_stack_spec(src_stack, 1)
+
+                if src_stack.count > 1 then
+                    src_stack.count = src_stack.count - 1
+                else
+                    src_stack.clear()
+                end
+
+                dest_slot.set_stack(stack_spec)
+                if src_grid and src_grid.valid then
+                    item_transfer_handler.copy_equipment_grid(src_grid, dest_slot)
+                end
+                return true
+            end
+        end
+        return false
+    end
+
     local item_name = src_stack.name
     local item_quality = src_stack.quality
     local src_grid = src_stack.grid
     local original_count = src_stack.count
 
-    -- Attempt native C++ transfer_stack into matching or empty slots
+    -- Attempt native C++ transfer_stack into matching or empty slots for standard non-tool items
     for j = 1, max_slot do
         local dest_slot = dest_inv[j]
         if dest_slot and dest_slot.valid then
@@ -158,7 +182,7 @@ end
 --- @param mark_decon boolean|nil
 --- @param force LuaForce|string|nil
 function item_transfer_handler.spill_stack(surface, position, stack, mark_decon, force)
-    if not (surface and surface.valid and position) then return end
+    if not (surface and surface.valid and position) then return me end
 
     local stack_to_spill = stack
     if stack and stack.object_name == "LuaItemStack" and stack.valid_for_read then

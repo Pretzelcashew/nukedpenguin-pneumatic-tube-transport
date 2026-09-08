@@ -50,8 +50,30 @@ function belt_siphon.find_adjacent_belts(hub_entity)
     return found_belts
 end
 
+--- Converts a depleted capsule item in the chest into a spent capsule shell
+--- @param chest_inv LuaInventory
+--- @param capsule_slot number
+--- @param capsule_stack LuaItemStack
+--- @param capsule_def table
+--- @param hub_entity LuaEntity
+local function convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
+    local spent_name = capsule_def.spent_capsule_item or "spent-vacuum-capsule"
+    local q_obj = capsule_stack.quality
+    local src_grid = capsule_stack.grid
+
+    chest_inv[capsule_slot].set_stack({
+        name = spent_name,
+        count = 1,
+        quality = q_obj
+    })
+    if src_grid and src_grid.valid and chest_inv[capsule_slot].valid_for_read then
+        item_transfer_handler.copy_equipment_grid(src_grid, chest_inv[capsule_slot])
+    end
+end
+
 --- Siphons available items directly off adjacent transport belts into the Hub chest inventory
---- Deducts exactly 1 durability point per individual item siphoned off belts.
+--- Deducts exactly 1 charge point (via stack.health) per individual item siphoned off belts.
+--- Respects native Factorio chest slot availability, filters, and red bar limits.
 --- @param hub_entity LuaEntity
 --- @return boolean items_siphoned
 function belt_siphon.siphon_to_chest(hub_entity)
@@ -60,7 +82,7 @@ function belt_siphon.siphon_to_chest(hub_entity)
     local chest_inv = hub_entity.get_inventory(defines.inventory.chest)
     if not (chest_inv and chest_inv.valid) then return false end
 
-    -- Find a valid tool capsule with siphon_belts enabled in chest_inv
+    -- Find a valid capsule with siphon_belts enabled in chest_inv
     local capsule_slot = nil
     local capsule_stack = nil
     local capsule_def = nil
@@ -78,10 +100,21 @@ function belt_siphon.siphon_to_chest(hub_entity)
         end
     end
 
-    if not (capsule_slot and capsule_stack and capsule_stack.is_tool) then return false end
+    if not (capsule_slot and capsule_stack and capsule_stack.valid_for_read) then return false end
 
-    local cur_dur = capsule_stack.durability or (capsule_stack.prototype and capsule_stack.prototype.durability) or 100
-    if cur_dur <= 0 then return false end
+    local max_charges = capsule_def.durability or 100
+    local cur_health = capsule_stack.health or 1.0
+
+    if cur_health <= 0.001 then
+        convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
+        return false
+    end
+
+    local cur_charges = math.floor((cur_health * max_charges) + 0.5)
+    if cur_charges <= 0 then
+        convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
+        return false
+    end
 
     local belts = belt_siphon.find_adjacent_belts(hub_entity)
     if #belts == 0 then return false end
@@ -105,8 +138,8 @@ function belt_siphon.siphon_to_chest(hub_entity)
                                 local proto = prototypes.item[item_name]
                                 local stack_size = proto and proto.stack_size or 50
 
-                                -- Limit extraction quantity by item availability, stack size, AND remaining tool durability
-                                local max_take = math.min(item_count, stack_size, math.floor(cur_dur))
+                                -- Limit extraction quantity by item availability, stack size, AND remaining charges
+                                local max_take = math.min(item_count, stack_size, cur_charges)
 
                                 if max_take > 0 then
                                     local stack_spec = {
@@ -132,36 +165,15 @@ function belt_siphon.siphon_to_chest(hub_entity)
                                             log_debug("[BeltSiphon] Siphoned " .. tostring(inserted) .. " of " .. tostring(item_name) .. " off belt into Hub #" .. tostring(hub_entity.unit_number) .. " chest")
                                             any_siphoned = true
 
-                                            -- Deduct exactly 1 durability point per individual siphoned item
-                                            local new_dur = cur_dur - removed
+                                            -- Deduct 1 charge point per siphoned item via stack.health
+                                            local new_charges = cur_charges - removed
 
-                                            if new_dur <= 0 then
-                                                -- Charge exhausted: convert tool stack in chest directly to spent capsule item
-                                                local spent_name = capsule_def.spent_capsule_item or "spent-vacuum-capsule"
-                                                local q_obj = capsule_stack.quality
-                                                local src_grid = capsule_stack.grid
-
-                                                if capsule_stack.count > 1 then
-                                                    capsule_stack.count = capsule_stack.count - 1
-                                                    chest_inv.insert({
-                                                        name = spent_name,
-                                                        count = 1,
-                                                        quality = q_obj
-                                                    })
-                                                else
-                                                    chest_inv[capsule_slot].set_stack({
-                                                        name = spent_name,
-                                                        count = 1,
-                                                        quality = q_obj
-                                                    })
-                                                    if src_grid and src_grid.valid and chest_inv[capsule_slot].valid_for_read then
-                                                        item_transfer_handler.copy_equipment_grid(src_grid, chest_inv[capsule_slot])
-                                                    end
-                                                end
+                                            if new_charges <= 0 then
+                                                convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
                                                 return any_siphoned
                                             else
-                                                capsule_stack.durability = new_dur
-                                                cur_dur = new_dur
+                                                capsule_stack.health = math.max(0.01, new_charges / max_charges)
+                                                cur_charges = new_charges
                                             end
                                         end
                                     end

@@ -143,13 +143,12 @@ data:extend({
     stack_size = 1
   },
   {
-    type = "tool",
+    type = "item",
     name = "refrigerated-capsule",
     icons = icon("__space-age__/graphics/icons/ice.png", palette.refrigerated),
     subgroup = "pneumatic-capsules",
     order = "c[refrigerated]",
-    stack_size = 1,
-    durability = 100
+    stack_size = 1
   },
   {
     type = "item",
@@ -176,13 +175,12 @@ data:extend({
     stack_size = 1
   },
   {
-    type = "tool",
+    type = "item",
     name = "vacuum-capsule",
     icons = icon("__base__/graphics/icons/accumulator.png", palette.vacuum),
     subgroup = "pneumatic-capsules",
     order = "g[vacuum]",
-    stack_size = 1,
-    durability = 100
+    stack_size = 1
   },
   {
     type = "item",

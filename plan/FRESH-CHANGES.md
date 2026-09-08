@@ -151,3 +151,13 @@
 **Key Changes:**
 1. **Explicit Net Cargo Capacity Schema (`scripts/capsules/capsule-definitions.lua`):** Replaced total-container offset properties (`base_capacity` with `include_self = true`) across all capsule prototypes with explicit net usable cargo capacities (`cargo_capacity`), declaring that normal bio and standard item capsules hold 1 net cargo slot, refrigerated capsules hold 2, reinforced capsules hold 5, and player transit capsules hold 0.
 2. **Fractional Slot Cost Bar Limit Calculation (`scripts/hubs/hub-packing.lua`):** Fixed a bug where `dest_inv.set_bar()` derived physical container slot limits directly from total capacity rather than dividing by `min_slot_cost`. Calculating physical holder slots via `math.floor(max_cargo_slots / min_slot_cost)` unlocks the necessary container slots (e.g., 3 physical slots for 1 primary shell + 2 bio items at 0.5 cost) without payload truncation.
+
+
+### Revision: Bio-Capsule Rupture Risk Deprecation & Tech Tree Streamlining
+**Date:** 2026-09-08 08:23 (EDT)
+**Context:** Deprecate punitive mid-transit rupture mechanics and research upgrade tiers for biodegradable capsules, while adding missing technology locale definitions to resolve UI errors.
+**Key Changes:**
+1. **Bio-Capsule Definition & Lifecycle Refactor (`scripts/capsules/capsule-definitions.lua` & `scripts/capsules/capsule-lifecycle.lua`):** Removed `spill_risk` property from `biodegradable-capsule` and purged research tier calculations (`bio_integrity_levels`) and event listeners from `capsule-lifecycle.lua`, while preserving the generic `spill_risk` evaluation framework for extensible capsule support.
+2. **Technology Tree Streamlining (`prototypes/technology.lua`):** Removed the four `bio-capsule-integrity-1` through `4` upgrade technology nodes, retaining strictly the baseline `biodegradable-capsule` research unlock node.
+3. **Locale Completion & Rupture Text Purge (`locale/en/config.cfg`):** Removed all item and technology locale descriptions referencing transit rupture risks and integrity upgrades. Added missing localized technology captions and descriptions for `biodegradable-capsule`, `reinforced-capsule`, and `refrigerated-capsule` to eliminate "Unknown key" UI rendering errors.
+4. **Storage Cleanup (`control.lua`):** Deprecated `storage.bio_integrity_levels` persistent tracking table across runtime initialization and configuration change handlers.

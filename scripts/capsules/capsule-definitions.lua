@@ -70,7 +70,6 @@ capsule_definitions.types = {
         consolidate_stacks = true,
         include_self = true,
         destroy_self = true,
-        spill_risk = 0.0008,
         slot_costs = {
             bio_item = 0.5,
             inorganic = 1.0

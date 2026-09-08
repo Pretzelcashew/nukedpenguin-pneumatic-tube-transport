@@ -59,6 +59,12 @@ add ladder for going over pneumatic tubes with character
 
 add a pneumatic gate which lets capsules through when closed
 
+~ensure all technology has an en locale so 'unknown key' doesnt keep appearing
+
+remove any mention of the old v1 engine in the project
+
+make a capsule counter research that require the circuit network tech and the initial pneumatic tech, in order to be able to craft capsule counters
+
 
 
 

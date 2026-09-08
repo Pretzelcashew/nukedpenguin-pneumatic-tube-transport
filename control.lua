@@ -37,6 +37,7 @@ local function setup_storage()
     storage.port_pressures = nil
     storage.network_rebuild_queue = nil
     storage.port_to_network = nil
+    storage.bio_integrity_levels = nil
 
     storage.active_hubs = storage.active_hubs or {}
     storage.hub_settings = storage.hub_settings or {}
@@ -51,7 +52,6 @@ local function setup_storage()
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_settings = storage.counter_settings or {}
-    storage.bio_integrity_levels = storage.bio_integrity_levels or {}
 
     liminal_surface.init_storage()
 
@@ -114,5 +114,6 @@ script.on_configuration_changed(function(data)
     storage.port_pressures = nil
     storage.network_rebuild_queue = nil
     storage.port_to_network = nil
+    storage.bio_integrity_levels = nil
     setup_storage(data)
 end)

@@ -186,6 +186,7 @@ capsule_definitions.types = {
         debug_color = { r = 0.3, g = 0.5, b = 0.95, a = 0.9 }, -- Deep Vacuum Blue
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
+        siphon_belts = true,                -- Vacuum siphon belt extraction capability
         mixed_cargo = true,
         mixed_quantity = false,
         mixed_quality = "any",

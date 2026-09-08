@@ -8,8 +8,18 @@ local cargo_planner = require("scripts.hubs.packing.cargo-planner")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local hub_settings = require("scripts.hubs.hub-settings")
 local item_transfer_handler = require("scripts.utils.item-transfer-handler")
+local belt_siphon = require("scripts.hubs.packing.belt-siphon")
 
 local hub_packing = {}
+
+--- Helper log printer
+local function log_debug(msg)
+    if debug_print then
+        debug_print(msg)
+    else
+        game.print(msg)
+    end
+end
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
@@ -72,13 +82,6 @@ function hub_packing.evaluate_inventory(entity)
 
     if inventory.is_empty() then return end
 
-    local max_capacity = hub_def.capsule_capacity or 1
-    local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
-    if current_occupants >= max_capacity then return end
-
-    local best_outbound_port = capsule_runner.find_best_hub_outbound_port(entity)
-    if not best_outbound_port then return end
-
     local primary_slot = nil
     local capsule_def = nil
     local capsule_name = nil
@@ -103,6 +106,19 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     if not primary_slot then return end
+
+    -- Added Effect: If vacuum capsule, siphon cargo off touching belts into the hub chest
+    local is_siphon_capsule = capsule_def.siphon_belts or (capsule_name == "vacuum-capsule")
+    if is_siphon_capsule then
+        belt_siphon.siphon_to_chest(entity)
+    end
+
+    local max_capacity = hub_def.capsule_capacity or 1
+    local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)
+    if current_occupants >= max_capacity then return end
+
+    local best_outbound_port = capsule_runner.find_best_hub_outbound_port(entity)
+    if not best_outbound_port then return end
 
     -- Handle Player Transit Capsule dispatch
     local passenger = nil

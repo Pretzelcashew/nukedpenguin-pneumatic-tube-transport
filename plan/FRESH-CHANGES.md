@@ -217,3 +217,13 @@
 3. **Space Science Technology Node (`prototypes/technology.lua`):** Created the `vacuum-capsule` research node (prerequisites: `space-science-pack`, `pneumatic-transport`; 250 cycles @ 45s) unlocking the vacuum capsule crafting and assembly recharging recipes.
 4. **Capsule Definition Registry (`scripts/capsules/capsule-definitions.lua`):** Registered `vacuum-capsule` and `spent-vacuum-capsule` schemas configured with 1 net usable cargo slot (+1 per quality tier), full stack enforcement, quality-clamped cargo rules (`quality_filter = "ceil"`), `spent_capsule_item` transition link, and distinct RGBA debug overlay colors.
 5. **English Locale Definitions (`locale/en/config.cfg`):** Added localized names, tooltips, and descriptions for `vacuum-capsule` and `spent-vacuum-capsule` items, recipes, and technology research nodes.
+
+
+### Revision: Transport Belt Siphon Engine & Vacuum Capsule Hub Siphoning
+**Date:** 2026-09-08 12:37 (EDT)
+**Context:** Implement Task 2 of the Vacuum Capsule plan, creating the transport belt siphoning engine in `belt-siphon.lua` and integrating automated belt extraction into `hub-packing.lua`.
+**Key Changes:**
+1. **Vacuum Capsule Schema Property (`scripts/capsules/capsule-definitions.lua`):** Configured `siphon_belts = true` on the `vacuum-capsule` prototype definition schema.
+2. **Dumb Belt Siphon Helper Module (`scripts/hubs/packing/belt-siphon.lua`):** Created `belt-siphon.lua` to locate adjacent transport belts, underground belt hoods, splitters, and linked belts touching a Hub entity's bounding box. Scanned Factorio 2.0 `LuaTransportLine.get_contents()` item arrays and extracted available items using `line.remove_item()` while respecting Hub inventory slot filters (`inventory.is_filtered()`).
+3. **Hub Chest Loading & Packing Integration (`scripts/hubs/hub-packing.lua`):** Integrated `belt_siphon.siphon_to_chest` into `hub_packing.evaluate_inventory` to pull cargo directly off touching belts into the Hub container when a `vacuum-capsule` is present, enabling inserter-free belt unloading while maintaining standard full-stack cargo packing rules.
+4. **Real-Time Diagnostic Logging (`scripts/hubs/packing/belt-siphon.lua` & `scripts/hubs/hub-packing.lua`):** Added real-time chat log prints (`[BeltSiphon]` and `[HubPacking]`) tracking Hub evaluation, touching belt counts, transport line item contents, and extraction results.

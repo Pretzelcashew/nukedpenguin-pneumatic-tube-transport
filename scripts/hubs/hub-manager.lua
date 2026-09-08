@@ -4,6 +4,7 @@ local hub_spill = require("scripts.hubs.hub-spill")
 local hub_packing = require("scripts.hubs.hub-packing")
 local hub_settings = require("scripts.hubs.hub-settings")
 local capsule_runner = require("scripts.capsules.capsule-runner")
+local belt_siphon = require("scripts.hubs.packing.belt-siphon")
 
 local hub_manager = {}
 
@@ -42,7 +43,8 @@ function hub_manager.notify_settings_changed(entity)
     if not (entity and entity.valid) then return end
     capsule_runner.wake_parked_capsules()
     local is_ghost = (entity.name == "entity-ghost")
-    if not is_ghost and hub_settings.can_send(entity) then
+    if not is_ghost then
+        belt_siphon.siphon_to_chest(entity)
         hub_packing.evaluate_inventory(entity)
     end
 end
@@ -195,6 +197,7 @@ local function on_tick(event)
     for unit_number, entity in pairs(storage.active_hubs) do
         if (unit_number + current_tick) % 10 == 0 then
             if entity.valid then
+                belt_siphon.siphon_to_chest(entity)
                 hub_packing.evaluate_inventory(entity)
             else
                 storage.active_hubs[unit_number] = nil

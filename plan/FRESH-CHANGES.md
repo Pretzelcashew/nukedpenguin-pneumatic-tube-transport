@@ -246,3 +246,12 @@
 2. **Health-Based Charge Tracking (`scripts/hubs/packing/belt-siphon.lua` & `scripts/capsules/capsule-lifecycle.lua`):** Refactored charge tracking for vacuum and refrigerated capsules to use `stack.health` (0.0 to 1.0) instead of `stack.durability`. Eliminates invalid prototype/itemstack property index crashes while rendering a native charge health bar on capsule icons.
 3. **Lua Item Transfer Guard (`scripts/utils/item-transfer-handler.lua`):** Fixed boolean operator evaluation (`and` instead of `or`) when inspecting tool properties on `LuaItemStack` during `transfer_stack()`, preventing C++ exceptions on standard non-tool cargo items.
 4. **Dumb Siphon & Spent Conversion Engine (`scripts/hubs/packing/belt-siphon.lua`):** Updated belt siphoning charge calculations to use `math.ceil` so fractional charges extract final items down to zero, automatically converting depleted capsules to `spent-vacuum-capsule` shells while respecting native hub container filters and red-bar slot limits.
+
+
+### Revision: Belt Siphon Decoupling & Independent Hub Siphoning Lifecycle
+**Date:** 2026-09-08 15:15 (EDT)
+**Context:** Decouple transport belt siphoning from the capsule packing and dispatch pipeline, elevating belt siphoning to an independent top-level Hub process in `hub-manager.lua` to run as a dumb inserter regardless of primary capsule selection or send/receive settings.
+**Key Changes:**
+1. **Top-Level Hub Siphon Lifecycle (`scripts/hubs/hub-manager.lua`):** Registered `belt_siphon` as a top-level require in `hub-manager.lua` and integrated `belt_siphon.siphon_to_chest(entity)` into the 10-tick background scan loop (`on_tick`) and `notify_settings_changed`, executing belt extractions unconditionally on active hubs containing a charged vacuum capsule.
+2. **Packing Pipeline Clean Decoupling (`scripts/hubs/hub-packing.lua`):** Removed all belt siphoning calls and `belt-siphon` module imports from `hub-packing.lua`, eliminating the artificial restriction where vacuum capsules were blocked from siphoning unless selected as the first capsule for immediate dispatch.
+3. **Primary Stack Insertion Fix (`scripts/hubs/hub-packing.lua`):** Fixed a syntax error on line 303 in `hub-packing.lua` by removing an extraneous token inside the primary capsule holder stack transfer loop.

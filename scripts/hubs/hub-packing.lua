@@ -8,7 +8,6 @@ local cargo_planner = require("scripts.hubs.packing.cargo-planner")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local hub_settings = require("scripts.hubs.hub-settings")
 local item_transfer_handler = require("scripts.utils.item-transfer-handler")
-local belt_siphon = require("scripts.hubs.packing.belt-siphon")
 
 local hub_packing = {}
 
@@ -106,25 +105,6 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     if not primary_slot then return end
-
-    -- Added Effect: If vacuum capsule, siphon cargo off touching belts into the hub chest
-    local is_siphon_capsule = capsule_def.siphon_belts or (capsule_name == "vacuum-capsule")
-    if is_siphon_capsule then
-        belt_siphon.siphon_to_chest(entity)
-        -- Re-verify primary stack state after siphoning in case of tool conversion or stack changes
-        local stack = inventory[primary_slot]
-        if stack and stack.valid_for_read then
-            local def = capsule_defs.types[stack.name]
-            if def then
-                capsule_def = def
-                capsule_name = stack.name
-                if stack.quality then
-                    quality_level = stack.quality.level or quality_filter.QUALITY_LEVELS[stack.quality.name] or 0
-                    quality_name = stack.quality.name or "normal"
-                end
-            end
-        end
-    end
 
     local max_capacity = hub_def.capsule_capacity or 1
     local current_occupants = capsule_runner.get_capsule_count_at_entity(unit_number)

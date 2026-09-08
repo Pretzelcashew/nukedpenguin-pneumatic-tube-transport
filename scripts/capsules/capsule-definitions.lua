@@ -89,6 +89,7 @@ capsule_definitions.types = {
         debug_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.9 }, -- Frost Cyan
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
+        durability = 100,                   -- Base cooling charges
         bio_only = true,                    -- Biological items only
         mixed_cargo = true,
         mixed_quantity = false,
@@ -187,7 +188,7 @@ capsule_definitions.types = {
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier
         siphon_belts = true,                -- Vacuum siphon belt extraction capability
-        durability = 100,                   -- Tool max durability
+        durability = 100,                   -- Base vacuum charges
         mixed_cargo = true,
         mixed_quantity = false,
         mixed_quality = "any",
@@ -267,6 +268,33 @@ function capsule_definitions.get_debug_color(def_or_name)
         return def.debug_color
     end
     return DEFAULT_DEBUG_COLOR
+end
+
+--- Calculates quality-scaled maximum charges (durability) for a capsule
+--- Uses standard Factorio quality scaling formula: base * (1 + 0.3 * quality_level)
+--- @param def_or_name string|table|nil
+--- @param quality_arg string|table|LuaQualityPrototype|nil
+--- @return number max_charges
+function capsule_definitions.get_max_charges(def_or_name, quality_arg)
+    if not def_or_name then return 100 end
+    local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
+    if not def then return 100 end
+
+    local base_durability = def.durability or 100
+
+    local level = 0
+    if quality_arg then
+        if type(quality_arg) == "table" or type(quality_arg) == "userdata" then
+            level = quality_arg.level or 0
+        elseif type(quality_arg) == "string" then
+            local q_proto = prototypes.quality[quality_arg]
+            if q_proto then
+                level = q_proto.level or 0
+            end
+        end
+    end
+
+    return math.floor(base_durability * (1 + 0.3 * level) + 0.5)
 end
 
 return capsule_definitions

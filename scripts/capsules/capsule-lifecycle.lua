@@ -92,7 +92,7 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
                         if stack and stack.valid_for_read then
                             local caps_def = capsule_defs.types[stack.name]
                             if caps_def and caps_def.spoilage_modifier and caps_def.spoilage_modifier < 1.0 then
-                                local max_charges = caps_def.durability or 100
+                                local max_charges = capsule_defs.get_max_charges(caps_def, stack.quality)
                                 local cur_health = stack.health or 1.0
                                 local cur_charges = math.floor((cur_health * max_charges) + 0.5)
 

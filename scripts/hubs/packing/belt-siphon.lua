@@ -102,7 +102,7 @@ function belt_siphon.siphon_to_chest(hub_entity)
 
     if not (capsule_slot and capsule_stack and capsule_stack.valid_for_read) then return false end
 
-    local max_charges = capsule_def.durability or 100
+    local max_charges = capsule_defs.get_max_charges(capsule_def, capsule_stack.quality)
     local cur_health = capsule_stack.health or 1.0
 
     if cur_health <= 0.001 then

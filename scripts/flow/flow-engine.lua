@@ -163,35 +163,66 @@ function flow_engine.get_node_emitter_level(node)
     return node.emitter
 end
 
-local function destroy_pos_renders(pos_key)
-    for p_idx, p_renders in pairs(storage.flow_renders or {}) do
-        local objs = p_renders[pos_key]
-        if objs then
-            if objs.circle and objs.circle.valid then objs.circle.destroy() end
-            if objs.text and objs.text.valid then objs.text.destroy() end
-            p_renders[pos_key] = nil
+local function destroy_pos_renders(pos_key, player_index)
+    if player_index then
+        local p_renders = storage.flow_renders and storage.flow_renders[player_index]
+        if p_renders then
+            local objs = p_renders[pos_key]
+            if objs then
+                if objs.circle and objs.circle.valid then objs.circle.destroy() end
+                if objs.text and objs.text.valid then objs.text.destroy() end
+                p_renders[pos_key] = nil
+            end
+        end
+    else
+        for p_idx, p_renders in pairs(storage.flow_renders or {}) do
+            local objs = p_renders[pos_key]
+            if objs then
+                if objs.circle and objs.circle.valid then objs.circle.destroy() end
+                if objs.text and objs.text.valid then objs.text.destroy() end
+                p_renders[pos_key] = nil
+            end
         end
     end
 end
 
-local function destroy_counter_renders(pos_key)
-    for p_idx, p_renders in pairs(storage.counter_renders or {}) do
-        local objs = p_renders[pos_key]
-        if objs then
-            if objs.circle and objs.circle.valid then objs.circle.destroy() end
-            if objs.text and objs.text.valid then objs.text.destroy() end
-            p_renders[pos_key] = nil
+local function destroy_counter_renders(pos_key, player_index)
+    if player_index then
+        local p_renders = storage.counter_renders and storage.counter_renders[player_index]
+        if p_renders then
+            local objs = p_renders[pos_key]
+            if objs then
+                if objs.circle and objs.circle.valid then objs.circle.destroy() end
+                if objs.text and objs.text.valid then objs.text.destroy() end
+                p_renders[pos_key] = nil
+            end
+        end
+    else
+        for p_idx, p_renders in pairs(storage.counter_renders or {}) do
+            local objs = p_renders[pos_key]
+            if objs then
+                if objs.circle and objs.circle.valid then objs.circle.destroy() end
+                if objs.text and objs.text.valid then objs.text.destroy() end
+                p_renders[pos_key] = nil
+            end
         end
     end
 end
 
-local function destroy_edge_render(edge_key)
-    for p_idx, e_renders in pairs(storage.flow_edge_renders or {}) do
-        local line_obj = e_renders[edge_key]
-        if line_obj and line_obj.valid then
-            line_obj.destroy()
+local function destroy_edge_render(edge_key, player_index)
+    if player_index then
+        local e_renders = storage.flow_edge_renders and storage.flow_edge_renders[player_index]
+        if e_renders then
+            local line_obj = e_renders[edge_key]
+            if line_obj and line_obj.valid then line_obj.destroy() end
+            e_renders[edge_key] = nil
         end
-        e_renders[edge_key] = nil
+    else
+        for p_idx, e_renders in pairs(storage.flow_edge_renders or {}) do
+            local line_obj = e_renders[edge_key]
+            if line_obj and line_obj.valid then line_obj.destroy() end
+            e_renders[edge_key] = nil
+        end
     end
 end
 
@@ -252,7 +283,10 @@ local function get_dominant_counter_at_pos(pos_key)
 end
 
 local function update_counter_pos_render(pos_key)
-    if not (is_debug_active and is_debug_active("counter_range")) then return end
+    if not (is_debug_active and is_debug_active("counter_range")) then
+        destroy_counter_renders(pos_key)
+        return
+    end
 
     local node, level, owner = get_dominant_counter_at_pos(pos_key)
     if not node or level == 0 or owner == nil then
@@ -275,7 +309,7 @@ local function update_counter_pos_render(pos_key)
                 current.circle.color = circle_color
                 current.text.text = tostring(level)
             else
-                destroy_counter_renders(pos_key)
+                destroy_counter_renders(pos_key, p_idx)
                 if surface and surface.valid then
                     local c_obj = rendering.draw_circle{
                         color = circle_color,
@@ -300,13 +334,16 @@ local function update_counter_pos_render(pos_key)
                 end
             end
         else
-            destroy_counter_renders(pos_key)
+            destroy_counter_renders(pos_key, p_idx)
         end
     end
 end
 
 local function update_pos_render(pos_key)
-    if not is_debug_active("new_flow") then return end
+    if not is_debug_active("new_flow") then
+        destroy_pos_renders(pos_key)
+        return
+    end
 
     local node, level = get_dominant_port_at_pos(pos_key)
     if not node or level == 0 then
@@ -333,7 +370,7 @@ local function update_pos_render(pos_key)
                 current.circle.color = circle_color
                 current.text.text = tostring(level)
             else
-                destroy_pos_renders(pos_key)
+                destroy_pos_renders(pos_key, p_idx)
                 if surface and surface.valid then
                     local c_obj = rendering.draw_circle{
                         color = circle_color,
@@ -358,13 +395,16 @@ local function update_pos_render(pos_key)
                 end
             end
         else
-            destroy_pos_renders(pos_key)
+            destroy_pos_renders(pos_key, p_idx)
         end
     end
 end
 
 local function update_edge_render(key_a, key_b)
-    if not is_debug_active("new_flow") then return end
+    if not is_debug_active("new_flow") then
+        destroy_edge_render(make_edge_key(key_a, key_b))
+        return
+    end
 
     local edge_key = make_edge_key(key_a, key_b)
     local level_a = storage.flow_levels and storage.flow_levels[key_a] or 0
@@ -397,6 +437,7 @@ local function update_edge_render(key_a, key_b)
             if existing and existing.valid then
                 existing.color = line_color
             else
+                destroy_edge_render(edge_key, p_idx)
                 local surface = game.surfaces[node_a.surface_name]
                 if surface and surface.valid then
                     local l_obj = rendering.draw_line{
@@ -412,7 +453,7 @@ local function update_edge_render(key_a, key_b)
                 end
             end
         else
-            destroy_edge_render(edge_key)
+            destroy_edge_render(edge_key, p_idx)
         end
     end
 end
@@ -433,7 +474,7 @@ function flow_engine.clear_counter_renders(player_index)
     end
 end
 
-function flow_engine.clear_all_renders(player_index)
+function flow_engine.clear_flow_renders(player_index)
     if player_index then
         if storage.flow_renders and storage.flow_renders[player_index] then
             for pos_key, objs in pairs(storage.flow_renders[player_index]) do
@@ -448,12 +489,16 @@ function flow_engine.clear_all_renders(player_index)
             end
             storage.flow_edge_renders[player_index] = {}
         end
-        flow_engine.clear_counter_renders(player_index)
     else
         for _, player in pairs(game.players) do
-            flow_engine.clear_all_renders(player.index)
+            flow_engine.clear_flow_renders(player.index)
         end
     end
+end
+
+function flow_engine.clear_all_renders(player_index)
+    flow_engine.clear_flow_renders(player_index)
+    flow_engine.clear_counter_renders(player_index)
 end
 
 function flow_engine.draw_all_counters(player_index)
@@ -471,7 +516,7 @@ function flow_engine.draw_all_counters(player_index)
     end
 end
 
-function flow_engine.draw_all(player_index)
+function flow_engine.draw_flow(player_index)
     local pos_keys = {}
     local count = 0
     for pos_key in pairs(storage.flow_grid or {}) do
@@ -484,7 +529,6 @@ function flow_engine.draw_all(player_index)
     for i = 1, count do
         local pos_key = pos_keys[i]
         update_pos_render(pos_key)
-        update_counter_pos_render(pos_key)
         local grid_ports = storage.flow_grid[pos_key]
         if grid_ports then
             for pkey in pairs(grid_ports) do
@@ -497,6 +541,11 @@ function flow_engine.draw_all(player_index)
             end
         end
     end
+end
+
+function flow_engine.draw_all(player_index)
+    flow_engine.draw_flow(player_index)
+    flow_engine.draw_all_counters(player_index)
 end
 
 function flow_engine.connect_entity(entity)

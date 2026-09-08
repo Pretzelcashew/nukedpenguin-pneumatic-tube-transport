@@ -1,7 +1,6 @@
 -- File: scripts/debug-manager.lua
 
 local flow_engine = require("scripts.flow.flow-engine")
-local counter_range = require("scripts.counters.counter-range")
 local events = require("scripts.events")
 
 local debug_manager = {}
@@ -313,15 +312,15 @@ local function toggle_master(player_index)
     dbg.master = not dbg.master
 
     if is_debug_active("new_flow", player_index) then
-        flow_engine.draw_all(player_index)
+        flow_engine.draw_flow(player_index)
     else
-        flow_engine.clear_all_renders(player_index)
+        flow_engine.clear_flow_renders(player_index)
     end
 
     if is_debug_active("counter_range", player_index) then
-        counter_range.draw_all(player_index)
+        flow_engine.draw_all_counters(player_index)
     else
-        counter_range.clear_all_renders(player_index)
+        flow_engine.clear_counter_renders(player_index)
     end
 
     update_player_shortcuts(player_index)
@@ -349,9 +348,9 @@ local function toggle_new_flow(player_index)
     dbg.new_flow = not dbg.new_flow
 
     if is_debug_active("new_flow", player_index) then
-        flow_engine.draw_all(player_index)
+        flow_engine.draw_flow(player_index)
     else
-        flow_engine.clear_all_renders(player_index)
+        flow_engine.clear_flow_renders(player_index)
     end
 
     update_player_shortcuts(player_index)
@@ -367,9 +366,9 @@ local function toggle_counter_range(player_index)
     dbg.counter_range = not dbg.counter_range
 
     if is_debug_active("counter_range", player_index) then
-        counter_range.draw_all(player_index)
+        flow_engine.draw_all_counters(player_index)
     else
-        counter_range.clear_all_renders(player_index)
+        flow_engine.clear_counter_renders(player_index)
     end
 
     update_player_shortcuts(player_index)
@@ -490,32 +489,32 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     if name == "pneumatic_debug_chk_master" then
         dbg.master = element.state
         if is_debug_active("new_flow", p_idx) then
-            flow_engine.draw_all(p_idx)
+            flow_engine.draw_flow(p_idx)
         else
-            flow_engine.clear_all_renders(p_idx)
+            flow_engine.clear_flow_renders(p_idx)
         end
         if is_debug_active("counter_range", p_idx) then
-            counter_range.draw_all(p_idx)
+            flow_engine.draw_all_counters(p_idx)
         else
-            counter_range.clear_all_renders(p_idx)
+            flow_engine.clear_counter_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_new_flow" then
         dbg.new_flow = element.state
         if is_debug_active("new_flow", p_idx) then
-            flow_engine.draw_all(p_idx)
+            flow_engine.draw_flow(p_idx)
         else
-            flow_engine.clear_all_renders(p_idx)
+            flow_engine.clear_flow_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_counter_range" then
         dbg.counter_range = element.state
         if is_debug_active("counter_range", p_idx) then
-            counter_range.draw_all(p_idx)
+            flow_engine.draw_all_counters(p_idx)
         else
-            counter_range.clear_all_renders(p_idx)
+            flow_engine.clear_counter_renders(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)

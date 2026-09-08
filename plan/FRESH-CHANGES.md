@@ -115,3 +115,12 @@
 **Key Changes:**
 1. **Signal Clear Persistence & Fallback Removal (`scripts/counters/counter-settings.lua` & `scripts/counters/counter-logic.lua`):** Removed hardcoded fallback initializations (`signal-C`) from existing settings retrieval (`counter_settings.get`), blueprint settings application, and logic signal evaluation. Clearing the choose-elem-button in `counter-gui.lua` now persists `total_signal = nil` without being overwritten on GUI refresh or tick scans.
 2. **Quality-Aware Circuit Signal Emission (`scripts/counters/counter-logic.lua`):** Updated `counter_logic.update_signals` to extract `total_signal.quality` dynamically rather than hardcoding `"normal"` quality during channel signal aggregation, correctly reflecting chosen signal quality levels on output circuit proxy filters.
+
+
+### Revision: Independent Flow & Counter Overlay Render Lifecycle
+**Date:** 2026-09-07 20:55 (EDT)
+**Context:** Fix issue where toggling pressure flow overlays off wiped active counter range overlays by decoupling render destruction and drawing logic in flow-engine.lua and debug-manager.lua.
+**Key Changes:**
+1. **Domain-Specific Render Management (`scripts/flow/flow-engine.lua`):** Created `flow_engine.clear_flow_renders` and `flow_engine.draw_flow` to manipulate pressure flow circles, text labels, and vector lines independently from counter sensing range overlays.
+2. **Per-Player Overlay Destruction Bounds (`scripts/flow/flow-engine.lua`):** Refactored `destroy_pos_renders`, `destroy_counter_renders`, and `destroy_edge_render` to support optional `player_index` targeting, preventing single-player overlay clears from destroying rendering objects for other players in multiplayer.
+3. **Decoupled Debug Command & GUI Toggles (`scripts/debug-manager.lua`):** Refactored `toggle_new_flow`, `toggle_counter_range`, `toggle_master`, and GUI event handlers to call domain-specific draw/clear methods rather than blanket `clear_all_renders`, preserving counter range overlays when flow overlays are disabled.

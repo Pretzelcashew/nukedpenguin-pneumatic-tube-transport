@@ -189,3 +189,11 @@
 1. **Electromagnetic Capsule Fractional Capacity Schema (`scripts/capsules/capsule-definitions.lua`):** Added `mixed_quantity = true` to `electromagnetic-capsule` prototype definition and explicitly set `mixed_quantity = false` across all other capsule prototypes.
 2. **Fractional Slot Cost Planning Engine (`scripts/hubs/packing/cargo-planner.lua`):** Updated `plan_single_type_cargo` in `cargo-planner.lua` to calculate per-item unit slot costs (`base_slot_cost / stack_size`) when `mixed_quantity` is enabled, enabling partial item stacks to consume fractional capsule volume proportional to their item count.
 3. **Smart Dynamic Post-Packing Inventory Bar Clamping (`scripts/hubs/hub-packing.lua`):** Replaced static upfront inventory bar clamping math on the hidden liminal holder with dynamic post-packing clamping. Transfers primary shell and cargo extractions using full inventory depth (`max_search = #dest_inv`), evaluates the highest occupied slot index (`last_occupied_slot`), and sets `dest_inv.set_bar(last_occupied_slot + 1)` to lock trailing empty slots cleanly.
+
+
+### Revision: Standard Capsule Quality-Clamped Multi-Cargo Schema & Locale Refactor
+**Date:** 2026-09-08 10:11 (EDT)
+**Context:** Refactor the Standard Pneumatic Capsule into a quality-clamped multi-stack logistics backbone, allowing mixed item types and qualities up to the capsule's quality tier without overlapping with strict bulk or partial-stack container roles.
+**Key Changes:**
+1. **Quality-Clamped Multi-Cargo Schema (`scripts/capsules/capsule-definitions.lua`):** Configured `item-capsule` with `mixed_cargo = true`, `mixed_quality = "any"`, `quality_filter = "ceil"`, `minimum_cargo = 2`, and `full_stacks = true`. Enables multi-item and multi-quality transport clamped to the capsule's quality tier while requiring full item stacks and dispatching as soon as 1 full stack is loaded.
+2. **Locale Description Alignment (`locale/en/config.cfg`):** Updated localized English item description for `item-capsule` to explicitly communicate its full-stack, quality-clamped mixed cargo capacity rules.

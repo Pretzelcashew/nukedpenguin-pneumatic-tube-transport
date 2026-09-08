@@ -1,4 +1,6 @@
 local port_defs = require("scripts.flow.port-defs")
+local capsule_defs = require("scripts.capsules.capsule-definitions")
+local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 
 local belt_siphon = {}
 
@@ -16,23 +18,6 @@ local function log_debug(msg)
     else
         game.print(msg)
     end
-end
-
---- Checks if an item is allowed by the hub inventory's slot filters (if any are configured)
---- @param inventory LuaInventory
---- @param item_name string
---- @return boolean
-local function passes_hub_filters(inventory, item_name)
-    if not (inventory and inventory.valid and inventory.is_filtered and inventory.is_filtered()) then
-        return true
-    end
-    for i = 1, #inventory do
-        local filter = inventory.get_filter(i)
-        if filter == item_name then
-            return true
-        end
-    end
-    return false
 end
 
 --- Finds deduplicated belt entities touching any side of the Hub's bounding box
@@ -66,6 +51,7 @@ function belt_siphon.find_adjacent_belts(hub_entity)
 end
 
 --- Siphons available items directly off adjacent transport belts into the Hub chest inventory
+--- Deducts exactly 1 durability point per individual item siphoned off belts.
 --- @param hub_entity LuaEntity
 --- @return boolean items_siphoned
 function belt_siphon.siphon_to_chest(hub_entity)
@@ -73,6 +59,29 @@ function belt_siphon.siphon_to_chest(hub_entity)
 
     local chest_inv = hub_entity.get_inventory(defines.inventory.chest)
     if not (chest_inv and chest_inv.valid) then return false end
+
+    -- Find a valid tool capsule with siphon_belts enabled in chest_inv
+    local capsule_slot = nil
+    local capsule_stack = nil
+    local capsule_def = nil
+
+    for i = 1, #chest_inv do
+        local stack = chest_inv[i]
+        if stack and stack.valid_for_read then
+            local def = capsule_defs.types[stack.name]
+            if def and def.siphon_belts then
+                capsule_slot = i
+                capsule_stack = stack
+                capsule_def = def
+                break
+            end
+        end
+    end
+
+    if not (capsule_slot and capsule_stack and capsule_stack.is_tool) then return false end
+
+    local cur_dur = capsule_stack.durability or (capsule_stack.prototype and capsule_stack.prototype.durability) or 100
+    if cur_dur <= 0 then return false end
 
     local belts = belt_siphon.find_adjacent_belts(hub_entity)
     if #belts == 0 then return false end
@@ -92,32 +101,69 @@ function belt_siphon.siphon_to_chest(hub_entity)
                             local item_q_name = entry.quality or "normal"
                             local item_count = entry.count or 1
 
-                            if item_name and item_count > 0 and passes_hub_filters(chest_inv, item_name) then
-                                local stack_spec = {
-                                    name = item_name,
-                                    count = item_count,
-                                    quality = item_q_name
-                                }
+                            if item_name and item_count > 0 then
+                                local proto = prototypes.item[item_name]
+                                local stack_size = proto and proto.stack_size or 50
 
-                                if chest_inv.can_insert(stack_spec) then
-                                    local proto = prototypes.item[item_name]
-                                    local stack_size = proto and proto.stack_size or 50
-                                    local take_amount = math.min(item_count, stack_size)
+                                -- Limit extraction quantity by item availability, stack size, AND remaining tool durability
+                                local max_take = math.min(item_count, stack_size, math.floor(cur_dur))
 
-                                    local removed = line.remove_item({
+                                if max_take > 0 then
+                                    local stack_spec = {
                                         name = item_name,
-                                        count = take_amount,
+                                        count = max_take,
                                         quality = item_q_name
-                                    })
+                                    }
 
-                                    if removed and removed > 0 then
-                                        local inserted = chest_inv.insert({
+                                    -- Native Factorio C++ engine evaluation handles slot filters, bar limits, and slot availability
+                                    if chest_inv.can_insert(stack_spec) then
+                                        local removed = line.remove_item({
                                             name = item_name,
-                                            count = removed,
+                                            count = max_take,
                                             quality = item_q_name
                                         })
-                                        log_debug("[BeltSiphon] Siphoned " .. tostring(inserted) .. " of " .. tostring(item_name) .. " off belt into Hub #" .. tostring(hub_entity.unit_number) .. " chest")
-                                        any_siphoned = true
+
+                                        if removed and removed > 0 then
+                                            local inserted = chest_inv.insert({
+                                                name = item_name,
+                                                count = removed,
+                                                quality = item_q_name
+                                            })
+                                            log_debug("[BeltSiphon] Siphoned " .. tostring(inserted) .. " of " .. tostring(item_name) .. " off belt into Hub #" .. tostring(hub_entity.unit_number) .. " chest")
+                                            any_siphoned = true
+
+                                            -- Deduct exactly 1 durability point per individual siphoned item
+                                            local new_dur = cur_dur - removed
+
+                                            if new_dur <= 0 then
+                                                -- Charge exhausted: convert tool stack in chest directly to spent capsule item
+                                                local spent_name = capsule_def.spent_capsule_item or "spent-vacuum-capsule"
+                                                local q_obj = capsule_stack.quality
+                                                local src_grid = capsule_stack.grid
+
+                                                if capsule_stack.count > 1 then
+                                                    capsule_stack.count = capsule_stack.count - 1
+                                                    chest_inv.insert({
+                                                        name = spent_name,
+                                                        count = 1,
+                                                        quality = q_obj
+                                                    })
+                                                else
+                                                    chest_inv[capsule_slot].set_stack({
+                                                        name = spent_name,
+                                                        count = 1,
+                                                        quality = q_obj
+                                                    })
+                                                    if src_grid and src_grid.valid and chest_inv[capsule_slot].valid_for_read then
+                                                        item_transfer_handler.copy_equipment_grid(src_grid, chest_inv[capsule_slot])
+                                                    end
+                                                end
+                                                return any_siphoned
+                                            else
+                                                capsule_stack.durability = new_dur
+                                                cur_dur = new_dur
+                                            end
+                                        end
                                     end
                                 end
                             end

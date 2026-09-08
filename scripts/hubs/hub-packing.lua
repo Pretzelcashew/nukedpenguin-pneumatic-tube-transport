@@ -271,6 +271,11 @@ function hub_packing.evaluate_inventory(entity)
             has_spoilable_items = true
         end
 
+        if primary_stack.name ~= capsule_name then
+            capsule_name = primary_stack.name
+            capsule_def = capsule_defs.types[capsule_name] or capsule_def
+        end
+
         if capsule_def.include_self then
             local target_slot = nil
             for i = 1, max_search do

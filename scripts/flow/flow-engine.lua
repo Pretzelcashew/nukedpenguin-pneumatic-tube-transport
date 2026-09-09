@@ -667,6 +667,7 @@ end
 
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
+    if entity.name == "entity-ghost" then return end
     local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
     if not (registered_entities[real_name] or is_standard_entity(real_name)) then return end
 
@@ -1433,6 +1434,7 @@ function flow_engine.register_events()
         events.on_event(event_id, function(event)
             local entity = event.entity or event.destination
             if not (entity and entity.valid and entity.unit_number) then return end
+            if entity.name == "entity-ghost" then return end
 
             local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
 

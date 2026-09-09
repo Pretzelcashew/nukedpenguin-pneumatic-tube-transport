@@ -53,3 +53,11 @@
 **Key Changes:**
 1. **Physical Entity Filter for Dynamic Polling (`scripts/flow/flow-engine.lua`):** Updated `flow_engine.connect_entity` to register entities into active state tables (`storage.active_gates` and `storage.active_counters`) strictly when `entity.name == "gate"` or `entity.name == "pneumatic-capsule-counter"`. Blueprint ghosts (`entity-ghost`) bypass open/closed state tracking while still cleanly registering spatial port nodes into `storage.flow_nodes` and `storage.flow_grid` for connection continuity.
 2. **Elimination of Ghost C++ Method Assertions (`scripts/flow/flow-engine.lua`):** Prevented calling gate-specific C++ member function `entity.is_closed()` on ghost entities during blueprint stamping and background `step()` ticks. Physical gates are seamlessly promoted into active state polling when built/revived by construction robots without requiring redundant defensive guards across pumps and diverters.
+
+
+### Revision: Blueprint Ghost Simulation Exclusion & Pure Visual Parity
+**Date:** 2026-09-09 12:39 (EDT)
+**Context:** Prevent unbuilt blueprint ghost entities (`entity-ghost`) from participating in runtime pneumatic flow, sensing wavefront propagation, and pre-emptive soft-registration prior to physical construction by robots.
+**Key Changes:**
+1. **Flow Grid Ghost Exclusion Guard (`scripts/flow/flow-engine.lua`):** Added an early-exit guard (`if entity.name == "entity-ghost" then return end`) at the entry of `flow_engine.connect_entity`. Blueprint ghost tubes, walls, gates, and counters no longer create physical port nodes, channel pressure, or display phantom Alt-Mode sensing overlays before being physically built.
+2. **Ghost Suppression in Build Listeners (`scripts/flow/flow-engine.lua`):** Added an immediate ghost check to the top-level `build_events` listener, preventing unbuilt ghost walls and gates from entering `storage.soft_interop_registry` prematurely. Construction robot builds and revives (`on_robot_built_entity`, `script_raised_revive`) naturally pass physical entities through to connection and registration the exact tick they become physical matter.

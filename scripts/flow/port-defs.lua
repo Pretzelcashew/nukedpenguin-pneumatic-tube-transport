@@ -1,3 +1,5 @@
+-- File: scripts/flow/port-defs.lua
+
 local port_defs = {}
 
 local definitions = {
@@ -197,27 +199,8 @@ local definitions = {
         }
     },
 
-    -- Vanilla Wall Passthrough Collar
+    -- Vanilla Wall Passthrough Collar (2-port inline passthrough)
     ["stone-wall"] = {
-        [defines.direction.east] = {
-            { offset = {x = -0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false },
-            { offset = {x =  0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false }
-        },
-        [defines.direction.west] = {
-            { offset = {x = -0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false },
-            { offset = {x =  0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false }
-        },
-        [defines.direction.north] = {
-            { offset = {x =  0.0, y = -0.5}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false },
-            { offset = {x =  0.0, y =  0.5}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false }
-        },
-        [defines.direction.south] = {
-            { offset = {x =  0.0, y = -0.5}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false },
-            { offset = {x =  0.0, y =  0.5}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false }
-        }
-    },
-
-    ["wall"] = {
         [defines.direction.east] = {
             { offset = {x = -0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false },
             { offset = {x =  0.5, y =  0.0}, group = 1, capsule_transmit = true, pressure_transmit = true, sense_transmit = true, cross_transit = false }
@@ -237,10 +220,17 @@ local definitions = {
     }
 }
 
-port_defs.registered_names = {}
-for entity_name in pairs(definitions) do
-    table.insert(port_defs.registered_names, entity_name)
-end
+-- Only active pneumatic machinery are tracked directly on startup by control.lua
+port_defs.registered_names = {
+    "capsule-hub-horizontal",
+    "capsule-hub-vertical",
+    "pneumatic-tube",
+    "pneumatic-pump",
+    "junction",
+    "crossflow-junction",
+    "pneumatic-diverter",
+    "pneumatic-capsule-counter"
+}
 table.sort(port_defs.registered_names)
 
 function port_defs.is_gate_closed(entity)
@@ -286,22 +276,6 @@ function port_defs.get_ports(entity, override_direction, dynamic_state)
 
     if not dir then
         dir = entity.direction
-    end
-
-    if (real_name == "stone-wall" or real_name == "wall") and (not override_direction) and entity.position and entity.surface then
-        local pos = entity.position
-        local surf = entity.surface
-        local surf_name = (type(surf) == "table" and surf.name) or surf
-        if storage and storage.flow_grid and type(surf_name) == "string" then
-            local rx_w = math.floor((pos.x - 0.5) * 10 + 0.5) / 10
-            local rx_e = math.floor((pos.x + 0.5) * 10 + 0.5) / 10
-            local ry = math.floor(pos.y * 10 + 0.5) / 10
-            local west_key = string.format("%s@%.1f,%.1f", surf_name, rx_w, ry)
-            local east_key = string.format("%s@%.1f,%.1f", surf_name, rx_e, ry)
-            if storage.flow_grid[west_key] or storage.flow_grid[east_key] then
-                dir = defines.direction.east
-            end
-        end
     end
 
     dir = dir or defines.direction.north

@@ -12,6 +12,12 @@ local flow_engine = {}
 local BATCH_SIZE = 50
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
+local MAX_CHAIN_LENGTH = 64
+
+local PASSIVE_GATEWAY_ENTITIES = {
+    ["gate"] = true,
+    ["stone-wall"] = true
+}
 
 local OWNER_PALETTE = {
     {r = 0.30, g = 0.85, b = 0.70}, -- Teal (counter primary)
@@ -52,6 +58,27 @@ local function make_edge_key(key_a, key_b)
     return key_a < key_b and (key_a .. "|" .. key_b) or (key_b .. "|" .. key_a)
 end
 
+local function is_pressurized_gates_researched(force)
+    if not force then return false end
+    local tech = force.technologies and force.technologies["pressurized-gates"]
+    return tech ~= nil and tech.researched == true
+end
+
+local function wake_parked_at_port(pkey)
+    if not (pkey and storage.parked_by_port) then return end
+    local bucket = storage.parked_by_port[pkey]
+    if bucket then
+        for cap_id in pairs(bucket) do
+            local parked_cap = storage.capsules and storage.capsules[cap_id]
+            if parked_cap and parked_cap.to_port_key == nil then
+                parked_cap.next_retry_tick = nil
+                parked_cap.last_failed_hub = nil
+                parked_cap.last_port_key = nil
+            end
+        end
+    end
+end
+
 function flow_engine.init_storage()
     storage.flow_nodes = storage.flow_nodes or {}
     storage.flow_grid = storage.flow_grid or {}
@@ -71,6 +98,9 @@ function flow_engine.init_storage()
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_renders = storage.counter_renders or {}
+
+    -- Pressurized Gate Crosswalk Fields
+    storage.active_gates = storage.active_gates or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -548,8 +578,268 @@ function flow_engine.draw_all(player_index)
     flow_engine.draw_all_counters(player_index)
 end
 
+-- Local Gateway Node Instantiation
+local function connect_gateway_node(entity, override_dir)
+    if not (entity and entity.valid and entity.unit_number) then return nil end
+    local unit_number = entity.unit_number
+    if storage.flow_unit_ports and storage.flow_unit_ports[unit_number] then
+        return unit_number
+    end
+
+    local ports = port_defs.get_ports(entity, override_dir)
+    if not ports then return nil end
+
+    local surface = entity.surface
+    local surface_name = surface.name
+    local ex, ey = entity.position.x, entity.position.y
+    local is_gate = (entity.name == "gate")
+    local is_closed = is_gate and port_defs.is_gate_closed(entity) or true
+
+    if script.register_on_object_destroyed then
+        local reg_id = script.register_on_object_destroyed(entity)
+        storage.object_destruction_map = storage.object_destruction_map or {}
+        storage.object_destruction_map[reg_id] = { type = "entity", unit_number = unit_number }
+    end
+
+    storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
+    local node_keys = {}
+
+    for port_index, port in ipairs(ports) do
+        local px = ex + port.offset.x
+        local py = ey + port.offset.y
+        local pkey = make_port_key(unit_number, port_index)
+        local pos_key = make_pos_key(surface_name, px, py)
+
+        node_keys[port_index] = pkey
+        storage.flow_unit_ports[unit_number][port_index] = pkey
+
+        local p_trans = is_gate and is_closed or (port.pressure_transmit == true)
+        local c_trans = is_gate and is_closed or (port.capsule_transmit == true)
+
+        storage.flow_nodes[pkey] = {
+            unit_number = unit_number,
+            port_index = port_index,
+            pos_key = pos_key,
+            pos = {x = px, y = py},
+            surface_name = surface_name,
+            emitter = port.flow,
+            sense = port.sense,
+            group = port.group or 1,
+            capsule_transmit = c_trans,
+            pressure_transmit = p_trans,
+            sense_transmit = true,
+            cross_transit = false
+        }
+
+        storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}
+
+        for existing_pkey in pairs(storage.flow_grid[pos_key]) do
+            local existing_node = storage.flow_nodes[existing_pkey]
+            if existing_node and existing_node.unit_number ~= unit_number then
+                storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
+                storage.flow_connections[existing_pkey] = storage.flow_connections[existing_pkey] or {}
+
+                storage.flow_connections[pkey][existing_pkey] = true
+                storage.flow_connections[existing_pkey][pkey] = true
+
+                flow_engine.enqueue_port(existing_pkey)
+            end
+        end
+
+        storage.flow_grid[pos_key][pkey] = true
+        flow_engine.enqueue_port(pkey)
+        update_pos_render(pos_key)
+        update_counter_pos_render(pos_key)
+    end
+
+    if is_gate then
+        storage.active_gates = storage.active_gates or {}
+        storage.active_gates[unit_number] = {
+            entity = entity,
+            unit_number = unit_number,
+            node_keys = node_keys,
+            was_closed = is_closed
+        }
+    end
+
+    return unit_number
+end
+
+-- Natural Step-by-Step Gateway Chain Expansion
+local function expand_gateway_chain(surface, px, py, step_x, step_y)
+    local cur_px = px
+    local cur_py = py
+
+    for depth = 1, MAX_CHAIN_LENGTH do
+        local target_x = cur_px + step_x * 0.5
+        local target_y = cur_py + step_y * 0.5
+
+        local ents = surface.find_entities_filtered{
+            position = {target_x, target_y},
+            name = {"gate", "stone-wall"}
+        }
+        if #ents == 0 then break end
+
+        local ent = ents[1]
+        for i = 1, #ents do
+            if ents[i].name == "gate" then
+                ent = ents[i]
+                break
+            end
+        end
+
+        if not (ent and ent.valid and ent.unit_number) then break end
+        if storage.flow_unit_ports and storage.flow_unit_ports[ent.unit_number] then
+            break
+        end
+
+        local is_horizontal = (step_x ~= 0)
+        local override_dir = is_horizontal and defines.direction.east or defines.direction.north
+
+        if ent.name == "gate" then
+            local dir = ent.direction
+            if is_horizontal then
+                if dir ~= defines.direction.east and dir ~= defines.direction.west then
+                    break
+                end
+            else
+                if dir ~= defines.direction.north and dir ~= defines.direction.south then
+                    break
+                end
+            end
+        end
+
+        connect_gateway_node(ent, override_dir)
+
+        cur_px = cur_px + step_x
+        cur_py = cur_py + step_y
+
+        -- Check if exit port already touches an existing connected entity
+        local exit_pos_key = make_pos_key(surface.name, cur_px, cur_py)
+        local grid_ports = storage.flow_grid and storage.flow_grid[exit_pos_key]
+        local has_external = false
+        if grid_ports then
+            for pkey in pairs(grid_ports) do
+                local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                if node and node.unit_number ~= ent.unit_number then
+                    has_external = true
+                    break
+                end
+            end
+        end
+        if has_external then
+            break
+        end
+    end
+end
+
+-- Built Gateway Connection Check
+local function check_and_connect_built_gateway(entity)
+    if not (entity and entity.valid and entity.unit_number) then return end
+    if not is_pressurized_gates_researched(entity.force) then return end
+    if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then return end
+
+    local surface = entity.surface
+    local ex, ey = entity.position.x, entity.position.y
+    local is_gate = (entity.name == "gate")
+
+    local candidate_axes = {}
+    if is_gate then
+        local dir = entity.direction
+        if dir == defines.direction.east or dir == defines.direction.west then
+            table.insert(candidate_axes, {
+                override_dir = defines.direction.east,
+                ports = { {x = -0.5, y = 0, step_x = -1, step_y = 0}, {x = 0.5, y = 0, step_x = 1, step_y = 0} }
+            })
+        else
+            table.insert(candidate_axes, {
+                override_dir = defines.direction.north,
+                ports = { {x = 0, y = -0.5, step_x = 0, step_y = -1}, {x = 0, y = 0.5, step_x = 0, step_y = 1} }
+            })
+        end
+    else
+        table.insert(candidate_axes, {
+            override_dir = defines.direction.east,
+            ports = { {x = -0.5, y = 0, step_x = -1, step_y = 0}, {x = 0.5, y = 0, step_x = 1, step_y = 0} }
+        })
+        table.insert(candidate_axes, {
+            override_dir = defines.direction.north,
+            ports = { {x = 0, y = -0.5, step_x = 0, step_y = -1}, {x = 0, y = 0.5, step_x = 0, step_y = 1} }
+        })
+    end
+
+    for _, axis in ipairs(candidate_axes) do
+        local touches_existing = false
+        for _, p in ipairs(axis.ports) do
+            local pos_key = make_pos_key(surface.name, ex + p.x, ey + p.y)
+            if storage.flow_grid and storage.flow_grid[pos_key] then
+                touches_existing = true
+                break
+            end
+        end
+
+        if touches_existing then
+            connect_gateway_node(entity, axis.override_dir)
+            for _, p in ipairs(axis.ports) do
+                expand_gateway_chain(surface, ex + p.x, ey + p.y, p.step_x, p.step_y)
+            end
+            break
+        end
+    end
+end
+
+-- Dynamic Seal State Monitoring
+local function monitor_assimilated_gates()
+    if not storage.active_gates or next(storage.active_gates) == nil then return end
+
+    for unit_number, gate_data in pairs(storage.active_gates) do
+        local gate = gate_data.entity
+        if not (gate and gate.valid) then
+            storage.active_gates[unit_number] = nil
+        else
+            local is_closed = port_defs.is_gate_closed(gate)
+            if is_closed ~= gate_data.was_closed then
+                gate_data.was_closed = is_closed
+
+                local node_keys = gate_data.node_keys
+                if node_keys then
+                    for i = 1, #node_keys do
+                        local pkey = node_keys[i]
+                        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                        if node then
+                            node.pressure_transmit = is_closed
+                            node.capsule_transmit = is_closed
+                            node.sense_transmit = true
+                            flow_engine.enqueue_port(pkey)
+
+                            local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                            if neighbors then
+                                for n_key in pairs(neighbors) do
+                                    flow_engine.enqueue_port(n_key)
+                                    if is_closed then
+                                        wake_parked_at_port(n_key)
+                                    end
+                                end
+                            end
+                            if is_closed then
+                                wake_parked_at_port(pkey)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
+
+    if PASSIVE_GATEWAY_ENTITIES[entity.name] then
+        check_and_connect_built_gateway(entity)
+        return
+    end
+
     if not registered_entities[entity.name] then return end
 
     local unit_number = entity.unit_number
@@ -592,6 +882,7 @@ function flow_engine.connect_entity(entity)
 
         storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}
 
+        local had_external_connection = false
         for existing_pkey in pairs(storage.flow_grid[pos_key]) do
             local existing_node = storage.flow_nodes[existing_pkey]
             if existing_node and existing_node.unit_number ~= unit_number then
@@ -602,6 +893,7 @@ function flow_engine.connect_entity(entity)
                 storage.flow_connections[existing_pkey][pkey] = true
 
                 flow_engine.enqueue_port(existing_pkey)
+                had_external_connection = true
             end
         end
 
@@ -609,6 +901,22 @@ function flow_engine.connect_entity(entity)
         flow_engine.enqueue_port(pkey)
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
+
+        -- If port has no connection, check if an adjacent gateway chain should be expanded
+        if not had_external_connection and is_pressurized_gates_researched(entity.force) then
+            local ox = port.offset.x or 0
+            local oy = port.offset.y or 0
+            local step_x = 0
+            local step_y = 0
+            if math.abs(ox) > math.abs(oy) then
+                step_x = (ox > 0) and 1 or -1
+            elseif math.abs(oy) > math.abs(ox) then
+                step_y = (oy > 0) and 1 or -1
+            end
+            if step_x ~= 0 or step_y ~= 0 then
+                expand_gateway_chain(entity.surface, px, py, step_x, step_y)
+            end
+        end
     end
 end
 
@@ -667,6 +975,9 @@ function flow_engine.disconnect_entity(entity)
 
     if storage.flow_unit_ports then
         storage.flow_unit_ports[unit_number] = nil
+    end
+    if storage.active_gates then
+        storage.active_gates[unit_number] = nil
     end
 end
 
@@ -752,6 +1063,7 @@ function flow_engine.handle_object_destroyed(unit_number)
     flow_engine.enqueue_unit_ports(unit_number)
     flow_engine.disconnect_entity({ unit_number = unit_number })
 
+    if storage.active_gates then storage.active_gates[unit_number] = nil end
     if storage.active_hubs then storage.active_hubs[unit_number] = nil end
     if storage.hub_settings then storage.hub_settings[unit_number] = nil end
     if storage.hub_receive_locks then storage.hub_receive_locks[unit_number] = nil end
@@ -919,6 +1231,8 @@ local function compute_port_flow_level(pkey)
 end
 
 function flow_engine.step(tick)
+    monitor_assimilated_gates()
+
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
     local batch = {}

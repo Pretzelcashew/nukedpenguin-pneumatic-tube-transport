@@ -11,6 +11,13 @@ local BELT_TYPES = {
     ["linked-belt"] = true
 }
 
+local BELT_SEARCH_TYPES = {
+    "transport-belt",
+    "underground-belt",
+    "splitter",
+    "linked-belt"
+}
+
 --- Helper print to output debug messages to console
 local function log_debug(msg)
     if debug_print then
@@ -82,7 +89,10 @@ function belt_siphon.find_adjacent_belts(hub_entity)
         { bb.right_bottom.x + 0.6, bb.right_bottom.y + 0.6 }
     }
 
-    local entities = surface.find_entities_filtered{ area = search_area }
+    local entities = surface.find_entities_filtered{
+        area = search_area,
+        type = BELT_SEARCH_TYPES
+    }
     local found_belts = {}
     local seen_units = {}
 
@@ -377,45 +387,59 @@ end
 function belt_siphon.process_belts(hub_entity)
     if not (hub_entity and hub_entity.valid) then return false end
 
+    -- Early exit 1: Check net tube pressure. Neutral/zero pressure means idle.
+    local net_pressure = get_hub_net_pressure(hub_entity)
+    if net_pressure == 0 then
+        return false
+    end
+
     local chest_inv = hub_entity.get_inventory(defines.inventory.chest)
-    if not (chest_inv and chest_inv.valid) then return false end
+    if not (chest_inv and chest_inv.valid and not chest_inv.is_empty()) then return false end
 
     local capsule_slot = nil
     local capsule_stack = nil
     local capsule_def = nil
 
-    for i = 1, #chest_inv do
-        local stack = chest_inv[i]
-        if stack and stack.valid_for_read then
-            local def = capsule_defs.types[stack.name]
-            if def and def.siphon_belts then
-                capsule_slot = i
-                capsule_stack = stack
-                capsule_def = def
-                break
+    -- Fast native lookup for vacuum capsule stack
+    local fast_stack, fast_slot = chest_inv.find_item_stack("vacuum-capsule")
+    if fast_stack and fast_stack.valid_for_read then
+        local def = capsule_defs.types[fast_stack.name]
+        if def and def.siphon_belts then
+            capsule_slot = fast_slot
+            capsule_stack = fast_stack
+            capsule_def = def
+        end
+    end
+
+    -- Fallback scan if not found via fast path (supports other siphon-capable capsules)
+    if not capsule_slot then
+        for i = 1, #chest_inv do
+            local stack = chest_inv[i]
+            if stack and stack.valid_for_read then
+                local def = capsule_defs.types[stack.name]
+                if def and def.siphon_belts then
+                    capsule_slot = i
+                    capsule_stack = stack
+                    capsule_def = def
+                    break
+                end
             end
         end
     end
 
     if not (capsule_slot and capsule_stack and capsule_stack.valid_for_read) then return false end
 
-    local max_charges = capsule_defs.get_max_charges(capsule_def, capsule_stack.quality)
     local cur_health = capsule_stack.health or 1.0
-
     if cur_health <= 0.001 then
         convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
         return false
     end
 
+    local max_charges = capsule_defs.get_max_charges(capsule_def, capsule_stack.quality)
     local cur_charges = math.floor((cur_health * max_charges) + 0.5)
     if cur_charges <= 0 then
         convert_to_spent(chest_inv, capsule_slot, capsule_stack, capsule_def, hub_entity)
         return false
-    end
-
-    local net_pressure = get_hub_net_pressure(hub_entity)
-    if net_pressure == 0 then
-        return false -- Idle under neutral pressure
     end
 
     local belts = belt_siphon.find_adjacent_belts(hub_entity)

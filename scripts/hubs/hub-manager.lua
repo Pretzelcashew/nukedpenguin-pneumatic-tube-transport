@@ -45,7 +45,7 @@ function hub_manager.notify_settings_changed(entity)
     capsule_runner.wake_parked_capsules()
     local is_ghost = (entity.name == "entity-ghost")
     if not is_ghost then
-        belt_siphon.siphon_to_chest(entity)
+        belt_siphon.process_belts(entity)
         hub_packing.evaluate_inventory(entity)
     end
 end
@@ -240,13 +240,13 @@ local function on_tick(event)
 
     local current_tick = event.tick
     for unit_number, entity in pairs(storage.active_hubs) do
-        if (unit_number + current_tick) % 10 == 0 then
-            if entity.valid then
-                belt_siphon.siphon_to_chest(entity)
+        if entity.valid then
+            belt_siphon.process_belts(entity)
+            if (unit_number + current_tick) % 10 == 0 then
                 hub_packing.evaluate_inventory(entity)
-            else
-                storage.active_hubs[unit_number] = nil
             end
+        else
+            storage.active_hubs[unit_number] = nil
         end
     end
 end

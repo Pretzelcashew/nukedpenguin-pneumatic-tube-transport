@@ -694,13 +694,13 @@ function flow_engine.connect_entity(entity)
     if real_name == "stone-wall" then
         storage.active_walls = storage.active_walls or {}
         storage.active_walls[unit_number] = true
-    elseif real_name == "gate" then
+    elseif entity.name == "gate" then
         storage.active_gates = storage.active_gates or {}
         storage.active_gates[unit_number] = entity
         local is_closed = entity.is_closed and entity.is_closed() or false
         storage.gate_open_states = storage.gate_open_states or {}
         storage.gate_open_states[unit_number] = not is_closed
-    elseif real_name == "pneumatic-capsule-counter" then
+    elseif entity.name == "pneumatic-capsule-counter" then
         storage.active_counters = storage.active_counters or {}
         storage.active_counters[unit_number] = entity
         storage.counter_power_states = storage.counter_power_states or {}

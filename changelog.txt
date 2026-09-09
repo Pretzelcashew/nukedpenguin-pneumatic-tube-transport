@@ -1,4 +1,58 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.1
+Date: 2026-09-09
+  Overview:
+    - Introduced the Pneumatic Capsule Counter, featuring territorial sensing range wavefronts and a triple-proxy circuit architecture for zero-bleed Red/Green network signal isolation.
+    - Added vanilla Stone Wall and Fence Gate interoperability, allowing pneumatic networks to cross perimeter defenses with exclusive-axis wall locking and dynamic gate pressure cutoffs.
+    - Added the Fulgora Electromagnetic Capsule (unrestricted mixed cargo and fractional capacity scaling) and the Space Science Vacuum Capsule (automated transport belt siphoning and depositing).
+    - Overhauled Diverter and Machine GUIs with Factorio 2.0 native quality comparators, draggable modal draft windows, 3x3 directional arrow selectors, and per-port copy-paste.
+    - Added 1:1 inserter-parity Alt Mode diverter port filter overlays with inward-shifted high-contrast frames, quality badges, comparators, and blacklist symbols.
+    - Achieved full blueprint, ghost entity, live copy-paste, and fast-replace parity across all active machines, preserving settings, circuit wires, and relative orientations.
+    - Completely purged and removed the legacy v1 flow engine, establishing the zero-overhead v2 delta wavefront engine as the sole simulation pipeline.
+  Features:
+    - Pneumatic Capsule Counter: Added physical counter entity (`capsule-counter` tech) with territorial range sensing (15-hop wavefront with deterministic midpoint tie-breaking) and a triple-proxy architecture providing completely isolated Red/Green channel outputs without signal bleed.
+    - Wall & Fence Gate Interoperability: Researched via `pneumatic-fence-gate-interoperability`, vanilla stone walls and gates now route pneumatic flow; walls support exclusive orthogonal crossflow axis-locking, and gates dynamically sever transit and pressure on open while maintaining sensing continuity.
+    - Electromagnetic Capsule (Fulgora): Added an advanced transit capsule featuring stack-proportional fractional cargo capacity (`mixed_quantity`) and unrestricted multi-type, partial-stack, and mixed-quality transport. Crafted in the Electromagnetic Plant (+50% productivity bonus).
+    - Vacuum Capsule (Space Science): Added a pressure-driven transport capsule that siphons items from adjacent belts at negative pressure and deposits onto belts at positive pressure, featuring near-lane sideloading, Gleba belt stacking, per-item durability drain, and spent shell recycling.
+    - Native Factorio 2.0 Quality Filtering: Overhauled Diverter filtering with 5-tier quality rank math, comparator operators (`=`, `≥`, `≤`, `>`, `<`, `≠`), wildcard quality matching, and standalone quality filters.
+    - Diverter GUI Overhaul: Redesigned diverter interface with 40x40 overlay slot buttons, draggable draft-mode configuration pop-ups, 3x3 spatial arrow direction selectors, and native per-port copy/paste tool buttons.
+    - 1:1 Inserter-Parity Alt Mode Overlays: Dynamic 2x2 port overlay clusters with inward topological offsets, solid black outlines, quality badges, comparator symbols, and prominent per-slot blacklist indicators matching native inserters.
+    - Ghost Entity & Blueprint Parity: Ghost machines now support full GUI interaction, Alt-Mode overlays, live copy-paste, blueprint wire 4-tuple reconstruction, and automatic configuration inheritance upon physical placement, fast-replace, or quality upgrade.
+  Minor Features:
+    - Capsule Nesting Hub Toggle: Added a "Nest capsules" checkbox (default off) allowing hubs to selectively pack capsule vessels or standard cargo.
+    - Pressure Differential Outbound Enforcement: Hub capsule dispatch and cross-transit motion now strictly require positive pressure drops (`drop > 0`), eliminating dumps into unpressurized or opposing lines.
+    - Single-Use Bio Capsule Dissolution: Biodegradable capsule shells now travel with cargo and dissolve cleanly upon destination delivery or spills.
+    - Dynamic Holder Bar Clamping: Liminal capsule holders dynamically clamp inventory depth post-packing (`set_bar`), ensuring exact container capacity for fractional items.
+    - Rocket Payload Standardization: Configured explicit 50 kg weight across all capsule items (active and spent), establishing a clean capacity of 20 capsules per rocket launch.
+    - Planetary Machine Specialization: Assigned specialized capsule recipes to signature planetary facilities: Reinforced (Foundry), Electromagnetic (Electromagnetic Plant), Refrigerated (Cryogenic Plant).
+    - Independent Overlay Lifecycles: Alt-Mode pressure flow and Capsule Counter sensing range overlays can now be toggled independently without clearing each other.
+    - Reusable UI Widget Library: Centralized declarative Factorio 2.1 GUI construction (`gui-components.lua`) across all machine configuration windows.
+  Balancing:
+    - Rebalanced Biodegradable Capsule recipe to use Gleba staples (yumako mash, jelly, spoilage) yielding 10 capsules (15 in Biochambers), and deprecated transit rupture risk mechanics and integrity research tiers.
+    - Overhauled Vacuum Capsule durability to 500 base charges (scaling to 1,250 at Legendary) with closed-loop electric repressurization.
+    - Increased Refrigerated Capsule cooling lifespan to 600 base charges (10–25 minutes of active cooling), protecting perishable cargo against queue backpressure.
+    - Standardized Reinforced Capsules to strict single-item bulk transport (2 full stacks base) crafted in Foundries.
+    - Standardized baseline capsule capacities across variants to 1 stack (2 for Reinforced) with explicit quality scaling (+1 per tier).
+  Optimizations:
+    - Completely purged legacy v1 flow engine code, startup settings, and obsolete files, consolidating motion execution into a single zero-allocation runner.
+    - Unified active machine background scanning into a single 15-tick scanner (`active-device-scanner.lua`), eliminating redundant per-machine event loops.
+    - Refactored Alt-Mode flow junction overlays to single spatial coordinate keys (`pos_key`), eliminating duplicate circle stacking and text z-fighting.
+    - Implemented zero-state blueprint wire reconstruction and purged multi-tick storage buffers.
+    - Added throttled batching (`INTEROP_BATCH_SIZE = 10`) for fence gate interoperability research activation.
+  Bugfixes:
+    - Fixed blueprint ghost gate runtime crash (`Entity is not gate`) by excluding unbuilt ghost entities from active gate polling and flow grids.
+    - Fixed blueprint proxy wire corruption where stamped entities generated a web of wires cross-linked to Entity #1.
+    - Fixed `LuaEntity::minable is read only` runtime crash during entity placement in Factorio 2.1.
+    - Fixed left-clicking physical pneumatic pumps failing to open the pump configuration GUI.
+    - Fixed modal filter slot configuration windows closing unexpectedly when opening item pickers by decoupling parent window focus.
+    - Fixed circular module dependency cycle between capsule runner, lifecycle, and hub spill.
+    - Fixed unanchored orphan circuit proxies remaining after blueprint modifications, ghost cancellations, or super force building.
+    - Fixed loss of machine settings during in-place fast-replacement or robot quality upgrades.
+    - Fixed Total Capsule Count signal picker clearing in the Capsule Counter GUI reverting back to signal-C.
+  Locale:
+    - Added comprehensive English descriptions for all 13 crafting recipes in Factoriopedia and tooltips.
+    - Added localized strings for Capsule Counter, Vacuum Capsule, Electromagnetic Capsule, Fence Gate Interoperability, and custom hotkey bindings (`pneumatic-copy-settings`, `pneumatic-paste-settings`, `pneumatic-confirm-gui`).
+---------------------------------------------------------------------------------------------------
 Version: 0.3.0
 Date: 2026-09-02
   Overview:

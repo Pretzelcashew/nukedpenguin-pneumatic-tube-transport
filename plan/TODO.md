@@ -72,6 +72,10 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~add a pneumatic gate which lets capsules through when closed
 
+~fix that in certain scenarios with deleting and rotating gates and placing them back and rotating would not wake up the flow properly
+
+~fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of inventory
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
@@ -80,10 +84,10 @@ consider breaking apart large files that are doing too many things (like flow-en
 
 
 
-fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of inventory
 
-fix that in certain scenarios with deleting and rotating gates and placing them back and rotating would not wake up the flow properly
-![alt text](image-1.png)
+
+
+
 
 
 

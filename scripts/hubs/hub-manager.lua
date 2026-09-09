@@ -5,6 +5,7 @@ local hub_packing = require("scripts.hubs.hub-packing")
 local hub_settings = require("scripts.hubs.hub-settings")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local belt_siphon = require("scripts.hubs.packing.belt-siphon")
+local util = require("util")
 
 local hub_manager = {}
 
@@ -16,7 +17,7 @@ local function get_pos_key(surface, position)
     return sname .. "@" .. px .. "," .. py
 end
 
-local function find_existing_real_hub_at_pos(surface, position, real_name)
+local function find_existing_real_hub_at_pos(surface, position, real_name, exclude_entity)
     if not (surface and position and real_name) then return nil end
     local px = position.x or position[1] or 0
     local py = position.y or position[2] or 0
@@ -27,7 +28,7 @@ local function find_existing_real_hub_at_pos(surface, position, real_name)
     }
     if reals then
         for _, r in ipairs(reals) do
-            if r.valid and r.name == real_name then
+            if r.valid and r.name == real_name and r ~= exclude_entity then
                 local rx = r.position.x or r.position[1] or 0
                 local ry = r.position.y or r.position[2] or 0
                 if math.abs(rx - px) < 0.1 and math.abs(ry - py) < 0.1 then
@@ -140,6 +141,25 @@ local function on_hub_built(event)
             if storage.hub_settings then
                 storage.hub_settings[ghost_unit_number] = nil
             end
+        elseif not target_is_ghost then
+            if storage.hub_settings and storage.hub_settings[unit_number] then
+                copied = true
+            else
+                local replaced_hub = find_existing_real_hub_at_pos(target_entity.surface, target_entity.position, real_name, target_entity)
+                if replaced_hub and replaced_hub.valid and replaced_hub.unit_number ~= unit_number then
+                    copied = (hub_settings.copy(replaced_hub.unit_number, unit_number) ~= nil)
+                end
+
+                if not copied and pos_key and storage.hub_fast_replace_cache and storage.hub_fast_replace_cache[pos_key] then
+                    local cached = storage.hub_fast_replace_cache[pos_key]
+                    local cur_tick = event.tick or game.tick
+                    if cached and cached.tick == cur_tick and cached.name == real_name then
+                        hub_settings.apply_blueprint_settings(unit_number, cached.settings)
+                        copied = true
+                    end
+                    storage.hub_fast_replace_cache[pos_key] = nil
+                end
+            end
         end
 
         if target_is_ghost and pos_key then
@@ -177,6 +197,22 @@ local function on_hub_removed(event)
             end
         else
             local pos_key = get_pos_key(entity.surface, entity.position)
+
+            local replacement = find_existing_real_hub_at_pos(entity.surface, entity.position, real_name, entity)
+            if replacement and replacement.valid and replacement.unit_number ~= unit_number then
+                hub_settings.copy(unit_number, replacement.unit_number)
+            end
+
+            local cur_settings = storage.hub_settings and storage.hub_settings[unit_number]
+            if cur_settings and pos_key then
+                storage.hub_fast_replace_cache = storage.hub_fast_replace_cache or {}
+                storage.hub_fast_replace_cache[pos_key] = {
+                    settings = util.table.deepcopy(cur_settings),
+                    tick = event.tick or game.tick,
+                    name = real_name
+                }
+            end
+
             if pos_key and storage.ghost_by_pos then
                 storage.ghost_by_pos[pos_key] = nil
             end
@@ -191,6 +227,15 @@ local function on_hub_removed(event)
 end
 
 local function on_tick(event)
+    if storage.hub_fast_replace_cache then
+        local cur_tick = event.tick
+        for k, v in pairs(storage.hub_fast_replace_cache) do
+            if (cur_tick - (v.tick or 0)) > 60 then
+                storage.hub_fast_replace_cache[k] = nil
+            end
+        end
+    end
+
     if not storage.active_hubs then return end
 
     local current_tick = event.tick

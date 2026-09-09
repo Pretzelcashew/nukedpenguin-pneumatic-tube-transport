@@ -7,6 +7,7 @@ local diverter_settings = require("scripts.diverter-settings")
 local counter_settings = require("scripts.counters.counter-settings")
 local counter_logic = require("scripts.counters.counter-logic")
 local diverter_renderer = require("scripts.diverter-renderer")
+local util = require("util")
 
 local active_device_scanner = {}
 
@@ -45,7 +46,7 @@ local function get_pos_key(surface, position, real_name)
     return prefix .. "@" .. sname .. "@" .. px .. "," .. py
 end
 
-local function find_existing_real_at_pos(surface, position, real_name)
+local function find_existing_real_at_pos(surface, position, real_name, exclude_entity)
     if not (surface and position and real_name) then return nil end
     local px = position.x or position[1] or 0
     local py = position.y or position[2] or 0
@@ -56,7 +57,7 @@ local function find_existing_real_at_pos(surface, position, real_name)
     }
     if reals then
         for _, r in ipairs(reals) do
-            if r.valid and r.name == real_name then
+            if r.valid and r.name == real_name and r ~= exclude_entity then
                 local rx = r.position.x or r.position[1] or 0
                 local ry = r.position.y or r.position[2] or 0
                 if math.abs(rx - px) < 0.1 and math.abs(ry - py) < 0.1 then
@@ -174,7 +175,16 @@ function active_device_scanner.notify_settings_changed(entity)
     end
 end
 
-local function scan_active_devices()
+local function scan_active_devices(tick)
+    if storage.fast_replace_cache then
+        local cur_tick = tick or game.tick
+        for k, v in pairs(storage.fast_replace_cache) do
+            if (cur_tick - (v.tick or 0)) > 60 then
+                storage.fast_replace_cache[k] = nil
+            end
+        end
+    end
+
     for _, spec in ipairs(device_specs_list) do
         local storage_table = storage[spec.storage_key]
         if storage_table then
@@ -343,7 +353,7 @@ active_device_scanner.register_device_type({
 function active_device_scanner.register_events()
     events.on_event(defines.events.on_tick, function(event)
         if (event.tick % SCAN_INTERVAL) == 0 then
-            scan_active_devices()
+            scan_active_devices(event.tick)
         end
     end)
 
@@ -477,6 +487,52 @@ function active_device_scanner.register_events()
                         elseif storage.counter_settings and spec.name == "pneumatic-capsule-counter" then
                             storage.counter_settings[ghost_id] = nil
                         end
+                    elseif not target_is_ghost then
+                        local existing_settings = nil
+                        if spec.name == "pneumatic-pump" and storage.pump_settings then
+                            existing_settings = storage.pump_settings[target_dev_id]
+                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
+                            existing_settings = storage.diverter_settings[target_dev_id]
+                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
+                            existing_settings = storage.counter_settings[target_dev_id]
+                        end
+
+                        if existing_settings then
+                            copied = true
+                        else
+                            local replaced_real = find_existing_real_at_pos(target_entity.surface, target_entity.position, real_name, target_entity)
+                            if replaced_real and replaced_real.valid and replaced_real.unit_number ~= target_entity.unit_number then
+                                local src_id = get_spec_device_id(spec.name, replaced_real)
+                                if spec.name == "pneumatic-pump" then
+                                    copied = (pump_settings.copy(src_id, target_dev_id) ~= nil)
+                                elseif spec.name == "pneumatic-diverter" then
+                                    copied = (diverter_settings.copy(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
+                                elseif spec.name == "pneumatic-capsule-counter" then
+                                    copied = (counter_settings.copy(src_id, target_dev_id) ~= nil)
+                                end
+                            end
+
+                            if not copied and pos_key and storage.fast_replace_cache and storage.fast_replace_cache[pos_key] then
+                                local cached = storage.fast_replace_cache[pos_key]
+                                local cur_tick = event.tick or game.tick
+                                if cached and cached.tick == cur_tick and cached.name == real_name then
+                                    if spec.name == "pneumatic-pump" then
+                                        pump_settings.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        copied = true
+                                    elseif spec.name == "pneumatic-diverter" then
+                                        diverter_settings.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        if cached.direction and cached.direction ~= target_entity.direction then
+                                            diverter_settings.rotate_ports(target_dev_id, cached.direction, target_entity.direction)
+                                        end
+                                        copied = true
+                                    elseif spec.name == "pneumatic-capsule-counter" then
+                                        counter_settings.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        copied = true
+                                    end
+                                end
+                                storage.fast_replace_cache[pos_key] = nil
+                            end
+                        end
                     end
 
                     if target_is_ghost and pos_key then
@@ -552,7 +608,7 @@ function active_device_scanner.register_events()
         defines.events.on_player_mined_entity,
         defines.events.on_robot_mined_entity,
         defines.events.on_entity_died,
-        defines.events.script_raised_destroy,
+        defines.script_raised_destroy,
         defines.events.on_space_platform_mined_entity
     }
     for _, id in ipairs(destroy_events) do
@@ -576,6 +632,38 @@ function active_device_scanner.register_events()
                         if pos_key and storage.ghost_by_pos then
                             storage.ghost_by_pos[pos_key] = nil
                         end
+
+                        local replacement = find_existing_real_at_pos(entity.surface, entity.position, real_name, entity)
+                        if replacement and replacement.valid and replacement.unit_number ~= entity.unit_number then
+                            local dest_id = get_spec_device_id(spec.name, replacement)
+                            if spec.name == "pneumatic-pump" then
+                                pump_settings.copy(dev_id, dest_id)
+                            elseif spec.name == "pneumatic-diverter" then
+                                diverter_settings.copy(dev_id, dest_id, entity.direction, replacement.direction)
+                            elseif spec.name == "pneumatic-capsule-counter" then
+                                counter_settings.copy(dev_id, dest_id)
+                            end
+                        end
+
+                        local cur_settings = nil
+                        if spec.name == "pneumatic-pump" and storage.pump_settings then
+                            cur_settings = storage.pump_settings[dev_id]
+                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
+                            cur_settings = storage.diverter_settings[dev_id]
+                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
+                            cur_settings = storage.counter_settings[dev_id]
+                        end
+
+                        if cur_settings and pos_key then
+                            storage.fast_replace_cache = storage.fast_replace_cache or {}
+                            storage.fast_replace_cache[pos_key] = {
+                                settings = util.table.deepcopy(cur_settings),
+                                direction = entity.direction,
+                                tick = event.tick or game.tick,
+                                name = real_name
+                            }
+                        end
+
                         if storage[spec.storage_key] and entity.unit_number then
                             storage[spec.storage_key][entity.unit_number] = nil
                         end

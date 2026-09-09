@@ -64,20 +64,29 @@ example scenario provided in image: where you'd want extra capsules for sending 
 ~add a new capsule type unlocked on fulgora, designed to be the true mixer, zero restrictions on packing, can be any items, any quantity, any quality, (so you could load 1 single copper cable and be packed, or 23 rare iron gears, plus 27 uncommon LDS, plus 100 normal stone bricks), begins with 2 base slot capacity.
 crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and locale, item descs, balance. do not have overly wordy descs.
 
+~~add ladder for going over pneumatic tubes with character~~
+
+~do not turn of transmit sense at terminator gates when opening the gate
+
+~add a pre-emptive soft registry of walls/gates that are built next to a pneumatic port with active flow, so that we can enqueue an efficient flow queue wake up when the interoperability tech finishes being researched
+
+~add a pneumatic gate which lets capsules through when closed
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
 
-add ladder for going over pneumatic tubes with character
-
-add a pneumatic gate which lets capsules through when closed
-
-fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of hand
 
 
-do not turn of transmit sense at terminator gates when opening the gate
 
-add a pre-emptyive soft registry of walls/gates that are built next to a pneumatic port with active flow, so that we can enqueue an efficient flow queue wake up when the interoperability tech finishes being researched
+
+fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of inventory
+
+fix that in certain scenarios with deleting and rotating gates and placing them back and rotating would not wake up the flow properly
+![alt text](image-1.png)
+
+
+
 
 
 

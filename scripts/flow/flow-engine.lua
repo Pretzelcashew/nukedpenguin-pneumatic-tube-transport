@@ -10,6 +10,7 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local flow_engine = {}
 
 local BATCH_SIZE = 50
+local INTEROP_BATCH_SIZE = 10
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
 
@@ -102,6 +103,45 @@ local function is_gate_terminator(unit_number)
     return not (has_gate_1 and has_gate_2)
 end
 
+local function is_port_flow_active(pkey)
+    if not pkey then return false end
+    if storage.flow_levels and (storage.flow_levels[pkey] or 0) ~= 0 then
+        return true
+    end
+    if storage.counter_levels and (storage.counter_levels[pkey] or 0) > 0 then
+        return true
+    end
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+    if node and node.emitter and flow_engine.get_node_emitter_level(node) ~= 0 then
+        return true
+    end
+    return false
+end
+
+function flow_engine.is_touching_active_flow(entity)
+    if not (entity and entity.valid and storage.flow_grid) then return false end
+    local ports = port_defs.get_ports(entity)
+    if not ports then return false end
+
+    local surface_name = entity.surface.name
+    local ex, ey = entity.position.x, entity.position.y
+
+    for _, port in ipairs(ports) do
+        local px = ex + port.offset.x
+        local py = ey + port.offset.y
+        local pos_key = make_pos_key(surface_name, px, py)
+        local grid_ports = storage.flow_grid[pos_key]
+        if grid_ports then
+            for existing_pkey in pairs(grid_ports) do
+                if is_port_flow_active(existing_pkey) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 function flow_engine.is_touching_pneumatic_grid(entity)
     if not (entity and entity.valid and storage.flow_grid) then return false end
     local ports = port_defs.get_ports(entity)
@@ -146,6 +186,8 @@ function flow_engine.init_storage()
     storage.active_gates = storage.active_gates or {}
     storage.gate_open_states = storage.gate_open_states or {}
     storage.wall_locked_group = storage.wall_locked_group or {}
+    storage.soft_interop_registry = storage.soft_interop_registry or {}
+    storage.interop_activation_queue = storage.interop_activation_queue or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -630,6 +672,13 @@ function flow_engine.connect_entity(entity)
 
     local unit_number = entity.unit_number
 
+    if storage.soft_interop_registry then
+        storage.soft_interop_registry[unit_number] = nil
+    end
+    if storage.interop_activation_queue then
+        storage.interop_activation_queue[unit_number] = nil
+    end
+
     if script.register_on_object_destroyed then
         local reg_id = script.register_on_object_destroyed(entity)
         storage.object_destruction_map = storage.object_destruction_map or {}
@@ -710,6 +759,14 @@ function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
 
     local unit_number = entity.unit_number
+
+    if storage.soft_interop_registry then
+        storage.soft_interop_registry[unit_number] = nil
+    end
+    if storage.interop_activation_queue then
+        storage.interop_activation_queue[unit_number] = nil
+    end
+
     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
     if not unit_ports then return end
 
@@ -809,6 +866,13 @@ end
 
 function flow_engine.handle_object_destroyed(unit_number)
     if not unit_number then return end
+
+    if storage.soft_interop_registry then
+        storage.soft_interop_registry[unit_number] = nil
+    end
+    if storage.interop_activation_queue then
+        storage.interop_activation_queue[unit_number] = nil
+    end
 
     if storage.hub_compartments and storage.hub_compartments[unit_number] then
         local compartment = storage.hub_compartments[unit_number]
@@ -1051,13 +1115,38 @@ local function discover_adjacent_standard_entity(node)
             local tech = cand.force and cand.force.technologies and cand.force.technologies["pneumatic-fence-gate-interoperability"]
             if not tech or tech.researched then
                 flow_engine.connect_entity(cand)
+            else
+                storage.soft_interop_registry = storage.soft_interop_registry or {}
+                storage.soft_interop_registry[cand.unit_number] = cand
+                if script.register_on_object_destroyed then
+                    local reg_id = script.register_on_object_destroyed(cand)
+                    storage.object_destruction_map = storage.object_destruction_map or {}
+                    storage.object_destruction_map[reg_id] = { type = "entity", unit_number = cand.unit_number }
+                end
             end
         end
     end
 end
 
+function flow_engine.handle_interop_research_finished(force)
+    if not storage.soft_interop_registry then return end
+    storage.interop_activation_queue = storage.interop_activation_queue or {}
+
+    -- Enqueue soft-registered entities in O(1) time without doing heavy synchronous connections
+    for unit_number, entity in pairs(storage.soft_interop_registry) do
+        if entity and entity.valid then
+            if not force or entity.force == force then
+                storage.interop_activation_queue[unit_number] = entity
+                storage.soft_interop_registry[unit_number] = nil
+            end
+        else
+            storage.soft_interop_registry[unit_number] = nil
+        end
+    end
+end
+
 function flow_engine.step(tick)
-    -- Poll state changes on active fence gates (terminators cut off normal can_transmit)
+    -- Poll state changes on active fence gates (terminators cut off physical capsule and pressure flow)
     if storage.active_gates then
         for unit_number, gate in pairs(storage.active_gates) do
             if gate and gate.valid then
@@ -1084,7 +1173,7 @@ function flow_engine.step(tick)
                                 if p_node then
                                     p_node.capsule_transmit = false
                                     p_node.pressure_transmit = false
-                                    p_node.sense_transmit = false
+                                    -- sense_transmit remains true
                                 end
                             end
                         end
@@ -1101,6 +1190,41 @@ function flow_engine.step(tick)
                                     for n_key in pairs(neighbors) do
                                         wake_port_parked(n_key)
                                     end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Process enqueued soft-registered interop entities in rate-limited batches across ticks
+    if storage.interop_activation_queue and next(storage.interop_activation_queue) ~= nil then
+        local batch = {}
+        local count = 0
+        for unit_number, entity in pairs(storage.interop_activation_queue) do
+            count = count + 1
+            batch[count] = { unit_number = unit_number, entity = entity }
+            storage.interop_activation_queue[unit_number] = nil
+            if count >= INTEROP_BATCH_SIZE then
+                break
+            end
+        end
+
+        for i = 1, count do
+            local item = batch[i]
+            local entity = item.entity
+            if entity and entity.valid then
+                if flow_engine.is_touching_pneumatic_grid(entity) then
+                    flow_engine.connect_entity(entity)
+                    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[item.unit_number]
+                    if unit_ports then
+                        for _, p in pairs(unit_ports) do
+                            local neighbors = storage.flow_connections and storage.flow_connections[p]
+                            if neighbors then
+                                for n_key in pairs(neighbors) do
+                                    wake_port_parked(n_key)
                                 end
                             end
                         end
@@ -1267,6 +1391,13 @@ function flow_engine.register_events()
         flow_engine.step(event.tick)
     end)
 
+    events.on_event(defines.events.on_research_finished, function(event)
+        local research = event.research
+        if research and research.valid and research.name == "pneumatic-fence-gate-interoperability" then
+            flow_engine.handle_interop_research_finished(research.force)
+        end
+    end)
+
     events.on_event(defines.events.on_object_destroyed, function(event)
         local reg_id = event.registration_number
         if not reg_id or not storage.object_destruction_map then return end
@@ -1308,10 +1439,22 @@ function flow_engine.register_events()
             if registered_entities[real_name] then
                 flow_engine.connect_entity(entity)
             elseif is_standard_entity(real_name) then
-                if flow_engine.is_touching_pneumatic_grid(entity) then
-                    local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
-                    if not tech or tech.researched then
+                local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
+                local is_researched = (not tech) or tech.researched
+
+                if is_researched then
+                    if flow_engine.is_touching_pneumatic_grid(entity) then
                         flow_engine.connect_entity(entity)
+                    end
+                else
+                    if flow_engine.is_touching_active_flow(entity) then
+                        storage.soft_interop_registry = storage.soft_interop_registry or {}
+                        storage.soft_interop_registry[entity.unit_number] = entity
+                        if script.register_on_object_destroyed then
+                            local reg_id = script.register_on_object_destroyed(entity)
+                            storage.object_destruction_map = storage.object_destruction_map or {}
+                            storage.object_destruction_map[reg_id] = { type = "entity", unit_number = entity.unit_number }
+                        end
                     end
                 end
             end

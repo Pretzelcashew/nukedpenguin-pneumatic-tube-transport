@@ -1,5 +1,3 @@
--- File: scripts/flow/flow-engine.lua
-
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local pump_settings = require("scripts.pump-settings")
@@ -694,7 +692,7 @@ function flow_engine.connect_entity(entity)
 
     if real_name == "stone-wall" then
         storage.active_walls = storage.active_walls or {}
-        storage.active_walls[unit_number] = true
+        storage.active_walls[unit_number] = entity
     elseif entity.name == "gate" then
         storage.active_gates = storage.active_gates or {}
         storage.active_gates[unit_number] = entity
@@ -1133,7 +1131,6 @@ function flow_engine.handle_interop_research_finished(force)
     if not storage.soft_interop_registry then return end
     storage.interop_activation_queue = storage.interop_activation_queue or {}
 
-    -- Enqueue soft-registered entities in O(1) time without doing heavy synchronous connections
     for unit_number, entity in pairs(storage.soft_interop_registry) do
         if entity and entity.valid then
             if not force or entity.force == force then
@@ -1144,6 +1141,79 @@ function flow_engine.handle_interop_research_finished(force)
             storage.soft_interop_registry[unit_number] = nil
         end
     end
+end
+
+function flow_engine.handle_interop_research_reversed(force)
+    -- Return any entities pending activation in queue back to soft registry
+    if storage.interop_activation_queue then
+        storage.soft_interop_registry = storage.soft_interop_registry or {}
+        for unit_number, entity in pairs(storage.interop_activation_queue) do
+            if entity and entity.valid then
+                if not force or entity.force == force then
+                    storage.soft_interop_registry[unit_number] = entity
+                    storage.interop_activation_queue[unit_number] = nil
+                end
+            else
+                storage.interop_activation_queue[unit_number] = nil
+            end
+        end
+    end
+
+    local active_walls = storage.active_walls or {}
+    local active_gates = storage.active_gates or {}
+
+    local function is_interop_unit(unit_number)
+        return (active_walls[unit_number] ~= nil) or (active_gates[unit_number] ~= nil)
+    end
+
+    local function sever_boundary_interfaces(registry)
+        for unit_number, entity in pairs(registry) do
+            if entity and entity.valid and (not force or entity.force == force) then
+                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+                if u_ports then
+                    for _, wall_pkey in pairs(u_ports) do
+                        local neighbors = storage.flow_connections and storage.flow_connections[wall_pkey]
+                        if neighbors then
+                            local to_sever = {}
+                            for n_key in pairs(neighbors) do
+                                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                                if n_node and not is_interop_unit(n_node.unit_number) then
+                                    to_sever[#to_sever + 1] = n_key
+                                end
+                            end
+
+                            for i = 1, #to_sever do
+                                local reg_pkey = to_sever[i]
+
+                                if storage.flow_connections[wall_pkey] then
+                                    storage.flow_connections[wall_pkey][reg_pkey] = nil
+                                    if next(storage.flow_connections[wall_pkey]) == nil then
+                                        storage.flow_connections[wall_pkey] = nil
+                                    end
+                                end
+
+                                if storage.flow_connections[reg_pkey] then
+                                    storage.flow_connections[reg_pkey][wall_pkey] = nil
+                                    if next(storage.flow_connections[reg_pkey]) == nil then
+                                        storage.flow_connections[reg_pkey] = nil
+                                    end
+                                end
+
+                                destroy_edge_render(make_edge_key(wall_pkey, reg_pkey))
+                                flow_engine.enqueue_port(reg_pkey)
+                                flow_engine.enqueue_port(wall_pkey)
+                                wake_port_parked(reg_pkey)
+                                wake_port_parked(wall_pkey)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    sever_boundary_interfaces(active_walls)
+    sever_boundary_interfaces(active_gates)
 end
 
 function flow_engine.step(tick)
@@ -1349,6 +1419,42 @@ function flow_engine.step(tick)
             end
         end
 
+        -- Unresearched Interop Demotion when Flow and Sensing Reach Equilibrium (0)
+        if node then
+            local u_num = node.unit_number
+            local is_wall_entity = storage.active_walls and storage.active_walls[u_num]
+            local is_gate_entity = storage.active_gates and storage.active_gates[u_num]
+
+            if is_wall_entity or is_gate_entity then
+                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
+                if u_ports then
+                    local has_flow = false
+                    for _, check_p in pairs(u_ports) do
+                        local f = (check_p == pkey) and target_flow or (storage.flow_levels and storage.flow_levels[check_p] or 0)
+                        local s = (check_p == pkey) and target_range or (storage.counter_levels and storage.counter_levels[check_p] or 0)
+                        if f ~= 0 or (s and s > 0) then
+                            has_flow = true
+                            break
+                        end
+                    end
+
+                    if not has_flow then
+                        local ent = is_gate_entity or is_wall_entity
+                        if ent and ent.valid then
+                            local tech = ent.force and ent.force.technologies and ent.force.technologies["pneumatic-fence-gate-interoperability"]
+                            if tech and not tech.researched then
+                                flow_engine.disconnect_entity(ent)
+                                if flow_engine.is_touching_pneumatic_grid(ent) then
+                                    storage.soft_interop_registry = storage.soft_interop_registry or {}
+                                    storage.soft_interop_registry[u_num] = ent
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
         -- Propagation & Lazy Discovery via Wavefront Queue
         if flow_changed or range_changed then
             if node then
@@ -1396,6 +1502,13 @@ function flow_engine.register_events()
         local research = event.research
         if research and research.valid and research.name == "pneumatic-fence-gate-interoperability" then
             flow_engine.handle_interop_research_finished(research.force)
+        end
+    end)
+
+    events.on_event(defines.events.on_research_reversed, function(event)
+        local research = event.research
+        if research and research.valid and research.name == "pneumatic-fence-gate-interoperability" then
+            flow_engine.handle_interop_research_reversed(research.force)
         end
     end)
 

@@ -183,6 +183,7 @@ function flow_engine.init_storage()
     storage.active_walls = storage.active_walls or {}
     storage.active_gates = storage.active_gates or {}
     storage.gate_open_states = storage.gate_open_states or {}
+    storage.gate_cutoff_states = storage.gate_cutoff_states or {}
     storage.wall_locked_group = storage.wall_locked_group or {}
     storage.soft_interop_registry = storage.soft_interop_registry or {}
     storage.interop_activation_queue = storage.interop_activation_queue or {}
@@ -671,6 +672,10 @@ function flow_engine.connect_entity(entity)
 
     local unit_number = entity.unit_number
 
+    if storage.flow_unit_ports and storage.flow_unit_ports[unit_number] and next(storage.flow_unit_ports[unit_number]) ~= nil then
+        flow_engine.disconnect_entity(entity)
+    end
+
     if storage.soft_interop_registry then
         storage.soft_interop_registry[unit_number] = nil
     end
@@ -696,9 +701,7 @@ function flow_engine.connect_entity(entity)
     elseif entity.name == "gate" then
         storage.active_gates = storage.active_gates or {}
         storage.active_gates[unit_number] = entity
-        local is_closed = entity.is_closed and entity.is_closed() or false
-        storage.gate_open_states = storage.gate_open_states or {}
-        storage.gate_open_states[unit_number] = not is_closed
+        -- State tracking is dynamically driven by step() polling
     elseif entity.name == "pneumatic-capsule-counter" then
         storage.active_counters = storage.active_counters or {}
         storage.active_counters[unit_number] = entity
@@ -744,6 +747,8 @@ function flow_engine.connect_entity(entity)
                 storage.flow_connections[existing_pkey][pkey] = true
 
                 flow_engine.enqueue_port(existing_pkey)
+                wake_port_parked(existing_pkey)
+                wake_port_parked(pkey)
             end
         end
 
@@ -792,6 +797,7 @@ function flow_engine.disconnect_entity(entity)
                     end
                     destroy_edge_render(make_edge_key(pkey, n_key))
                     flow_engine.enqueue_port(n_key)
+                    wake_port_parked(n_key)
                 end
                 storage.flow_connections[pkey] = nil
             end
@@ -813,6 +819,7 @@ function flow_engine.disconnect_entity(entity)
         end
 
         flow_engine.enqueue_port(pkey)
+        wake_port_parked(pkey)
     end
 
     if storage.flow_unit_ports then
@@ -822,6 +829,7 @@ function flow_engine.disconnect_entity(entity)
     if storage.active_walls then storage.active_walls[unit_number] = nil end
     if storage.active_gates then storage.active_gates[unit_number] = nil end
     if storage.gate_open_states then storage.gate_open_states[unit_number] = nil end
+    if storage.gate_cutoff_states then storage.gate_cutoff_states[unit_number] = nil end
     if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
     if storage.active_counters then storage.active_counters[unit_number] = nil end
     if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
@@ -923,6 +931,7 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.active_walls then storage.active_walls[unit_number] = nil end
     if storage.active_gates then storage.active_gates[unit_number] = nil end
     if storage.gate_open_states then storage.gate_open_states[unit_number] = nil end
+    if storage.gate_cutoff_states then storage.gate_cutoff_states[unit_number] = nil end
     if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
 end
 
@@ -1144,7 +1153,6 @@ function flow_engine.handle_interop_research_finished(force)
 end
 
 function flow_engine.handle_interop_research_reversed(force)
-    -- Return any entities pending activation in queue back to soft registry
     if storage.interop_activation_queue then
         storage.soft_interop_registry = storage.soft_interop_registry or {}
         for unit_number, entity in pairs(storage.interop_activation_queue) do
@@ -1223,13 +1231,18 @@ function flow_engine.step(tick)
             if gate and gate.valid then
                 local is_open = not (gate.is_closed and gate.is_closed())
                 local last_open = storage.gate_open_states and storage.gate_open_states[unit_number]
-                if is_open ~= last_open then
+                local is_term = is_open and is_gate_terminator(unit_number)
+                local last_term = storage.gate_cutoff_states and storage.gate_cutoff_states[unit_number]
+
+                if is_open ~= last_open or is_term ~= last_term then
                     storage.gate_open_states = storage.gate_open_states or {}
                     storage.gate_open_states[unit_number] = is_open
+                    storage.gate_cutoff_states = storage.gate_cutoff_states or {}
+                    storage.gate_cutoff_states[unit_number] = is_term
 
                     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
                     if unit_ports then
-                        if not is_open then
+                        if not is_open or not is_term then
                             for _, p in pairs(unit_ports) do
                                 local p_node = storage.flow_nodes and storage.flow_nodes[p]
                                 if p_node then
@@ -1238,7 +1251,7 @@ function flow_engine.step(tick)
                                     p_node.sense_transmit = true
                                 end
                             end
-                        elseif is_gate_terminator(unit_number) then
+                        else
                             for _, p in pairs(unit_ports) do
                                 local p_node = storage.flow_nodes and storage.flow_nodes[p]
                                 if p_node then
@@ -1252,7 +1265,7 @@ function flow_engine.step(tick)
 
                     flow_engine.enqueue_unit_ports(unit_number)
 
-                    if not is_open then
+                    if not is_open or not is_term then
                         if unit_ports then
                             for _, p in pairs(unit_ports) do
                                 wake_port_parked(p)
@@ -1493,6 +1506,46 @@ function flow_engine.step(tick)
     end
 end
 
+local function handle_entity_reorientation(entity)
+    if not (entity and entity.valid and entity.unit_number) then return end
+    if entity.name == "entity-ghost" then return end
+
+    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+
+    if registered_entities[real_name] then
+        if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
+            flow_engine.disconnect_entity(entity)
+        end
+        flow_engine.connect_entity(entity)
+    elseif is_standard_entity(real_name) then
+        local was_connected = (storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] ~= nil)
+        if was_connected then
+            flow_engine.disconnect_entity(entity)
+        end
+
+        local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
+        local is_researched = (not tech) or tech.researched
+
+        if is_researched then
+            if flow_engine.is_touching_pneumatic_grid(entity) then
+                flow_engine.connect_entity(entity)
+            end
+        else
+            if flow_engine.is_touching_active_flow(entity) then
+                storage.soft_interop_registry = storage.soft_interop_registry or {}
+                storage.soft_interop_registry[entity.unit_number] = entity
+                if script.register_on_object_destroyed then
+                    local reg_id = script.register_on_object_destroyed(entity)
+                    storage.object_destruction_map = storage.object_destruction_map or {}
+                    storage.object_destruction_map[reg_id] = { type = "entity", unit_number = entity.unit_number }
+                end
+            elseif storage.soft_interop_registry then
+                storage.soft_interop_registry[entity.unit_number] = nil
+            end
+        end
+    end
+end
+
 function flow_engine.register_events()
     events.on_event(defines.events.on_tick, function(event)
         flow_engine.step(event.tick)
@@ -1596,23 +1649,11 @@ function flow_engine.register_events()
     end
 
     events.on_event(defines.events.on_player_rotated_entity, function(event)
-        local entity = event.entity
-        if entity and entity.valid then
-            if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
-                flow_engine.disconnect_entity(entity)
-                flow_engine.connect_entity(entity)
-            end
-        end
+        handle_entity_reorientation(event.entity)
     end)
 
     events.on_event(defines.events.on_player_flipped_entity, function(event)
-        local entity = event.entity
-        if entity and entity.valid then
-            if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
-                flow_engine.disconnect_entity(entity)
-                flow_engine.connect_entity(entity)
-            end
-        end
+        handle_entity_reorientation(event.entity)
     end)
 end
 

@@ -66,6 +66,27 @@ data:extend({
     order = "c-a[capsule-counter]"
   },
 
+  -- Pressurized Pneumatic Gates Research Tech
+  {
+    type = "technology",
+    name = "pressurized-gates",
+    icons = tech_icon("__base__/graphics/technology/gate.png", palette.transport),
+    prerequisites = {
+      "pneumatic-transport",
+      "gate"
+    },
+    unit = {
+      count = 100,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1}
+      },
+      time = 30
+    },
+    effects = {},
+    order = "c-a[pressurized-gates]"
+  },
+
   -- Advanced Pneumatic Infrastructure Tech
   {
     type = "technology",

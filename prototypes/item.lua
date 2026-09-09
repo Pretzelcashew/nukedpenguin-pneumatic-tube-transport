@@ -125,14 +125,15 @@ data:extend({
     place_result = "pneumatic-capsule-counter"
   },
 
-  -- Capsule Vessels Line Items
+  -- Capsule Vessels Line Items (weight = 50 * kg enables 20 capsules per cargo rocket)
   {
     type = "item",
     name = "item-capsule",
     icons = icon("__base__/graphics/icons/iron-plate.png", palette.standard),
     subgroup = "pneumatic-capsules",
     order = "a[standard]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -140,7 +141,8 @@ data:extend({
     icons = icon("__base__/graphics/icons/wood.png", palette.bio),
     subgroup = "pneumatic-capsules",
     order = "b[biodegradable]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -148,7 +150,8 @@ data:extend({
     icons = icon("__space-age__/graphics/icons/ice.png", palette.refrigerated),
     subgroup = "pneumatic-capsules",
     order = "c[refrigerated]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -156,7 +159,8 @@ data:extend({
     icons = icon("__space-age__/graphics/icons/ice.png", palette.spent),
     subgroup = "pneumatic-capsules",
     order = "d[spent-refrigerated]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -164,7 +168,8 @@ data:extend({
     icons = icon("__base__/graphics/icons/steel-plate.png", palette.reinforced),
     subgroup = "pneumatic-capsules",
     order = "e[reinforced]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -172,7 +177,8 @@ data:extend({
     icons = icon("__space-age__/graphics/icons/superconductor.png", palette.electromagnetic),
     subgroup = "pneumatic-capsules",
     order = "f[electromagnetic]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -180,7 +186,8 @@ data:extend({
     icons = icon("__base__/graphics/icons/accumulator.png", palette.vacuum),
     subgroup = "pneumatic-capsules",
     order = "g[vacuum]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -188,7 +195,8 @@ data:extend({
     icons = icon("__base__/graphics/icons/accumulator.png", palette.spent_vacuum),
     subgroup = "pneumatic-capsules",
     order = "h[spent-vacuum]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   },
   {
     type = "item",
@@ -196,6 +204,7 @@ data:extend({
     icons = icon("__base__/graphics/icons/car.png", palette.player),
     subgroup = "pneumatic-capsules",
     order = "i[player]",
-    stack_size = 1
+    stack_size = 1,
+    weight = 50 * kg
   }
 })

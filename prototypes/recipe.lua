@@ -30,7 +30,7 @@ data:extend({
   {
     type = "recipe",
     name = "refrigerated-capsule",
-    categories = {"crafting-with-fluid"},
+    categories = {"cryogenics"},
     enabled = false,
     energy_required = 3.0,
     ingredients = {
@@ -48,7 +48,7 @@ data:extend({
     name = "recharge-refrigerated-capsule",
     subgroup = "pneumatic-capsules",
     order = "c[refrigerated]-b[recharge]",
-    categories = {"crafting-with-fluid"},
+    categories = {"cryogenics"},
     enabled = false,
     allow_productivity = false,
     energy_required = 2.0,
@@ -57,7 +57,7 @@ data:extend({
     },
     ingredients = {
       {type = "item", name = "spent-refrigerated-capsule", amount = 1},
-      {type = "fluid", name = "fluoroketone-cold", amount = 125}
+      {type = "fluid", name = "fluoroketone-cold", amount = 100}
     },
     results = {
       {type = "item", name = "refrigerated-capsule", amount = 1},
@@ -67,6 +67,7 @@ data:extend({
   {
     type = "recipe",
     name = "reinforced-capsule",
+    categories = {"metallurgy"},
     enabled = false,
     energy_required = 4.0,
     ingredients = {
@@ -80,6 +81,7 @@ data:extend({
   {
     type = "recipe",
     name = "electromagnetic-capsule",
+    categories = {"electromagnetics"},
     enabled = false,
     energy_required = 4.0,
     ingredients = {
@@ -94,6 +96,7 @@ data:extend({
   {
     type = "recipe",
     name = "vacuum-capsule",
+    categories = {"crafting"},
     enabled = false,
     energy_required = 4.0,
     ingredients = {
@@ -110,6 +113,7 @@ data:extend({
     name = "recharge-vacuum-capsule",
     subgroup = "pneumatic-capsules",
     order = "g[vacuum]-b[recharge]",
+    categories = {"crafting"},
     enabled = false,
     allow_productivity = false,
     energy_required = 2.0,

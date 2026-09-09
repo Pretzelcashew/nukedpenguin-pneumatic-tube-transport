@@ -38,6 +38,10 @@ for _, name in ipairs(port_defs.registered_names) do
     registered_entities[name] = true
 end
 
+local function is_standard_entity(name)
+    return (name == "stone-wall" or name == "gate")
+end
+
 local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
 end
@@ -50,6 +54,71 @@ end
 
 local function make_edge_key(key_a, key_b)
     return key_a < key_b and (key_a .. "|" .. key_b) or (key_b .. "|" .. key_a)
+end
+
+local function wake_port_parked(pkey)
+    if not (pkey and storage.parked_by_port) then return end
+    local bucket = storage.parked_by_port[pkey]
+    if bucket then
+        for cap_id in pairs(bucket) do
+            local parked_cap = storage.capsules and storage.capsules[cap_id]
+            if parked_cap and parked_cap.to_port_key == nil then
+                parked_cap.next_retry_tick = nil
+                parked_cap.last_failed_hub = nil
+                parked_cap.last_port_key = nil
+            end
+        end
+    end
+end
+
+local function is_gate_terminator(unit_number)
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if not unit_ports or #unit_ports < 2 then return true end
+
+    local has_gate_1 = false
+    local neighbors_1 = storage.flow_connections and storage.flow_connections[unit_ports[1]]
+    if neighbors_1 then
+        for n_key in pairs(neighbors_1) do
+            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+            if n_node and storage.active_gates and storage.active_gates[n_node.unit_number] then
+                has_gate_1 = true
+                break
+            end
+        end
+    end
+
+    local has_gate_2 = false
+    local neighbors_2 = storage.flow_connections and storage.flow_connections[unit_ports[2]]
+    if neighbors_2 then
+        for n_key in pairs(neighbors_2) do
+            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+            if n_node and storage.active_gates and storage.active_gates[n_node.unit_number] then
+                has_gate_2 = true
+                break
+            end
+        end
+    end
+
+    return not (has_gate_1 and has_gate_2)
+end
+
+function flow_engine.is_touching_pneumatic_grid(entity)
+    if not (entity and entity.valid and storage.flow_grid) then return false end
+    local ports = port_defs.get_ports(entity)
+    if not ports then return false end
+
+    local surface_name = entity.surface.name
+    local ex, ey = entity.position.x, entity.position.y
+
+    for _, port in ipairs(ports) do
+        local px = ex + port.offset.x
+        local py = ey + port.offset.y
+        local pos_key = make_pos_key(surface_name, px, py)
+        if storage.flow_grid[pos_key] and next(storage.flow_grid[pos_key]) ~= nil then
+            return true
+        end
+    end
+    return false
 end
 
 function flow_engine.init_storage()
@@ -71,6 +140,12 @@ function flow_engine.init_storage()
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_renders = storage.counter_renders or {}
+
+    -- Standard Walls and Fence Gates Interoperability Storage
+    storage.active_walls = storage.active_walls or {}
+    storage.active_gates = storage.active_gates or {}
+    storage.gate_open_states = storage.gate_open_states or {}
+    storage.wall_locked_group = storage.wall_locked_group or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -550,7 +625,8 @@ end
 
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
-    if not registered_entities[entity.name] then return end
+    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    if not (registered_entities[real_name] or is_standard_entity(real_name)) then return end
 
     local unit_number = entity.unit_number
 
@@ -566,6 +642,22 @@ function flow_engine.connect_entity(entity)
     local surface_name = entity.surface.name
     local ex, ey = entity.position.x, entity.position.y
 
+    if real_name == "stone-wall" then
+        storage.active_walls = storage.active_walls or {}
+        storage.active_walls[unit_number] = true
+    elseif real_name == "gate" then
+        storage.active_gates = storage.active_gates or {}
+        storage.active_gates[unit_number] = entity
+        local is_closed = entity.is_closed and entity.is_closed() or false
+        storage.gate_open_states = storage.gate_open_states or {}
+        storage.gate_open_states[unit_number] = not is_closed
+    elseif real_name == "pneumatic-capsule-counter" then
+        storage.active_counters = storage.active_counters or {}
+        storage.active_counters[unit_number] = entity
+        storage.counter_power_states = storage.counter_power_states or {}
+        storage.counter_power_states[unit_number] = (entity.energy > 0)
+    end
+
     storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
 
     for port_index, port in ipairs(ports) do
@@ -580,6 +672,8 @@ function flow_engine.connect_entity(entity)
             port_index = port_index,
             pos_key = pos_key,
             pos = {x = px, y = py},
+            offset = {x = port.offset.x, y = port.offset.y},
+            dir = port.dir and {x = port.dir.x, y = port.dir.y} or nil,
             surface_name = surface_name,
             emitter = port.flow,
             sense = port.sense,
@@ -668,6 +762,13 @@ function flow_engine.disconnect_entity(entity)
     if storage.flow_unit_ports then
         storage.flow_unit_ports[unit_number] = nil
     end
+
+    if storage.active_walls then storage.active_walls[unit_number] = nil end
+    if storage.active_gates then storage.active_gates[unit_number] = nil end
+    if storage.gate_open_states then storage.gate_open_states[unit_number] = nil end
+    if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
+    if storage.active_counters then storage.active_counters[unit_number] = nil end
+    if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
 end
 
 function flow_engine.handle_capsule_destroyed(capsule_id)
@@ -701,18 +802,8 @@ function flow_engine.handle_capsule_destroyed(capsule_id)
     capsule_queries.remove_capsule(capsule_id)
     capsule_manager.remove(capsule_id)
 
-    if target_key and storage.parked_by_port then
-        local bucket = storage.parked_by_port[target_key]
-        if bucket then
-            for cap_id in pairs(bucket) do
-                local parked_cap = storage.capsules and storage.capsules[cap_id]
-                if parked_cap and parked_cap.to_port_key == nil then
-                    parked_cap.next_retry_tick = nil
-                    parked_cap.last_failed_hub = nil
-                    parked_cap.last_port_key = nil
-                end
-            end
-        end
+    if target_key then
+        wake_port_parked(target_key)
     end
 end
 
@@ -766,6 +857,10 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.active_counters then storage.active_counters[unit_number] = nil end
     if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
     if storage.spilled_containers then storage.spilled_containers[unit_number] = nil end
+    if storage.active_walls then storage.active_walls[unit_number] = nil end
+    if storage.active_gates then storage.active_gates[unit_number] = nil end
+    if storage.gate_open_states then storage.gate_open_states[unit_number] = nil end
+    if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
 end
 
 local function compute_port_counter_level(pkey)
@@ -773,6 +868,13 @@ local function compute_port_counter_level(pkey)
     if not node then return 0, nil end
 
     local unit_number = node.unit_number
+
+    if storage.active_walls and storage.active_walls[unit_number] then
+        local locked_group = storage.wall_locked_group and storage.wall_locked_group[unit_number]
+        if locked_group and node.group ~= locked_group then
+            return 0, nil
+        end
+    end
 
     if storage.active_counters and storage.active_counters[unit_number] then
         local counter_entity = storage.active_counters[unit_number]
@@ -918,7 +1020,96 @@ local function compute_port_flow_level(pkey)
     end
 end
 
+-- Strictly single-entity localized lazy discovery when a wavefront port expands to an unregistered entity.
+local function discover_adjacent_standard_entity(node)
+    if not (node and node.pos and node.surface_name) then return end
+    local surface = game.surfaces[node.surface_name]
+    if not (surface and surface.valid) then return end
+
+    local dx, dy = 0, 0
+    if node.dir then
+        dx = node.dir.x or 0
+        dy = node.dir.y or 0
+    else
+        local off_x = node.offset and node.offset.x or 0
+        local off_y = node.offset and node.offset.y or 0
+        dx = (off_x > 0.05 and 1) or (off_x < -0.05 and -1) or 0
+        dy = (off_y > 0.05 and 1) or (off_y < -0.05 and -1) or 0
+    end
+
+    if dx == 0 and dy == 0 then return end
+
+    local target_pos = { x = node.pos.x + dx * 0.5, y = node.pos.y + dy * 0.5 }
+    local candidates = surface.find_entities_filtered{
+        position = target_pos,
+        name = {"stone-wall", "gate"}
+    }
+
+    local cand = candidates[1]
+    if cand and cand.valid and cand.unit_number then
+        if not (storage.flow_unit_ports and storage.flow_unit_ports[cand.unit_number]) then
+            local tech = cand.force and cand.force.technologies and cand.force.technologies["pneumatic-fence-gate-interoperability"]
+            if not tech or tech.researched then
+                flow_engine.connect_entity(cand)
+            end
+        end
+    end
+end
+
 function flow_engine.step(tick)
+    -- Poll state changes on active fence gates (terminators cut off normal can_transmit)
+    if storage.active_gates then
+        for unit_number, gate in pairs(storage.active_gates) do
+            if gate and gate.valid then
+                local is_open = not (gate.is_closed and gate.is_closed())
+                local last_open = storage.gate_open_states and storage.gate_open_states[unit_number]
+                if is_open ~= last_open then
+                    storage.gate_open_states = storage.gate_open_states or {}
+                    storage.gate_open_states[unit_number] = is_open
+
+                    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+                    if unit_ports then
+                        if not is_open then
+                            for _, p in pairs(unit_ports) do
+                                local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                                if p_node then
+                                    p_node.capsule_transmit = true
+                                    p_node.pressure_transmit = true
+                                    p_node.sense_transmit = true
+                                end
+                            end
+                        elseif is_gate_terminator(unit_number) then
+                            for _, p in pairs(unit_ports) do
+                                local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                                if p_node then
+                                    p_node.capsule_transmit = false
+                                    p_node.pressure_transmit = false
+                                    p_node.sense_transmit = false
+                                end
+                            end
+                        end
+                    end
+
+                    flow_engine.enqueue_unit_ports(unit_number)
+
+                    if not is_open then
+                        if unit_ports then
+                            for _, p in pairs(unit_ports) do
+                                wake_port_parked(p)
+                                local neighbors = storage.flow_connections and storage.flow_connections[p]
+                                if neighbors then
+                                    for n_key in pairs(neighbors) do
+                                        wake_port_parked(n_key)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
     local batch = {}
@@ -965,9 +1156,76 @@ function flow_engine.step(tick)
             end
         end
 
-        -- Propagation
+        -- Wall Axis Locking & Depressurization Waking Engine
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node and storage.active_walls and storage.active_walls[node.unit_number] then
+            local u_num = node.unit_number
+            local cur_locked = storage.wall_locked_group and storage.wall_locked_group[u_num]
+
+            if not cur_locked then
+                if target_flow ~= 0 or (target_range and target_range > 0) then
+                    storage.wall_locked_group = storage.wall_locked_group or {}
+                    storage.wall_locked_group[u_num] = node.group
+
+                    local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
+                    if u_ports then
+                        for _, p in pairs(u_ports) do
+                            local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                            if p_node then
+                                local matches = (p_node.group == node.group)
+                                p_node.capsule_transmit = matches
+                                p_node.pressure_transmit = matches
+                                p_node.sense_transmit = matches
+                                if not matches then
+                                    flow_engine.enqueue_port(p)
+                                end
+                            end
+                        end
+                    end
+                end
+            else
+                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
+                if u_ports then
+                    local active_has_pressure = false
+                    for _, p in pairs(u_ports) do
+                        local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                        if p_node and p_node.group == cur_locked then
+                            local f = (p == pkey) and target_flow or (storage.flow_levels and storage.flow_levels[p] or 0)
+                            local s = (p == pkey) and target_range or (storage.counter_levels and storage.counter_levels[p] or 0)
+                            if f ~= 0 or (s and s > 0) then
+                                active_has_pressure = true
+                                break
+                            end
+                        end
+                    end
+
+                    if not active_has_pressure then
+                        storage.wall_locked_group[u_num] = nil
+
+                        for _, p in pairs(u_ports) do
+                            local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                            if p_node then
+                                p_node.capsule_transmit = true
+                                p_node.pressure_transmit = true
+                                p_node.sense_transmit = true
+                            end
+                            flow_engine.enqueue_port(p)
+                            wake_port_parked(p)
+                            local neighbors = storage.flow_connections and storage.flow_connections[p]
+                            if neighbors then
+                                for n_key in pairs(neighbors) do
+                                    flow_engine.enqueue_port(n_key)
+                                    wake_port_parked(n_key)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Propagation & Lazy Discovery via Wavefront Queue
         if flow_changed or range_changed then
-            local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then
@@ -986,12 +1244,18 @@ function flow_engine.step(tick)
             end
 
             local neighbors = storage.flow_connections and storage.flow_connections[pkey]
-            if neighbors then
+            if neighbors and next(neighbors) ~= nil then
                 for n_key in pairs(neighbors) do
                     flow_engine.enqueue_port(n_key)
                     if flow_changed then
                         update_edge_render(pkey, n_key)
                     end
+                end
+            else
+                local eff_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
+                local eff_sense = storage.counter_levels and storage.counter_levels[pkey] or 0
+                if eff_flow ~= 0 or eff_sense > 0 then
+                    discover_adjacent_standard_entity(node)
                 end
             end
         end
@@ -1037,8 +1301,19 @@ function flow_engine.register_events()
     for _, event_id in ipairs(build_events) do
         events.on_event(event_id, function(event)
             local entity = event.entity or event.destination
-            if entity and entity.valid then
+            if not (entity and entity.valid and entity.unit_number) then return end
+
+            local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+
+            if registered_entities[real_name] then
                 flow_engine.connect_entity(entity)
+            elseif is_standard_entity(real_name) then
+                if flow_engine.is_touching_pneumatic_grid(entity) then
+                    local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
+                    if not tech or tech.researched then
+                        flow_engine.connect_entity(entity)
+                    end
+                end
             end
         end)
     end
@@ -1065,16 +1340,20 @@ function flow_engine.register_events()
     events.on_event(defines.events.on_player_rotated_entity, function(event)
         local entity = event.entity
         if entity and entity.valid then
-            flow_engine.disconnect_entity(entity)
-            flow_engine.connect_entity(entity)
+            if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
+                flow_engine.disconnect_entity(entity)
+                flow_engine.connect_entity(entity)
+            end
         end
     end)
 
     events.on_event(defines.events.on_player_flipped_entity, function(event)
         local entity = event.entity
         if entity and entity.valid then
-            flow_engine.disconnect_entity(entity)
-            flow_engine.connect_entity(entity)
+            if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
+                flow_engine.disconnect_entity(entity)
+                flow_engine.connect_entity(entity)
+            end
         end
     end)
 end

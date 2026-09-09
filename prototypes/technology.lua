@@ -66,6 +66,27 @@ data:extend({
     order = "c-a[capsule-counter]"
   },
 
+  -- Pneumatic Fence Gate Interoperability Tech
+  {
+    type = "technology",
+    name = "pneumatic-fence-gate-interoperability",
+    icons = tech_icon("__base__/graphics/technology/gate.png", palette.transport),
+    prerequisites = {
+      "pneumatic-transport",
+      "gate"
+    },
+    unit = {
+      count = 150,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1}
+      },
+      time = 30
+    },
+    effects = {},
+    order = "c-a[pneumatic-fence-gate-interoperability]"
+  },
+
   -- Advanced Pneumatic Infrastructure Tech
   {
     type = "technology",

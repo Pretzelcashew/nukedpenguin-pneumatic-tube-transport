@@ -57,6 +57,13 @@ example scenario provided in image: where you'd want extra capsules for sending 
 
 ~make a capsule counter research that require the circuit network tech and the initial pneumatic tech, in order to be able to craft capsule counters
 
+~add vacuum capsule unlocked with space tech, same stats as standard capsule, but with added vaccuum ability, which takes items off any belt segment that is touching a hub port (works on undergound belts and belts, any quality). this makes the hub fill up without needing inserters
+
+~make reinforced capsule's role more distinct, enforce strict bulk transport, all same item type, same quality, must use all slots to pack (dont forget to update descs)
+
+~add a new capsule type unlocked on fulgora, designed to be the true mixer, zero restrictions on packing, can be any items, any quantity, any quality, (so you could load 1 single copper cable and be packed, or 23 rare iron gears, plus 27 uncommon LDS, plus 100 normal stone bricks), begins with 2 base slot capacity.
+crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and locale, item descs, balance. do not have overly wordy descs.
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
@@ -65,14 +72,14 @@ add ladder for going over pneumatic tubes with character
 
 add a pneumatic gate which lets capsules through when closed
 
-make reinforced capsule's role more distinct, enforce strict bulk transport, all same item type, same quality, must use all slots to pack (dont forget to update descs)
-
-add a new capsule type unlocked on fulgora, designed to be the true mixer, zero restrictions on packing, can be any items, any quantity, any quality, (so you could load 1 single copper cable and be packed, or 23 rare iron gears, plus 27 uncommon LDS, plus 100 normal stone bricks), begins with 2 base slot capacity.
-crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and locale, item descs, balance. do not have overly wordy descs.
-
 fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of hand
 
-add vacuum capsule unlocked with space tech, same stats as standard capsule, but with added vaccuum ability, which takes items off any belt segment that is touching a hub port (works on undergound belts and belts, any quality). this makes the hub fill up without needing inserters
+
+do not turn of transmit sense at terminator gates when opening the gate
+
+add a pre-emptyive soft registry of walls/gates that are built next to a pneumatic port with active flow, so that we can enqueue an efficient flow queue wake up when the interoperability tech finishes being researched
+
+
 
 
 

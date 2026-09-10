@@ -8,6 +8,7 @@ require("prototypes.shortcut")
 require("prototypes.pneumatic-diverter")
 require("prototypes.pneumatic-pump-proxy")
 require("prototypes.pneumatic-capsule-counter")
+require("prototypes.pneumatic-projector")
 
 data:extend({
     {

@@ -194,6 +194,32 @@ data:extend({
     order = "c-b[electromagnetic-capsule]"
   },
 
+  -- Fulgora Planet Unlocks: Electromagnetic Projector
+  {
+    type = "technology",
+    name = "pneumatic-projector",
+    icons = tech_icon("__space-age__/graphics/icons/electromagnetic-plant.png", palette.electromagnetic, 64),
+    prerequisites = {
+      "electromagnetic-science-pack",
+      "pneumatic-transport",
+      "electromagnetic-capsule"
+    },
+    unit = {
+      count = 350,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1},
+        {"chemical-science-pack", 1},
+        {"electromagnetic-science-pack", 1}
+      },
+      time = 45
+    },
+    effects = {
+      { type = "unlock-recipe", recipe = "pneumatic-projector" }
+    },
+    order = "c-b[pneumatic-projector]"
+  },
+
   -- Aquilo Planet Unlocks: Refrigerated Capsule & Recharge (Requires cryogenic plant, lithium processing, electromagnetic plant & LDS)
   {
     type = "technology",

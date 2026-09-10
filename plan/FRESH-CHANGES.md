@@ -1,3 +1,5 @@
+### 0.3.2
+
 ### Revision: Continuous Belt Siphon Throughput & 60Hz Cadence Optimization
 **Date:** 2026-09-09 18:53 (EDT)
 **Context:** Eliminate choppy, spaced item bursts on transport lines by decoupling belt siphoning/depositing from the 10-tick interleaved hub packing loop and implementing fast-path early exit filtering.
@@ -13,3 +15,17 @@
 **Key Changes:**
 1. **Cargo-First Deposit Priority Hierarchy (`scripts/hubs/packing/belt-siphon.lua`):** Refactored `find_deposit_candidate_slot` into a 3-tier candidate selector (Pure Cargo > Spent Capsules > Secondary Charged Capsules). Bulk cargo now empties onto transport lines before dead shells, eliminating cargo belt contamination and giving chest-mounted filter inserters ample swing time to extract spent capsules directly into recycling lines.
 2. **Spent Hull Outbound Packing Priority (`scripts/hubs/packing/hub-packing.lua`):** Replaced the first-match slot scan in `hub_packing.evaluate_inventory` with a tiered candidate evaluator targeting spent hulls (`SPENT_CAPSULES`) first, standard cargo capsules second, and lowest-health charged capsules last. Outbound shipments now draft empty shells to transport return freight home to base recharge infrastructure while preserving working, full-durability vacuum capsules in the outpost hub chest to keep belt unloaders active.
+
+
+
+### 0.3.21
+
+### Revision: Electromagnetic Projector Prototypes, Fulgora Tech Tree & Economics
+**Date:** 2026-09-10 09:49 (EDT)
+**Context:** Register data-stage prototypes, scaled entity visuals, circuit proxy, Fulgora-tier electromagnetic recipe, and technology unlocks for the Electromagnetic Projector facility ahead of kinetic flow simulation.
+**Key Changes:**
+1. **Electromagnetic Projector Entity & Circuit Proxy (`prototypes/pneumatic-projector.lua`):** Implemented `pneumatic-projector` as a 3x3 `electric-energy-interface` with centered collision/selection boxes (`selection_priority = 50`), configured for a 3 MW passive idle drain, 9 MJ buffer capacity, and 9 MW input flow limit. Composited a 0.75x scaled, magenta-tinted visual animation derived from the Space Age electromagnetic plant chassis. Created the companion `pneumatic-projector-circuit-proxy` (`constant-combinator`, `selection_priority = 60`, `operable = true`, `placeable_by = {item = "pneumatic-projector", count = 0}`) to support wire attachments and circuit automation.
+2. **Infrastructure Line Item (`prototypes/item.lua`):** Registered the `pneumatic-projector` item in `subgroup = "pneumatic-transport"` (`order = "i[projector]"`) with a stack size of 10 and standardized payload weight of `50 * kg`.
+3. **Fulgora Planetary Crafting Recipe (`prototypes/recipe.lua`):** Added the `pneumatic-projector` recipe with `categories = {"electromagnetics"}`, preventing hand-crafting and restricting production to Fulgora Electromagnetic Plants using 25 holmium plates, 10 supercapacitors, 10 processing units, 20 steel plates, and 10 pneumatic tubes.
+4. **Research Tree Expansion (`prototypes/technology.lua`):** Added the `pneumatic-projector` research node (350 units @ 45s) gated behind `electromagnetic-science-pack`, `pneumatic-transport`, and `electromagnetic-capsule` prerequisites.
+5. **Data Pipeline & Locale Registration (`data.lua`, `locale/en/config.cfg`):** Wired `prototypes.pneumatic-projector` into the root prototype loader and populated complete English locale mappings for entity, item, recipe, and technology entries.

@@ -19,6 +19,7 @@ local palette = {
   crossflow    = {r = 0.80, g = 0.40, b = 0.90, a = 1.0}, -- Crossflow Purple
   diverter     = {r = 0.25, g = 0.80, b = 0.60, a = 1.0}, -- Diverter Emerald
   counter      = {r = 0.30, g = 0.85, b = 0.70, a = 1.0}, -- Counter Teal
+  projector    = {r = 0.85, g = 0.35, b = 0.95, a = 1.0}, -- Projector Magenta
 }
 
 local function icon(path, tint)
@@ -123,6 +124,16 @@ data:extend({
     order = "h[counter]",
     stack_size = 20,
     place_result = "pneumatic-capsule-counter"
+  },
+  {
+    type = "item",
+    name = "pneumatic-projector",
+    icons = icon("__space-age__/graphics/icons/electromagnetic-plant.png", palette.projector),
+    subgroup = "pneumatic-transport",
+    order = "i[projector]",
+    stack_size = 10,
+    weight = 50 * kg,
+    place_result = "pneumatic-projector"
   },
 
   -- Capsule Vessels Line Items (weight = 50 * kg enables 20 capsules per cargo rocket)

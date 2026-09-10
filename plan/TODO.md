@@ -80,6 +80,7 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 consider breaking apart large files that are doing too many things (like flow-engine)
 
+fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy)
 
 
 

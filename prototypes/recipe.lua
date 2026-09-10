@@ -245,5 +245,22 @@ data:extend({
     results = {
       {type = "item", name = "pneumatic-capsule-counter", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "pneumatic-projector",
+    categories = {"electromagnetics"},
+    enabled = false,
+    energy_required = 10.0,
+    ingredients = {
+      {type = "item", name = "holmium-plate", amount = 25},
+      {type = "item", name = "supercapacitor", amount = 10},
+      {type = "item", name = "processing-unit", amount = 10},
+      {type = "item", name = "steel-plate", amount = 20},
+      {type = "item", name = "pneumatic-tube", amount = 10}
+    },
+    results = {
+      {type = "item", name = "pneumatic-projector", amount = 1}
+    }
   }
 })

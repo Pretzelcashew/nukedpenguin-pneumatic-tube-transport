@@ -301,8 +301,21 @@ function flow_engine.get_node_kinetic_emitter(node)
     if not (entity and entity.valid) then return 0 end
 
     local power_state = storage.projector_power_states and storage.projector_power_states[unit_number]
-    local is_powered = (power_state ~= nil) and power_state or (entity.energy > 0)
-    local is_enabled = storage.projector_enabled_states and (storage.projector_enabled_states[unit_number] ~= false)
+    local is_powered = false
+    if power_state ~= nil then
+        is_powered = power_state
+    else
+        is_powered = projector_settings.is_powered(entity)
+    end
+
+    local enabled_state = storage.projector_enabled_states and storage.projector_enabled_states[unit_number]
+    local is_enabled = false
+    if enabled_state ~= nil then
+        is_enabled = enabled_state
+    else
+        is_enabled = projector_settings.is_projector_enabled(entity)
+    end
+
     if not (is_powered and is_enabled) then return 0 end
 
     local q_level = (entity.quality and entity.quality.level) or 0
@@ -373,18 +386,18 @@ local function destroy_edge_render(edge_key, player_index)
     end
 end
 
-local function destroy_kinetic_pos_render(pos_key)
-    if not (pos_key and storage.kinetic_renders) then return end
-    local entry = storage.kinetic_renders[pos_key]
+local function destroy_kinetic_pos_render(pkey)
+    if not (pkey and storage.kinetic_renders) then return end
+    local entry = storage.kinetic_renders[pkey]
     if entry then
         if entry.dot and entry.dot.valid then entry.dot.destroy() end
         if entry.ring and entry.ring.valid then entry.ring.destroy() end
-        storage.kinetic_renders[pos_key] = nil
+        storage.kinetic_renders[pkey] = nil
     end
 end
 
-local function update_kinetic_pos_render(pos_key, pos, surface, is_prominent, is_endpoint, is_receiver, q_level)
-    destroy_kinetic_pos_render(pos_key)
+local function update_kinetic_pos_render(pkey, pos, surface, is_prominent, is_endpoint, is_receiver, q_level)
+    destroy_kinetic_pos_render(pkey)
     if not (surface and surface.valid and pos) then return end
 
     local palette = QUALITY_BEAM_PALETTE[q_level or 0] or QUALITY_BEAM_PALETTE[0]
@@ -430,7 +443,7 @@ local function update_kinetic_pos_render(pos_key, pos, surface, is_prominent, is
         }
     end
 
-    storage.kinetic_renders[pos_key] = { dot = dot_obj, ring = ring_obj }
+    storage.kinetic_renders[pkey] = { dot = dot_obj, ring = ring_obj }
 end
 
 local function get_dominant_port_at_pos(pos_key)
@@ -703,7 +716,7 @@ function flow_engine.clear_flow_renders(player_index)
     end
 
     if storage.kinetic_renders then
-        for pos_key, entry in pairs(storage.kinetic_renders) do
+        for pkey, entry in pairs(storage.kinetic_renders) do
             if entry.dot and entry.dot.valid then entry.dot.destroy() end
             if entry.ring and entry.ring.valid then entry.ring.destroy() end
         end
@@ -827,7 +840,7 @@ local function compute_port_kinetic_level(pkey)
     if neighbors then
         for n_key in pairs(neighbors) do
             local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-            if n_node and n_node.is_kinetic then
+            if n_node and n_node.is_kinetic and n_node.beam_owner == node.beam_owner then
                 local is_upstream = n_node.is_muzzle or (n_node.dist and node.dist and n_node.dist < node.dist)
                 if is_upstream then
                     local n_level = storage.kinetic_levels and storage.kinetic_levels[n_key] or 0
@@ -1134,7 +1147,7 @@ function flow_engine.handle_interop_research_reversed(force)
     sever_boundary_interfaces(active_gates)
 end
 
-local function notify_beam_obstruction_changed(entity, is_removal)
+function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
     if not (entity and entity.valid and entity.bounding_box and storage.active_projectors) then return end
     local bb = entity.bounding_box
     local surf_name = entity.surface.name
@@ -1369,7 +1382,7 @@ function flow_engine.step(tick)
                 if neighbors then
                     for n_key in pairs(neighbors) do
                         local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-                        if n_node and n_node.is_kinetic and n_node.dist and node.dist and n_node.dist > node.dist then
+                        if n_node and n_node.is_kinetic and n_node.beam_owner == node.beam_owner and n_node.dist and node.dist and n_node.dist > node.dist then
                             has_downstream = true
                             break
                         end
@@ -1384,7 +1397,7 @@ function flow_engine.step(tick)
                         node.capsule_transmit = true
                         node.hit_receiver = nil
                         update_kinetic_pos_render(
-                            node.pos_key,
+                            pkey,
                             node.pos,
                             surface,
                             node.is_prominent_kinetic,
@@ -1406,7 +1419,7 @@ function flow_engine.step(tick)
                             node.capsule_transmit = true
                             node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
                             update_kinetic_pos_render(
-                                node.pos_key,
+                                pkey,
                                 node.pos,
                                 surface,
                                 node.is_prominent_kinetic,
@@ -1479,7 +1492,7 @@ function flow_engine.step(tick)
                             wake_port_parked(next_pkey)
 
                             update_kinetic_pos_render(
-                                node.pos_key,
+                                pkey,
                                 node.pos,
                                 surface,
                                 node.is_prominent_kinetic,
@@ -1501,7 +1514,7 @@ function flow_engine.step(tick)
                     end
                 elseif kinetic_changed then
                     update_kinetic_pos_render(
-                        node.pos_key,
+                        pkey,
                         node.pos,
                         surface,
                         node.is_prominent_kinetic,
@@ -1513,7 +1526,7 @@ function flow_engine.step(tick)
             else
                 if kinetic_changed then
                     storage.kinetic_levels[pkey] = nil
-                    destroy_kinetic_pos_render(node.pos_key)
+                    destroy_kinetic_pos_render(pkey)
 
                     if not node.is_muzzle then
                         if storage.flow_grid and storage.flow_grid[node.pos_key] then
@@ -1715,22 +1728,38 @@ local function handle_entity_reorientation(entity)
     local real_name = entity.name
 
     if real_name == "pneumatic-projector" then
+        local u_num = entity.unit_number
         local dev_id = projector_settings.get_device_id(entity)
         if dev_id then
             projector_settings.set_muzzle_direction(dev_id, entity.direction)
         end
 
-        if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
+        flow_engine.notify_beam_obstruction_changed(entity, true)
+
+        for pkey, fn in pairs(storage.flow_nodes or {}) do
+            if fn and fn.hit_receiver == u_num then
+                fn.is_endpoint = false
+                fn.hit_receiver = nil
+                flow_engine.enqueue_port(pkey)
+                wake_port_parked(pkey)
+            end
+        end
+
+        if storage.flow_unit_ports and storage.flow_unit_ports[u_num] then
             flow_engine.disconnect_entity(entity)
         end
 
         flow_engine.connect_entity(entity)
+        flow_engine.notify_beam_obstruction_changed(entity, false)
     elseif registered_entities[real_name] then
+        flow_engine.notify_beam_obstruction_changed(entity, true)
         if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
             flow_engine.disconnect_entity(entity)
         end
         flow_engine.connect_entity(entity)
+        flow_engine.notify_beam_obstruction_changed(entity, false)
     elseif is_standard_entity(real_name) then
+        flow_engine.notify_beam_obstruction_changed(entity, true)
         local was_connected = (storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] ~= nil)
         if was_connected then
             flow_engine.disconnect_entity(entity)
@@ -1756,6 +1785,7 @@ local function handle_entity_reorientation(entity)
                 storage.soft_interop_registry[entity.unit_number] = nil
             end
         end
+        flow_engine.notify_beam_obstruction_changed(entity, false)
     end
 end
 
@@ -1931,7 +1961,7 @@ function flow_engine.disconnect_entity(entity)
 
             update_pos_render(pos_key)
             update_counter_pos_render(pos_key)
-            destroy_kinetic_pos_render(pos_key)
+            destroy_kinetic_pos_render(pkey)
         end
 
         flow_engine.enqueue_port(pkey)
@@ -1990,11 +2020,11 @@ end
 function flow_engine.handle_object_destroyed(unit_number)
     if not unit_number then return end
 
-    -- Immediate deconstruction lifecycle purge for destroyed projectors (leaves zero lingering nodes or renders)
+    -- Immediate deconstruction lifecycle purge for destroyed projectors
     if storage.active_projectors and storage.active_projectors[unit_number] then
         for pkey, node in pairs(storage.flow_nodes or {}) do
             if node and node.beam_owner == unit_number and not node.is_muzzle then
-                destroy_kinetic_pos_render(node.pos_key)
+                destroy_kinetic_pos_render(pkey)
                 if storage.flow_grid and storage.flow_grid[node.pos_key] then
                     storage.flow_grid[node.pos_key][pkey] = nil
                     if next(storage.flow_grid[node.pos_key]) == nil then
@@ -2021,6 +2051,16 @@ function flow_engine.handle_object_destroyed(unit_number)
                 storage.flow_nodes[pkey] = nil
                 wake_port_parked(pkey)
             end
+        end
+    end
+
+    -- Free and wake any endpoints across the factory that were targeting this destroyed machine
+    for pkey, fn in pairs(storage.flow_nodes or {}) do
+        if fn and fn.hit_receiver == unit_number then
+            fn.is_endpoint = false
+            fn.hit_receiver = nil
+            flow_engine.enqueue_port(pkey)
+            wake_port_parked(pkey)
         end
     end
 
@@ -2168,7 +2208,7 @@ function flow_engine.register_events()
                 end
             end
 
-            notify_beam_obstruction_changed(entity, false)
+            flow_engine.notify_beam_obstruction_changed(entity, false)
         end)
     end
 
@@ -2186,7 +2226,20 @@ function flow_engine.register_events()
         events.on_event(event_id, function(event)
             local entity = event.entity
             if entity and entity.valid then
-                notify_beam_obstruction_changed(entity, true)
+                flow_engine.notify_beam_obstruction_changed(entity, true)
+
+                local u_num = entity.unit_number
+                if u_num then
+                    for pkey, fn in pairs(storage.flow_nodes or {}) do
+                        if fn and fn.hit_receiver == u_num then
+                            fn.is_endpoint = false
+                            fn.hit_receiver = nil
+                            flow_engine.enqueue_port(pkey)
+                            wake_port_parked(pkey)
+                        end
+                    end
+                end
+
                 flow_engine.disconnect_entity(entity)
             end
         end)

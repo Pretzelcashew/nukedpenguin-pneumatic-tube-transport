@@ -401,8 +401,21 @@ active_device_scanner.register_device_type({
             storage.projector_muzzle_states[unit_number] = current_muzzle
 
             if muzzle_changed and entity.valid and not (entity.name == "entity-ghost") then
+                flow_engine.notify_beam_obstruction_changed(entity, true)
+
+                -- Free and wake any incoming beam endpoints that were targeting this machine's old orientation
+                for pkey, fn in pairs(storage.flow_nodes or {}) do
+                    if fn and fn.hit_receiver == unit_number then
+                        fn.is_endpoint = false
+                        fn.hit_receiver = nil
+                        flow_engine.enqueue_port(pkey)
+                        capsule_runner.wake_parked_capsules(pkey)
+                    end
+                end
+
                 flow_engine.disconnect_entity(entity)
                 flow_engine.connect_entity(entity)
+                flow_engine.notify_beam_obstruction_changed(entity, false)
             end
 
             return true

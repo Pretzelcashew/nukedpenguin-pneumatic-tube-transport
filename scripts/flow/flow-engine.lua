@@ -1214,6 +1214,10 @@ function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
                                 if is_removal and b_node.is_endpoint then
                                     b_node.is_endpoint = false
                                     b_node.hit_receiver = nil
+                                    local is_prom = (not b_node.is_muzzle) and ((b_node.dist or 0) > 0) and ((b_node.dist or 0) % HOP_DISTANCE == 0)
+                                    b_node.is_prominent_kinetic = is_prom
+                                    b_node.is_beam_node = is_prom
+                                    b_node.capsule_transmit = is_prom
                                 end
                                 flow_engine.enqueue_port(pkey)
                                 wake_port_parked(pkey)
@@ -1448,10 +1452,12 @@ function flow_engine.step(tick)
                                 end
                             end
                         else
-                            if node.is_endpoint then
-                                node.is_endpoint = false
-                                node.hit_receiver = nil
-                            end
+                            local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
+                            node.is_endpoint = false
+                            node.hit_receiver = nil
+                            node.is_prominent_kinetic = node_is_prom
+                            node.is_beam_node = node_is_prom
+                            node.capsule_transmit = node_is_prom
 
                             local next_dist = (node.dist or 0) + 1
                             local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
@@ -1512,16 +1518,36 @@ function flow_engine.step(tick)
                             end
                         end
                     end
-                elseif kinetic_changed then
-                    update_kinetic_pos_render(
-                        pkey,
-                        node.pos,
-                        surface,
-                        node.is_prominent_kinetic,
-                        node.is_endpoint,
-                        node.hit_receiver ~= nil,
-                        node.q_level
-                    )
+                else
+                    local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
+                    if node.is_endpoint or (node.is_prominent_kinetic ~= node_is_prom) then
+                        node.is_endpoint = false
+                        node.hit_receiver = nil
+                        node.is_prominent_kinetic = node_is_prom
+                        node.is_beam_node = node_is_prom
+                        node.capsule_transmit = node_is_prom
+                        if surface and surface.valid then
+                            update_kinetic_pos_render(
+                                pkey,
+                                node.pos,
+                                surface,
+                                node_is_prom,
+                                false,
+                                false,
+                                node.q_level
+                            )
+                        end
+                    elseif kinetic_changed then
+                        update_kinetic_pos_render(
+                            pkey,
+                            node.pos,
+                            surface,
+                            node.is_prominent_kinetic,
+                            node.is_endpoint,
+                            node.hit_receiver ~= nil,
+                            node.q_level
+                        )
+                    end
                 end
             else
                 if kinetic_changed then
@@ -1740,6 +1766,10 @@ local function handle_entity_reorientation(entity)
             if fn and fn.hit_receiver == u_num then
                 fn.is_endpoint = false
                 fn.hit_receiver = nil
+                local is_prom = (not fn.is_muzzle) and ((fn.dist or 0) > 0) and ((fn.dist or 0) % HOP_DISTANCE == 0)
+                fn.is_prominent_kinetic = is_prom
+                fn.is_beam_node = is_prom
+                fn.capsule_transmit = is_prom
                 flow_engine.enqueue_port(pkey)
                 wake_port_parked(pkey)
             end
@@ -2059,6 +2089,10 @@ function flow_engine.handle_object_destroyed(unit_number)
         if fn and fn.hit_receiver == unit_number then
             fn.is_endpoint = false
             fn.hit_receiver = nil
+            local is_prom = (not fn.is_muzzle) and ((fn.dist or 0) > 0) and ((fn.dist or 0) % HOP_DISTANCE == 0)
+            fn.is_prominent_kinetic = is_prom
+            fn.is_beam_node = is_prom
+            fn.capsule_transmit = is_prom
             flow_engine.enqueue_port(pkey)
             wake_port_parked(pkey)
         end
@@ -2234,6 +2268,10 @@ function flow_engine.register_events()
                         if fn and fn.hit_receiver == u_num then
                             fn.is_endpoint = false
                             fn.hit_receiver = nil
+                            local is_prom = (not fn.is_muzzle) and ((fn.dist or 0) > 0) and ((fn.dist or 0) % HOP_DISTANCE == 0)
+                            fn.is_prominent_kinetic = is_prom
+                            fn.is_beam_node = is_prom
+                            fn.capsule_transmit = is_prom
                             flow_engine.enqueue_port(pkey)
                             wake_port_parked(pkey)
                         end

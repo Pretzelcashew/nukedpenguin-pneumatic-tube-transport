@@ -35,6 +35,15 @@ local OWNER_PALETTE = {
     {r = 0.85, g = 0.95, b = 0.20}, -- Lemon yellow
 }
 
+local QUALITY_BEAM_PALETTE = {
+    [0] = { color = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}, core = {r = 1.00, g = 0.60, b = 0.90, a = 0.90}, width = 4.0 },
+    [1] = { color = {r = 0.92, g = 0.28, b = 0.78, a = 0.80}, core = {r = 1.00, g = 0.70, b = 0.95, a = 0.92}, width = 4.5 },
+    [2] = { color = {r = 0.95, g = 0.38, b = 0.88, a = 0.85}, core = {r = 1.00, g = 0.80, b = 1.00, a = 0.95}, width = 5.0 },
+    [3] = { color = {r = 0.98, g = 0.48, b = 0.95, a = 0.90}, core = {r = 1.00, g = 0.90, b = 1.00, a = 0.98}, width = 5.5 },
+    [4] = { color = {r = 1.00, g = 0.65, b = 1.00, a = 0.95}, core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00}, width = 6.0 },
+    [5] = { color = {r = 1.00, g = 0.65, b = 1.00, a = 0.95}, core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00}, width = 6.0 }
+}
+
 local function get_owner_color(unit_number)
     if not unit_number then
         return {r = 0.30, g = 0.85, b = 0.70, a = 0.8}
@@ -188,6 +197,7 @@ function flow_engine.init_storage()
     storage.flow_unit_ports = storage.flow_unit_ports or {}
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
+    storage.beam_renders = storage.beam_renders or {}
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
 
@@ -386,6 +396,143 @@ local function destroy_edge_render(edge_key, player_index)
             local line_obj = e_renders[edge_key]
             if line_obj and line_obj.valid then line_obj.destroy() end
             e_renders[edge_key] = nil
+        end
+    end
+end
+
+local function destroy_beam_render(unit_number, player_index)
+    if not (unit_number and storage.beam_renders) then return end
+
+    local function purge_render_entry(entry)
+        if not entry then return end
+        if entry.line and entry.line.valid then entry.line.destroy() end
+        if entry.dots then
+            for i = 1, #entry.dots do
+                local dot = entry.dots[i]
+                if dot and dot.valid then dot.destroy() end
+            end
+        end
+        if entry.endpoint_ring and entry.endpoint_ring.valid then entry.endpoint_ring.destroy() end
+        if entry.endpoint_dot and entry.endpoint_dot.valid then entry.endpoint_dot.destroy() end
+    end
+
+    if player_index then
+        local p_beams = storage.beam_renders[player_index]
+        if p_beams and p_beams[unit_number] then
+            purge_render_entry(p_beams[unit_number])
+            p_beams[unit_number] = nil
+        end
+    else
+        for p_idx, p_beams in pairs(storage.beam_renders) do
+            if p_beams[unit_number] then
+                purge_render_entry(p_beams[unit_number])
+                p_beams[unit_number] = nil
+            end
+        end
+    end
+end
+
+local function update_beam_render(unit_number)
+    if not (unit_number and storage.projector_beams) then return end
+    local beam = storage.projector_beams[unit_number]
+    local entity = storage.active_projectors and storage.active_projectors[unit_number]
+
+    if not (beam and entity and entity.valid) then
+        destroy_beam_render(unit_number)
+        return
+    end
+
+    if not (is_debug_active and is_debug_active("new_flow")) then
+        destroy_beam_render(unit_number)
+        return
+    end
+
+    local q = entity.quality
+    local q_level = (q and q.level) or 0
+    local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
+
+    local surface = entity.surface
+    local muzzle_pos = beam.muzzle_pos
+    local terminal_pos = beam.terminal_pos
+    local hop_keys = beam.hop_keys or {}
+    local is_receiver_target = (beam.hit_receiver_unit ~= nil)
+
+    for _, player in pairs(game.players) do
+        local p_idx = player.index
+        if is_debug_active("new_flow", p_idx) then
+            storage.beam_renders[p_idx] = storage.beam_renders[p_idx] or {}
+            destroy_beam_render(unit_number, p_idx)
+
+            if surface and surface.valid and muzzle_pos and terminal_pos and beam.length >= 0.5 then
+                local line_obj = rendering.draw_line{
+                    color = palette.color,
+                    width = palette.width,
+                    from = muzzle_pos,
+                    to = terminal_pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+
+                local dots = {}
+                for i = 1, #hop_keys do
+                    local h_key = hop_keys[i]
+                    local h_node = storage.flow_nodes and storage.flow_nodes[h_key]
+                    if h_node and h_node.pos then
+                        local dot_obj = rendering.draw_circle{
+                            color = palette.core,
+                            radius = 0.20,
+                            filled = true,
+                            target = h_node.pos,
+                            surface = surface,
+                            only_in_alt_mode = true,
+                            players = { player }
+                        }
+                        dots[#dots + 1] = dot_obj
+                    end
+                end
+
+                local ring_color = is_receiver_target
+                    and {r = 0.20, g = 0.90, b = 1.00, a = 0.90}
+                    or  {r = 1.00, g = 0.35, b = 0.20, a = 0.90}
+
+                local dot_color = is_receiver_target
+                    and {r = 0.30, g = 1.00, b = 0.80, a = 0.95}
+                    or  {r = 1.00, g = 0.20, b = 0.20, a = 0.95}
+
+                local ring_radius = is_receiver_target and 0.50 or 0.40
+                local dot_radius = is_receiver_target and 0.15 or 0.18
+
+                local ep_ring = rendering.draw_circle{
+                    color = ring_color,
+                    radius = ring_radius,
+                    filled = false,
+                    width = 3,
+                    target = terminal_pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+
+                local ep_dot = rendering.draw_circle{
+                    color = dot_color,
+                    radius = dot_radius,
+                    filled = true,
+                    target = terminal_pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+
+                storage.beam_renders[p_idx][unit_number] = {
+                    line = line_obj,
+                    dots = dots,
+                    endpoint_ring = ep_ring,
+                    endpoint_dot = ep_dot
+                }
+            end
+        else
+            destroy_beam_render(unit_number, p_idx)
         end
     end
 end
@@ -653,6 +800,12 @@ function flow_engine.clear_flow_renders(player_index)
             end
             storage.flow_edge_renders[player_index] = {}
         end
+        if storage.beam_renders and storage.beam_renders[player_index] then
+            for u_num, _ in pairs(storage.beam_renders[player_index]) do
+                destroy_beam_render(u_num, player_index)
+            end
+            storage.beam_renders[player_index] = {}
+        end
     else
         for _, player in pairs(game.players) do
             flow_engine.clear_flow_renders(player.index)
@@ -705,6 +858,12 @@ function flow_engine.draw_flow(player_index)
             end
         end
     end
+
+    if storage.projector_beams then
+        for u_num in pairs(storage.projector_beams) do
+            update_beam_render(u_num)
+        end
+    end
 end
 
 function flow_engine.draw_all(player_index)
@@ -716,6 +875,8 @@ function flow_engine.clear_projector_beam(unit_number)
     if not (unit_number and storage.projector_beams) then return end
     local beam = storage.projector_beams[unit_number]
     if not beam then return end
+
+    destroy_beam_render(unit_number)
 
     if beam.hop_keys then
         for _, hop_pkey in ipairs(beam.hop_keys) do
@@ -1012,6 +1173,8 @@ function flow_engine.update_projector_beam(unit_number, ignore_entity)
         hop_keys = hop_keys,
         tile_keys = tile_keys
     }
+
+    update_beam_render(unit_number)
 
     wake_port_parked(muzzle_pkey)
     for _, hk in ipairs(hop_keys) do
@@ -2026,7 +2189,6 @@ function flow_engine.register_events()
                 end
             end
 
-            -- Truncate active kinetic beams when an obstacle or building is placed in their path
             local affected = get_entity_affected_projectors(entity)
             if affected then
                 for u_num in pairs(affected) do
@@ -2055,7 +2217,6 @@ function flow_engine.register_events()
                 local affected = get_entity_affected_projectors(entity)
                 flow_engine.disconnect_entity(entity)
 
-                -- Restore or extend truncated kinetic beams when a blocking structure is removed
                 if affected then
                     for u_num in pairs(affected) do
                         if u_num ~= entity.unit_number then

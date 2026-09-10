@@ -1,5 +1,3 @@
--- File: scripts/debug-manager.lua
-
 local flow_engine = require("scripts.flow.flow-engine")
 local events = require("scripts.events")
 
@@ -244,7 +242,7 @@ function debug_manager.open_panel(player_index)
     content_frame.add{
         type = "checkbox",
         name = "pneumatic_debug_chk_new_flow",
-        caption = "Flow Engine (Alt Mode)",
+        caption = "Flow & Kinetic Beams (Alt Mode)",
         state = master and (dbg.new_flow == true),
         enabled = master
     }
@@ -355,7 +353,7 @@ local function toggle_new_flow(player_index)
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
-    player.print("[Debug] Flow Overlay: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
+    player.print("[Debug] Flow & Kinetic Beams: " .. (dbg.new_flow and "[ENABLED]" or "[DISABLED]"))
 end
 
 local function toggle_counter_range(player_index)
@@ -431,26 +429,44 @@ local function reset_debug_filter(player_index)
     player.print("[Debug] Filter reset.")
 end
 
+local function clear_and_reconstruct_renders(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    flow_engine.clear_all_renders(player_index)
+
+    if is_debug_active("new_flow", player_index) then
+        flow_engine.draw_flow(player_index)
+    end
+    if is_debug_active("counter_range", player_index) then
+        flow_engine.draw_all_counters(player_index)
+    end
+
+    player.print("[Debug] Overlays cleared and reconstructed.")
+end
+
 commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("debug-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
 commands.add_command("toggle-prints", "Toggle game debug prints", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
-commands.add_command("toggle-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
-commands.add_command("toggle-new-flow", "Toggle flow vector overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("toggle-flow", "Toggle flow vector and kinetic beam overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("toggle-new-flow", "Toggle flow vector and kinetic beam overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("toggle-counter-range", "Toggle counter range overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_counter_range(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
+commands.add_command("clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Sandbox cleanup)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
 commands.add_command("debug-filter-reset", "Reset the debug print prefix text filter", function(cmd) if cmd.player_index then reset_debug_filter(cmd.player_index, cmd.parameter) end end)
 
 commands.add_command("capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-debug", "Toggle master debug state (Alias)", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
-commands.add_command("pt-toggle-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
-commands.add_command("pt-toggle-new-flow", "Toggle flow vector overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-flow", "Toggle flow vector and kinetic beam overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
+commands.add_command("pt-toggle-new-flow", "Toggle flow vector and kinetic beam overlay (Alias)", function(cmd) if cmd.player_index then toggle_new_flow(cmd.player_index) end end)
 commands.add_command("pt-toggle-counter-range", "Toggle counter range overlay (Alias)", function(cmd) if cmd.player_index then toggle_counter_range(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
+commands.add_command("pt-clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Alias)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 
 events.on_event(defines.events.on_lua_shortcut, function(event)
     local p_name = event.prototype_name

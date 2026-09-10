@@ -3,6 +3,7 @@ local util = require("util")
 local projector_settings = {}
 
 projector_settings.MINIMUM_ENERGY_JOULES = 3000000 -- 3 MW passive baseline (3 MJ stored)
+projector_settings.MAX_ENDPOINT_CAPSULES = 2
 
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target

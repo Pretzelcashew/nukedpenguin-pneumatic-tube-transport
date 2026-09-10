@@ -392,6 +392,14 @@ function capsule_queries.remove_capsule(id)
                     local p_node = storage.flow_nodes and storage.flow_nodes[parked_pkey]
                     if p_node and (p_node.hit_receiver == unit_number or p_node.beam_owner == unit_number) then
                         wake_bucket(parked_pkey)
+                        if p_node.hit_receiver == unit_number and p_node.beam_owner then
+                            local s_ports = storage.flow_unit_ports and storage.flow_unit_ports[p_node.beam_owner]
+                            if s_ports then
+                                for sp = 1, #s_ports do
+                                    wake_bucket(s_ports[sp])
+                                end
+                            end
+                        end
                     end
                 end
             end

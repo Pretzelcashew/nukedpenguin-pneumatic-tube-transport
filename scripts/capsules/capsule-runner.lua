@@ -47,6 +47,52 @@ local function make_beam_port_key(unit_number, dx, dy, dist)
     return string.format("kinetic:%d:%d,%d:%d", unit_number, math.floor(dx or 0), math.floor(dy or 0), dist)
 end
 
+local function get_beam_endpoint(unit_number, dx, dy)
+    for dist = 1, 100 do
+        local check_key = make_beam_port_key(unit_number, dx, dy, dist)
+        local check_node = storage.flow_nodes and storage.flow_nodes[check_key]
+        if not check_node then break end
+        if check_node.is_endpoint then
+            return check_key, check_node
+        end
+    end
+    return nil, nil
+end
+
+local function count_endpoint_capsules(unit_number, endpoint_key, endpoint_node)
+    local count = 0
+
+    if storage.parked_by_port and storage.parked_by_port[endpoint_key] then
+        for _ in pairs(storage.parked_by_port[endpoint_key]) do
+            count = count + 1
+        end
+    end
+
+    local hit_receiver_unit = endpoint_node and endpoint_node.hit_receiver
+    if hit_receiver_unit and storage.flow_unit_ports and storage.flow_unit_ports[hit_receiver_unit] then
+        local r_ports = storage.flow_unit_ports[hit_receiver_unit]
+        for i = 1, #r_ports do
+            local rpkey = r_ports[i]
+            if storage.parked_by_port and storage.parked_by_port[rpkey] then
+                for _ in pairs(storage.parked_by_port[rpkey]) do
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    if storage.capsules then
+        for _, cap in pairs(storage.capsules) do
+            if cap.beam_flight and cap.beam_flight.owner == unit_number then
+                if cap.from_port_key ~= endpoint_key then
+                    count = count + 1
+                end
+            end
+        end
+    end
+
+    return count
+end
 --------------------------------------------------------------------------------
 -- AUDIO & PARTICLE VISUAL EFFECTS
 --------------------------------------------------------------------------------
@@ -313,6 +359,14 @@ function capsule_runner.wake_parked_capsules(target)
             local p_node = storage.flow_nodes and storage.flow_nodes[parked_pkey]
             if p_node and (p_node.hit_receiver == target_unit or p_node.beam_owner == target_unit) then
                 add_port(parked_pkey)
+                if p_node.hit_receiver == target_unit and p_node.beam_owner then
+                    local s_ports = storage.flow_unit_ports and storage.flow_unit_ports[p_node.beam_owner]
+                    if s_ports then
+                        for sp = 1, #s_ports do
+                            add_port(s_ports[sp])
+                        end
+                    end
+                end
             end
         end
     end
@@ -746,6 +800,16 @@ function capsule_runner.select_next_target(capsule)
                 local dx = muzzle_node.dir.x
                 local dy = muzzle_node.dir.y
 
+                local endpoint_key, endpoint_node = get_beam_endpoint(unit_number, dx, dy)
+                if not endpoint_node then
+                    return nil
+                end
+
+                local max_cap = projector_settings.MAX_ENDPOINT_CAPSULES or 2
+                local endpoint_count = count_endpoint_capsules(unit_number, endpoint_key, endpoint_node)
+                if endpoint_count >= max_cap then
+                    return nil
+                end
                 for d = 1, HOP_DISTANCE do
                     local cand_key = make_beam_port_key(unit_number, dx, dy, d)
                     local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
@@ -939,6 +1003,11 @@ function capsule_runner.catch_in_receiver(capsule, receiver_entity)
         capsule_runner.wake_parked_capsules(best_ext_key)
         capsule_runner.wake_parked_capsules(r_unit)
 
+        local prev_node = storage.flow_nodes and storage.flow_nodes[prev_key]
+        local sender_unit = prev_node and (prev_node.beam_owner or prev_node.unit_number)
+        if sender_unit and sender_unit ~= r_unit then
+            capsule_runner.wake_parked_capsules(sender_unit)
+        end
         play_catchment_effects(receiver_entity.surface, receiver_entity.position)
         return true
     end

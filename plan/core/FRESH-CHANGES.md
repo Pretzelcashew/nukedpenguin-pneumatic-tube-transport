@@ -150,3 +150,13 @@
 2. **Dual-Device UI Controller (`scripts/pump-gui.lua`):** Expanded the frame window manager to support both `pump_configuration_frame` and `projector_configuration_frame`. Dynamically rendered title headers ("Electromagnetic Projector Configuration"), manual enable checkboxes ("Enable Projector"), Red/Green wire channel toggles, and circuit condition panels (`gui_components.add_circuit_condition_panel`) based on target device identity.
 3. **State Persistence & Scanner Synchronization (`scripts/pump-gui.lua`):** Wired checkbox, signal-selector, comparator, and textfield change handlers to persist modifications directly into `storage.projector_settings`. Invoked `active_device_scanner.notify_settings_changed(entity)` on edits to re-evaluate enable states, enqueuing unit ports into the flow engine and waking parked capsules immediately upon circuit state transitions.
 4. **Convenience API Aliasing (`scripts/pump-gui.lua`):** Exported `pump_gui.open_projector` and `pump_gui.close_projector` alongside `open` and `close` for direct programmatic access.
+
+
+### Revision: Projector Endpoint Congestion Throttling & Backpressure Propagation
+**Date:** 2026-09-10 18:23 (EDT)
+**Context:** Prevent Electromagnetic Projectors from continuously firing capsules when the target receiver or terminal endpoint is saturated by enforcing a strict capacity threshold and propagating lockstep wakeups back to the launch dock.
+**Key Changes:**
+1. **Endpoint Capacity Configuration (`scripts/projector-settings.lua`):** Added `projector_settings.MAX_ENDPOINT_CAPSULES = 2`, establishing a standardized congestion threshold that caps parked and in-flight payloads per trajectory.
+2. **Endpoint Discovery & Payload Accounting (`scripts/capsules/capsule-runner.lua`):** Implemented `get_beam_endpoint` and `count_endpoint_capsules` to trace ballistic paths and aggregate capsules parked at beam endpoints, receiver chassis ports, and active in-flight beam payloads.
+3. **Launch Muzzle Dispatch Gatekeeping (`scripts/capsules/capsule-runner.lua`):** Added pre-flight capacity evaluation in `select_next_target`, keeping incoming capsules safely parked in the projector intake dock whenever the endpoint reaches capacity or before an active endpoint node is established.
+4. **Bidirectional Backpressure Wakeup Propagation (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-queries.lua`):** Extended `catch_in_receiver`, `wake_parked_capsules`, and `remove_capsule` to dispatch immediate targeted wakeups back to the sending facility's ports (`beam_owner`) whenever destination tube capacity frees up.

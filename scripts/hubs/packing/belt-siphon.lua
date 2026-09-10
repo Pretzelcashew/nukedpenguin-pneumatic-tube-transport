@@ -273,25 +273,31 @@ end
 --- @param active_slot number
 --- @return number|nil candidate_slot
 local function find_deposit_candidate_slot(chest_inv, active_slot)
-    local tier2_slot = nil
+    local spent_slot = nil
+    local charged_slot = nil
 
     for i = 1, #chest_inv do
         if i ~= active_slot then
             local stack = chest_inv[i]
             if stack and stack.valid_for_read then
                 local def = capsule_defs.types[stack.name]
-                local is_charged_vacuum = def and def.siphon_belts and ((stack.health or 1.0) > 0.001)
+                local is_capsule = (def ~= nil)
 
-                if not is_charged_vacuum then
-                    return i -- Tier 1: regular cargo or spent/inert shell
-                elseif not tier2_slot then
-                    tier2_slot = i -- Tier 2: secondary charged capsule
+                if not is_capsule then
+                    -- Tier 1: Pure cargo (copper ore, plates, etc.) - return immediately!
+                    return i
+                elseif stack.name == "spent-vacuum-capsule" then
+                    -- Tier 2: Dead shell candidate (held until all cargo is empty)
+                    if not spent_slot then spent_slot = i end
+                elseif def.siphon_belts and ((stack.health or 1.0) > 0.001) then
+                    -- Tier 3: Secondary charged capsule (last resort)
+                    if not charged_slot then charged_slot = i end
                 end
             end
         end
     end
 
-    return tier2_slot
+    return spent_slot or charged_slot
 end
 
 --- Deposits eligible cargo items from the Hub chest onto adjacent transport belts.

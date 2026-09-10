@@ -11,6 +11,11 @@ local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 
 local hub_packing = {}
 
+local SPENT_CAPSULES = {
+    ["spent-vacuum-capsule"] = true,
+    ["spent-refrigerated-capsule"] = true
+}
+
 --- Helper log printer
 local function log_debug(msg)
     if debug_print then
@@ -81,28 +86,56 @@ function hub_packing.evaluate_inventory(entity)
 
     if inventory.is_empty() then return end
 
-    local primary_slot = nil
-    local capsule_def = nil
-    local capsule_name = nil
-    local quality_level = 0
-    local quality_name = "normal"
+    local best_slot = nil
+    local best_def = nil
+    local best_name = nil
+    local best_quality_level = 0
+    local best_quality_name = "normal"
+    local best_tier = 99
+    local lowest_health = 2.0
 
     for i = 1, #inventory do
         local stack = inventory[i]
         if stack and stack.valid_for_read then
             local def = capsule_defs.types[stack.name]
             if def then
-                primary_slot = i
-                capsule_def = def
-                capsule_name = stack.name
-                if stack.quality then
-                    quality_level = stack.quality.level or quality_filter.QUALITY_LEVELS[stack.quality.name] or 0
-                    quality_name = stack.quality.name or "normal"
+                local tier = 3 -- Default: charged / active tool capsule
+                local health = stack.health or 1.0
+
+                if SPENT_CAPSULES[stack.name] then
+                    tier = 1 -- Best choice: spent hull (empty packaging)
+                elseif not def.durability and not def.siphon_belts then
+                    tier = 2 -- Standard cargo capsule (item-capsule, reinforced, etc.)
                 end
-                break
+
+                if tier < best_tier or (tier == best_tier and health < lowest_health) then
+                    best_tier = tier
+                    lowest_health = health
+                    best_slot = i
+                    best_def = def
+                    best_name = stack.name
+                    if stack.quality then
+                        best_quality_level = stack.quality.level or quality_filter.QUALITY_LEVELS[stack.quality.name] or 0
+                        best_quality_name = stack.quality.name or "normal"
+                    else
+                        best_quality_level = 0
+                        best_quality_name = "normal"
+                    end
+
+                    -- If we found a spent capsule, take it immediately
+                    if tier == 1 then
+                        break
+                    end
+                end
             end
         end
     end
+
+    local primary_slot = best_slot
+    local capsule_def = best_def
+    local capsule_name = best_name
+    local quality_level = best_quality_level
+    local quality_name = best_quality_name
 
     if not primary_slot then return end
 

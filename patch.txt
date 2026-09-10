@@ -1,11 +1,24 @@
+*** FILE: C:\Users\goon9\AppData\Roaming\Factorio\mods\nukedpenguin-pneumatic-tube-transport\scripts\proxy-manager.lua
+
+<<< REPLACE LINES 622-625
+proxy_manager.register_pair({
+    main_entity_name = "pneumatic-projector",
+    proxy_entity_name = "pneumatic-projector-circuit-proxy",
+    on_open_gui = pump_gui.open
+})
+>>>
+
+*** FILE: C:\Users\goon9\AppData\Roaming\Factorio\mods\nukedpenguin-pneumatic-tube-transport\scripts\pump-gui.lua
+
+<<< REPLACE LINES 1-4
 local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
 local projector_settings = require("scripts.projector-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local gui_components = require("scripts.utils.gui-components")
+>>>
 
-local pump_gui = {}
-
+<<< REPLACE LINES 8-170
 local PUMP_FRAME_NAME = "pump_configuration_frame"
 local PROJECTOR_FRAME_NAME = "projector_configuration_frame"
 
@@ -221,12 +234,4 @@ local function on_gui_closed(event)
         end
     end
 end
-
-events.on_event(defines.events.on_gui_click, on_gui_click)
-events.on_event(defines.events.on_gui_closed, on_gui_closed)
-events.on_event(defines.events.on_gui_checked_state_changed, on_gui_checked_state_changed)
-events.on_event(defines.events.on_gui_elem_changed, on_gui_elem_changed)
-events.on_event(defines.events.on_gui_selection_state_changed, on_gui_selection_state_changed)
-events.on_event(defines.events.on_gui_text_changed, on_gui_text_changed)
-
-return pump_gui
+>>>

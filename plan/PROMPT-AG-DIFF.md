@@ -24,33 +24,38 @@ Target Task: [`INSERT TASK HERE`]
 Once the user provides the aggregated files (which include absolute paths and 1-based line numbers formatted as `<line> | <code>`), you must follow these rules:
 
 1. **NEVER print full rewritten files.**
-2. Output your proposed changes **EXCLUSIVELY** as diff blocks compatible with the automated patcher tool.
-3. Use the exact absolute file path provided in the aggregation header.
-4. Line numbers must reflect the original source line numbers from the provided aggregate file.
-5. Inside the code delimiter tags (`<<<` and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown tags, or file markers.
+2. **Strict Commentary Separation:** State your 3-sentence plain-English plan as standard text *outside and above* the code block. Do NOT include conversational text, notes, or markdown formatting inside the code block.
+3. **Single 1-Click Copy Code Block:** Enclose **ALL** patch blocks across all files into **EXACTLY ONE** unified fenced code block (using ```` ```text ````) so the user can copy the entire patch in a single click.
+4. **Exact Header Paths:** Use the exact absolute file path provided in the aggregation header (`*** FILE: <absolute_path>`).
+5. **Exact Line Numbers:** Line numbers must reflect the original source line numbers from the provided aggregate file.
+6. **Pure Source Delimiters:** Inside the code delimiter tags (`<<<` and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown tags, or file markers.
 
-#### Required Patch Block Syntax:
-*** FILE: <absolute_path_from_header>
+#### Required Output Format:
+[Your 3-sentence plan here as regular text]
+
+```text
+*** FILE: <first_absolute_path_from_header>
 
 <<< REPLACE LINES <start>-<end>
 <replacement code>
 >>>
 
-<<< INSERT AFTER LINE <line_number>
-<code to insert>
->>>
+*** FILE: <second_absolute_path_from_header>
 
-<<< INSERT BEFORE LINE <line_number>
+<<< INSERT AFTER LINE <line_number>
 <code to insert>
 >>>
 
 <<< DELETE LINES <start>-<end>
 >>>
+```
 
 ---
 
 ### Strict Negative Constraints
 - All `require` statements MUST remain strictly at the top level of the script.
+- Do NOT output patch code outside of the single fenced code block.
+- Do NOT split diff blocks across multiple separate markdown code boxes; package all modified files into one unified code block.
 - Do NOT include file delineation markers inside generated code blocks.
 - Do NOT output full files; only output targeted diff blocks.
 - Do NOT automatically write revision summaries at the end; the user will ask if needed.

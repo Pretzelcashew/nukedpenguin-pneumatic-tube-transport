@@ -621,7 +621,8 @@ proxy_manager.register_pair({
 
 proxy_manager.register_pair({
     main_entity_name = "pneumatic-projector",
-    proxy_entity_name = "pneumatic-projector-circuit-proxy"
+    proxy_entity_name = "pneumatic-projector-circuit-proxy",
+    on_open_gui = pump_gui.open
 })
 
 return proxy_manager

@@ -237,7 +237,7 @@ function flow_engine.enqueue_unit_ports(unit_number)
 end
 
 function flow_engine.get_node_emitter_level(node)
-    if not node or not node.emitter then return 0 end
+    if not node or not node.emitter or node.emitter == 0 then return 0 end
     local unit_number = node.unit_number
 
     local pump_power = storage.pump_power_states and storage.pump_power_states[unit_number]
@@ -952,7 +952,7 @@ local function compute_port_flow_level(pkey)
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then return 0 end
 
-    if node.emitter then
+    if node.emitter and node.emitter ~= 0 then
         return flow_engine.get_node_emitter_level(node)
     end
 
@@ -1562,7 +1562,7 @@ local function handle_entity_reorientation(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if entity.name == "entity-ghost" then return end
 
-    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    local real_name = entity.name
 
     if real_name == "pneumatic-projector" then
         local dev_id = projector_settings.get_device_id(entity)
@@ -1612,7 +1612,7 @@ end
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if entity.name == "entity-ghost" then return end
-    local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+    local real_name = entity.name
     if not (registered_entities[real_name] or is_standard_entity(real_name)) then return end
 
     local unit_number = entity.unit_number
@@ -1668,6 +1668,7 @@ function flow_engine.connect_entity(entity)
         storage.flow_unit_ports[unit_number][port_index] = pkey
 
         local is_muzzle_port = (port.kinetic_transmit == true or port.is_muzzle == true)
+        local eff_emitter = (port.flow and port.flow ~= 0) and port.flow or nil
 
         storage.flow_nodes[pkey] = {
             unit_number = unit_number,
@@ -1678,7 +1679,7 @@ function flow_engine.connect_entity(entity)
             offset = {x = port.offset.x, y = port.offset.y},
             dir = port.dir and {x = port.dir.x, y = port.dir.y} or nil,
             surface_name = surface_name,
-            emitter = port.flow,
+            emitter = eff_emitter,
             sense = port.sense,
             group = port.group,
             capsule_transmit = (port.capsule_transmit == true),
@@ -1722,25 +1723,6 @@ end
 function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
     local unit_number = entity.unit_number
-
-    -- Immediate deconstruction lifecycle purge for projector beam nodes & render objects
-    if storage.active_projectors and storage.active_projectors[unit_number] then
-        for pkey, node in pairs(storage.flow_nodes or {}) do
-            if node and node.beam_owner == unit_number and not node.is_muzzle then
-                destroy_kinetic_pos_render(node.pos_key)
-                if storage.flow_grid and storage.flow_grid[node.pos_key] then
-                    storage.flow_grid[node.pos_key][pkey] = nil
-                    if next(storage.flow_grid[node.pos_key]) == nil then
-                        storage.flow_grid[node.pos_key] = nil
-                    end
-                end
-                if storage.flow_connections then storage.flow_connections[pkey] = nil end
-                if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end
-                storage.flow_nodes[pkey] = nil
-                wake_port_parked(pkey)
-            end
-        end
-    end
 
     if storage.active_projectors then storage.active_projectors[unit_number] = nil end
     if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
@@ -1856,6 +1838,25 @@ end
 
 function flow_engine.handle_object_destroyed(unit_number)
     if not unit_number then return end
+
+    -- Immediate deconstruction lifecycle purge for destroyed projectors (leaves zero lingering nodes or renders)
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        for pkey, node in pairs(storage.flow_nodes or {}) do
+            if node and node.beam_owner == unit_number and not node.is_muzzle then
+                destroy_kinetic_pos_render(node.pos_key)
+                if storage.flow_grid and storage.flow_grid[node.pos_key] then
+                    storage.flow_grid[node.pos_key][pkey] = nil
+                    if next(storage.flow_grid[node.pos_key]) == nil then
+                        storage.flow_grid[node.pos_key] = nil
+                    end
+                end
+                if storage.flow_connections then storage.flow_connections[pkey] = nil end
+                if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end
+                storage.flow_nodes[pkey] = nil
+                wake_port_parked(pkey)
+            end
+        end
+    end
 
     if storage.soft_interop_registry then
         storage.soft_interop_registry[unit_number] = nil

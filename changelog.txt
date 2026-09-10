@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.2
+Date: 2026-09-09
+  Bugfixes:
+    - Decoupled Vacuum Capsule belt siphoning/depositing from the 10-tick loop to run every tick (60Hz), eliminating item gaps for 100% belt compression.
+    - Fixed spent capsule shells depositing onto belts before cargo, preventing belt contamination.
+    - Fixed outbound hub packing drafting active vacuum capsules instead of empty hulls, keeping outpost belt unloaders running.
+  Optimizations:
+    - Added net-pressure early exits and C++ engine belt filtering to ensure 60Hz belt polling has negligible UPS impact.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.1
 Date: 2026-09-09
   Overview:

@@ -15,6 +15,15 @@ local BASE_PROJECTOR_RANGE = 50
 local BASE_PROJECTOR_PRESSURE = 10
 local HOP_DISTANCE = 5
 
+local PROXY_NAMES = {
+    ["pneumatic-pump-circuit-proxy"] = true,
+    ["pneumatic-diverter-circuit-proxy"] = true,
+    ["pneumatic-capsule-counter-circuit-proxy"] = true,
+    ["pneumatic-capsule-counter-red-proxy"] = true,
+    ["pneumatic-capsule-counter-green-proxy"] = true,
+    ["pneumatic-projector-circuit-proxy"] = true
+}
+
 local OWNER_PALETTE = {
     {r = 0.30, g = 0.85, b = 0.70}, -- Teal (counter primary)
     {r = 0.20, g = 0.70, b = 1.00}, -- Electric cyan
@@ -49,7 +58,7 @@ local function make_port_key(unit_number, port_index)
 end
 
 local function make_beam_port_key(unit_number, hop_index)
-    return tostring(unit_number) .. ":b" .. tostring(hop_index)
+    return tostring(unit_number) .. ":" .. tostring(100 + hop_index)
 end
 
 local function make_pos_key(surface_name, x, y)
@@ -860,7 +869,7 @@ function flow_engine.update_projector_beam(unit_number, ignore_entity)
                 or (cand_type == "character")
                 or (cand_type == "car")
                 or (cand_type == "spider-vehicle")
-                or (cand_name:find("%-proxy$") ~= nil)
+                or (PROXY_NAMES[cand_name] == true)
 
             if not is_ignorable then
                 local cbox = cand.bounding_box or cand.selection_box

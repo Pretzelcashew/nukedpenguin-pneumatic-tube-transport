@@ -8,6 +8,7 @@ local capsule_queries = {}
 local port_info_cache = {}
 
 --- Efficiently gets unit_number and port_index from a port_key string without repeated string allocations
+--- Supports standard "unit:port", beam numeric "unit:101", and legacy "unit:b1" formats
 --- @param port_key string|nil
 --- @return number|nil unit_number
 --- @return number|nil port_index
@@ -21,7 +22,12 @@ function capsule_queries.get_port_info(port_key)
     local colon = string.find(port_key, ":", 1, true)
     if colon then
         local u_num = tonumber(string.sub(port_key, 1, colon - 1))
-        local p_idx = tonumber(string.sub(port_key, colon + 1))
+        local p_str = string.sub(port_key, colon + 1)
+        local p_idx = tonumber(p_str)
+        if not p_idx and string.sub(p_str, 1, 1) == "b" then
+            local b_num = tonumber(string.sub(p_str, 2))
+            if b_num then p_idx = 100 + b_num end
+        end
         if u_num and p_idx then
             info = { unit_number = u_num, port_index = p_idx }
             port_info_cache[port_key] = info
@@ -124,7 +130,7 @@ end
 function capsule_queries.unregister_capsule_occupancy(id)
     if not (id and storage.capsules and storage.occupancy) then return end
     local capsule = storage.capsules[id]
-    
+
     local old_block_key = capsule and capsule._occ_block_key
     local old_from_key = capsule and capsule._occ_from_key
     local old_to_key = capsule and capsule._occ_to_key
@@ -194,8 +200,8 @@ function capsule_queries.update_capsule_occupancy(capsule)
     local new_block_key = new_to_key or new_from_key
 
     -- Fast-path return if port keys and blocking state haven't changed
-    if capsule._occ_from_key == new_from_key 
-       and capsule._occ_to_key == new_to_key 
+    if capsule._occ_from_key == new_from_key
+       and capsule._occ_to_key == new_to_key
        and capsule._occ_block_key == new_block_key then
         return
     end
@@ -354,7 +360,8 @@ function capsule_queries.find_capsules_at_entity(unit_number)
     return matches
 end
 
---- Checks how many capsules are currently occupying the entity's ports
+--- Checks how many capsules are currently occupying the entity's physical ports
+--- When evaluating projectors, capsules in mid-flight on external beam nodes are excluded
 --- @param unit_number number
 --- @return number
 function capsule_queries.get_capsule_count_at_entity(unit_number)
@@ -363,7 +370,23 @@ function capsule_queries.get_capsule_count_at_entity(unit_number)
         capsule_queries.rebuild_occupancy_index()
     end
     local slot = storage.occupancy.by_entity_from[unit_number]
-    return slot and slot.count or 0
+    if not slot then return 0 end
+
+    -- Projector beam exclusion: capsules in mid-air on beam nodes do not occupy the machine's intake dock
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        local physical_count = 0
+        for cap_id in pairs(slot.caps) do
+            local cap = storage.capsules[cap_id]
+            local pkey = cap and cap.from_port_key
+            local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
+            if node and not node.is_beam_node then
+                physical_count = physical_count + 1
+            end
+        end
+        return physical_count
+    end
+
+    return slot.count or 0
 end
 
 --- Checks how many capsules occupy a specific entity's internal/external network segment and port group

@@ -124,9 +124,10 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
 
                 -- Mode: "container" -> Unloads cargo into chest entity, spills overflow onto floor
                 if mode == "container" and container_proto then
+                    local safe_container_pos = surface.find_non_colliding_position(container_proto, position, 4, 0.5) or position
                     local container_entity = surface.create_entity{
                         name = container_proto,
-                        position = position,
+                        position = safe_container_pos,
                         force = effective_force,
                         raise_built = true
                     }
@@ -146,7 +147,7 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                                 if stack and stack.valid_for_read then
                                     local transferred = item_transfer_handler.transfer_stack(stack, container_inv, max_container_slot)
                                     if not transferred and stack.valid_for_read then
-                                        item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
+                                        item_transfer_handler.spill_stack(surface, safe_container_pos, stack, mark_decon, effective_force)
                                         stack.clear()
                                     end
                                 end
@@ -182,7 +183,7 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
     capsule_manager.remove(capsule_id)
 end
 
---- Spills or re-houses capsule contents when any network component (hub, pipe, pump, junction) is removed
+--- Spills or re-houses capsule contents when any network component (hub, pipe, pump, junction, projector) is removed
 --- @param entity LuaEntity The network entity being removed
 function hub_spill.handle_entity_destruction(entity)
     if not (entity and entity.valid) then return end
@@ -208,7 +209,12 @@ function hub_spill.handle_entity_destruction(entity)
         local cap = storage.capsules and storage.capsules[id]
         local capsule_id = cap and (cap.capsule_id or cap.id) or id
 
-        hub_spill.spill_capsule(capsule_id, surface, position, force)
+        local pkey = cap and cap.from_port_key
+        local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
+        -- Exclude in-flight ballistic capsules: let them finish trajectory or crash at their in-flight position
+        if not (node and node.is_beam_node) then
+            hub_spill.spill_capsule(capsule_id, surface, position, force)
+        end
     end
 end
 

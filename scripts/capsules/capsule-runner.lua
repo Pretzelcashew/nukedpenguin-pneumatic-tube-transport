@@ -3,7 +3,9 @@ local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
+local hub_spill = require("scripts.hubs.hub-spill")
 local diverter_settings = require("scripts.diverter-settings")
+local projector_settings = require("scripts.projector-settings")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
@@ -225,7 +227,47 @@ function capsule_runner.get_capsule_location(capsule_id)
         end
     end
 
+    if capsule.last_pos and capsule.surface_name then
+        local surf = game.surfaces[capsule.surface_name]
+        if surf and surf.valid then
+            return capsule.last_pos, surf
+        end
+    end
+
     return nil, nil
+end
+
+--------------------------------------------------------------------------------
+-- PAYLOAD IDENTITY & STRICT PROJECTOR GATEKEEPING
+--------------------------------------------------------------------------------
+local function is_electromagnetic_capsule(capsule_id)
+    if not capsule_id then return false end
+    local cap_data = capsule_manager.get(capsule_id)
+    if not cap_data then return false end
+
+    if cap_data.capsule_type == "electromagnetic-capsule" or cap_data.item_name == "electromagnetic-capsule" then
+        return true
+    end
+
+    if capsule_manager.get_primary_stack then
+        local stack = capsule_manager.get_primary_stack(capsule_id)
+        if stack and stack.valid_for_read and stack.name == "electromagnetic-capsule" then
+            return true
+        end
+    end
+
+    local holder = cap_data.holder
+    if holder and holder.valid and cap_data.primary_slot then
+        local inv = holder.get_inventory(defines.inventory.chest)
+        if inv and inv.valid then
+            local stack = inv[cap_data.primary_slot]
+            if stack and stack.valid_for_read and stack.name == "electromagnetic-capsule" then
+                return true
+            end
+        end
+    end
+
+    return false
 end
 
 --------------------------------------------------------------------------------
@@ -461,9 +503,29 @@ local function get_candidate_hops(from_port_key, tier)
     return count
 end
 
-local function is_hop_valid(from_port_key, target_port_key, payload_item, payload_quality, depth)
+local function is_hop_valid(from_port_key, target_port_key, payload_item, payload_quality, depth, capsule_id)
     depth = depth or 1
     if depth > 3 then return false end
+
+    local from_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
+    local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
+    if not (from_node and target_node) then return false end
+
+    -- Core Invariant 1: Projector & Kinetic Beam strictly restrict access to electromagnetic capsules
+    local target_is_projector = storage.active_projectors and storage.active_projectors[target_node.unit_number]
+    local target_is_beam = target_node.is_beam_node or target_node.kinetic_transmit
+    if target_is_projector or target_is_beam then
+        if not is_electromagnetic_capsule(capsule_id) then
+            return false
+        end
+
+        if target_is_projector then
+            local proj_entity = storage.active_projectors[target_node.unit_number]
+            if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
+                return false
+            end
+        end
+    end
 
     if not capsule_runner.has_capacity(from_port_key, target_port_key) then
         return false
@@ -473,15 +535,11 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
         return false
     end
 
-    local from_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
-    local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
-    if not (from_node and target_node) then return false end
-
-    if not (target_node.capsule_transmit or target_node.cross_transit or target_node.emitter) then
+    if not (target_node.capsule_transmit or target_node.cross_transit or target_node.emitter or target_node.kinetic_transmit) then
         return false
     end
 
-    if target_node.emitter then
+    if target_node.emitter and not target_node.kinetic_transmit then
         local target_emitter_lvl = flow_engine.get_node_emitter_level(target_node)
         if target_emitter_lvl == 0 then
             return false
@@ -504,7 +562,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
             local exit_key = scratch_cand_keys[3][i]
             local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
             if exit_node and exit_node.unit_number ~= target_node.unit_number then
-                if is_hop_valid(target_port_key, exit_key, payload_item, payload_quality, depth + 1) then
+                if is_hop_valid(target_port_key, exit_key, payload_item, payload_quality, depth + 1, capsule_id) then
                     has_valid_exit = true
                     break
                 end
@@ -524,11 +582,56 @@ function capsule_runner.select_next_target(capsule)
     if not current_node then return nil end
 
     local unit_number = current_node.unit_number
+    local cap_id = capsule.capsule_id or capsule.id
+
+    -- Ballistic Kinetic Trajectory: strictly straight-line unidirectional forward propagation
+    if current_node.is_beam_node then
+        local beam = storage.projector_beams and storage.projector_beams[current_node.beam_owner]
+        if not beam then
+            return nil
+        end
+
+        if current_node.is_endpoint then
+            return nil
+        end
+
+        local next_hop_idx = current_node.hop_index + 1
+        if beam.hop_keys and next_hop_idx <= #beam.hop_keys then
+            local next_key = beam.hop_keys[next_hop_idx]
+            local next_node = storage.flow_nodes and storage.flow_nodes[next_key]
+            if next_node then
+                return next_key
+            end
+        end
+
+        return nil
+    end
+
+    -- Projector Launch Muzzle Dispatch: transition from passive intake ports onto the active kinetic beam
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        if not is_electromagnetic_capsule(cap_id) then
+            return nil
+        end
+
+        local proj_entity = storage.active_projectors[unit_number]
+        if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
+            return nil
+        end
+
+        local beam = storage.projector_beams and storage.projector_beams[unit_number]
+        if beam and beam.hop_keys and #beam.hop_keys > 0 then
+            local first_hop_key = beam.hop_keys[1]
+            if capsule_runner.has_capacity(from_port_key, first_hop_key) then
+                return first_hop_key
+            end
+        end
+
+        return nil
+    end
 
     local payload_item = capsule.dominant_item
     local payload_quality = capsule.dominant_quality or "normal"
     if not payload_item then
-        local cap_id = capsule.capsule_id or capsule.id
         local cap_data = cap_id and capsule_manager.get(cap_id)
         payload_item = cap_data and cap_data.dominant_item
         payload_quality = (cap_data and cap_data.dominant_quality) or "normal"
@@ -554,9 +657,9 @@ function capsule_runner.select_next_target(capsule)
         if cand_key ~= capsule.last_port_key then
             local valid_hop = false
             if current_node.cross_transit then
-                valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality)
+                valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality, 1, cap_id)
             else
-                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item, payload_quality)
+                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item, payload_quality, 1, cap_id)
             end
 
             if valid_hop then
@@ -576,6 +679,13 @@ function capsule_runner.select_next_target(capsule)
                     end
                 end
 
+                -- Suction into Projector Intake Ports
+                if cand_node and storage.active_projectors and storage.active_projectors[cand_node.unit_number] then
+                    if cand_node.emitter and cand_node.emitter < 0 then
+                        drop = math.huge
+                    end
+                end
+
                 local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
                 if is_internal and cand_node then
                     local best_downstream = -math.huge
@@ -584,7 +694,7 @@ function capsule_runner.select_next_target(capsule)
                         local exit_key = scratch_cand_keys[2][e]
                         local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
                         if exit_node and exit_node.unit_number ~= current_node.unit_number then
-                            if is_hop_valid(cand_key, exit_key, payload_item, payload_quality) then
+                            if is_hop_valid(cand_key, exit_key, payload_item, payload_quality, 2, cap_id) then
                                 local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
 
                                 local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
@@ -645,19 +755,95 @@ function capsule_runner.select_next_target(capsule)
 end
 
 --------------------------------------------------------------------------------
+-- RECEIVER CATCHMENT & INJECTION
+--------------------------------------------------------------------------------
+function capsule_runner.catch_in_receiver(capsule, receiver_entity)
+    if not (capsule and receiver_entity and receiver_entity.valid) then return false end
+    local r_unit = receiver_entity.unit_number
+    local r_ports = storage.flow_unit_ports and storage.flow_unit_ports[r_unit]
+    if not r_ports then return false end
+
+    local best_ext_key = nil
+    local best_r_pkey = nil
+    local best_drop = -math.huge
+
+    for _, r_pkey in ipairs(r_ports) do
+        local r_node = storage.flow_nodes and storage.flow_nodes[r_pkey]
+        if r_node and not r_node.is_muzzle and not r_node.is_beam_node then
+            local neighbors = storage.flow_connections and storage.flow_connections[r_pkey]
+            if neighbors then
+                for ext_key in pairs(neighbors) do
+                    local ext_node = storage.flow_nodes and storage.flow_nodes[ext_key]
+                    if ext_node and ext_node.unit_number ~= r_unit and ext_node.capsule_transmit then
+                        if capsule_runner.has_capacity(r_pkey, ext_key) then
+                            local ext_level = storage.flow_levels and storage.flow_levels[ext_key] or 0
+                            local drop = -ext_level
+                            if drop > best_drop then
+                                best_drop = drop
+                                best_ext_key = ext_key
+                                best_r_pkey = r_pkey
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if best_ext_key and best_r_pkey then
+        mark_capsule_unparked(capsule)
+        local prev_key = capsule.from_port_key
+        capsule.last_port_key = best_r_pkey
+        capsule.from_port_key = best_ext_key
+        capsule.to_port_key = nil
+
+        capsule_queries.update_capsule_occupancy(capsule)
+        capsule_runner.wake_parked_capsules(prev_key)
+        capsule_runner.wake_parked_capsules(best_ext_key)
+        return true
+    end
+
+    return false
+end
+
+--------------------------------------------------------------------------------
 -- HUB ARRIVAL & OUTBOUND PACKING
 --------------------------------------------------------------------------------
 function capsule_runner.handle_arrival(capsule, id)
     local from_key = capsule.from_port_key
     if not from_key then return false end
 
+    local node = storage.flow_nodes and storage.flow_nodes[from_key]
+    if not node then return false end
+
+    -- Terminal Ballistic Endpoint Check
+    if node.is_beam_node and node.is_endpoint then
+        local hit_receiver_unit = node.hit_receiver
+        local receiver_entity = hit_receiver_unit and storage.active_projectors and storage.active_projectors[hit_receiver_unit]
+        local surface = game.surfaces[node.surface_name]
+        local term_pos = node.pos
+
+        if receiver_entity and receiver_entity.valid then
+            if capsule_runner.catch_in_receiver(capsule, receiver_entity) then
+                return true
+            end
+            -- Receiver connected lines are full; hold capsule safely at endpoint
+            return false
+        else
+            -- Terminal crash landing: beam terminated in open air or receiver was destroyed
+            if surface and surface.valid and term_pos then
+                hub_spill.spill_capsule(id, surface, term_pos, nil, true)
+            else
+                capsule_runner.remove_capsule(id)
+            end
+            return true
+        end
+    end
+
     local unit_num = capsule_queries.get_port_info(from_key)
     if capsule.source_hub and unit_num ~= capsule.source_hub then
         capsule.source_hub = nil
     end
-
-    local node = storage.flow_nodes and storage.flow_nodes[from_key]
-    if not node then return false end
 
     local hub_entity = storage.active_hubs and storage.active_hubs[node.unit_number]
     if hub_entity and hub_entity.valid and capsule.source_hub ~= node.unit_number then
@@ -848,14 +1034,25 @@ function capsule_runner.update_capsules(current_tick)
         local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
 
         if not node then
+            -- Severance or Node Removal Recovery: crash land safely at last known position
             mark_capsule_unparked(capsule)
-            capsule_runner.remove_capsule(id)
+            local pos = capsule.last_pos
+            local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
+            if pos and surface and surface.valid then
+                hub_spill.spill_capsule(id, surface, pos, nil, true)
+            else
+                capsule_runner.remove_capsule(id)
+            end
         else
+            capsule.last_pos = { x = node.pos.x, y = node.pos.y }
+            capsule.surface_name = node.surface_name
+
+            local is_beam = (node.is_beam_node == true)
             local is_woken = (capsule.next_retry_tick == nil)
             local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
 
-            if is_woken or is_stagger_tick then
-                capsule.next_retry_tick = current_tick + STAGGER_TICKS
+            if is_beam or is_woken or is_stagger_tick then
+                capsule.next_retry_tick = is_beam and (current_tick + 1) or (current_tick + STAGGER_TICKS)
 
                 local hops_done = 0
                 while hops_done < MAX_NODE_HOPS_PER_STEP do

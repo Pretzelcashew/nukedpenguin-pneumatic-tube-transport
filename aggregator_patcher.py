@@ -70,7 +70,6 @@ def run_aggregator(start_dir: Path):
     seen_paths = set()
 
     for root, dirs, files in os.walk(start_dir):
-        # Ignore .git directory
         dirs[:] = [d for d in dirs if d.lower() != ".git"]
 
         for file_name in files:
@@ -126,115 +125,187 @@ def run_aggregator(start_dir: Path):
 
 
 class PatchOperation:
-
     def __init__(self, op_type: str, start_line: int, end_line: int, lines: list[str]):
-        self.op_type = op_type  # 'REPLACE', 'INSERT', 'DELETE'
+        self.op_type = op_type  # 'REPLACE', 'INSERT_AFTER', 'INSERT_BEFORE', 'DELETE'
         self.start_line = start_line
         self.end_line = end_line
         self.lines = lines
 
     def sort_key(self):
-        # Sort bottom-to-top so modifications at the bottom do not change line
-        # indices of earlier modifications.
         return self.start_line
 
 
-def parse_patch_file(patch_text: str) -> dict[Path, list[PatchOperation]]:
-    """Parses diff commands grouped by file path."""
-    file_patches: dict[Path, list[PatchOperation]] = {}
+class FilePatch:
+    def __init__(self, action: str, target_path: Path, dest_path: Path | None = None):
+        self.action = action  # 'MODIFY', 'CREATE', 'DELETE', 'MOVE'
+        self.target_path = target_path
+        self.dest_path = dest_path
+        self.create_content: list[str] = []
+        self.ops: list[PatchOperation] = []
 
-    # Split into sections by file header
-    file_sections = re.split(r"(?:\*\*\*\s*FILE:\s*|FILE:\s*)", patch_text)
 
-    for section in file_sections:
-        if not section.strip():
-            continue
+def resolve_file_path(raw_path: str, base_dir: Path | None) -> Path:
+    p = Path(raw_path.strip().strip('"').strip("'"))
+    if not p.is_absolute() and base_dir:
+        p = (base_dir / p).resolve()
+    return p
 
-        lines = section.splitlines()
-        raw_path = lines[0].strip().strip('"').strip("'")
-        target_path = Path(raw_path)
 
-        # Regex for <<< COMMAND ... >>> blocks
-        block_pattern = re.compile(
-            r"<<<\s*(REPLACE\s+LINES?\s+\d+(?:-\d+)?|"
-            r"INSERT\s+(?:AFTER|BEFORE)\s+LINE\s+\d+|"
-            r"DELETE\s+LINES?\s+\d+(?:-\d+)?)\s*\n"
-            r"(.*?)"
-            r"\n?>>>",
-            re.DOTALL | re.IGNORECASE,
+def parse_line_operations(body_text: str) -> list[PatchOperation]:
+    block_pattern = re.compile(
+        r"<<<\s*(REPLACE\s+LINES?\s+\d+(?:-\d+)?|"
+        r"INSERT\s+(?:AFTER|BEFORE)\s+LINE\s+\d+|"
+        r"DELETE\s+LINES?\s+\d+(?:-\d+)?)\s*\n"
+        r"(.*?)"
+        r"\n?>>>",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    ops = []
+    for match in block_pattern.finditer(body_text):
+        cmd_header = match.group(1).strip()
+        content = match.group(2)
+
+        replacement_lines = (
+            [line + "\n" for line in content.splitlines()]
+            if content
+            else []
         )
 
-        ops = []
-        body_text = "\n".join(lines[1:])
+        m_rep = re.match(
+            r"REPLACE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
+            cmd_header,
+            re.IGNORECASE,
+        )
+        if m_rep:
+            s = int(m_rep.group(1))
+            e = int(m_rep.group(2)) if m_rep.group(2) else s
+            ops.append(PatchOperation("REPLACE", s, e, replacement_lines))
+            continue
 
-        for match in block_pattern.finditer(body_text):
-            cmd_header = match.group(1).strip()
-            content = match.group(2)
+        m_del = re.match(
+            r"DELETE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
+            cmd_header,
+            re.IGNORECASE,
+        )
+        if m_del:
+            s = int(m_del.group(1))
+            e = int(m_del.group(2)) if m_del.group(2) else s
+            ops.append(PatchOperation("DELETE", s, e, []))
+            continue
 
-            replacement_lines = (
-                [line + "\n" for line in content.splitlines()]
-                if content
-                else []
+        m_ins_after = re.match(
+            r"INSERT\s+AFTER\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
+        )
+        if m_ins_after:
+            line_no = int(m_ins_after.group(1))
+            ops.append(
+                PatchOperation("INSERT_AFTER", line_no, line_no, replacement_lines)
             )
+            continue
 
-            # 1. REPLACE LINES X-Y or REPLACE LINE X
-            m_rep = re.match(
-                r"REPLACE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
-                cmd_header,
-                re.IGNORECASE,
+        m_ins_before = re.match(
+            r"INSERT\s+BEFORE\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
+        )
+        if m_ins_before:
+            line_no = int(m_ins_before.group(1))
+            ops.append(
+                PatchOperation("INSERT_BEFORE", line_no, line_no, replacement_lines)
             )
-            if m_rep:
-                s = int(m_rep.group(1))
-                e = int(m_rep.group(2)) if m_rep.group(2) else s
-                ops.append(PatchOperation("REPLACE", s, e, replacement_lines))
-                continue
+            continue
 
-            # 2. DELETE LINES X-Y or DELETE LINE X
-            m_del = re.match(
-                r"DELETE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
-                cmd_header,
-                re.IGNORECASE,
+    return ops
+
+
+def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[FilePatch]:
+    """Parses file-level actions (CREATE, DELETE, MOVE, MODIFY) and line-level diffs."""
+    header_pattern = re.compile(
+        r'^\s*(?:\*\*\*\s*)?(CREATE\s+FILE|NEW\s+FILE|DELETE\s+FILE|MOVE\s+FILE|RENAME\s+FILE|FILE):\s*(.*?)$',
+        re.MULTILINE | re.IGNORECASE,
+    )
+
+    matches = list(header_pattern.finditer(patch_text))
+    if not matches:
+        return []
+
+    file_patches: list[FilePatch] = []
+
+    for i, match in enumerate(matches):
+        raw_cmd = match.group(1).upper()
+        raw_arg = match.group(2).strip()
+
+        start_pos = match.end()
+        end_pos = matches[i + 1].start() if i + 1 < len(matches) else len(patch_text)
+        body_text = patch_text[start_pos:end_pos].strip()
+
+        # 1. DELETE FILE
+        if "DELETE" in raw_cmd:
+            target = resolve_file_path(raw_arg, base_dir)
+            file_patches.append(FilePatch("DELETE", target))
+            continue
+
+        # 2. MOVE / RENAME FILE
+        if "MOVE" in raw_cmd or "RENAME" in raw_cmd:
+            parts = re.split(r'\s*(?:->|\bTO\b)\s*', raw_arg, flags=re.IGNORECASE)
+            if len(parts) >= 2:
+                src = resolve_file_path(parts[0], base_dir)
+                dest = resolve_file_path(parts[1], base_dir)
+                fp = FilePatch("MOVE", src, dest)
+                fp.ops = parse_line_operations(body_text)
+                file_patches.append(fp)
+            continue
+
+        # 3. CREATE / NEW FILE
+        if "CREATE" in raw_cmd or "NEW" in raw_cmd:
+            target = resolve_file_path(raw_arg, base_dir)
+            fp = FilePatch("CREATE", target)
+            content_match = re.search(
+                r"<<<(?:[ \t]*(?:CREATE|CONTENT))?[ \t]*\n?(.*?)>>>",
+                body_text,
+                re.DOTALL | re.IGNORECASE,
             )
-            if m_del:
-                s = int(m_del.group(1))
-                e = int(m_del.group(2)) if m_del.group(2) else s
-                ops.append(PatchOperation("DELETE", s, e, []))
-                continue
+            if content_match:
+                fp.create_content = [line + "\n" for line in content_match.group(1).splitlines()]
+            elif body_text:
+                fp.create_content = [line + "\n" for line in body_text.splitlines()]
+            file_patches.append(fp)
+            continue
 
-            # 3. INSERT AFTER LINE X
-            m_ins_after = re.match(
-                r"INSERT\s+AFTER\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
-            )
-            if m_ins_after:
-                line_no = int(m_ins_after.group(1))
-                ops.append(
-                    PatchOperation(
-                        "INSERT_AFTER", line_no, line_no, replacement_lines
-                    )
-                )
-                continue
+        # 4. Standard FILE: header
+        target = resolve_file_path(raw_arg, base_dir)
+        fp = FilePatch("MODIFY", target)
 
-            # 4. INSERT BEFORE LINE X
-            m_ins_before = re.match(
-                r"INSERT\s+BEFORE\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
-            )
-            if m_ins_before:
-                line_no = int(m_ins_before.group(1))
-                ops.append(
-                    PatchOperation(
-                        "INSERT_BEFORE", line_no, line_no, replacement_lines
-                    )
-                )
-                continue
+        # Block-level action fallbacks:
+        if re.search(r"<<<\s*DELETE\s+FILE\s*>>>", body_text, re.IGNORECASE):
+            fp.action = "DELETE"
+            file_patches.append(fp)
+            continue
 
-        if ops:
-            file_patches[target_path] = ops
+        move_match = re.search(r"<<<\s*(?:MOVE|RENAME)\s+TO\s+(.*?)\s*>>>", body_text, re.IGNORECASE)
+        if move_match:
+            fp.action = "MOVE"
+            fp.dest_path = resolve_file_path(move_match.group(1), base_dir)
+            cleaned_body = re.sub(r"<<<\s*(?:MOVE|RENAME)\s+TO\s+.*?\s*>>>", "", body_text, flags=re.IGNORECASE)
+            fp.ops = parse_line_operations(cleaned_body)
+            file_patches.append(fp)
+            continue
+
+        create_match = re.search(r"<<<\s*(?:CREATE|NEW)(?:\s+FILE)?\s*\n?(.*?)>>>", body_text, re.DOTALL | re.IGNORECASE)
+        if create_match:
+            fp.action = "CREATE"
+            fp.create_content = [line + "\n" for line in create_match.group(1).splitlines()]
+            file_patches.append(fp)
+            continue
+
+        fp.ops = parse_line_operations(body_text)
+        if fp.ops:
+            file_patches.append(fp)
 
     return file_patches
 
 
-def apply_patch(target_path: Path, ops: list[PatchOperation]) -> bool:
-    """Applies a list of patch operations to a file."""
+def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
+    """Applies sorted line-level operations to an existing file."""
     if not target_path.exists():
         print(f"Error: Target file does not exist: {target_path}")
         return False
@@ -244,9 +315,7 @@ def apply_patch(target_path: Path, ops: list[PatchOperation]) -> bool:
         print(f"Error: Could not read file encoding: {target_path}")
         return False
 
-    # Sort descending by target line so bottom edits don't shift top line numbers
     ops.sort(key=lambda o: o.sort_key(), reverse=True)
-
     modified_lines = list(orig_lines)
 
     for op in ops:
@@ -254,19 +323,15 @@ def apply_patch(target_path: Path, ops: list[PatchOperation]) -> bool:
             start_idx = op.start_line - 1
             end_idx = op.end_line
             if start_idx < 0 or start_idx > len(modified_lines):
-                print(
-                    f"Warning: Line {op.start_line} is out of range for {target_path.name}"
-                )
+                print(f"Warning: Line {op.start_line} is out of range for {target_path.name}")
                 continue
             modified_lines[start_idx:end_idx] = op.lines
 
         elif op.op_type == "INSERT_AFTER":
-            # After line X is at index X
             idx = op.start_line
             modified_lines[idx:idx] = op.lines
 
         elif op.op_type == "INSERT_BEFORE":
-            # Before line X is at index X - 1
             idx = max(0, op.start_line - 1)
             modified_lines[idx:idx] = op.lines
 
@@ -276,11 +341,68 @@ def apply_patch(target_path: Path, ops: list[PatchOperation]) -> bool:
     return True
 
 
+def apply_patch(patch: FilePatch) -> bool:
+    """Dispatches and applies file-level or line-level patches."""
+    if patch.action == "DELETE":
+        if not patch.target_path.exists():
+            print("SKIPPED (File does not exist)")
+            return True
+        try:
+            patch.target_path.unlink()
+            print("DELETED")
+            return True
+        except Exception as e:
+            print(f"FAILED ({e})")
+            return False
+
+    elif patch.action == "CREATE":
+        try:
+            patch.target_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(patch.target_path, "w", encoding="utf-8") as f:
+                f.writelines(patch.create_content)
+            print("CREATED")
+            return True
+        except Exception as e:
+            print(f"FAILED ({e})")
+            return False
+
+    elif patch.action == "MOVE":
+        if not patch.target_path.exists():
+            print(f"FAILED (Source does not exist: {patch.target_path.name})")
+            return False
+        if not patch.dest_path:
+            print("FAILED (No destination specified)")
+            return False
+        try:
+            patch.dest_path.parent.mkdir(parents=True, exist_ok=True)
+            patch.target_path.rename(patch.dest_path)
+            if patch.ops:
+                if apply_line_ops(patch.dest_path, patch.ops):
+                    print("MOVED & PATCHED")
+                    return True
+                else:
+                    print("MOVED (Subsequent line patch failed)")
+                    return False
+            print("MOVED")
+            return True
+        except Exception as e:
+            print(f"FAILED ({e})")
+            return False
+
+    elif patch.action == "MODIFY":
+        if apply_line_ops(patch.target_path, patch.ops):
+            print("OK")
+            return True
+        else:
+            print("FAILED")
+            return False
+
+    return False
+
+
 def run_patcher(start_dir: Path):
     print("\n--- APPLY DIFF / PATCH ---")
-    patch_file_input = input(
-        "Enter patch file name [default: patch.txt]: "
-    ).strip()
+    patch_file_input = input("Enter patch file name [default: patch.txt]: ").strip()
     patch_file_path = (
         Path(patch_file_input)
         if patch_file_input
@@ -298,16 +420,22 @@ def run_patcher(start_dir: Path):
         print(f"Error reading patch file: {e}")
         return
 
-    patches = parse_patch_file(content)
+    patches = parse_patch_file(content, base_dir=start_dir)
     if not patches:
-        print(
-            "No valid patch operations found in the file. Check formatting syntax."
-        )
+        print("No valid patch operations found in the file. Check formatting syntax.")
         return
 
     print(f"\nFound operations for {len(patches)} file(s):")
-    for file_path, ops in patches.items():
-        print(f"  • {file_path.name}: {len(ops)} operation(s)")
+    for p in patches:
+        if p.action == "CREATE":
+            print(f"  • [CREATE] {p.target_path.name} ({len(p.create_content)} lines)")
+        elif p.action == "DELETE":
+            print(f"  • [DELETE] {p.target_path.name}")
+        elif p.action == "MOVE":
+            sub = f" with {len(p.ops)} edit(s)" if p.ops else ""
+            print(f"  • [MOVE]   {p.target_path.name} -> {p.dest_path.name}{sub}")
+        elif p.action == "MODIFY":
+            print(f"  • [MODIFY] {p.target_path.name}: {len(p.ops)} operation(s)")
 
     confirm = input("\nProceed with applying changes? (y/n): ").strip().lower()
     if confirm != "y":
@@ -315,17 +443,13 @@ def run_patcher(start_dir: Path):
         return
 
     success_count = 0
-    for file_path, ops in patches.items():
-        print(f"Patching: {file_path} ... ", end="")
-        if apply_patch(file_path, ops):
-            print("OK")
+    for p in patches:
+        desc = p.target_path.name if p.action != "MOVE" else f"{p.target_path.name} -> {p.dest_path.name}"
+        print(f"Processing: {desc} ... ", end="")
+        if apply_patch(p):
             success_count += 1
-        else:
-            print("FAILED")
 
-    print(
-        f"\nDone. Successfully modified {success_count}/{len(patches)} file(s)."
-    )
+    print(f"\nDone. Successfully processed {success_count}/{len(patches)} file(s).")
 
 
 # ==============================================================================

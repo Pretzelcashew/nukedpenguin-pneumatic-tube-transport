@@ -68,7 +68,6 @@ local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
 end
 
--- Distinct port key scoped to unit, direction vector, and distance so different directions never collide
 local function make_beam_port_key(unit_number, dx, dy, dist)
     return string.format("kinetic:%d:%d,%d:%d", unit_number, math.floor(dx or 0), math.floor(dy or 0), dist)
 end
@@ -136,6 +135,7 @@ local function is_port_flow_active(pkey)
     if storage.kinetic_levels and (storage.kinetic_levels[pkey] or 0) > 0 then return true end
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if node and node.emitter and flow_engine.get_node_emitter_level(node) ~= 0 then return true end
+    if node and node.is_muzzle and flow_engine.get_node_kinetic_emitter(node) ~= 0 then return true end
     return false
 end
 
@@ -1134,6 +1134,85 @@ function flow_engine.handle_interop_research_reversed(force)
     sever_boundary_interfaces(active_gates)
 end
 
+local function notify_beam_obstruction_changed(entity, is_removal)
+    if not (entity and entity.valid and entity.bounding_box and storage.active_projectors) then return end
+    local bb = entity.bounding_box
+    local surf_name = entity.surface.name
+
+    for unit_number, proj in pairs(storage.active_projectors) do
+        if proj and proj.valid and proj.surface.name == surf_name and proj ~= entity then
+            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+            local muzzle_node = nil
+            if u_ports then
+                for i = 1, #u_ports do
+                    local mn = storage.flow_nodes and storage.flow_nodes[u_ports[i]]
+                    if mn and (mn.is_muzzle or mn.kinetic_transmit) and mn.dir then
+                        muzzle_node = mn
+                        break
+                    end
+                end
+            end
+
+            if muzzle_node and muzzle_node.dir then
+                local dx = muzzle_node.dir.x
+                local dy = muzzle_node.dir.y
+                local mx = muzzle_node.pos.x
+                local my = muzzle_node.pos.y
+
+                local max_reach = flow_engine.get_node_kinetic_emitter(muzzle_node)
+                if max_reach > 0 then
+                    local intersects = false
+                    local d_start = 0
+                    local d_end = 0
+
+                    if dx ~= 0 then
+                        if bb.left_top.y - 0.45 <= my and my <= bb.right_bottom.y + 0.45 then
+                            local d1 = (bb.left_top.x - mx) / dx
+                            local d2 = (bb.right_bottom.x - mx) / dx
+                            d_start = math.floor(math.min(d1, d2) - 0.5)
+                            d_end = math.ceil(math.max(d1, d2) + 0.5)
+                            if d_end >= 0 and d_start <= max_reach then
+                                intersects = true
+                            end
+                        end
+                    elseif dy ~= 0 then
+                        if bb.left_top.x - 0.45 <= mx and mx <= bb.right_bottom.x + 0.45 then
+                            local d1 = (bb.left_top.y - my) / dy
+                            local d2 = (bb.right_bottom.y - my) / dy
+                            d_start = math.floor(math.min(d1, d2) - 0.5)
+                            d_end = math.ceil(math.max(d1, d2) + 0.5)
+                            if d_end >= 0 and d_start <= max_reach then
+                                intersects = true
+                            end
+                        end
+                    end
+
+                    if intersects then
+                        local check_min = math.max(0, d_start - 1)
+                        local check_max = math.min(max_reach, d_end + 1)
+
+                        for dist = check_min, check_max do
+                            local pkey = (dist == 0)
+                                and make_port_key(unit_number, muzzle_node.port_index)
+                                or  make_beam_port_key(unit_number, dx, dy, dist)
+
+                            local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
+                            if b_node then
+                                if is_removal and b_node.is_endpoint then
+                                    b_node.is_endpoint = false
+                                    b_node.hit_receiver = nil
+                                end
+                                flow_engine.enqueue_port(pkey)
+                                wake_port_parked(pkey)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function flow_engine.step(tick)
     if storage.active_gates then
         for unit_number, gate in pairs(storage.active_gates) do
@@ -1275,25 +1354,152 @@ function flow_engine.step(tick)
         local target_kinetic = compute_port_kinetic_level(pkey)
         local current_kinetic = storage.kinetic_levels and storage.kinetic_levels[pkey] or 0
         local kinetic_changed = (target_kinetic ~= current_kinetic)
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
 
-        if kinetic_changed then
-            local node = storage.flow_nodes and storage.flow_nodes[pkey]
-
+        if node and node.is_kinetic then
             if target_kinetic > 0 then
-                storage.kinetic_levels[pkey] = target_kinetic
+                if kinetic_changed then
+                    storage.kinetic_levels[pkey] = target_kinetic
+                end
 
-                if node then
-                    local surface = game.surfaces[node.surface_name]
+                local surface = game.surfaces[node.surface_name]
 
-                    -- Terminal endpoint check at maximum reach
+                local has_downstream = false
+                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                if neighbors then
+                    for n_key in pairs(neighbors) do
+                        local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                        if n_node and n_node.is_kinetic and n_node.dist and node.dist and n_node.dist > node.dist then
+                            has_downstream = true
+                            break
+                        end
+                    end
+                end
+
+                if not has_downstream and surface and surface.valid then
                     if target_kinetic == 1 and not node.is_muzzle then
                         node.is_endpoint = true
                         node.is_prominent_kinetic = true
                         node.is_beam_node = true
                         node.capsule_transmit = true
                         node.hit_receiver = nil
-                    end
+                        update_kinetic_pos_render(
+                            node.pos_key,
+                            node.pos,
+                            surface,
+                            node.is_prominent_kinetic,
+                            true,
+                            false,
+                            node.q_level
+                        )
+                        wake_port_parked(pkey)
+                    elseif target_kinetic > 1 and node.dir then
+                        local nx = node.pos.x + node.dir.x
+                        local ny = node.pos.y + node.dir.y
+                        local owner_entity = storage.active_projectors and storage.active_projectors[node.beam_owner or node.unit_number]
+                        local occ = flow_engine.check_tile_obstruction(surface, nx, ny, owner_entity)
 
+                        if occ.blocked then
+                            node.is_endpoint = true
+                            node.is_prominent_kinetic = true
+                            node.is_beam_node = true
+                            node.capsule_transmit = true
+                            node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
+                            update_kinetic_pos_render(
+                                node.pos_key,
+                                node.pos,
+                                surface,
+                                node.is_prominent_kinetic,
+                                true,
+                                occ.is_receiver,
+                                node.q_level
+                            )
+                            wake_port_parked(pkey)
+
+                            if occ.is_receiver and occ.receiver and occ.receiver.unit_number then
+                                local r_unit = occ.receiver.unit_number
+                                flow_engine.enqueue_unit_ports(r_unit)
+                                local r_ports = storage.flow_unit_ports and storage.flow_unit_ports[r_unit]
+                                if r_ports then
+                                    for _, rp in ipairs(r_ports) do
+                                        wake_port_parked(rp)
+                                    end
+                                end
+                            end
+
+                            local owner_unit = node.beam_owner or node.unit_number
+                            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[owner_unit]
+                            if u_ports then
+                                for _, upkey in ipairs(u_ports) do
+                                    wake_port_parked(upkey)
+                                end
+                            end
+                        else
+                            if node.is_endpoint then
+                                node.is_endpoint = false
+                                node.hit_receiver = nil
+                            end
+
+                            local next_dist = (node.dist or 0) + 1
+                            local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
+                            local next_pos_key = make_pos_key(node.surface_name, nx, ny)
+                            local is_prom = (next_dist % HOP_DISTANCE == 0)
+
+                            storage.flow_nodes[next_pkey] = {
+                                unit_number = node.beam_owner or node.unit_number,
+                                beam_owner = node.beam_owner or node.unit_number,
+                                port_index = 100 + next_dist,
+                                pos_key = next_pos_key,
+                                pos = {x = nx, y = ny},
+                                dir = {x = node.dir.x, y = node.dir.y},
+                                surface_name = node.surface_name,
+                                dist = next_dist,
+                                is_kinetic = true,
+                                is_beam_node = is_prom,
+                                is_prominent_kinetic = is_prom,
+                                capsule_transmit = is_prom,
+                                pressure_transmit = false,
+                                sense_transmit = false,
+                                kinetic_transmit = true,
+                                cross_transit = false,
+                                q_level = node.q_level,
+                                is_endpoint = false
+                            }
+
+                            storage.flow_grid[next_pos_key] = storage.flow_grid[next_pos_key] or {}
+                            storage.flow_grid[next_pos_key][next_pkey] = true
+
+                            storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
+                            storage.flow_connections[next_pkey] = storage.flow_connections[next_pkey] or {}
+                            storage.flow_connections[pkey][next_pkey] = true
+                            storage.flow_connections[next_pkey][pkey] = true
+
+                            flow_engine.enqueue_port(next_pkey)
+                            wake_port_parked(pkey)
+                            wake_port_parked(next_pkey)
+
+                            update_kinetic_pos_render(
+                                node.pos_key,
+                                node.pos,
+                                surface,
+                                node.is_prominent_kinetic,
+                                false,
+                                false,
+                                node.q_level
+                            )
+
+                            if is_prom then
+                                local owner_unit = node.beam_owner or node.unit_number
+                                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[owner_unit]
+                                if u_ports then
+                                    for _, upkey in ipairs(u_ports) do
+                                        wake_port_parked(upkey)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                elseif kinetic_changed then
                     update_kinetic_pos_render(
                         node.pos_key,
                         node.pos,
@@ -1303,93 +1509,13 @@ function flow_engine.step(tick)
                         node.hit_receiver ~= nil,
                         node.q_level
                     )
-
-                    -- Advance step: Discover and connect next tile in direction
-                    if target_kinetic > 1 and node.dir and not node.is_endpoint then
-                        local has_downstream = false
-                        local neighbors = storage.flow_connections and storage.flow_connections[pkey]
-                        if neighbors then
-                            for n_key in pairs(neighbors) do
-                                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-                                if n_node and n_node.is_kinetic and n_node.dist and node.dist and n_node.dist > node.dist then
-                                    has_downstream = true
-                                    break
-                                end
-                            end
-                        end
-
-                        if not has_downstream and surface and surface.valid then
-                            local nx = node.pos.x + node.dir.x
-                            local ny = node.pos.y + node.dir.y
-                            local owner_entity = storage.active_projectors and storage.active_projectors[node.beam_owner or node.unit_number]
-                            local occ = flow_engine.check_tile_obstruction(surface, nx, ny, owner_entity)
-
-                            local next_dist = (node.dist or 0) + 1
-                            local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
-                            local next_pos_key = make_pos_key(node.surface_name, nx, ny)
-                            local is_prom = (next_dist % HOP_DISTANCE == 0) or occ.blocked
-
-                            if occ.blocked then
-                                node.is_endpoint = true
-                                node.is_prominent_kinetic = true
-                                node.is_beam_node = true
-                                node.capsule_transmit = true
-                                node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
-                                update_kinetic_pos_render(
-                                    node.pos_key,
-                                    node.pos,
-                                    surface,
-                                    node.is_prominent_kinetic,
-                                    true,
-                                    occ.is_receiver,
-                                    node.q_level
-                                )
-                                wake_port_parked(pkey)
-                            else
-                                storage.flow_nodes[next_pkey] = {
-                                    unit_number = node.beam_owner or node.unit_number,
-                                    beam_owner = node.beam_owner or node.unit_number,
-                                    port_index = 100 + next_dist,
-                                    pos_key = next_pos_key,
-                                    pos = {x = nx, y = ny},
-                                    dir = {x = node.dir.x, y = node.dir.y},
-                                    surface_name = node.surface_name,
-                                    dist = next_dist,
-                                    is_kinetic = true,
-                                    is_beam_node = is_prom,
-                                    is_prominent_kinetic = is_prom,
-                                    capsule_transmit = is_prom,
-                                    pressure_transmit = false,
-                                    sense_transmit = false,
-                                    kinetic_transmit = true,
-                                    cross_transit = false,
-                                    q_level = node.q_level,
-                                    is_endpoint = false
-                                }
-
-                                storage.flow_grid[next_pos_key] = storage.flow_grid[next_pos_key] or {}
-                                storage.flow_grid[next_pos_key][next_pkey] = true
-
-                                storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
-                                storage.flow_connections[next_pkey] = storage.flow_connections[next_pkey] or {}
-                                storage.flow_connections[pkey][next_pkey] = true
-                                storage.flow_connections[next_pkey][pkey] = true
-
-                                flow_engine.enqueue_port(next_pkey)
-                                wake_port_parked(pkey)
-                                wake_port_parked(next_pkey)
-                            end
-                        end
-                    end
                 end
             else
-                -- Recession step: Cleanly recedes 1 tile per tick
-                storage.kinetic_levels[pkey] = nil
-
-                if node then
+                if kinetic_changed then
+                    storage.kinetic_levels[pkey] = nil
                     destroy_kinetic_pos_render(node.pos_key)
 
-                    if node.is_kinetic and not node.is_muzzle then
+                    if not node.is_muzzle then
                         if storage.flow_grid and storage.flow_grid[node.pos_key] then
                             storage.flow_grid[node.pos_key][pkey] = nil
                             if next(storage.flow_grid[node.pos_key]) == nil then
@@ -1413,6 +1539,21 @@ function flow_engine.step(tick)
                         end
 
                         storage.flow_nodes[pkey] = nil
+                        wake_port_parked(pkey)
+                    else
+                        local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                        if neighbors then
+                            for n_key in pairs(neighbors) do
+                                flow_engine.enqueue_port(n_key)
+                                wake_port_parked(n_key)
+                            end
+                        end
+                        local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
+                        if u_ports then
+                            for _, upkey in ipairs(u_ports) do
+                                wake_port_parked(upkey)
+                            end
+                        end
                         wake_port_parked(pkey)
                     end
                 end
@@ -1530,8 +1671,10 @@ function flow_engine.step(tick)
                             local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
                             if int_node and int_node.group == node.group then
                                 if (flow_changed and node.pressure_transmit and int_node.pressure_transmit)
-                                   or (range_changed and node.sense_transmit and int_node.sense_transmit) then
+                                   or (range_changed and node.sense_transmit and int_node.sense_transmit)
+                                   or (kinetic_changed and (node.kinetic_transmit or node.cross_transit) and (int_node.kinetic_transmit or int_node.cross_transit)) then
                                     flow_engine.enqueue_port(int_key)
+                                    wake_port_parked(int_key)
                                 end
                             end
                         end
@@ -1546,6 +1689,9 @@ function flow_engine.step(tick)
                     if flow_changed then
                         update_edge_render(pkey, n_key)
                     end
+                    if kinetic_changed then
+                        wake_port_parked(n_key)
+                    end
                 end
             else
                 local eff_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
@@ -1553,6 +1699,10 @@ function flow_engine.step(tick)
                 if eff_flow ~= 0 or eff_sense > 0 then
                     discover_adjacent_standard_entity(node)
                 end
+            end
+
+            if kinetic_changed then
+                wake_port_parked(pkey)
             end
         end
     end
@@ -1715,6 +1865,7 @@ function flow_engine.connect_entity(entity)
 
         storage.flow_grid[pos_key][pkey] = true
         flow_engine.enqueue_port(pkey)
+        wake_port_parked(pkey)
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
     end
@@ -1850,6 +2001,21 @@ function flow_engine.handle_object_destroyed(unit_number)
                         storage.flow_grid[node.pos_key] = nil
                     end
                 end
+
+                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+                if neighbors then
+                    for n_key in pairs(neighbors) do
+                        if storage.flow_connections[n_key] then
+                            storage.flow_connections[n_key][pkey] = nil
+                            if next(storage.flow_connections[n_key]) == nil then
+                                storage.flow_connections[n_key] = nil
+                            end
+                        end
+                        flow_engine.enqueue_port(n_key)
+                        wake_port_parked(n_key)
+                    end
+                end
+
                 if storage.flow_connections then storage.flow_connections[pkey] = nil end
                 if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end
                 storage.flow_nodes[pkey] = nil
@@ -2000,33 +2166,9 @@ function flow_engine.register_events()
                         end
                     end
                 end
-            else
-                -- General entity placement: check if new structure occludes active kinetic beam nodes
-                if storage.flow_grid and entity.bounding_box then
-                    local bb = entity.bounding_box
-                    local min_x = math.floor(bb.left_top.x + 0.5)
-                    local max_x = math.floor(bb.right_bottom.x + 0.5)
-                    local min_y = math.floor(bb.left_top.y + 0.5)
-                    local max_y = math.floor(bb.right_bottom.y + 0.5)
-                    local surf_name = entity.surface.name
-
-                    for gx = min_x, max_x do
-                        for gy = min_y, max_y do
-                            local pkey_check = make_pos_key(surf_name, gx, gy)
-                            local grid_ports = storage.flow_grid[pkey_check]
-                            if grid_ports then
-                                for pkey in pairs(grid_ports) do
-                                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
-                                    if node and node.is_kinetic then
-                                        flow_engine.enqueue_port(pkey)
-                                        wake_port_parked(pkey)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
             end
+
+            notify_beam_obstruction_changed(entity, false)
         end)
     end
 
@@ -2044,35 +2186,8 @@ function flow_engine.register_events()
         events.on_event(event_id, function(event)
             local entity = event.entity
             if entity and entity.valid then
+                notify_beam_obstruction_changed(entity, true)
                 flow_engine.disconnect_entity(entity)
-
-                -- If an obstacle blocking a beam was removed, wake and re-evaluate intersecting beam endpoints
-                if storage.flow_grid and entity.bounding_box then
-                    local bb = entity.bounding_box
-                    local min_x = math.floor(bb.left_top.x + 0.5)
-                    local max_x = math.floor(bb.right_bottom.x + 0.5)
-                    local min_y = math.floor(bb.left_top.y + 0.5)
-                    local max_y = math.floor(bb.right_bottom.y + 0.5)
-                    local surf_name = entity.surface.name
-
-                    for gx = min_x, max_x do
-                        for gy = min_y, max_y do
-                            local pkey_check = make_pos_key(surf_name, gx, gy)
-                            local grid_ports = storage.flow_grid[pkey_check]
-                            if grid_ports then
-                                for pkey in pairs(grid_ports) do
-                                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
-                                    if node and node.is_kinetic then
-                                        node.is_endpoint = false
-                                        node.hit_receiver = nil
-                                        flow_engine.enqueue_port(pkey)
-                                        wake_port_parked(pkey)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
             end
         end)
     end

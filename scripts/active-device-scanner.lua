@@ -393,10 +393,18 @@ active_device_scanner.register_device_type({
         local last_enabled = storage.projector_enabled_states[unit_number]
         local last_muzzle = storage.projector_muzzle_states[unit_number]
 
-        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or current_muzzle ~= last_muzzle then
+        local muzzle_changed = (current_muzzle ~= last_muzzle)
+
+        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or muzzle_changed then
             storage.projector_power_states[unit_number] = is_powered
             storage.projector_enabled_states[unit_number] = is_enabled
             storage.projector_muzzle_states[unit_number] = current_muzzle
+
+            if muzzle_changed and entity.valid and not (entity.name == "entity-ghost") then
+                flow_engine.disconnect_entity(entity)
+                flow_engine.connect_entity(entity)
+            end
+
             return true
         end
         return false

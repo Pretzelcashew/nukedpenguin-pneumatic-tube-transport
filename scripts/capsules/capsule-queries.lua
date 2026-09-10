@@ -312,7 +312,7 @@ function capsule_queries.clear_capsule_render(capsule)
     end
 end
 
---- Removes a capsule from motion tracking, cleans up parked index entries, wakes upstream parked capsules at its location, clears visual debug renders, and unregisters occupancy
+--- Removes a capsule from motion tracking, cleans up parked index entries, wakes upstream parked capsules at its location and connected neighbors, clears visual debug renders, and unregisters occupancy
 --- @param id number
 function capsule_queries.remove_capsule(id)
     if not storage.capsules then return end
@@ -347,16 +347,51 @@ function capsule_queries.remove_capsule(id)
         capsule_queries.clear_capsule_render(capsule)
         storage.capsules[id] = nil
 
-        -- 3. Wake up other parked capsules waiting at this location so traffic advances
+        -- 3. Wake up other parked capsules waiting at this location and connected neighbors
         if target_key and storage.parked_by_port then
-            local bucket = storage.parked_by_port[target_key]
-            if bucket then
-                for cap_id in pairs(bucket) do
-                    local parked_cap = storage.capsules and storage.capsules[cap_id]
-                    if parked_cap and parked_cap.to_port_key == nil then
-                        parked_cap.next_retry_tick = nil
-                        parked_cap.last_failed_hub = nil
-                        parked_cap.last_port_key = nil
+            local function wake_bucket(pkey)
+                local bucket = storage.parked_by_port and storage.parked_by_port[pkey]
+                if bucket then
+                    for cap_id in pairs(bucket) do
+                        local parked_cap = storage.capsules and storage.capsules[cap_id]
+                        if parked_cap and parked_cap.to_port_key == nil then
+                            parked_cap.next_retry_tick = nil
+                            parked_cap.last_failed_hub = nil
+                            parked_cap.last_port_key = nil
+                        end
+                    end
+                end
+            end
+
+            wake_bucket(target_key)
+
+            local neighbors = storage.flow_connections and storage.flow_connections[target_key]
+            if neighbors then
+                for n_key in pairs(neighbors) do
+                    wake_bucket(n_key)
+                end
+            end
+
+            local unit_number = capsule_queries.get_port_info(target_key)
+            if unit_number then
+                local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+                if unit_ports then
+                    for i = 1, #unit_ports do
+                        local upkey = unit_ports[i]
+                        wake_bucket(upkey)
+                        local u_neighbors = storage.flow_connections and storage.flow_connections[upkey]
+                        if u_neighbors then
+                            for un_key in pairs(u_neighbors) do
+                                wake_bucket(un_key)
+                            end
+                        end
+                    end
+                end
+
+                for parked_pkey in pairs(storage.parked_by_port) do
+                    local p_node = storage.flow_nodes and storage.flow_nodes[parked_pkey]
+                    if p_node and (p_node.hit_receiver == unit_number or p_node.beam_owner == unit_number) then
+                        wake_bucket(parked_pkey)
                     end
                 end
             end
@@ -401,7 +436,8 @@ function capsule_queries.get_capsule_count_at_entity(unit_number)
             local cap = storage.capsules[cap_id]
             local pkey = cap and cap.from_port_key
             local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
-            if node and not (node.is_beam_node or node.is_kinetic) then
+            local is_mid_air = (node and (node.is_beam_node or node.is_kinetic)) or (not node and cap and cap.beam_flight)
+            if not is_mid_air then
                 physical_count = physical_count + 1
             end
         end

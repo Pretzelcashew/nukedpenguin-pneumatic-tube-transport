@@ -286,6 +286,12 @@ function capsule_runner.wake_parked_capsules(target)
 
     if target_port_key then
         add_port(target_port_key)
+        local neighbors = storage.flow_connections and storage.flow_connections[target_port_key]
+        if neighbors then
+            for neighbor_key in pairs(neighbors) do
+                add_port(neighbor_key)
+            end
+        end
     end
 
     if target_unit then
@@ -302,11 +308,11 @@ function capsule_runner.wake_parked_capsules(target)
                 end
             end
         end
-    elseif target_port_key then
-        local neighbors = storage.flow_connections and storage.flow_connections[target_port_key]
-        if neighbors then
-            for neighbor_key in pairs(neighbors) do
-                add_port(neighbor_key)
+
+        for parked_pkey in pairs(storage.parked_by_port) do
+            local p_node = storage.flow_nodes and storage.flow_nodes[parked_pkey]
+            if p_node and (p_node.hit_receiver == target_unit or p_node.beam_owner == target_unit) then
+                add_port(parked_pkey)
             end
         end
     end
@@ -662,7 +668,6 @@ function capsule_runner.select_next_target(capsule)
         local surface = game.surfaces[current_node.surface_name]
         local owner_entity = storage.active_projectors and storage.active_projectors[beam_owner]
 
-        -- Scan forward through intermediate minor nodes up to the next prominent node
         local next_prominent_key = nil
         local found_obstacle = nil
         local obstacle_pos = nil
@@ -673,7 +678,6 @@ function capsule_runner.select_next_target(capsule)
             local tx = current_node.pos.x + dir.x * (d - cur_dist)
             local ty = current_node.pos.y + dir.y * (d - cur_dist)
 
-            -- Check physical tile obstruction first (e.g. wall/assembler placed this tick)
             if surface and surface.valid then
                 local occ = flow_engine.check_tile_obstruction(surface, tx, ty, owner_entity)
                 if occ.blocked and not occ.is_receiver then
@@ -683,10 +687,8 @@ function capsule_runner.select_next_target(capsule)
                 end
             end
 
-            -- Check if node exists and has active kinetic level
             local cand_level = storage.kinetic_levels and storage.kinetic_levels[cand_key] or 0
             if not cand_node or cand_level <= 0 then
-                -- Beam was severed or receded: crash land at severed obstacle tile
                 found_obstacle = true
                 obstacle_pos = { x = tx, y = ty }
                 break
@@ -699,9 +701,10 @@ function capsule_runner.select_next_target(capsule)
         end
 
         if found_obstacle and obstacle_pos and surface and surface.valid then
-            -- Obstacle cut off trajectory mid-flight: crash immediately at obstruction coordinate
             mark_capsule_unparked(capsule)
+            local crash_port_key = from_port_key
             hub_spill.spill_capsule(cap_id, surface, obstacle_pos, nil, true)
+            capsule_runner.wake_parked_capsules(crash_port_key)
             return nil
         end
 
@@ -722,7 +725,6 @@ function capsule_runner.select_next_target(capsule)
             return nil
         end
 
-        -- Find the muzzle port for this projector
         local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
         local muzzle_pkey = nil
         local muzzle_node = nil
@@ -744,7 +746,6 @@ function capsule_runner.select_next_target(capsule)
                 local dx = muzzle_node.dir.x
                 local dy = muzzle_node.dir.y
 
-                -- Find the first prominent hop on the beam (d = 1 .. HOP_DISTANCE)
                 for d = 1, HOP_DISTANCE do
                     local cand_key = make_beam_port_key(unit_number, dx, dy, d)
                     local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
@@ -907,7 +908,6 @@ function capsule_runner.catch_in_receiver(capsule, receiver_entity)
                         if capsule_runner.has_capacity(r_pkey, ext_key) then
                             local ext_level = storage.flow_levels and storage.flow_levels[ext_key] or 0
                             local drop = -ext_level
-                            -- Strictly reject tubes blowing positive air pressure towards receiver
                             if drop >= 0 and drop > best_drop then
                                 best_drop = drop
                                 best_ext_key = ext_key
@@ -937,6 +937,7 @@ function capsule_runner.catch_in_receiver(capsule, receiver_entity)
         capsule_queries.update_capsule_occupancy(capsule)
         capsule_runner.wake_parked_capsules(prev_key)
         capsule_runner.wake_parked_capsules(best_ext_key)
+        capsule_runner.wake_parked_capsules(r_unit)
 
         play_catchment_effects(receiver_entity.surface, receiver_entity.position)
         return true
@@ -953,7 +954,6 @@ function capsule_runner.handle_arrival(capsule, id)
     local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
     local bf = capsule.beam_flight
 
-    -- Terminal Ballistic Endpoint Check: strictly evaluated when on a beam node or during dead-sender flight
     local is_beam_endpoint = false
     if node then
         if (node.is_beam_node or node.is_prominent_kinetic) and node.is_endpoint then
@@ -976,7 +976,6 @@ function capsule_runner.handle_arrival(capsule, id)
                 capsule.beam_flight = nil
                 return true
             end
-            -- Lines saturated: park safely at endpoint to retry when lines open
             return false
         else
             capsule.beam_flight = nil
@@ -1188,7 +1187,6 @@ function capsule_runner.update_capsules(current_tick)
 
         if not node then
             if bf and bf.hop_positions and bf.current_hop then
-                -- Sender projector was mined/destroyed mid-flight: continue ballistic path
                 bf.current_hop = bf.current_hop + 1
                 local surface = game.surfaces[bf.surface_name or capsule.surface_name or "nauvis"]
 
@@ -1197,7 +1195,6 @@ function capsule_runner.update_capsules(current_tick)
                 else
                     local next_pos = bf.hop_positions[bf.current_hop] or bf.terminal_pos
 
-                    -- Check intermediate path obstruction for dead-sender flight
                     local obstructed = false
                     local obst_pos = nil
                     if surface and surface.valid and capsule.last_pos and next_pos then
@@ -1219,7 +1216,11 @@ function capsule_runner.update_capsules(current_tick)
 
                     if obstructed and obst_pos and surface and surface.valid then
                         mark_capsule_unparked(capsule)
+                        local dead_port_key = capsule.from_port_key
                         hub_spill.spill_capsule(id, surface, obst_pos, nil, true)
+                        if dead_port_key then
+                            capsule_runner.wake_parked_capsules(dead_port_key)
+                        end
                     else
                         capsule.last_pos = next_pos
                         play_flight_effects(surface, next_pos)
@@ -1231,14 +1232,17 @@ function capsule_runner.update_capsules(current_tick)
                     end
                 end
             else
-                -- Severance or non-beam node removal recovery: crash land safely at last known position
                 mark_capsule_unparked(capsule)
                 local pos = capsule.last_pos
                 local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
+                local dead_port_key = capsule.from_port_key
                 if pos and surface and surface.valid then
                     hub_spill.spill_capsule(id, surface, pos, nil, true)
                 else
                     capsule_runner.remove_capsule(id)
+                end
+                if dead_port_key then
+                    capsule_runner.wake_parked_capsules(dead_port_key)
                 end
             end
         else
@@ -1270,7 +1274,6 @@ function capsule_runner.update_capsules(current_tick)
                     if next_node and (next_node.is_beam_node or next_node.is_prominent_kinetic) then
                         local surface = game.surfaces[next_node.surface_name]
                         if not (node.is_beam_node or node.is_prominent_kinetic) then
-                            -- Initial launch from muzzle/dock onto the kinetic beam
                             play_dispatch_effects(surface, node.pos)
                         else
                             play_flight_effects(surface, next_node.pos)

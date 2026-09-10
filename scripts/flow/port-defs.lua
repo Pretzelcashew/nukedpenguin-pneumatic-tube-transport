@@ -279,6 +279,13 @@ function port_defs.get_ports(entity)
             local py = pos and (pos.y or pos[2] or 0) or 0
             local ghost_key = "ghost@" .. real_name .. "@" .. sname .. "@" .. px .. "," .. py
             p_set = storage.projector_settings[ghost_key]
+            if not p_set and storage.ghost_by_pos then
+                local alt_key = real_name .. "@" .. sname .. "@" .. px .. "," .. py
+                local g_id = storage.ghost_by_pos[alt_key] or storage.ghost_by_pos[ghost_key]
+                if g_id then
+                    p_set = storage.projector_settings[g_id]
+                end
+            end
         end
         if p_set and p_set.muzzle_dir then
             dir = p_set.muzzle_dir

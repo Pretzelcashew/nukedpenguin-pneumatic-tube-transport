@@ -1,0 +1,4 @@
+# Patch and aggregate files from AI diff workflow
+patch.txt
+patch*.txt
+aggregate*.txt

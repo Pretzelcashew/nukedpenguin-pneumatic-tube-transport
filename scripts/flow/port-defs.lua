@@ -225,28 +225,28 @@ local definitions = {
 
     ["pneumatic-projector"] = {
         [defines.direction.north] = {
-            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow =   0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
-            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
+            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
+            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
         },
         [defines.direction.east] = {
-            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow =   0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
-            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
+            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
+            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
         },
         [defines.direction.south] = {
-            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow =   0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
-            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
+            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
+            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
         },
         [defines.direction.west] = {
-            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow =   0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
-            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
-            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = -10, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
+            { offset = {x = -1.5, y =  0.0}, dir = {x = -1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = true,  cross_transit = true, is_muzzle = true },
+            { offset = {x =  0.0, y = -1.5}, dir = {x =  0, y = -1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x =  1.5, y =  0.0}, dir = {x =  1, y =  0}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false },
+            { offset = {x =  0.0, y =  1.5}, dir = {x =  0, y =  1}, group = 1, flow = 0, emitter = 0, capsule_transmit = true, pressure_transmit = false, sense_transmit = false, kinetic_transmit = false, cross_transit = true, is_muzzle = false }
         }
     }
 }

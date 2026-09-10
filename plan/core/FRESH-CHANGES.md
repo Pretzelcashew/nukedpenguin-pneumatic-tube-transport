@@ -160,3 +160,12 @@
 2. **Endpoint Discovery & Payload Accounting (`scripts/capsules/capsule-runner.lua`):** Implemented `get_beam_endpoint` and `count_endpoint_capsules` to trace ballistic paths and aggregate capsules parked at beam endpoints, receiver chassis ports, and active in-flight beam payloads.
 3. **Launch Muzzle Dispatch Gatekeeping (`scripts/capsules/capsule-runner.lua`):** Added pre-flight capacity evaluation in `select_next_target`, keeping incoming capsules safely parked in the projector intake dock whenever the endpoint reaches capacity or before an active endpoint node is established.
 4. **Bidirectional Backpressure Wakeup Propagation (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-queries.lua`):** Extended `catch_in_receiver`, `wake_parked_capsules`, and `remove_capsule` to dispatch immediate targeted wakeups back to the sending facility's ports (`beam_owner`) whenever destination tube capacity frees up.
+
+
+### Revision: Kinetic Beam Obstruction Filtering & Resource Passthrough
+**Date:** 2026-09-10 18:45 (EDT)
+**Context:** Prevent Electromagnetic Projector beams and in-flight capsules from falsely terminating on non-blocking world entities such as ore deposits, corpses, and ambient creatures.
+**Key Changes:**
+1. **Ignorable Obstruction Entity Set (`scripts/flow/flow-engine.lua`):** Registered `IGNORABLE_TYPES` covering ground resources (`resource`), organic remains (`corpse`, `character-corpse`), mobile creatures (`unit`, `fish`), combat drones (`combat-robot`), munitions (`land-mine`), and transient visual proxies. Replaced the inline boolean evaluation in `flow_engine.check_tile_obstruction` with an exact $O(1)$ set lookup, allowing kinetic trajectories to pass freely across ore patches without collision or crash spillage.
+2. **Raycast Event Fast-Path Filtering (`scripts/flow/flow-engine.lua`):** Added `IGNORABLE_TYPES` and `PROXY_NAMES` early-exit checks to `notify_beam_obstruction_changed`, skipping ray-box intersection scans and avoiding queue wakeups when non-blocking world entities are created, depleted, or removed.
+3. **Automatic Live Endpoint Recovery (`scripts/flow/flow-engine.lua`):** Added a one-time migration sweep in `flow_engine.step` alongside startup scans in `flow_engine.init_storage` to re-enqueue all active kinetic endpoint nodes, immediately advancing existing savegame beams that were previously blocked by ore deposits.

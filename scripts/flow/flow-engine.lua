@@ -23,6 +23,35 @@ local PROXY_NAMES = {
     ["pneumatic-capsule-counter-green-proxy"] = true,
     ["pneumatic-projector-circuit-proxy"] = true
 }
+local IGNORABLE_TYPES = {
+    ["resource"] = true,
+    ["entity-ghost"] = true,
+    ["tile-ghost"] = true,
+    ["character"] = true,
+    ["car"] = true,
+    ["spider-vehicle"] = true,
+    ["unit"] = true,
+    ["fish"] = true,
+    ["item-entity"] = true,
+    ["flying-robot"] = true,
+    ["logistic-robot"] = true,
+    ["construction-robot"] = true,
+    ["combat-robot"] = true,
+    ["projectile"] = true,
+    ["smoke"] = true,
+    ["smoke-with-trigger"] = true,
+    ["sticker"] = true,
+    ["highlight-box"] = true,
+    ["speech-bubble"] = true,
+    ["corpse"] = true,
+    ["character-corpse"] = true,
+    ["fire"] = true,
+    ["particle"] = true,
+    ["leaf-particle"] = true,
+    ["item-request-proxy"] = true,
+    ["deconstructible-tile-proxy"] = true,
+    ["land-mine"] = true
+}
 
 local OWNER_PALETTE = {
     {r = 0.30, g = 0.85, b = 0.70}, -- Teal
@@ -214,6 +243,13 @@ function flow_engine.init_storage()
     -- Electromagnetic Projector Fields
     storage.active_projectors = storage.active_projectors or {}
     storage.projector_power_states = storage.projector_power_states or {}
+    if storage.flow_nodes then
+        for pkey, node in pairs(storage.flow_nodes) do
+            if node and node.is_kinetic and node.is_endpoint then
+                flow_engine.enqueue_port(pkey)
+            end
+        end
+    end
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -788,20 +824,7 @@ function flow_engine.check_tile_obstruction(surface, tx, ty, sender_entity)
             local cand_name = cand.name
             local cand_type = cand.type
 
-            local is_ignorable = (cand_type == "entity-ghost")
-                or (cand_type == "character")
-                or (cand_type == "car")
-                or (cand_type == "spider-vehicle")
-                or (cand_type == "item-entity")
-                or (cand_type == "flying-robot")
-                or (cand_type == "logistic-robot")
-                or (cand_type == "construction-robot")
-                or (cand_type == "projectile")
-                or (cand_type == "smoke-with-trigger")
-                or (cand_type == "sticker")
-                or (cand_type == "highlight-box")
-                or (cand_type == "speech-bubble")
-                or (PROXY_NAMES[cand_name] == true)
+            local is_ignorable = (IGNORABLE_TYPES[cand_type] == true) or (PROXY_NAMES[cand_name] == true)
 
             if not is_ignorable then
                 if cand_name == "pneumatic-projector" then
@@ -1149,6 +1172,7 @@ end
 
 function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
     if not (entity and entity.valid and entity.bounding_box and storage.active_projectors) then return end
+    if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
     local bb = entity.bounding_box
     local surf_name = entity.surface.name
 
@@ -1231,6 +1255,16 @@ function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
 end
 
 function flow_engine.step(tick)
+    if not storage.kinetic_ore_obstruction_fixed then
+        storage.kinetic_ore_obstruction_fixed = true
+        if storage.flow_nodes then
+            for pkey, node in pairs(storage.flow_nodes) do
+                if node and node.is_kinetic and node.is_endpoint then
+                    flow_engine.enqueue_port(pkey)
+                end
+            end
+        end
+    end
     if storage.active_gates then
         for unit_number, gate in pairs(storage.active_gates) do
             if gate and gate.valid then

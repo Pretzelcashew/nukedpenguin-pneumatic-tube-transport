@@ -763,7 +763,8 @@ function flow_engine.draw_all(player_index)
     flow_engine.draw_all_counters(player_index)
 end
 
-local function check_tile_obstruction(surface, tx, ty, sender_entity)
+function flow_engine.check_tile_obstruction(surface, tx, ty, sender_entity)
+    if not (surface and surface.valid) then return { blocked = false, is_receiver = false } end
     local candidates = surface.find_entities_filtered{
         area = {{tx - 0.45, ty - 0.45}, {tx + 0.45, ty + 0.45}}
     }
@@ -811,6 +812,15 @@ local function compute_port_kinetic_level(pkey)
     end
 
     if not node.is_kinetic then return 0 end
+
+    local surface = game.surfaces[node.surface_name]
+    if surface and surface.valid then
+        local owner_entity = storage.active_projectors and storage.active_projectors[node.beam_owner or node.unit_number]
+        local occ = flow_engine.check_tile_obstruction(surface, node.pos.x, node.pos.y, owner_entity)
+        if occ.blocked then
+            return 0
+        end
+    end
 
     local max_upstream = 0
     local neighbors = storage.flow_connections and storage.flow_connections[pkey]
@@ -1274,6 +1284,16 @@ function flow_engine.step(tick)
 
                 if node then
                     local surface = game.surfaces[node.surface_name]
+
+                    -- Terminal endpoint check at maximum reach
+                    if target_kinetic == 1 and not node.is_muzzle then
+                        node.is_endpoint = true
+                        node.is_prominent_kinetic = true
+                        node.is_beam_node = true
+                        node.capsule_transmit = true
+                        node.hit_receiver = nil
+                    end
+
                     update_kinetic_pos_render(
                         node.pos_key,
                         node.pos,
@@ -1302,7 +1322,7 @@ function flow_engine.step(tick)
                             local nx = node.pos.x + node.dir.x
                             local ny = node.pos.y + node.dir.y
                             local owner_entity = storage.active_projectors and storage.active_projectors[node.beam_owner or node.unit_number]
-                            local occ = check_tile_obstruction(surface, nx, ny, owner_entity)
+                            local occ = flow_engine.check_tile_obstruction(surface, nx, ny, owner_entity)
 
                             local next_dist = (node.dist or 0) + 1
                             local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
@@ -1311,6 +1331,9 @@ function flow_engine.step(tick)
 
                             if occ.blocked then
                                 node.is_endpoint = true
+                                node.is_prominent_kinetic = true
+                                node.is_beam_node = true
+                                node.capsule_transmit = true
                                 node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
                                 update_kinetic_pos_render(
                                     node.pos_key,
@@ -1321,6 +1344,7 @@ function flow_engine.step(tick)
                                     occ.is_receiver,
                                     node.q_level
                                 )
+                                wake_port_parked(pkey)
                             else
                                 storage.flow_nodes[next_pkey] = {
                                     unit_number = node.beam_owner or node.unit_number,
@@ -1541,18 +1565,15 @@ local function handle_entity_reorientation(entity)
     local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
 
     if real_name == "pneumatic-projector" then
-        -- Immediately update settings so get_ports resolves the new rotation
         local dev_id = projector_settings.get_device_id(entity)
         if dev_id then
             projector_settings.set_muzzle_direction(dev_id, entity.direction)
         end
 
-        -- Disconnect old muzzle & intake ports, severing previous beam which now recedes in flow_queue
         if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
             flow_engine.disconnect_entity(entity)
         end
 
-        -- Reconnect entity with new direction, establishing new muzzle port in flow_queue
         flow_engine.connect_entity(entity)
     elseif registered_entities[real_name] then
         if storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] then
@@ -1701,6 +1722,25 @@ end
 function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
     local unit_number = entity.unit_number
+
+    -- Immediate deconstruction lifecycle purge for projector beam nodes & render objects
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        for pkey, node in pairs(storage.flow_nodes or {}) do
+            if node and node.beam_owner == unit_number and not node.is_muzzle then
+                destroy_kinetic_pos_render(node.pos_key)
+                if storage.flow_grid and storage.flow_grid[node.pos_key] then
+                    storage.flow_grid[node.pos_key][pkey] = nil
+                    if next(storage.flow_grid[node.pos_key]) == nil then
+                        storage.flow_grid[node.pos_key] = nil
+                    end
+                end
+                if storage.flow_connections then storage.flow_connections[pkey] = nil end
+                if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end
+                storage.flow_nodes[pkey] = nil
+                wake_port_parked(pkey)
+            end
+        end
+    end
 
     if storage.active_projectors then storage.active_projectors[unit_number] = nil end
     if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
@@ -1933,10 +1973,10 @@ function flow_engine.register_events()
     for _, event_id in ipairs(build_events) do
         events.on_event(event_id, function(event)
             local entity = event.entity or event.destination
-            if not (entity and entity.valid and entity.unit_number) then return end
+            if not (entity and entity.valid) then return end
             if entity.name == "entity-ghost" then return end
 
-            local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+            local real_name = entity.name
 
             if registered_entities[real_name] then
                 flow_engine.connect_entity(entity)
@@ -1959,6 +1999,32 @@ function flow_engine.register_events()
                         end
                     end
                 end
+            else
+                -- General entity placement: check if new structure occludes active kinetic beam nodes
+                if storage.flow_grid and entity.bounding_box then
+                    local bb = entity.bounding_box
+                    local min_x = math.floor(bb.left_top.x + 0.5)
+                    local max_x = math.floor(bb.right_bottom.x + 0.5)
+                    local min_y = math.floor(bb.left_top.y + 0.5)
+                    local max_y = math.floor(bb.right_bottom.y + 0.5)
+                    local surf_name = entity.surface.name
+
+                    for gx = min_x, max_x do
+                        for gy = min_y, max_y do
+                            local pkey_check = make_pos_key(surf_name, gx, gy)
+                            local grid_ports = storage.flow_grid[pkey_check]
+                            if grid_ports then
+                                for pkey in pairs(grid_ports) do
+                                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                                    if node and node.is_kinetic then
+                                        flow_engine.enqueue_port(pkey)
+                                        wake_port_parked(pkey)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end)
     end
@@ -1978,6 +2044,34 @@ function flow_engine.register_events()
             local entity = event.entity
             if entity and entity.valid then
                 flow_engine.disconnect_entity(entity)
+
+                -- If an obstacle blocking a beam was removed, wake and re-evaluate intersecting beam endpoints
+                if storage.flow_grid and entity.bounding_box then
+                    local bb = entity.bounding_box
+                    local min_x = math.floor(bb.left_top.x + 0.5)
+                    local max_x = math.floor(bb.right_bottom.x + 0.5)
+                    local min_y = math.floor(bb.left_top.y + 0.5)
+                    local max_y = math.floor(bb.right_bottom.y + 0.5)
+                    local surf_name = entity.surface.name
+
+                    for gx = min_x, max_x do
+                        for gy = min_y, max_y do
+                            local pkey_check = make_pos_key(surf_name, gx, gy)
+                            local grid_ports = storage.flow_grid[pkey_check]
+                            if grid_ports then
+                                for pkey in pairs(grid_ports) do
+                                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                                    if node and node.is_kinetic then
+                                        node.is_endpoint = false
+                                        node.hit_receiver = nil
+                                        flow_engine.enqueue_port(pkey)
+                                        wake_port_parked(pkey)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end)
     end

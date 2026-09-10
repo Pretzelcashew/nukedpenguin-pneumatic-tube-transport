@@ -8,7 +8,7 @@ local capsule_queries = {}
 local port_info_cache = {}
 
 --- Efficiently gets unit_number and port_index from a port_key string without repeated string allocations
---- Supports standard "unit:port", beam numeric "unit:101", and legacy "unit:b1" formats
+--- Supports standard "unit:port", direction-scoped beam "kinetic:unit:dx,dy:dist", and numeric beam formats
 --- @param port_key string|nil
 --- @return number|nil unit_number
 --- @return number|nil port_index
@@ -17,6 +17,28 @@ function capsule_queries.get_port_info(port_key)
     local info = port_info_cache[port_key]
     if info then
         return info.unit_number, info.port_index
+    end
+
+    local node = storage.flow_nodes and storage.flow_nodes[port_key]
+    if node and node.unit_number and node.port_index then
+        info = { unit_number = node.unit_number, port_index = node.port_index }
+        port_info_cache[port_key] = info
+        return node.unit_number, node.port_index
+    end
+
+    if string.sub(port_key, 1, 8) == "kinetic:" then
+        local c2 = string.find(port_key, ":", 9, true)
+        if c2 then
+            local u_num = tonumber(string.sub(port_key, 9, c2 - 1))
+            local c3 = string.find(port_key, ":", c2 + 1, true)
+            local dist = c3 and tonumber(string.sub(port_key, c3 + 1))
+            local p_idx = 100 + (dist or 0)
+            if u_num then
+                info = { unit_number = u_num, port_index = p_idx }
+                port_info_cache[port_key] = info
+                return u_num, p_idx
+            end
+        end
     end
 
     local colon = string.find(port_key, ":", 1, true)
@@ -379,7 +401,7 @@ function capsule_queries.get_capsule_count_at_entity(unit_number)
             local cap = storage.capsules[cap_id]
             local pkey = cap and cap.from_port_key
             local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
-            if node and not node.is_beam_node then
+            if node and not (node.is_beam_node or node.is_kinetic) then
                 physical_count = physical_count + 1
             end
         end

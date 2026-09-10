@@ -34,6 +34,7 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
     storage.active_capsules[capsule_id] = {
         holder = holder_entity,
         type = def.type,
+        capsule_type = capsule_item_name,
         definition = def,
         primary_slot = primary_slot,
         position = { x = pos.x, y = pos.y },

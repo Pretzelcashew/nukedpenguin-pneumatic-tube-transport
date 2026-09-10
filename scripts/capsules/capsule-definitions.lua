@@ -35,6 +35,7 @@ end
 
 capsule_definitions.types = {
     ["item-capsule"] = {
+        name = "item-capsule",
         type = "capsule",
         debug_color = { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }, -- Metallic Gold
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
@@ -59,6 +60,7 @@ capsule_definitions.types = {
         }
     },
     ["biodegradable-capsule"] = {
+        name = "biodegradable-capsule",
         type = "capsule",
         debug_color = { r = 0.2, g = 0.9, b = 0.2, a = 0.9 }, -- Emerald Green
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot (2 bio items or 1 inorganic)
@@ -85,6 +87,7 @@ capsule_definitions.types = {
         }
     },
     ["refrigerated-capsule"] = {
+        name = "refrigerated-capsule",
         type = "capsule",
         debug_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.9 }, -- Frost Cyan
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
@@ -112,6 +115,7 @@ capsule_definitions.types = {
         }
     },
     ["spent-refrigerated-capsule"] = {
+        name = "spent-refrigerated-capsule",
         type = "capsule",
         debug_color = { r = 0.6, g = 0.65, b = 0.7, a = 0.9 }, -- Slate Grey
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
@@ -137,6 +141,7 @@ capsule_definitions.types = {
         }
     },
     ["reinforced-capsule"] = {
+        name = "reinforced-capsule",
         type = "capsule",
         debug_color = { r = 0.8, g = 0.3, b = 1.0, a = 0.9 }, -- Violet Purple
         cargo_capacity = 2,                 -- Exactly 2 net cargo slots
@@ -160,6 +165,7 @@ capsule_definitions.types = {
         }
     },
     ["electromagnetic-capsule"] = {
+        name = "electromagnetic-capsule",
         type = "capsule",
         debug_color = { r = 0.85, g = 0.35, b = 0.95, a = 0.9 }, -- Holmium Pink-Magenta
         cargo_capacity = 1,                 -- Exactly 1 base net cargo slot
@@ -183,6 +189,7 @@ capsule_definitions.types = {
         }
     },
     ["vacuum-capsule"] = {
+        name = "vacuum-capsule",
         type = "capsule",
         debug_color = { r = 0.3, g = 0.5, b = 0.95, a = 0.9 }, -- Deep Vacuum Blue
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
@@ -209,6 +216,7 @@ capsule_definitions.types = {
         }
     },
     ["spent-vacuum-capsule"] = {
+        name = "spent-vacuum-capsule",
         type = "capsule",
         debug_color = { r = 0.4, g = 0.45, b = 0.6, a = 0.9 }, -- Dim Vacuum Slate
         cargo_capacity = 1,                 -- Exactly 1 net cargo slot
@@ -232,6 +240,7 @@ capsule_definitions.types = {
         }
     },
     ["player-transit-capsule"] = {
+        name = "player-transit-capsule",
         type = "capsule",
         is_player_transit = true,
         debug_color = { r = 1.0, g = 0.4, b = 0.1, a = 0.9 }, -- Crimson Orange

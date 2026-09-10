@@ -219,6 +219,15 @@ function flow_engine.init_storage()
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
     storage.kinetic_renders = storage.kinetic_renders or {}
+    for k, v in pairs(storage.kinetic_renders) do
+        if type(k) == "string" then
+            if type(v) == "table" then
+                if v.dot and v.dot.valid then v.dot.destroy() end
+                if v.ring and v.ring.valid then v.ring.destroy() end
+            end
+            storage.kinetic_renders[k] = nil
+        end
+    end
     storage.kinetic_levels = storage.kinetic_levels or {}
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
@@ -422,66 +431,137 @@ local function destroy_edge_render(edge_key, player_index)
     end
 end
 
-local function destroy_kinetic_pos_render(pkey)
+local function destroy_kinetic_pos_render(pkey, player_index)
     if not (pkey and storage.kinetic_renders) then return end
-    local entry = storage.kinetic_renders[pkey]
-    if entry then
-        if entry.dot and entry.dot.valid then entry.dot.destroy() end
-        if entry.ring and entry.ring.valid then entry.ring.destroy() end
-        storage.kinetic_renders[pkey] = nil
-    end
-end
-
-local function update_kinetic_pos_render(pkey, pos, surface, is_prominent, is_endpoint, is_receiver, q_level)
-    destroy_kinetic_pos_render(pkey)
-    if not (surface and surface.valid and pos) then return end
-
-    local palette = QUALITY_BEAM_PALETTE[q_level or 0] or QUALITY_BEAM_PALETTE[0]
-    storage.kinetic_renders = storage.kinetic_renders or {}
-
-    local dot_obj = nil
-    local ring_obj = nil
-
-    if is_prominent then
-        dot_obj = rendering.draw_circle{
-            color = palette.core,
-            radius = 0.16,
-            filled = true,
-            target = pos,
-            surface = surface,
-            only_in_alt_mode = true
-        }
+    if player_index then
+        local p_renders = storage.kinetic_renders[player_index]
+        if p_renders and p_renders[pkey] then
+            local entry = p_renders[pkey]
+            if entry.dot and entry.dot.valid then entry.dot.destroy() end
+            if entry.ring and entry.ring.valid then entry.ring.destroy() end
+            p_renders[pkey] = nil
+        end
     else
-        dot_obj = rendering.draw_circle{
-            color = MINOR_DOT_COLOR,
-            radius = 0.08,
-            filled = true,
-            target = pos,
-            surface = surface,
-            only_in_alt_mode = true
-        }
+        for _, p_renders in pairs(storage.kinetic_renders) do
+            if type(p_renders) == "table" and p_renders[pkey] then
+                local entry = p_renders[pkey]
+                if entry.dot and entry.dot.valid then entry.dot.destroy() end
+                if entry.ring and entry.ring.valid then entry.ring.destroy() end
+                p_renders[pkey] = nil
+            end
+        end
     end
-
-    if is_endpoint then
-        local ring_color = is_receiver
-            and {r = 0.20, g = 0.90, b = 1.00, a = 0.90}
-            or  {r = 1.00, g = 0.35, b = 0.20, a = 0.90}
-        local ring_radius = is_receiver and 0.35 or 0.30
-
-        ring_obj = rendering.draw_circle{
-            color = ring_color,
-            radius = ring_radius,
-            filled = false,
-            width = 2,
-            target = pos,
-            surface = surface,
-            only_in_alt_mode = true
-        }
-    end
-
-    storage.kinetic_renders[pkey] = { dot = dot_obj, ring = ring_obj }
 end
 
+local function update_kinetic_pos_render(pkey, player_index)
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+    local level = storage.kinetic_levels and storage.kinetic_levels[pkey] or 0
+
+    if not node or level == 0 or not node.is_kinetic then
+        destroy_kinetic_pos_render(pkey, player_index)
+        return
+    end
+
+    local surface = game.surfaces[node.surface_name]
+    if not (surface and surface.valid and node.pos) then
+        destroy_kinetic_pos_render(pkey, player_index)
+        return
+    end
+
+    local q_level = node.q_level or 0
+    local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
+    local is_prominent = (node.is_prominent_kinetic == true)
+    local is_endpoint = (node.is_endpoint == true)
+    local is_receiver = (node.hit_receiver ~= nil)
+    local pos = node.pos
+
+    local function draw_for_player(player, p_idx)
+        if is_debug_active("new_flow", p_idx) then
+            storage.kinetic_renders[p_idx] = storage.kinetic_renders[p_idx] or {}
+            local p_renders = storage.kinetic_renders[p_idx]
+
+            local current = p_renders[pkey]
+            if current and current.dot and current.dot.valid
+               and ((not is_endpoint and not current.ring) or (is_endpoint and current.ring and current.ring.valid))
+               and (current.is_prominent == is_prominent)
+               and (current.is_receiver == is_receiver)
+               and (current.q_level == q_level) then
+                return
+            end
+
+            destroy_kinetic_pos_render(pkey, p_idx)
+
+            local dot_obj = nil
+            local ring_obj = nil
+
+            if is_prominent then
+                dot_obj = rendering.draw_circle{
+                    color = palette.core,
+                    radius = 0.16,
+                    filled = true,
+                    target = pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+            else
+                dot_obj = rendering.draw_circle{
+                    color = MINOR_DOT_COLOR,
+                    radius = 0.08,
+                    filled = true,
+                    target = pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+            end
+
+            if is_endpoint then
+                local ring_color = is_receiver
+                    and {r = 0.20, g = 0.90, b = 1.00, a = 0.90}
+                    or  {r = 1.00, g = 0.35, b = 0.20, a = 0.90}
+                local ring_radius = is_receiver and 0.35 or 0.30
+
+                ring_obj = rendering.draw_circle{
+                    color = ring_color,
+                    radius = ring_radius,
+                    filled = false,
+                    width = 2,
+                    target = pos,
+                    surface = surface,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+            end
+
+            p_renders[pkey] = {
+                dot = dot_obj,
+                ring = ring_obj,
+                is_prominent = is_prominent,
+                is_receiver = is_receiver,
+                q_level = q_level
+            }
+        else
+            destroy_kinetic_pos_render(pkey, p_idx)
+        end
+    end
+
+    if player_index then
+        local player = game.get_player(player_index)
+        if player and player.valid then
+            draw_for_player(player, player_index)
+        end
+    else
+        if not is_debug_active("new_flow") then
+            destroy_kinetic_pos_render(pkey)
+            return
+        end
+
+        for _, player in pairs(game.players) do
+            draw_for_player(player, player.index)
+        end
+    end
+end
 local function get_dominant_port_at_pos(pos_key)
     local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
     if not grid_ports then return nil, 0 end
@@ -745,18 +825,26 @@ function flow_engine.clear_flow_renders(player_index)
             end
             storage.flow_edge_renders[player_index] = {}
         end
+        if storage.kinetic_renders and storage.kinetic_renders[player_index] then
+            for pkey, entry in pairs(storage.kinetic_renders[player_index]) do
+                if entry.dot and entry.dot.valid then entry.dot.destroy() end
+                if entry.ring and entry.ring.valid then entry.ring.destroy() end
+            end
+            storage.kinetic_renders[player_index] = {}
+        end
     else
         for _, player in pairs(game.players) do
             flow_engine.clear_flow_renders(player.index)
         end
-    end
-
-    if storage.kinetic_renders then
-        for pkey, entry in pairs(storage.kinetic_renders) do
-            if entry.dot and entry.dot.valid then entry.dot.destroy() end
-            if entry.ring and entry.ring.valid then entry.ring.destroy() end
+        if storage.kinetic_renders then
+            for k, v in pairs(storage.kinetic_renders) do
+                if type(k) == "string" and type(v) == "table" then
+                    if v.dot and v.dot.valid then v.dot.destroy() end
+                    if v.ring and v.ring.valid then v.ring.destroy() end
+                    storage.kinetic_renders[k] = nil
+                end
+            end
         end
-        storage.kinetic_renders = {}
     end
 end
 
@@ -803,6 +891,12 @@ function flow_engine.draw_flow(player_index)
                     end
                 end
             end
+        end
+    end
+
+    if storage.kinetic_levels then
+        for pkey in pairs(storage.kinetic_levels) do
+            update_kinetic_pos_render(pkey, player_index)
         end
     end
 end
@@ -1434,15 +1528,7 @@ function flow_engine.step(tick)
                         node.is_beam_node = true
                         node.capsule_transmit = true
                         node.hit_receiver = nil
-                        update_kinetic_pos_render(
-                            pkey,
-                            node.pos,
-                            surface,
-                            node.is_prominent_kinetic,
-                            true,
-                            false,
-                            node.q_level
-                        )
+                        update_kinetic_pos_render(pkey)
                         wake_port_parked(pkey)
                     elseif target_kinetic > 1 and node.dir then
                         local nx = node.pos.x + node.dir.x
@@ -1456,15 +1542,7 @@ function flow_engine.step(tick)
                             node.is_beam_node = true
                             node.capsule_transmit = true
                             node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
-                            update_kinetic_pos_render(
-                                pkey,
-                                node.pos,
-                                surface,
-                                node.is_prominent_kinetic,
-                                true,
-                                occ.is_receiver,
-                                node.q_level
-                            )
+                            update_kinetic_pos_render(pkey)
                             wake_port_parked(pkey)
 
                             if occ.is_receiver and occ.receiver and occ.receiver.unit_number then
@@ -1531,15 +1609,7 @@ function flow_engine.step(tick)
                             wake_port_parked(pkey)
                             wake_port_parked(next_pkey)
 
-                            update_kinetic_pos_render(
-                                pkey,
-                                node.pos,
-                                surface,
-                                node.is_prominent_kinetic,
-                                false,
-                                false,
-                                node.q_level
-                            )
+                            update_kinetic_pos_render(pkey)
 
                             if is_prom then
                                 local owner_unit = node.beam_owner or node.unit_number
@@ -1560,27 +1630,9 @@ function flow_engine.step(tick)
                         node.is_prominent_kinetic = node_is_prom
                         node.is_beam_node = node_is_prom
                         node.capsule_transmit = node_is_prom
-                        if surface and surface.valid then
-                            update_kinetic_pos_render(
-                                pkey,
-                                node.pos,
-                                surface,
-                                node_is_prom,
-                                false,
-                                false,
-                                node.q_level
-                            )
-                        end
+                        update_kinetic_pos_render(pkey)
                     elseif kinetic_changed then
-                        update_kinetic_pos_render(
-                            pkey,
-                            node.pos,
-                            surface,
-                            node.is_prominent_kinetic,
-                            node.is_endpoint,
-                            node.hit_receiver ~= nil,
-                            node.q_level
-                        )
+                        update_kinetic_pos_render(pkey)
                     end
                 end
             else

@@ -11,6 +11,9 @@ local BATCH_SIZE = 50
 local INTEROP_BATCH_SIZE = 10
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
+local BASE_PROJECTOR_RANGE = 50
+local BASE_PROJECTOR_PRESSURE = 10
+local HOP_DISTANCE = 5
 
 local OWNER_PALETTE = {
     {r = 0.30, g = 0.85, b = 0.70}, -- Teal (counter primary)
@@ -45,10 +48,18 @@ local function make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
 end
 
+local function make_beam_port_key(unit_number, hop_index)
+    return tostring(unit_number) .. ":b" .. tostring(hop_index)
+end
+
 local function make_pos_key(surface_name, x, y)
     local rx = math.floor(x * 10 + 0.5) / 10
     local ry = math.floor(y * 10 + 0.5) / 10
     return string.format("%s@%.1f,%.1f", surface_name, rx, ry)
+end
+
+local function make_tile_key(surface_name, tx, ty)
+    return string.format("%s@%d,%d", surface_name, math.floor(tx), math.floor(ty))
 end
 
 local function make_edge_key(key_a, key_b)
@@ -187,6 +198,13 @@ function flow_engine.init_storage()
     storage.wall_locked_group = storage.wall_locked_group or {}
     storage.soft_interop_registry = storage.soft_interop_registry or {}
     storage.interop_activation_queue = storage.interop_activation_queue or {}
+
+    -- Electromagnetic Projector Kinetic Domain Storage
+    storage.active_projectors = storage.active_projectors or {}
+    storage.projector_beams = storage.projector_beams or {}
+    storage.kinetic_beam_tiles = storage.kinetic_beam_tiles or {}
+    storage.kinetic_levels = storage.kinetic_levels or {}
+    storage.projector_power_states = storage.projector_power_states or {}
 end
 
 function flow_engine.enqueue_port(pkey)
@@ -276,7 +294,28 @@ function flow_engine.get_node_emitter_level(node)
         end
     end
 
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        local proj_entity = storage.active_projectors[unit_number]
+        if not (proj_entity and proj_entity.valid) then return 0 end
+
+        local power_state = storage.projector_power_states and storage.projector_power_states[unit_number]
+        local is_powered = (power_state ~= nil) and power_state or (proj_entity.energy > 0)
+        if not is_powered then return 0 end
+
+        return node.emitter
+    end
+
     return node.emitter
+end
+
+function flow_engine.get_kinetic_level(pkey)
+    if not (pkey and storage.kinetic_levels) then return 0 end
+    return storage.kinetic_levels[pkey] or 0
+end
+
+function flow_engine.get_projector_beam(unit_number)
+    if not (unit_number and storage.projector_beams) then return nil end
+    return storage.projector_beams[unit_number]
 end
 
 local function destroy_pos_renders(pos_key, player_index)
@@ -664,6 +703,345 @@ function flow_engine.draw_all(player_index)
     flow_engine.draw_all_counters(player_index)
 end
 
+function flow_engine.clear_projector_beam(unit_number)
+    if not (unit_number and storage.projector_beams) then return end
+    local beam = storage.projector_beams[unit_number]
+    if not beam then return end
+
+    if beam.hop_keys then
+        for _, hop_pkey in ipairs(beam.hop_keys) do
+            local hop_node = storage.flow_nodes and storage.flow_nodes[hop_pkey]
+            if hop_node then
+                local pos_key = hop_node.pos_key
+                if storage.flow_grid and storage.flow_grid[pos_key] then
+                    storage.flow_grid[pos_key][hop_pkey] = nil
+                    if next(storage.flow_grid[pos_key]) == nil then
+                        storage.flow_grid[pos_key] = nil
+                    end
+                end
+            end
+
+            local neighbors = storage.flow_connections and storage.flow_connections[hop_pkey]
+            if neighbors then
+                for n_key in pairs(neighbors) do
+                    if storage.flow_connections[n_key] then
+                        storage.flow_connections[n_key][hop_pkey] = nil
+                        if next(storage.flow_connections[n_key]) == nil then
+                            storage.flow_connections[n_key] = nil
+                        end
+                    end
+                    wake_port_parked(n_key)
+                end
+                storage.flow_connections[hop_pkey] = nil
+            end
+
+            if storage.flow_nodes then storage.flow_nodes[hop_pkey] = nil end
+            if storage.kinetic_levels then storage.kinetic_levels[hop_pkey] = nil end
+            wake_port_parked(hop_pkey)
+        end
+    end
+
+    if storage.kinetic_beam_tiles and beam.tile_keys then
+        for _, tkey in ipairs(beam.tile_keys) do
+            local projs = storage.kinetic_beam_tiles[tkey]
+            if projs then
+                projs[unit_number] = nil
+                if next(projs) == nil then
+                    storage.kinetic_beam_tiles[tkey] = nil
+                end
+            end
+        end
+    end
+
+    local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if u_ports and beam.hop_keys then
+        local hop_set = {}
+        for _, hk in ipairs(beam.hop_keys) do hop_set[hk] = true end
+        local filtered = {}
+        for _, pk in ipairs(u_ports) do
+            if not hop_set[pk] then
+                filtered[#filtered + 1] = pk
+            end
+        end
+        storage.flow_unit_ports[unit_number] = filtered
+    end
+
+    storage.projector_beams[unit_number] = nil
+end
+
+function flow_engine.update_projector_beam(unit_number, ignore_entity)
+    if not unit_number then return end
+    local entity = storage.active_projectors and storage.active_projectors[unit_number]
+    if not (entity and entity.valid) then
+        flow_engine.clear_projector_beam(unit_number)
+        return
+    end
+
+    local power_state = storage.projector_power_states and storage.projector_power_states[unit_number]
+    local is_powered = (power_state ~= nil) and power_state or (entity.energy > 0)
+    if not is_powered then
+        flow_engine.clear_projector_beam(unit_number)
+        return
+    end
+
+    local ports = port_defs.get_ports(entity)
+    if not ports then
+        flow_engine.clear_projector_beam(unit_number)
+        return
+    end
+
+    local muzzle_port_idx = nil
+    local muzzle_port = nil
+    for idx, port in ipairs(ports) do
+        if port.kinetic_transmit == true or port.is_muzzle == true then
+            muzzle_port_idx = idx
+            muzzle_port = port
+            break
+        end
+    end
+
+    if not (muzzle_port_idx and muzzle_port and muzzle_port.dir) then
+        flow_engine.clear_projector_beam(unit_number)
+        return
+    end
+
+    local dx = muzzle_port.dir.x or 0
+    local dy = muzzle_port.dir.y or 0
+    if dx == 0 and dy == 0 then
+        flow_engine.clear_projector_beam(unit_number)
+        return
+    end
+
+    flow_engine.clear_projector_beam(unit_number)
+
+    local muzzle_pkey = make_port_key(unit_number, muzzle_port_idx)
+    local surface = entity.surface
+    local surface_name = surface.name
+    local ex, ey = entity.position.x, entity.position.y
+    local mx = ex + muzzle_port.offset.x
+    local my = ey + muzzle_port.offset.y
+
+    local q = entity.quality
+    local q_level = (q and q.level) or 0
+    local max_range = math.floor(BASE_PROJECTOR_RANGE * (1 + 0.3 * q_level))
+    local max_pressure = math.floor(BASE_PROJECTOR_PRESSURE * (1 + 0.3 * q_level))
+
+    local target_x = mx + dx * max_range
+    local target_y = my + dy * max_range
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(mx, target_x)
+        max_x = math.max(mx, target_x)
+        min_y = my - 0.4
+        max_y = my + 0.4
+    else
+        min_x = mx - 0.4
+        max_x = mx + 0.4
+        min_y = math.min(my, target_y)
+        max_y = math.max(my, target_y)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local ignore_unit = (ignore_entity and ignore_entity.valid) and ignore_entity.unit_number or nil
+    local closest_dist = max_range
+    local hit_receiver = nil
+    local is_severed = false
+
+    for _, cand in ipairs(candidates) do
+        if cand.valid and cand ~= entity and cand ~= ignore_entity and cand.unit_number ~= ignore_unit then
+            local cand_name = cand.name
+            local cand_type = cand.type
+
+            local is_ignorable = (cand_type == "entity-ghost")
+                or (cand_type == "character")
+                or (cand_type == "car")
+                or (cand_type == "spider-vehicle")
+                or (cand_name:find("%-proxy$") ~= nil)
+
+            if not is_ignorable then
+                local cbox = cand.bounding_box or cand.selection_box
+                local dist = nil
+
+                if cand_name == "pneumatic-projector" then
+                    if dx == 1 then
+                        dist = (cand.position.x - 1.5) - mx
+                    elseif dx == -1 then
+                        dist = mx - (cand.position.x + 1.5)
+                    elseif dy == 1 then
+                        dist = (cand.position.y - 1.5) - my
+                    elseif dy == -1 then
+                        dist = my - (cand.position.y + 1.5)
+                    end
+                else
+                    if cbox then
+                        if dx == 1 then
+                            dist = cbox.left_top.x - mx
+                        elseif dx == -1 then
+                            dist = mx - cbox.right_bottom.x
+                        elseif dy == 1 then
+                            dist = cbox.left_top.y - my
+                        elseif dy == -1 then
+                            dist = my - cbox.right_bottom.y
+                        end
+                    else
+                        local cx, cy = cand.position.x, cand.position.y
+                        dist = (dx ~= 0) and ((cx - mx) * dx) or ((cy - my) * dy)
+                    end
+                end
+
+                if dist and dist > 0.05 and dist <= closest_dist then
+                    closest_dist = dist
+                    if cand_name == "pneumatic-projector" then
+                        hit_receiver = cand
+                        is_severed = false
+                    else
+                        hit_receiver = nil
+                        is_severed = true
+                    end
+                end
+            end
+        end
+    end
+
+    local beam_length = math.min(max_range, closest_dist)
+    if beam_length < 0.5 then
+        beam_length = 0
+        is_severed = true
+    end
+
+    local hop_keys = {}
+    local tile_keys = {}
+
+    if beam_length >= 0.5 then
+        local primary_hops = math.floor(beam_length / HOP_DISTANCE)
+        local hop_distances = {}
+
+        for h = 1, primary_hops do
+            local d = h * HOP_DISTANCE
+            if d <= beam_length then
+                hop_distances[#hop_distances + 1] = d
+            end
+        end
+
+        local last_hop_d = (primary_hops > 0) and (primary_hops * HOP_DISTANCE) or 0
+        if (beam_length - last_hop_d) >= 0.5 then
+            hop_distances[#hop_distances + 1] = beam_length
+        end
+
+        local prev_key = muzzle_pkey
+        storage.kinetic_levels[muzzle_pkey] = max_pressure
+
+        for hop_idx, dist_h in ipairs(hop_distances) do
+            local hx = mx + dx * dist_h
+            local hy = my + dy * dist_h
+            local hop_pkey = make_beam_port_key(unit_number, hop_idx)
+            local pos_key = make_pos_key(surface_name, hx, hy)
+            local is_endpoint = (hop_idx == #hop_distances)
+            local k_level = math.max(1, max_pressure - (hop_idx - 1))
+
+            storage.flow_nodes[hop_pkey] = {
+                unit_number = unit_number,
+                port_index = 100 + hop_idx,
+                pos_key = pos_key,
+                pos = {x = hx, y = hy},
+                surface_name = surface_name,
+                group = 1,
+                capsule_transmit = true,
+                pressure_transmit = false,
+                sense_transmit = false,
+                kinetic_transmit = true,
+                cross_transit = false,
+                is_beam_node = true,
+                beam_owner = unit_number,
+                hop_index = hop_idx,
+                dist = dist_h,
+                is_endpoint = is_endpoint,
+                hit_receiver = is_endpoint and (hit_receiver and hit_receiver.unit_number) or nil
+            }
+
+            storage.kinetic_levels[hop_pkey] = k_level
+
+            storage.flow_connections[prev_key] = storage.flow_connections[prev_key] or {}
+            storage.flow_connections[hop_pkey] = storage.flow_connections[hop_pkey] or {}
+            storage.flow_connections[prev_key][hop_pkey] = true
+            storage.flow_connections[hop_pkey][prev_key] = true
+
+            hop_keys[#hop_keys + 1] = hop_pkey
+            storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
+            table.insert(storage.flow_unit_ports[unit_number], hop_pkey)
+
+            prev_key = hop_pkey
+        end
+
+        local total_tiles = math.ceil(beam_length)
+        storage.kinetic_beam_tiles = storage.kinetic_beam_tiles or {}
+        for d = 0, total_tiles do
+            local tx = math.floor(mx + dx * d)
+            local ty = math.floor(my + dy * d)
+            local tkey = make_tile_key(surface_name, tx, ty)
+            storage.kinetic_beam_tiles[tkey] = storage.kinetic_beam_tiles[tkey] or {}
+            storage.kinetic_beam_tiles[tkey][unit_number] = true
+            tile_keys[#tile_keys + 1] = tkey
+        end
+    end
+
+    storage.projector_beams[unit_number] = {
+        unit_number = unit_number,
+        muzzle_pos = {x = mx, y = my},
+        dx = dx,
+        dy = dy,
+        length = beam_length,
+        max_range = max_range,
+        max_pressure = max_pressure,
+        is_severed = is_severed,
+        hit_receiver_unit = hit_receiver and hit_receiver.unit_number or nil,
+        terminal_pos = {x = mx + dx * beam_length, y = my + dy * beam_length},
+        hop_keys = hop_keys,
+        tile_keys = tile_keys
+    }
+
+    wake_port_parked(muzzle_pkey)
+    for _, hk in ipairs(hop_keys) do
+        wake_port_parked(hk)
+    end
+end
+
+local function get_entity_affected_projectors(entity)
+    if not (entity and entity.valid and storage.kinetic_beam_tiles) then return nil end
+    local surface_name = entity.surface.name
+    local bbox = entity.bounding_box or entity.selection_box
+    if not bbox then
+        local tx = math.floor(entity.position.x)
+        local ty = math.floor(entity.position.y)
+        local tkey = make_tile_key(surface_name, tx, ty)
+        return storage.kinetic_beam_tiles[tkey]
+    end
+
+    local min_tx = math.floor(bbox.left_top.x)
+    local max_tx = math.floor(bbox.right_bottom.x)
+    local min_ty = math.floor(bbox.left_top.y)
+    local max_ty = math.floor(bbox.right_bottom.y)
+
+    local affected = nil
+    for tx = min_tx, max_tx do
+        for ty = min_ty, max_ty do
+            local tkey = make_tile_key(surface_name, tx, ty)
+            local projs = storage.kinetic_beam_tiles[tkey]
+            if projs then
+                affected = affected or {}
+                for u_num in pairs(projs) do
+                    affected[u_num] = true
+                end
+            end
+        end
+    end
+    return affected
+end
+
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if entity.name == "entity-ghost" then return end
@@ -701,12 +1079,14 @@ function flow_engine.connect_entity(entity)
     elseif entity.name == "gate" then
         storage.active_gates = storage.active_gates or {}
         storage.active_gates[unit_number] = entity
-        -- State tracking is dynamically driven by step() polling
     elseif entity.name == "pneumatic-capsule-counter" then
         storage.active_counters = storage.active_counters or {}
         storage.active_counters[unit_number] = entity
         storage.counter_power_states = storage.counter_power_states or {}
         storage.counter_power_states[unit_number] = (entity.energy > 0)
+    elseif real_name == "pneumatic-projector" then
+        storage.active_projectors = storage.active_projectors or {}
+        storage.active_projectors[unit_number] = entity
     end
 
     storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
@@ -717,6 +1097,8 @@ function flow_engine.connect_entity(entity)
         local pos_key = make_pos_key(surface_name, px, py)
 
         storage.flow_unit_ports[unit_number][port_index] = pkey
+
+        local is_muzzle_port = (port.kinetic_transmit == true)
 
         storage.flow_nodes[pkey] = {
             unit_number = unit_number,
@@ -732,6 +1114,7 @@ function flow_engine.connect_entity(entity)
             capsule_transmit = (port.capsule_transmit == true),
             pressure_transmit = (port.pressure_transmit == true),
             sense_transmit = (port.sense_transmit == true),
+            kinetic_transmit = is_muzzle_port,
             cross_transit = (port.cross_transit == true)
         }
 
@@ -740,15 +1123,18 @@ function flow_engine.connect_entity(entity)
         for existing_pkey in pairs(storage.flow_grid[pos_key]) do
             local existing_node = storage.flow_nodes[existing_pkey]
             if existing_node and existing_node.unit_number ~= unit_number then
-                storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
-                storage.flow_connections[existing_pkey] = storage.flow_connections[existing_pkey] or {}
+                local compatible = not (is_muzzle_port or existing_node.kinetic_transmit)
+                if compatible then
+                    storage.flow_connections[pkey] = storage.flow_connections[pkey] or {}
+                    storage.flow_connections[existing_pkey] = storage.flow_connections[existing_pkey] or {}
 
-                storage.flow_connections[pkey][existing_pkey] = true
-                storage.flow_connections[existing_pkey][pkey] = true
+                    storage.flow_connections[pkey][existing_pkey] = true
+                    storage.flow_connections[existing_pkey][pkey] = true
 
-                flow_engine.enqueue_port(existing_pkey)
-                wake_port_parked(existing_pkey)
-                wake_port_parked(pkey)
+                    flow_engine.enqueue_port(existing_pkey)
+                    wake_port_parked(existing_pkey)
+                    wake_port_parked(pkey)
+                end
             end
         end
 
@@ -757,12 +1143,22 @@ function flow_engine.connect_entity(entity)
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
     end
+
+    if real_name == "pneumatic-projector" then
+        flow_engine.update_projector_beam(unit_number)
+    end
 end
 
 function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
 
     local unit_number = entity.unit_number
+
+    if storage.active_projectors and storage.active_projectors[unit_number] then
+        flow_engine.clear_projector_beam(unit_number)
+        storage.active_projectors[unit_number] = nil
+        if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
+    end
 
     if storage.soft_interop_registry then
         storage.soft_interop_registry[unit_number] = nil
@@ -812,6 +1208,7 @@ function flow_engine.disconnect_entity(entity)
 
             if storage.flow_levels then storage.flow_levels[pkey] = nil end
             if storage.counter_levels then storage.counter_levels[pkey] = nil end
+            if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end
             if storage.flow_nodes then storage.flow_nodes[pkey] = nil end
 
             update_pos_render(pos_key)
@@ -933,6 +1330,8 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.gate_open_states then storage.gate_open_states[unit_number] = nil end
     if storage.gate_cutoff_states then storage.gate_cutoff_states[unit_number] = nil end
     if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
+    if storage.active_projectors then storage.active_projectors[unit_number] = nil end
+    if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
 end
 
 local function compute_port_counter_level(pkey)
@@ -1092,7 +1491,6 @@ local function compute_port_flow_level(pkey)
     end
 end
 
--- Strictly single-entity localized lazy discovery when a wavefront port expands to an unregistered entity.
 local function discover_adjacent_standard_entity(node)
     if not (node and node.pos and node.surface_name) then return end
     local surface = game.surfaces[node.surface_name]
@@ -1225,7 +1623,6 @@ function flow_engine.handle_interop_research_reversed(force)
 end
 
 function flow_engine.step(tick)
-    -- Poll state changes on active fence gates (terminators cut off physical capsule and pressure flow)
     if storage.active_gates then
         for unit_number, gate in pairs(storage.active_gates) do
             if gate and gate.valid then
@@ -1257,7 +1654,6 @@ function flow_engine.step(tick)
                                 if p_node then
                                     p_node.capsule_transmit = false
                                     p_node.pressure_transmit = false
-                                    -- sense_transmit remains true
                                 end
                             end
                         end
@@ -1283,7 +1679,6 @@ function flow_engine.step(tick)
         end
     end
 
-    -- Process enqueued soft-registered interop entities in rate-limited batches across ticks
     if storage.interop_activation_queue and next(storage.interop_activation_queue) ~= nil then
         local batch = {}
         local count = 0
@@ -1335,7 +1730,6 @@ function flow_engine.step(tick)
     for i = 1, batch_count do
         local pkey = batch[i]
 
-        -- Evaluate Pressure Flow
         local target_flow = compute_port_flow_level(pkey)
         local current_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
         local flow_changed = (target_flow ~= current_flow)
@@ -1353,7 +1747,6 @@ function flow_engine.step(tick)
             end
         end
 
-        -- Evaluate Counter Sensing Range
         local target_range, target_owner = compute_port_counter_level(pkey)
         local range_changed = set_port_counter_ownership(pkey, target_range, target_owner)
 
@@ -1364,7 +1757,6 @@ function flow_engine.step(tick)
             end
         end
 
-        -- Wall Axis Locking & Depressurization Waking Engine
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
         if node and storage.active_walls and storage.active_walls[node.unit_number] then
             local u_num = node.unit_number
@@ -1432,7 +1824,6 @@ function flow_engine.step(tick)
             end
         end
 
-        -- Unresearched Interop Demotion when Flow and Sensing Reach Equilibrium (0)
         if node then
             local u_num = node.unit_number
             local is_wall_entity = storage.active_walls and storage.active_walls[u_num]
@@ -1468,7 +1859,6 @@ function flow_engine.step(tick)
             end
         end
 
-        -- Propagation & Lazy Discovery via Wavefront Queue
         if flow_changed or range_changed then
             if node then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
@@ -1626,6 +2016,16 @@ function flow_engine.register_events()
                     end
                 end
             end
+
+            -- Truncate active kinetic beams when an obstacle or building is placed in their path
+            local affected = get_entity_affected_projectors(entity)
+            if affected then
+                for u_num in pairs(affected) do
+                    if u_num ~= entity.unit_number then
+                        flow_engine.update_projector_beam(u_num)
+                    end
+                end
+            end
         end)
     end
 
@@ -1643,7 +2043,17 @@ function flow_engine.register_events()
         events.on_event(event_id, function(event)
             local entity = event.entity
             if entity and entity.valid then
+                local affected = get_entity_affected_projectors(entity)
                 flow_engine.disconnect_entity(entity)
+
+                -- Restore or extend truncated kinetic beams when a blocking structure is removed
+                if affected then
+                    for u_num in pairs(affected) do
+                        if u_num ~= entity.unit_number then
+                            flow_engine.update_projector_beam(u_num, entity)
+                        end
+                    end
+                end
             end
         end)
     end

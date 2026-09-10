@@ -619,4 +619,9 @@ proxy_manager.register_pair({
     end
 })
 
+proxy_manager.register_pair({
+    main_entity_name = "pneumatic-projector",
+    proxy_entity_name = "pneumatic-projector-circuit-proxy"
+})
+
 return proxy_manager

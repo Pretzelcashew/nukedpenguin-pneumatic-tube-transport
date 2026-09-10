@@ -7,6 +7,7 @@ local diverter_settings = require("scripts.diverter-settings")
 local counter_settings = require("scripts.counters.counter-settings")
 local counter_logic = require("scripts.counters.counter-logic")
 local diverter_renderer = require("scripts.diverter-renderer")
+local projector_settings = require("scripts.projector-settings")
 local util = require("util")
 
 local active_device_scanner = {}
@@ -22,7 +23,8 @@ local PROXY_NAMES = {
     ["pneumatic-pump-circuit-proxy"] = true,
     ["pneumatic-capsule-counter-circuit-proxy"] = true,
     ["pneumatic-capsule-counter-red-proxy"] = true,
-    ["pneumatic-capsule-counter-green-proxy"] = true
+    ["pneumatic-capsule-counter-green-proxy"] = true,
+    ["pneumatic-projector-circuit-proxy"] = true
 }
 
 local function get_spec_device_id(spec_name, entity)
@@ -33,6 +35,8 @@ local function get_spec_device_id(spec_name, entity)
         return pump_settings.get_device_id(entity)
     elseif spec_name == "pneumatic-capsule-counter" then
         return counter_settings.get_device_id(entity)
+    elseif spec_name == "pneumatic-projector" then
+        return projector_settings.get_device_id(entity)
     end
     return nil
 end
@@ -350,6 +354,61 @@ active_device_scanner.register_device_type({
     end
 })
 
+active_device_scanner.register_device_type({
+    name = "pneumatic-projector",
+    entity_names = { "pneumatic-projector" },
+    storage_key = "active_projectors",
+
+    init_settings = function(entity)
+        local dev_id = projector_settings.get_device_id(entity)
+        projector_settings.get(dev_id, entity)
+    end,
+
+    apply_blueprint_settings = function(entity, settings)
+        local dev_id = projector_settings.get_device_id(entity)
+        projector_settings.apply_blueprint_settings(dev_id, settings)
+    end,
+
+    on_rotate = function(entity, event)
+        local dev_id = projector_settings.get_device_id(entity)
+        if event.previous_direction ~= nil then
+            projector_settings.rotate_muzzle(dev_id, event.previous_direction, entity.direction)
+        end
+    end,
+
+    check_and_update_state = function(entity, forced)
+        local unit_number = entity.unit_number
+        storage.projector_power_states = storage.projector_power_states or {}
+        storage.projector_enabled_states = storage.projector_enabled_states or {}
+        storage.projector_muzzle_states = storage.projector_muzzle_states or {}
+
+        local is_powered = projector_settings.is_powered(entity)
+        local is_enabled = projector_settings.is_projector_enabled(entity)
+
+        local dev_id = projector_settings.get_device_id(entity)
+        local p_set = projector_settings.get(dev_id, entity)
+        local current_muzzle = p_set and p_set.muzzle_dir or entity.direction
+
+        local last_power = storage.projector_power_states[unit_number]
+        local last_enabled = storage.projector_enabled_states[unit_number]
+        local last_muzzle = storage.projector_muzzle_states[unit_number]
+
+        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or current_muzzle ~= last_muzzle then
+            storage.projector_power_states[unit_number] = is_powered
+            storage.projector_enabled_states[unit_number] = is_enabled
+            storage.projector_muzzle_states[unit_number] = current_muzzle
+            return true
+        end
+        return false
+    end,
+
+    on_unregister = function(entity, unit_number)
+        if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
+        if storage.projector_enabled_states then storage.projector_enabled_states[unit_number] = nil end
+        if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end
+    end
+})
+
 function active_device_scanner.register_events()
     events.on_event(defines.events.on_tick, function(event)
         if (event.tick % SCAN_INTERVAL) == 0 then
@@ -468,6 +527,8 @@ function active_device_scanner.register_events()
                                 copied = (diverter_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
                             elseif spec.name == "pneumatic-capsule-counter" then
                                 copied = (counter_settings.copy(ghost_id, target_dev_id) ~= nil)
+                            elseif spec.name == "pneumatic-projector" then
+                                copied = (projector_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
                             end
                         end
 
@@ -486,6 +547,8 @@ function active_device_scanner.register_events()
                             storage.pump_settings[ghost_id] = nil
                         elseif storage.counter_settings and spec.name == "pneumatic-capsule-counter" then
                             storage.counter_settings[ghost_id] = nil
+                        elseif storage.projector_settings and spec.name == "pneumatic-projector" then
+                            storage.projector_settings[ghost_id] = nil
                         end
                     elseif not target_is_ghost then
                         local existing_settings = nil
@@ -495,6 +558,8 @@ function active_device_scanner.register_events()
                             existing_settings = storage.diverter_settings[target_dev_id]
                         elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
                             existing_settings = storage.counter_settings[target_dev_id]
+                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
+                            existing_settings = storage.projector_settings[target_dev_id]
                         end
 
                         if existing_settings then
@@ -509,6 +574,8 @@ function active_device_scanner.register_events()
                                     copied = (diverter_settings.copy(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
                                 elseif spec.name == "pneumatic-capsule-counter" then
                                     copied = (counter_settings.copy(src_id, target_dev_id) ~= nil)
+                                elseif spec.name == "pneumatic-projector" then
+                                    copied = (projector_settings.copy(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
                                 end
                             end
 
@@ -527,6 +594,12 @@ function active_device_scanner.register_events()
                                         copied = true
                                     elseif spec.name == "pneumatic-capsule-counter" then
                                         counter_settings.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        copied = true
+                                    elseif spec.name == "pneumatic-projector" then
+                                        projector_settings.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        if cached.direction and cached.direction ~= target_entity.direction then
+                                            projector_settings.rotate_muzzle(target_dev_id, cached.direction, target_entity.direction)
+                                        end
                                         copied = true
                                     end
                                 end
@@ -642,6 +715,8 @@ function active_device_scanner.register_events()
                                 diverter_settings.copy(dev_id, dest_id, entity.direction, replacement.direction)
                             elseif spec.name == "pneumatic-capsule-counter" then
                                 counter_settings.copy(dev_id, dest_id)
+                            elseif spec.name == "pneumatic-projector" then
+                                projector_settings.copy(dev_id, dest_id, entity.direction, replacement.direction)
                             end
                         end
 
@@ -652,6 +727,8 @@ function active_device_scanner.register_events()
                             cur_settings = storage.diverter_settings[dev_id]
                         elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
                             cur_settings = storage.counter_settings[dev_id]
+                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
+                            cur_settings = storage.projector_settings[dev_id]
                         end
 
                         if cur_settings and pos_key then
@@ -673,6 +750,8 @@ function active_device_scanner.register_events()
                             storage.diverter_settings[dev_id] = nil
                         elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
                             storage.counter_settings[dev_id] = nil
+                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
+                            storage.projector_settings[dev_id] = nil
                         end
                     end
                     if spec.on_unregister then

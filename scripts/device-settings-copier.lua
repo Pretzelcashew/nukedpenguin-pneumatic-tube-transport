@@ -2,6 +2,7 @@ local events = require("scripts.events")
 local pump_settings = require("scripts.pump-settings")
 local diverter_settings = require("scripts.diverter-settings")
 local counter_settings = require("scripts.counters.counter-settings")
+local projector_settings = require("scripts.projector-settings")
 local hub_settings = require("scripts.hubs.hub-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local hub_manager = require("scripts.hubs.hub-manager")
@@ -25,7 +26,8 @@ local TARGET_NAMES = {
     ["pneumatic-diverter"] = true,
     ["pneumatic-capsule-counter"] = true,
     ["capsule-hub-horizontal"] = true,
-    ["capsule-hub-vertical"] = true
+    ["capsule-hub-vertical"] = true,
+    ["pneumatic-projector"] = true
 }
 
 local function resolve_target_entity(entity)
@@ -35,7 +37,7 @@ local function resolve_target_entity(entity)
     if TARGET_NAMES[name] then
         return entity
     end
-    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" or name == "pneumatic-capsule-counter-circuit-proxy" or name == "pneumatic-capsule-counter-red-proxy" or name == "pneumatic-capsule-counter-green-proxy" then
+    if name == "pneumatic-pump-circuit-proxy" or name == "pneumatic-diverter-circuit-proxy" or name == "pneumatic-capsule-counter-circuit-proxy" or name == "pneumatic-capsule-counter-red-proxy" or name == "pneumatic-capsule-counter-green-proxy" or name == "pneumatic-projector-circuit-proxy" then
         local main_name = name:gsub("%-circuit%-proxy", ""):gsub("%-red%-proxy", ""):gsub("%-green%-proxy", "")
         local main = entity.surface.find_entity(main_name, entity.position)
         if not (main and main.valid) then
@@ -374,6 +376,12 @@ local function apply_live_settings_copy(source, destination, player)
                 end
             end
 
+        elseif src_name == "pneumatic-projector" and dest_name == "pneumatic-projector" then
+            if projector_settings.copy(source_entity.unit_number, destination.unit_number, source_entity.direction, destination.direction) then
+                success = true
+                active_device_scanner.notify_settings_changed(destination)
+            end
+
         elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
             if hub_settings.copy(source_entity.unit_number, destination.unit_number) then
                 success = true
@@ -401,6 +409,15 @@ local function apply_live_settings_copy(source, destination, player)
                 return true
             elseif dest_name == "pneumatic-capsule-counter" then
                 counter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                active_device_scanner.notify_settings_changed(destination)
+                return true
+            elseif dest_name == "pneumatic-projector" then
+                if bp_direction and destination.direction ~= bp_direction then
+                    local prev_dir = destination.direction
+                    destination.direction = bp_direction
+                    projector_settings.rotate_muzzle(destination.unit_number, prev_dir, bp_direction)
+                end
+                projector_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif HUB_NAMES[dest_name] then
@@ -486,6 +503,9 @@ local function on_player_setup_blueprint(event)
             elseif name == "pneumatic-capsule-counter" then
                 proxy = counter_settings.get_proxy(entity)
                 proxy_name = "pneumatic-capsule-counter-circuit-proxy"
+            elseif name == "pneumatic-projector" then
+                proxy = projector_settings.get_proxy(entity)
+                proxy_name = "pneumatic-projector-circuit-proxy"
             end
 
             if proxy and proxy.valid and proxy.unit_number then
@@ -538,6 +558,11 @@ local function on_player_setup_blueprint(event)
                 local s = counter_settings.get(entity.unit_number)
                 if s then settings_copy = util.table.deepcopy(s) end
                 proxy = counter_settings.get_proxy(entity)
+
+            elseif name == "pneumatic-projector" then
+                local s = projector_settings.get(entity.unit_number)
+                if s then settings_copy = util.table.deepcopy(s) end
+                proxy = projector_settings.get_proxy(entity)
 
             elseif HUB_NAMES[name] then
                 local s = hub_settings.get(entity.unit_number)
@@ -595,7 +620,7 @@ local function on_player_setup_blueprint(event)
                                                 local src_conn_id = get_proxy_connector_id(connector_id)
                                                 local tgt_conn_id = target_conn.wire_connector_id
                                                 local target_owner_name = target_conn.owner.name
-                                                if target_owner_name == "pneumatic-pump-circuit-proxy" or target_owner_name == "pneumatic-diverter-circuit-proxy" or target_owner_name == "pneumatic-capsule-counter-circuit-proxy" then
+                                                if target_owner_name == "pneumatic-pump-circuit-proxy" or target_owner_name == "pneumatic-diverter-circuit-proxy" or target_owner_name == "pneumatic-capsule-counter-circuit-proxy" or target_owner_name == "pneumatic-projector-circuit-proxy" then
                                                     tgt_conn_id = get_proxy_connector_id(tgt_conn_id)
                                                 end
 
@@ -671,6 +696,8 @@ function device_settings_copier.process_entity_built_wire_tags(entity, tags)
         target_for_wiring = diverter_settings.get_proxy(entity) or entity
     elseif name == "pneumatic-capsule-counter" then
         target_for_wiring = counter_settings.get_proxy(entity) or entity
+    elseif name == "pneumatic-projector" then
+        target_for_wiring = projector_settings.get_proxy(entity) or entity
     end
 
     if not (target_for_wiring and target_for_wiring.valid) then return end
@@ -699,6 +726,8 @@ function device_settings_copier.process_entity_built_wire_tags(entity, tags)
                     cand_target = diverter_settings.get_proxy(candidate) or candidate
                 elseif cand_name == "pneumatic-capsule-counter" then
                     cand_target = counter_settings.get_proxy(candidate) or candidate
+                elseif cand_name == "pneumatic-projector" then
+                    cand_target = projector_settings.get_proxy(candidate) or candidate
                 end
 
                 if cand_target and cand_target.valid and cand_target ~= target_for_wiring then

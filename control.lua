@@ -15,6 +15,7 @@ require("scripts.pump-gui")
 require("scripts.counters.counter-settings")
 require("scripts.counters.counter-gui")
 require("scripts.counters.counter-logic")
+require("scripts.projector-settings")
 require("scripts.capsules.capsule-runner")
 require("scripts.capsules.capsule-inputs")
 
@@ -52,6 +53,11 @@ local function setup_storage()
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_settings = storage.counter_settings or {}
+    storage.active_projectors = storage.active_projectors or {}
+    storage.projector_settings = storage.projector_settings or {}
+    storage.projector_power_states = storage.projector_power_states or {}
+    storage.projector_enabled_states = storage.projector_enabled_states or {}
+    storage.projector_muzzle_states = storage.projector_muzzle_states or {}
 
     liminal_surface.init_storage()
 
@@ -97,6 +103,8 @@ local function setup_storage()
                 if entity.name == "pneumatic-capsule-counter" then
                     storage.active_counters[entity.unit_number] = entity
                     counter_range.register_counter(entity)
+                elseif entity.name == "pneumatic-projector" then
+                    storage.active_projectors[entity.unit_number] = entity
                 end
             end
         end

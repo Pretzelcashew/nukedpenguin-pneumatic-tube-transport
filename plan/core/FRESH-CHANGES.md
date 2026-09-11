@@ -20,3 +20,11 @@
 4. **Active Scanner & Settings Copier (`scripts/active-device-scanner.lua`, `scripts/device-settings-copier.lua`):** Updated all consumer imports for pump, diverter, and projector configuration handlers to reference the modular subdirectories.
 5. **Capsule Motion & Projector Ballistics (`scripts/capsules/capsule-runner.lua`):** Updated diverter and projector settings dependencies to point to the new modular locations.
 6. **Device Domain Modules (`scripts/diverters/`, `scripts/pumps/`):** Synchronized intra-module requires across `diverter-gui.lua`, `diverter-renderer.lua`, and `pump-gui.lua` to load sibling settings files cleanly.
+
+
+### Revision: Purge Obsolete Pre-Unified Proxy Linkage Files
+**Date:** 2026-09-11 19:03 EDT
+**Context:** Purged legacy standalone proxy linkage scripts from prototypes/entities/ that were rendered obsolete by the centralized runtime proxy-manager.lua engine. Verified zero active references across prototype and runtime stages, removing dead code without impacting proxy behavior.
+**Key Changes:**
+1. **Diverter Proxy Linkage (`prototypes/entities/pneumatic-diverter-proxy-linkage.lua`):** Deleted unreferenced legacy linkage script superseded by unified proxy lifecycle handlers in `proxy-manager.lua`.
+2. **Pump Proxy Linkage (`prototypes/entities/pneumatic-pump-proxy-linkage.lua`):** Deleted unreferenced legacy linkage script superseded by unified proxy lifecycle handlers in `proxy-manager.lua`.

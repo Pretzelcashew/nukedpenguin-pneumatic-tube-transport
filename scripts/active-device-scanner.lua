@@ -381,9 +381,11 @@ active_device_scanner.register_device_type({
         storage.projector_power_states = storage.projector_power_states or {}
         storage.projector_enabled_states = storage.projector_enabled_states or {}
         storage.projector_muzzle_states = storage.projector_muzzle_states or {}
+        storage.projector_ready_states = storage.projector_ready_states or {}
 
         local is_powered = projector_settings.is_powered(entity)
         local is_enabled = projector_settings.is_projector_enabled(entity)
+        local is_ready = projector_settings.can_fire(entity)
 
         local dev_id = projector_settings.get_device_id(entity)
         local p_set = projector_settings.get(dev_id, entity)
@@ -392,13 +394,16 @@ active_device_scanner.register_device_type({
         local last_power = storage.projector_power_states[unit_number]
         local last_enabled = storage.projector_enabled_states[unit_number]
         local last_muzzle = storage.projector_muzzle_states[unit_number]
+        local last_ready = storage.projector_ready_states[unit_number]
 
         local muzzle_changed = (current_muzzle ~= last_muzzle)
+        local ready_changed = (is_ready ~= last_ready)
 
-        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or muzzle_changed then
+        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or muzzle_changed or ready_changed then
             storage.projector_power_states[unit_number] = is_powered
             storage.projector_enabled_states[unit_number] = is_enabled
             storage.projector_muzzle_states[unit_number] = current_muzzle
+            storage.projector_ready_states[unit_number] = is_ready
 
             if muzzle_changed and entity.valid and not (entity.name == "entity-ghost") then
                 flow_engine.notify_beam_obstruction_changed(entity, true)
@@ -427,6 +432,8 @@ active_device_scanner.register_device_type({
         if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
         if storage.projector_enabled_states then storage.projector_enabled_states[unit_number] = nil end
         if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end
+        if storage.projector_ready_states then storage.projector_ready_states[unit_number] = nil end
+        if storage.projector_last_fired then storage.projector_last_fired[unit_number] = nil end
     end
 })
 

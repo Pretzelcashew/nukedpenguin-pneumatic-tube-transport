@@ -3,6 +3,8 @@ local util = require("util")
 local projector_settings = {}
 
 projector_settings.MINIMUM_ENERGY_JOULES = 3000000 -- 3 MW passive baseline (3 MJ stored)
+projector_settings.LAUNCH_ENERGY_JOULES = 9000000 -- 9 MJ full buffer firing capacitor
+projector_settings.RECHARGE_GRACE_TICKS = 180 -- Grace window for active beam while recharging
 projector_settings.MAX_ENDPOINT_CAPSULES = 2
 projector_settings.PROJECTILE_DAMAGE = 250
 
@@ -241,7 +243,35 @@ end
 function projector_settings.is_powered(entity)
     if not (entity and entity.valid) then return false end
     if entity.name == "entity-ghost" then return false end
-    return entity.energy >= projector_settings.MINIMUM_ENERGY_JOULES
+    if entity.electric_network_id == nil then return false end
+
+    if entity.energy >= projector_settings.MINIMUM_ENERGY_JOULES then
+        return true
+    end
+
+    local unit_number = entity.unit_number
+    if unit_number and storage.projector_last_fired and storage.projector_last_fired[unit_number] then
+        local ticks_since_fire = game.tick - storage.projector_last_fired[unit_number]
+        if ticks_since_fire >= 0 and ticks_since_fire <= projector_settings.RECHARGE_GRACE_TICKS then
+            return true
+        end
+    end
+
+    return false
+end
+
+function projector_settings.get_launch_energy(entity)
+    if entity and entity.valid and entity.electric_buffer_size then
+        return entity.electric_buffer_size
+    end
+    return projector_settings.LAUNCH_ENERGY_JOULES
+end
+
+function projector_settings.can_fire(entity)
+    if not (entity and entity.valid) then return false end
+    if entity.name == "entity-ghost" then return false end
+    local req = projector_settings.get_launch_energy(entity)
+    return entity.energy >= (req - 10000)
 end
 
 function projector_settings.is_projector_active(entity)

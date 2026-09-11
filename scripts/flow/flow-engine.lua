@@ -252,6 +252,8 @@ function flow_engine.init_storage()
     -- Electromagnetic Projector Fields
     storage.active_projectors = storage.active_projectors or {}
     storage.projector_power_states = storage.projector_power_states or {}
+    storage.projector_ready_states = storage.projector_ready_states or {}
+    storage.projector_last_fired = storage.projector_last_fired or {}
     if storage.flow_nodes then
         for pkey, node in pairs(storage.flow_nodes) do
             if node and node.is_kinetic and node.is_endpoint then
@@ -2023,6 +2025,8 @@ function flow_engine.disconnect_entity(entity)
 
     if storage.active_projectors then storage.active_projectors[unit_number] = nil end
     if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
+    if storage.projector_ready_states then storage.projector_ready_states[unit_number] = nil end
+    if storage.projector_last_fired then storage.projector_last_fired[unit_number] = nil end
 
     if storage.soft_interop_registry then
         storage.soft_interop_registry[unit_number] = nil
@@ -2245,6 +2249,8 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.wall_locked_group then storage.wall_locked_group[unit_number] = nil end
     if storage.active_projectors then storage.active_projectors[unit_number] = nil end
     if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
+    if storage.projector_ready_states then storage.projector_ready_states[unit_number] = nil end
+    if storage.projector_last_fired then storage.projector_last_fired[unit_number] = nil end
 end
 
 function flow_engine.register_events()

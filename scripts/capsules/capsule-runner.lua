@@ -844,6 +844,9 @@ function capsule_runner.select_next_target(capsule)
         if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
             return nil
         end
+        if not projector_settings.can_fire(proj_entity) then
+            return nil
+        end
 
         local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
         local muzzle_pkey = nil
@@ -887,6 +890,14 @@ function capsule_runner.select_next_target(capsule)
                     if surface and surface.valid then
                         local player_target = check_player_collision(surface, tx, ty, capsule)
                         if player_target then
+                            local launch_cost = projector_settings.get_launch_energy(proj_entity)
+                            proj_entity.energy = math.max(0, proj_entity.energy - launch_cost)
+                            storage.projector_last_fired = storage.projector_last_fired or {}
+                            storage.projector_last_fired[unit_number] = game.tick
+                            if storage.projector_ready_states then
+                                storage.projector_ready_states[unit_number] = false
+                            end
+
                             local q_lvl = muzzle_node.q_level or 0
                             local dmg = math.floor((projector_settings.PROJECTILE_DAMAGE or 250) * (1 + 0.3 * q_lvl))
                             local p_force = (proj_entity and proj_entity.valid and proj_entity.force) or (player_target.force) or "neutral"
@@ -901,6 +912,14 @@ function capsule_runner.select_next_target(capsule)
                     if cand_node and cand_level > 0 then
                         if cand_node.is_prominent_kinetic or cand_node.is_endpoint then
                             if capsule_runner.has_capacity(from_port_key, cand_key) then
+                                local launch_cost = projector_settings.get_launch_energy(proj_entity)
+                                proj_entity.energy = math.max(0, proj_entity.energy - launch_cost)
+                                storage.projector_last_fired = storage.projector_last_fired or {}
+                                storage.projector_last_fired[unit_number] = game.tick
+                                if storage.projector_ready_states then
+                                    storage.projector_ready_states[unit_number] = false
+                                end
+
                                 init_capsule_beam_flight(capsule, muzzle_node)
                                 return cand_key
                             end
@@ -912,7 +931,6 @@ function capsule_runner.select_next_target(capsule)
 
         return nil
     end
-
     local payload_item = capsule.dominant_item
     local payload_quality = capsule.dominant_quality or "normal"
     if not payload_item then

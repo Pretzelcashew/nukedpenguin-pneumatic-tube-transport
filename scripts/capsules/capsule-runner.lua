@@ -42,6 +42,56 @@ local scratch_best_is_ext = {}
 local scratch_best_count = 0
 
 local scratch_ports_to_wake = {}
+local scratch_player_targets = {}
+local scratch_player_target_count = 0
+
+local function prepare_player_targets()
+    scratch_player_target_count = 0
+    local connected = game.connected_players
+    if not connected or #connected == 0 then return end
+
+    for i = 1, #connected do
+        local player = connected[i]
+        local char = player.character
+        local veh = player.vehicle or player.physical_vehicle
+        local target = (veh and veh.valid and veh) or (char and char.valid and char)
+
+        if target and target.valid then
+            local bb = target.bounding_box
+            if bb then
+                scratch_player_target_count = scratch_player_target_count + 1
+                local entry = scratch_player_targets[scratch_player_target_count]
+                if not entry then
+                    entry = {}
+                    scratch_player_targets[scratch_player_target_count] = entry
+                end
+                entry.target = target
+                entry.player = player
+                entry.surface = target.surface
+                entry.min_x = bb.left_top.x - 0.45
+                entry.max_x = bb.right_bottom.x + 0.45
+                entry.min_y = bb.left_top.y - 0.45
+                entry.max_y = bb.right_bottom.y + 0.45
+            end
+        end
+    end
+end
+
+local function check_player_collision(surface, tx, ty, capsule)
+    if scratch_player_target_count == 0 or not surface then return nil end
+
+    for i = 1, scratch_player_target_count do
+        local pdata = scratch_player_targets[i]
+        if pdata and pdata.target and pdata.target.valid and pdata.surface == surface then
+            if not (capsule and capsule.passenger == pdata.player) then
+                if tx >= pdata.min_x and tx <= pdata.max_x and ty >= pdata.min_y and ty <= pdata.max_y then
+                    return pdata.target, pdata.player
+                end
+            end
+        end
+    end
+    return nil
+end
 
 local function make_beam_port_key(unit_number, dx, dy, dist)
     return string.format("kinetic:%d:%d,%d:%d", unit_number, math.floor(dx or 0), math.floor(dy or 0), dist)
@@ -723,8 +773,10 @@ function capsule_runner.select_next_target(capsule)
         local owner_entity = storage.active_projectors and storage.active_projectors[beam_owner]
 
         local next_prominent_key = nil
+        local next_prominent_key = nil
         local found_obstacle = nil
         local obstacle_pos = nil
+        local hit_player_entity = nil
 
         for d = cur_dist + 1, cur_dist + HOP_DISTANCE do
             local cand_key = make_beam_port_key(beam_owner, dir.x, dir.y, d)
@@ -733,6 +785,14 @@ function capsule_runner.select_next_target(capsule)
             local ty = current_node.pos.y + dir.y * (d - cur_dist)
 
             if surface and surface.valid then
+                local player_target = check_player_collision(surface, tx, ty, capsule)
+                if player_target then
+                    found_obstacle = player_target
+                    obstacle_pos = { x = tx, y = ty }
+                    hit_player_entity = player_target
+                    break
+                end
+
                 local occ = flow_engine.check_tile_obstruction(surface, tx, ty, owner_entity)
                 if occ.blocked and not occ.is_receiver then
                     found_obstacle = occ.obstacle or true
@@ -755,6 +815,12 @@ function capsule_runner.select_next_target(capsule)
         end
 
         if found_obstacle and obstacle_pos and surface and surface.valid then
+            if hit_player_entity and hit_player_entity.valid then
+                local q_lvl = (current_node and current_node.q_level) or 0
+                local dmg = math.floor((projector_settings.PROJECTILE_DAMAGE or 250) * (1 + 0.3 * q_lvl))
+                local p_force = (owner_entity and owner_entity.valid and owner_entity.force) or (hit_player_entity.force) or "neutral"
+                hit_player_entity.damage(dmg, p_force, "impact")
+            end
             mark_capsule_unparked(capsule)
             local crash_port_key = from_port_key
             hub_spill.spill_capsule(cap_id, surface, obstacle_pos, nil, true)
@@ -814,6 +880,23 @@ function capsule_runner.select_next_target(capsule)
                     local cand_key = make_beam_port_key(unit_number, dx, dy, d)
                     local cand_node = storage.flow_nodes and storage.flow_nodes[cand_key]
                     local cand_level = storage.kinetic_levels and storage.kinetic_levels[cand_key] or 0
+                    local tx = muzzle_node.pos.x + dx * d
+                    local ty = muzzle_node.pos.y + dy * d
+                    local surface = game.surfaces[muzzle_node.surface_name]
+
+                    if surface and surface.valid then
+                        local player_target = check_player_collision(surface, tx, ty, capsule)
+                        if player_target then
+                            local q_lvl = muzzle_node.q_level or 0
+                            local dmg = math.floor((projector_settings.PROJECTILE_DAMAGE or 250) * (1 + 0.3 * q_lvl))
+                            local p_force = (proj_entity and proj_entity.valid and proj_entity.force) or (player_target.force) or "neutral"
+                            player_target.damage(dmg, p_force, "impact")
+                            mark_capsule_unparked(capsule)
+                            hub_spill.spill_capsule(cap_id, surface, { x = tx, y = ty }, nil, true)
+                            capsule_runner.wake_parked_capsules(from_port_key)
+                            return nil
+                        end
+                    end
 
                     if cand_node and cand_level > 0 then
                         if cand_node.is_prominent_kinetic or cand_node.is_endpoint then
@@ -1049,6 +1132,12 @@ function capsule_runner.handle_arrival(capsule, id)
         else
             capsule.beam_flight = nil
             if surface and surface.valid and term_pos then
+                local player_target = check_player_collision(surface, term_pos.x, term_pos.y, capsule)
+                if player_target and player_target.valid then
+                    local dmg = projector_settings.PROJECTILE_DAMAGE or 250
+                    local p_force = (player_target.force) or "neutral"
+                    player_target.damage(dmg, p_force, "impact")
+                end
                 hub_spill.spill_capsule(id, surface, term_pos, nil, true)
             else
                 capsule_runner.remove_capsule(id)
@@ -1248,6 +1337,7 @@ function capsule_runner.update_capsules(current_tick)
     if not storage.capsules then return end
 
     capsule_renderer.prepare_frame()
+    prepare_player_targets()
 
     for id, capsule in pairs(storage.capsules) do
         local from_key = capsule.from_port_key
@@ -1266,6 +1356,7 @@ function capsule_runner.update_capsules(current_tick)
 
                     local obstructed = false
                     local obst_pos = nil
+                    local hit_player_entity = nil
                     if surface and surface.valid and capsule.last_pos and next_pos then
                         local sx, sy = capsule.last_pos.x, capsule.last_pos.y
                         local dx = (next_pos.x > sx and 1) or (next_pos.x < sx and -1) or 0
@@ -1274,6 +1365,15 @@ function capsule_runner.update_capsules(current_tick)
                         for step = 1, math.floor(steps) do
                             local cx = sx + dx * step
                             local cy = sy + dy * step
+
+                            local player_target = check_player_collision(surface, cx, cy, capsule)
+                            if player_target then
+                                obstructed = true
+                                obst_pos = { x = cx, y = cy }
+                                hit_player_entity = player_target
+                                break
+                            end
+
                             local occ = flow_engine.check_tile_obstruction(surface, cx, cy, nil)
                             if occ.blocked and not occ.is_receiver then
                                 obstructed = true
@@ -1284,6 +1384,11 @@ function capsule_runner.update_capsules(current_tick)
                     end
 
                     if obstructed and obst_pos and surface and surface.valid then
+                        if hit_player_entity and hit_player_entity.valid then
+                            local dmg = projector_settings.PROJECTILE_DAMAGE or 250
+                            local p_force = (hit_player_entity.force) or "neutral"
+                            hit_player_entity.damage(dmg, p_force, "impact")
+                        end
                         mark_capsule_unparked(capsule)
                         local dead_port_key = capsule.from_port_key
                         hub_spill.spill_capsule(id, surface, obst_pos, nil, true)

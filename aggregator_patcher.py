@@ -79,6 +79,7 @@ def run_aggregator(start_dir: Path):
                     if (
                         full_path == script_path
                         or full_path.name.startswith("aggregate")
+                        or full_path.name.endswith(".bak")
                     ):
                         continue
                     if full_path not in seen_paths:
@@ -132,7 +133,7 @@ class PatchOperation:
         self.lines = lines
 
     def sort_key(self):
-        return self.start_line
+        return (self.start_line, self.end_line)
 
 
 class FilePatch:
@@ -218,7 +219,6 @@ def parse_line_operations(body_text: str) -> list[PatchOperation]:
 
 
 def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[FilePatch]:
-    """Parses file-level actions (CREATE, DELETE, MOVE, MODIFY) and line-level diffs."""
     header_pattern = re.compile(
         r'^\s*(?:\*\*\*\s*)?(CREATE\s+FILE|NEW\s+FILE|DELETE\s+FILE|MOVE\s+FILE|RENAME\s+FILE|FILE):\s*(.*?)$',
         re.MULTILINE | re.IGNORECASE,
@@ -238,13 +238,11 @@ def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[File
         end_pos = matches[i + 1].start() if i + 1 < len(matches) else len(patch_text)
         body_text = patch_text[start_pos:end_pos].strip()
 
-        # 1. DELETE FILE
         if "DELETE" in raw_cmd:
             target = resolve_file_path(raw_arg, base_dir)
             file_patches.append(FilePatch("DELETE", target))
             continue
 
-        # 2. MOVE / RENAME FILE
         if "MOVE" in raw_cmd or "RENAME" in raw_cmd:
             parts = re.split(r'\s*(?:->|\bTO\b)\s*', raw_arg, flags=re.IGNORECASE)
             if len(parts) >= 2:
@@ -255,7 +253,6 @@ def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[File
                 file_patches.append(fp)
             continue
 
-        # 3. CREATE / NEW FILE
         if "CREATE" in raw_cmd or "NEW" in raw_cmd:
             target = resolve_file_path(raw_arg, base_dir)
             fp = FilePatch("CREATE", target)
@@ -271,11 +268,9 @@ def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[File
             file_patches.append(fp)
             continue
 
-        # 4. Standard FILE: header
         target = resolve_file_path(raw_arg, base_dir)
         fp = FilePatch("MODIFY", target)
 
-        # Block-level action fallbacks:
         if re.search(r"<<<\s*DELETE\s+FILE\s*>>>", body_text, re.IGNORECASE):
             fp.action = "DELETE"
             file_patches.append(fp)
@@ -305,7 +300,6 @@ def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[File
 
 
 def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
-    """Applies sorted line-level operations to an existing file."""
     if not target_path.exists():
         print(f"Error: Target file does not exist: {target_path}")
         return False
@@ -315,24 +309,31 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
         print(f"Error: Could not read file encoding: {target_path}")
         return False
 
-    ops.sort(key=lambda o: o.sort_key(), reverse=True)
+    bak_path = target_path.with_name(target_path.name + ".bak")
+    try:
+        with open(bak_path, "w", encoding="utf-8") as bak:
+            bak.writelines(orig_lines)
+    except Exception as e:
+        print(f"Warning: Could not create backup file: {e}")
+
+    ops.sort(key=lambda o: (o.start_line, o.end_line), reverse=True)
     modified_lines = list(orig_lines)
 
     for op in ops:
         if op.op_type in ("REPLACE", "DELETE"):
-            start_idx = op.start_line - 1
-            end_idx = op.end_line
-            if start_idx < 0 or start_idx > len(modified_lines):
+            start_idx = max(0, op.start_line - 1)
+            end_idx = min(len(modified_lines), max(start_idx, op.end_line))
+            if start_idx > len(modified_lines):
                 print(f"Warning: Line {op.start_line} is out of range for {target_path.name}")
                 continue
             modified_lines[start_idx:end_idx] = op.lines
 
         elif op.op_type == "INSERT_AFTER":
-            idx = op.start_line
+            idx = min(len(modified_lines), max(0, op.start_line))
             modified_lines[idx:idx] = op.lines
 
         elif op.op_type == "INSERT_BEFORE":
-            idx = max(0, op.start_line - 1)
+            idx = min(len(modified_lines), max(0, op.start_line - 1))
             modified_lines[idx:idx] = op.lines
 
     with open(target_path, "w", encoding="utf-8") as f:
@@ -342,14 +343,18 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
 
 
 def apply_patch(patch: FilePatch) -> bool:
-    """Dispatches and applies file-level or line-level patches."""
     if patch.action == "DELETE":
         if not patch.target_path.exists():
             print("SKIPPED (File does not exist)")
             return True
         try:
+            bak_path = patch.target_path.with_name(patch.target_path.name + ".bak")
+            orig_lines = read_file_lines(patch.target_path)
+            if orig_lines:
+                with open(bak_path, "w", encoding="utf-8") as bak:
+                    bak.writelines(orig_lines)
             patch.target_path.unlink()
-            print("DELETED")
+            print("DELETED (Backup created)")
             return True
         except Exception as e:
             print(f"FAILED ({e})")
@@ -398,6 +403,40 @@ def apply_patch(patch: FilePatch) -> bool:
             return False
 
     return False
+
+
+def run_restore(start_dir: Path):
+    print("\n--- RESTORE FROM BACKUPS (.bak) ---")
+    bak_files = [b for b in start_dir.rglob("*.bak") if ".git" not in b.parts]
+
+    if not bak_files:
+        print("No .bak backup files found.")
+        return
+
+    print(f"Found {len(bak_files)} backup file(s):")
+    for b in bak_files:
+        target = b.parent / b.name[:-4]
+        print(f"  • {b.name} -> {target.name}")
+
+    confirm = input("\nRestore all files from backups and remove .bak files? (y/n): ").strip().lower()
+    if confirm != "y":
+        print("Aborted.")
+        return
+
+    restored = 0
+    for b in bak_files:
+        target = b.parent / b.name[:-4]
+        try:
+            lines = read_file_lines(b)
+            if lines is not None:
+                with open(target, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+                b.unlink()
+                restored += 1
+        except Exception as e:
+            print(f"Error restoring {target.name}: {e}")
+
+    print(f"\nDone. Successfully restored {restored}/{len(bak_files)} file(s).")
 
 
 def run_patcher(start_dir: Path):
@@ -466,13 +505,16 @@ def main():
         print("=" * 60)
         print(" [1] Aggregate files into aggregate_N.txt")
         print(" [2] Apply AI patch/diffs (from patch.txt)")
+        print(" [3] Undo / Restore files from .bak backups")
         print(" [0] Exit")
-        choice = input("\nSelect an option [0-2]: ").strip()
+        choice = input("\nSelect an option [0-3]: ").strip()
 
         if choice == "1":
             run_aggregator(start_dir)
         elif choice == "2":
             run_patcher(start_dir)
+        elif choice == "3":
+            run_restore(start_dir)
         elif choice == "0":
             break
         else:

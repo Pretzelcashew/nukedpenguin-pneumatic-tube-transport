@@ -31,10 +31,32 @@ Once the user provides the aggregated files (which include absolute paths and 1-
    - **Create New File:** `*** CREATE FILE: <path>` (automatically creates parent directories)
    - **Delete Existing File:** `*** DELETE FILE: <path>`
    - **Move / Rename File:** `*** MOVE FILE: <source_path> -> <destination_path>` (can be immediately followed by line edits applied to the destination file)
-5. **Exact Line Numbers:** For modifications, line numbers must reflect the original source line numbers from the provided aggregate file.
+5. **Original Aggregate Line Numbers Only (Patcher Auto-Reverse Sorts):** 
+   - The patcher engine automatically sorts all operations in reverse/descending line order before modifying the file buffer.
+   - Because operations are applied from bottom to top, modifying later lines never alters line numbers of earlier lines.
+   - You MUST use the exact, original line numbers from the provided `aggregate_N.txt` for EVERY operation.
+   - **NEVER** calculate, predict, or apply manual offset math to subsequent operations in the same file.
 6. **Pure Source Delimiters:** Inside the code delimiter tags (`<<<` and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown tags, or file markers.
+7. **Surgical Granularity (No Block Collapsing):**
+   - Diff operations must target ONLY the specific property lines being modified, inserted, or removed.
+   - **NEVER** collapse multiple independent definitions, functions, or recipes across unchanged code into a single large `REPLACE LINES` block to avoid writing multiple hunks.
+   - Prefer `INSERT AFTER LINE <n>` or single-property `REPLACE LINES <n>-<n>` over replacing entire multi-line entity/table/function definitions.
+8. **Syntax & Table Boundary Invariance:**
+   - When modifying an entire entity, recipe, or table block, your `<start>` and `<end>` line numbers must encompass the complete syntactic block (from opening brace `{` to closing brace `},`).
+   - When modifying internal properties or variables, your `<start>` and `<end>` line numbers must be strictly bounded INSIDE the enclosing table/block without re-declaring outer braces.
 
-#### Required Output Format:
+---
+
+### Error Handling & Workspace State Protocol
+If the user reports a syntax error, patch failure, or engine crash:
+1. **Never guess line positions in a corrupted file.** Once lines are spliced incorrectly, line numbers no longer match `aggregate_N.txt`.
+2. Explicitly prompt the user to choose one of two recovery paths:
+   - **Option A (Clean Undo):** Restore the modified file via patcher option `[3]` or `git checkout <file>`.
+   - **Option B (Fresh Aggregate):** Run Option `[1]` in `aggregator_patcher.py` to produce a fresh `aggregate_N.txt` reflecting the current file state on disk before generating any new patch.
+
+---
+
+### Required Output Format
 [Your 3-sentence plan here as regular text]
 
 ```text

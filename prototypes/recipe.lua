@@ -30,17 +30,26 @@ data:extend({
   {
     type = "recipe",
     name = "refrigerated-capsule",
+    main_product = "refrigerated-capsule",
     categories = {"cryogenics"},
     enabled = false,
-    energy_required = 3.0,
+    energy_required = 10.0,
+    surface_conditions = {
+      {
+        property = "pressure",
+        min = 300,
+        max = 300
+      }
+    },
     ingredients = {
-      {type = "fluid", name = "fluoroketone-cold", amount = 125},
+      {type = "fluid", name = "fluoroketone-cold", amount = 100},
       {type = "item", name = "lithium-plate", amount = 8},
       {type = "item", name = "superconductor", amount = 10},
       {type = "item", name = "low-density-structure", amount = 2}
     },
     results = {
-      {type = "item", name = "refrigerated-capsule", amount = 1}
+      {type = "item", name = "refrigerated-capsule", amount = 1},
+      {type = "fluid", name = "fluoroketone-hot", amount = 100}
     }
   },
   {
@@ -70,6 +79,13 @@ data:extend({
     categories = {"metallurgy"},
     enabled = false,
     energy_required = 4.0,
+    surface_conditions = {
+      {
+        property = "pressure",
+        min = 4000,
+        max = 4000
+      }
+    },
     ingredients = {
       {type = "item", name = "tungsten-carbide", amount = 8},
       {type = "item", name = "low-density-structure", amount = 2}
@@ -84,6 +100,12 @@ data:extend({
     categories = {"electromagnetics"},
     enabled = false,
     energy_required = 4.0,
+    surface_conditions = {
+      {
+        property = "magnetic-field",
+        min = 99
+      }
+    },
     ingredients = {
       {type = "item", name = "superconductor", amount = 5},
       {type = "item", name = "low-density-structure", amount = 2},
@@ -99,6 +121,13 @@ data:extend({
     categories = {"crafting"},
     enabled = false,
     energy_required = 4.0,
+    surface_conditions = {
+      {
+        property = "pressure",
+        min = 0,
+        max = 0
+      }
+    },
     ingredients = {
       {type = "item", name = "processing-unit", amount = 2},
       {type = "item", name = "low-density-structure", amount = 2},
@@ -252,6 +281,12 @@ data:extend({
     categories = {"electromagnetics"},
     enabled = false,
     energy_required = 10.0,
+    surface_conditions = {
+      {
+        property = "magnetic-field",
+        min = 99
+      }
+    },
     ingredients = {
       {type = "item", name = "holmium-plate", amount = 25},
       {type = "item", name = "supercapacitor", amount = 10},

@@ -205,3 +205,11 @@
 **Key Changes:**
 1. **Script Destruction Raising & Event Fix (`scripts/hubs/hub-spill.lua`):** Passed `{ raise_destroy = true }` to `entity.destroy` calls across empty container cleanup and early-purge branches, and corrected the removal event listener from the nil constant `defines.script_raised_destroy` to `defines.events.script_raised_destroy`.
 2. **Script-Raised Obstruction Handling & Dock Wakeups (`scripts/flow/flow-engine.lua`):** Updated `removal_events` to listen to `defines.events.script_raised_destroy`, enabling ray-box intersection processing during programmatic container destruction, and added explicit projector intake port wakeups in `notify_beam_obstruction_changed` so queued capsules dispatch immediately once cleared.
+
+
+### Revision: Planetary Capsule Surface Conditions & Closed-Loop Refrigeration
+**Date:** 2026-09-10 22:45 (EDT)
+**Context:** Enforce planetary environment constraints across Space Age specialized capsules and the electromagnetic projector while establishing a net-zero fluoroketone thermal exchange for cryogenic manufacturing.
+**Key Changes:**
+1. **Planetary Surface Conditions (`prototypes/recipe.lua`):** Gated specialized capsule manufacturing by environmental properties: restricted `vacuum-capsule` to 0 pressure (space platforms), `reinforced-capsule` to 4000 hPa (Vulcanus), `refrigerated-capsule` to 300 hPa (Aquilo), and both `electromagnetic-capsule` and `pneumatic-projector` to at least 99% magnetic field (Fulgora). Preserved unrestricted crafting for single-use `biodegradable-capsule` and all capsule recharging recipes across all surfaces.
+2. **Closed-Loop Cryogenic Recipe & Cadence (`prototypes/recipe.lua`):** Increased `refrigerated-capsule` fabrication time from 3.0s to 10.0s (`energy_required = 10.0`), assigned explicit `main_product = "refrigerated-capsule"`, and balanced fluid throughput to consume 100 cold fluoroketone while returning 100 hot fluoroketone as a byproduct, eliminating net coolant loss during fabrication.

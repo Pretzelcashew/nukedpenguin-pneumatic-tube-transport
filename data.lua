@@ -5,10 +5,10 @@ require("prototypes.technology")
 require("prototypes.custom-input")
 require("prototypes.shortcut")
 
-require("prototypes.pneumatic-diverter")
-require("prototypes.pneumatic-pump-proxy")
-require("prototypes.pneumatic-capsule-counter")
-require("prototypes.pneumatic-projector")
+require("prototypes.entities.pneumatic-diverter")
+require("prototypes.entities.pneumatic-pump-proxy")
+require("prototypes.entities.pneumatic-capsule-counter")
+require("prototypes.entities.pneumatic-projector")
 
 data:extend({
     {

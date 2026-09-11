@@ -1,4 +1,27 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.21
+Date: 2026-09-11
+  Features:
+    - Added the Electromagnetic Projector (Fulgora): A 3x3 facility that shoots Electromagnetic Capsules through the air across open ground (up to 500 tiles).
+    - Projector Catchment: Aiming a projector at another projector catches incoming capsules and sends them directly into connected pneumatic tubes.
+    - Projector Circuit Proxy & GUI: Configure manual on/off toggles and circuit conditions to control when the projector is enabled.
+    - Projectile Hazards: In-flight capsules deal impact damage to players and vehicles on collision, and spill their items into temporary containers if they hit obstacles or unaligned receivers.
+    - Alt-Mode trajectory dots and connection indicators for projector ports.
+  Balancing:
+    - Firing a projector requires 9 MJ stored energy per shot and drains the capacitor, spacing out launches.
+    - Added launch backpressure: Projectors hold fire if the target receiver or endpoint has more than 2 capsules waiting.
+    - Normalized projectile flight speed to ~50 tiles/second (5 tiles every 6 ticks).
+    - Enforced planetary crafting conditions:
+      * Vacuum Capsules: Space platforms only (0 pressure).
+      * Reinforced Capsules: Vulcanus only (4000 hPa).
+      * Refrigerated Capsules: Aquilo only (300 hPa; now closed-loop 100 cold fluoroketone in / 100 hot fluoroketone out).
+      * Electromagnetic Capsules & Projectors: Fulgora only (>= 99% magnetic field).
+  Bugfixes:
+    - Fixed kinetic beams getting blocked by ground resources (ore patches), corpses, and small units.
+    - Fixed in-flight projectiles crashing or vanishing when the launching projector is mined or destroyed mid-flight.
+    - Fixed unpowered intake docks rejecting capsules from connected tube lines.
+    - Fixed projector visual dots disappearing when toggling flow debug overlays.
+---------------------------------------------------------------------------------------------------
 Version: 0.3.2
 Date: 2026-09-09
   Bugfixes:

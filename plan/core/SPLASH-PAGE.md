@@ -1,30 +1,59 @@
 # Pneumatic Tube Transport
 
-Fast, high-throughput item and player logistics via custom pressurized pipe networks. Route specialized capsules through pneumatic tubes, control flow with multi-port diverters, read network traffic with territorial capsule counters, and blast across your factory in personal transit capsules.
-
-### Key Features
-
-* **High-Performance v2 Flow Engine:** Powered by an event-driven delta wavefront architecture operating with zero-overhead (0-UPS) idle sleep. Propagates pressure differentials dynamically across discrete node hops with instant 0-tick queue advancement and zero Lua memory allocation during transit.
-* **Specialized Transit Capsules:**
-  * **Standard Capsules:** Reliable, quality-clamped multi-stack logistics backbone.
-  * **Biodegradable Capsules (Gleba):** High-yield single-use organic packaging crafted from basic Gleba staples that dissolves automatically upon destination delivery.
-  * **Refrigerated Capsules (Aquilo):** Cryogenically cooled shells that drastically slow spoilage (90% reduction) for perishable cargo during transit, featuring extended 10–25 minute lifespans and fluoroketone recharging.
-  * **Reinforced Capsules (Vulcanus):** Heavy-duty bulk shells forged in Foundries for high-volume single-item transit.
-  * **Electromagnetic Capsules (Fulgora):** High-tech containers built in Electromagnetic Plants offering stack-proportional fractional cargo capacity and unrestricted mixing of items, partial stacks, and quality tiers.
-  * **Vacuum Capsules (Space Science):** Automated belt-interface shells that siphon items directly from touching transport lines at negative pressure and exhaust/deposit items onto belts at positive pressure with near-lane sideloading and Gleba belt stacking.
-  * **Player Transit Capsules:** Hop inside the network to blast across your factory at extreme speeds (press `SHIFT + E` to emergency eject!).
-* **Pneumatic Capsule Counters & Circuit Monitoring:** Monitor tube traffic using territorial Capsule Counters. Automatically partitions tube networks into non-overlapping owned segments via sensing wavefronts and emits capsule counts, cargo tallies, and total vessel counts with 100% Red/Green channel isolation and zero signal bleed.
-* **Defensive Wall & Fence Gate Interoperability:** Research gate interoperability to route pneumatic networks directly through vanilla Stone Walls and Gates. Walls feature exclusive orthogonal axis locking to prevent cross-contamination, while gates dynamically sever transit and pressure upon opening without dropping counter sensing continuity.
-* **Smart Flow & Native Quality Filtering:** Route capsules through 4-port directional diverters featuring native Factorio 2.0 quality filter rules (`=`, `≥`, `≤`, `>`, `<`, `≠`, and Any Quality), 3x3 spatial arrow selectors, draggable modal draft editors, and native per-port copy-paste.
-* **1:1 Native Alt-Mode Overlays:** View network states at a glance with Alt-Mode flow vectors, spatial junction pressure markers, counter territory boundaries, and native inserter-parity 2x2 diverter port filter clusters with solid black shadow backings and prominent blacklist indicators.
-* **Full Blueprint, Ghost & Copy-Paste Parity:** Full native support for Shift + Right/Left Click settings copying, direction-aware step rotations, atomic blueprint wire reconstruction, and full configuration inheritance across ghost placement, fast-replace, and robot quality upgrades.
-* **Hub Circuit & Item Integration:** Configure container hubs with manual toggles, binary capsule nesting controls, or red/green circuit network conditions. Outbound dispatches strictly enforce positive pressure differentials to eliminate deadhead traffic, while cargo transfers preserve 100% of item quality, spoilage, durability, ammo, and installed equipment grids.
-* **Space Age Integration:** Fully integrated technology tree supporting Space Age science progression across Nauvis, Vulcanus, Gleba, Fulgora, and Aquilo, featuring signature planetary machine bonuses and clean 20-capsule rocket shipping capacities.
+Move items and players across your factory through pressurized tube networks. Build pipe lines, set up diverter junctions with item and quality filters, launch capsules through the air with electromagnetic projectors, and read network traffic with capsule counters.
 
 ---
 
-### Developer Note
+### What's New in 0.3.21
+* **Electromagnetic Projector (Fulgora):** Launch Electromagnetic Capsules across open air directly into remote receiving projectors up to 500 tiles away.
+* **Capacitor Firing Cadence:** Projectors require 9 MJ stored power per shot and pause automatically if the destination dock is backed up.
+* **Flight Hazards:** Don't stand in the beam path—flying projectiles deal impact damage to players and vehicles on collision.
+* **Planetary Recipe Requirements:** Specialized capsules now require their matching Space Age planetary environments to craft (Vacuum on platforms, Reinforced on Vulcanus, Refrigerated on Aquilo, and Electromagnetic on Fulgora).
 
-I vibe coded this entire mod using AI to bring the vision to life in record time. Special shoutout to [CatFireDragon](https://mods.factorio.com/user/CatFireDragon) for encouraging me to actually make this mod in the first place.
+---
 
-This is an early release because I wanted to get it out into the community to gather feedback. I plan to actively update the mod with more features, better balance, custom graphics, and performance optimizations. If you run into issues or have ideas, let me know!
+### How It Works
+
+1. **Build Tubes & Hubs:** Place Pneumatic Tubes between Pneumatic Hubs. Hubs pack items from chests into capsules and inject them into the network.
+2. **Pressurize the Line:** Place Pneumatic Pumps along the line to push air forward (+ pressure) or draw a vacuum (- pressure). Capsules naturally move from higher pressure to lower pressure.
+3. **Route Traffic:** Use 4-way Diverters to split, merge, or filter capsules by item type and quality.
+4. **Unpack at Destinations:** Destination hubs automatically catch capsules, pull the cargo out into their inventory, and handle empty hulls.
+
+---
+
+### Capsule Types
+
+* **Standard Capsule:** Basic multi-stack freight capsule.
+* **Biodegradable Capsule (Gleba):** Cheap organic capsule made from yumako mash, jelly, and spoilage. Carries cargo once and dissolves completely on delivery.
+* **Refrigerated Capsule (Aquilo):** Slows spoilage on perishable food/bio cargo by 90% while in transit. Reusable and recharged with fluoroketone.
+* **Reinforced Capsule (Vulcanus):** Heavy-duty capsule for bulk single-item transport (2 full stacks base).
+* **Electromagnetic Capsule (Fulgora):** Carries mixed cargo, partial stacks, and mixed qualities. Can be launched through the air by Electromagnetic Projectors.
+* **Vacuum Capsule (Space Science):** Interacts with transport belts. Automatically sucks items off belts under negative pressure and spits items out onto belts under positive pressure.
+* **Player Transit Capsule:** Lets you hop into the tube network to travel across your factory quickly. Press `SHIFT + E` to emergency eject anywhere.
+
+---
+
+### Network Devices
+
+* **Pneumatic Hubs:** Entrance and exit points for cargo. Connect to chests or belts to pack and unpack capsules.
+* **Pneumatic Pump:** Generates directional pressure to drive capsule movement. Supports circuit network enable conditions.
+* **Pneumatic Diverter:** 4-port junction with configurable routing. Filter each port by item, quality, or blacklists using native Factorio 2.0 comparison rules (`=`, `≥`, `≤`, `>`, `<`, `≠`, or Any Quality).
+* **Capsule Counter:** Placed along tubes to read passing capsules or cargo contents onto the circuit network. Outputs to Red and Green wires independently without signal cross-talk.
+* **Electromagnetic Projector:** A 3x3 launcher that shoots Electromagnetic Capsules through the air across long distances without needing continuous tube lines.
+* **Wall & Gate Integration:** Research fence-gate interop to route pneumatic tubes directly through vanilla stone walls and gates. Gates automatically shut off transit when opened and restore flow when closed.
+
+---
+
+### Controls & Hotkeys
+
+* `SHIFT + E`: Emergency exit from a riding transit capsule.
+* `SHIFT + Right-Click / Left-Click`: Copy and paste settings between Hubs, Diverters, Pumps, and Projectors (works on ghosts too).
+* `ALT Mode`: Displays pressure values, flow directions, diverter filter icons, and projector launch paths directly in the world.
+
+---
+
+### Note on Development
+
+I built this mod using AI assistance to turn the concept into working code quickly. Big thanks to [CatFireDragon](https://mods.factorio.com/user/CatFireDragon) for the initial encouragement to get this built.
+
+Feedback, balance suggestions, and bug reports are welcome on the mod portal!

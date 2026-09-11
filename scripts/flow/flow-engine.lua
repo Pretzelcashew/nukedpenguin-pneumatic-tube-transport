@@ -50,7 +50,12 @@ local IGNORABLE_TYPES = {
     ["leaf-particle"] = true,
     ["item-request-proxy"] = true,
     ["deconstructible-tile-proxy"] = true,
-    ["land-mine"] = true
+    ["land-mine"] = true,
+    ["cliff"] = true,
+    ["elevated-straight-rail"] = true,
+    ["elevated-curved-rail-a"] = true,
+    ["elevated-curved-rail-b"] = true,
+    ["elevated-half-diagonal-rail"] = true
 }
 
 local OWNER_PALETTE = {
@@ -1392,6 +1397,16 @@ end
 function flow_engine.step(tick)
     if not storage.kinetic_ore_obstruction_fixed then
         storage.kinetic_ore_obstruction_fixed = true
+        if storage.flow_nodes then
+            for pkey, node in pairs(storage.flow_nodes) do
+                if node and node.is_kinetic and node.is_endpoint then
+                    flow_engine.enqueue_port(pkey)
+                end
+            end
+        end
+    end
+    if not storage.kinetic_rail_cliff_fixed then
+        storage.kinetic_rail_cliff_fixed = true
         if storage.flow_nodes then
             for pkey, node in pairs(storage.flow_nodes) do
                 if node and node.is_kinetic and node.is_endpoint then

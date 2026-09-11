@@ -17,3 +17,11 @@
 3. **Intake Threshold Gatekeeping (`scripts/capsules/capsule-runner.lua`):** Updated `is_hop_valid` to resolve target machine units via numeric flow descriptors and device settings tables, rejecting non-electromagnetic capsules from entering projector intake ports or kinetic trajectories.
 4. **Launch Dispatch Fallthrough (`scripts/capsules/capsule-runner.lua`):** Inline-guarded the projector muzzle launch check behind `is_electromagnetic_capsule(capsule)`, allowing invalid capsules to bypass ballistic launch and naturally fall through to pressure routing so vacuum can pull them back into the tube network.
 5. **Capsule Type Injection Tracking (`scripts/capsules/capsule-runner.lua`):** Populated `capsule_type` directly onto motion records during hub injection for instantaneous in-memory type validation.
+
+
+### Revision: EM Projector Clearance for Cliffs and Elevated Rails
+**Date:** 2026-09-11 13:05 EDT
+**Context:** EM projector kinetic beams were previously obstructed by natural cliff terrain and overhead elevated rail spans. These changes exempt cliffs and elevated rail tracks from line-of-sight occlusion while preserving physical collision against ground-level rail pillars and ramps.
+**Key Changes:**
+1. **Ignorable Obstruction Filtering (`scripts/flow/flow-engine.lua`):** Registered `cliff`, `elevated-straight-rail`, `elevated-curved-rail-a`, `elevated-curved-rail-b`, and `elevated-half-diagonal-rail` into `IGNORABLE_TYPES`, preventing these entities from truncating beams or triggering queue-driven recession while leaving `rail-support` and `rail-ramp` active as physical obstacles.
+2. **Active Trajectory Wake-up Guard (`scripts/flow/flow-engine.lua`):** Added a one-time migration flag (`storage.kinetic_rail_cliff_fixed`) in `flow_engine.step` that enqueues all existing kinetic endpoints into `storage.flow_queue`, immediately extending previously blocked projector beams across cliffs and elevated tracks.

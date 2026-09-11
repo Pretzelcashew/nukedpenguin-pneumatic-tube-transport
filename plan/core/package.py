@@ -7,43 +7,72 @@ import subprocess
 import shlex
 import traceback
 
-def parse_config(filepath):
-    config = {}
+# Extensions strictly prohibited by the Factorio Mod Portal
+PORTAL_FORBIDDEN_PATTERNS = ["*.py", "*.exe", "*.bat", "*.ps1", "*.sh"]
+
+def parse_export_rules(filepath, base_dir):
+    """
+    Parses EXPORT.md using .gitignore-style syntax:
+    - Lines ending with '/' or matching local directories -> /XD (Exclude Directory)
+    - Other lines and wildcards (e.g. *.py, *.md) -> /XF (Exclude File)
+    - Supports comments (#) and blank lines.
+    - Retains backwards-compatibility with 'exclude folders:' / 'exclude files:'.
+    """
+    exclude_dirs = {".git", "plan"}
+    exclude_files = set(PORTAL_FORBIDDEN_PATTERNS)
+    exclude_files.update(["package.py", "EXPORT.md"])
+
     if not filepath or not os.path.isfile(filepath):
-        return config
+        return exclude_dirs, exclude_files
+
     with open(filepath, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
-            if ":" in line:
-                key, val = line.split(":", 1)
-                key = key.strip().lower().replace("_", " ")
-                val = val.strip().strip('"').strip("'")
-                config[key] = val
-    return config
 
-def resolve_exclusions(items_str, base_dir):
-    """Turns relative paths into absolute paths for Robocopy, while leaving bare filenames as-is."""
-    if not items_str:
-        return ""
-    try:
-        items = shlex.split(items_str)
-    except Exception:
-        items = items_str.split()
-    
+            # Legacy support for 'exclude folders:' / 'exclude files:'
+            if line.lower().startswith("exclude folders:"):
+                parts = line.split(":", 1)[1].split()
+                exclude_dirs.update(parts)
+                continue
+            if line.lower().startswith("exclude files:"):
+                parts = line.split(":", 1)[1].split()
+                exclude_files.update(parts)
+                continue
+
+            # .gitignore-style: trailing slash means folder
+            if line.endswith("/") or line.endswith("\\"):
+                folder_name = line.rstrip("/\\").strip()
+                if folder_name:
+                    exclude_dirs.add(folder_name)
+            elif "/" in line or "\\" in line:
+                # Path relative to base directory
+                full_path = os.path.normpath(os.path.join(base_dir, line))
+                if os.path.isdir(full_path):
+                    exclude_dirs.add(full_path)
+                else:
+                    exclude_files.add(full_path)
+            elif os.path.isdir(os.path.join(base_dir, line)):
+                exclude_dirs.add(line)
+            else:
+                exclude_files.add(line)
+
+    return exclude_dirs, exclude_files
+
+def format_robocopy_flags(items):
+    """Formats a set of exclusions into a space-separated string with quotes if needed."""
     resolved = []
-    for item in items:
-        if "/" in item or "\\" in item:
-            full_path = os.path.normpath(os.path.join(base_dir, item))
-            resolved.append(f'"{full_path}"')
+    for item in sorted(items):
+        if " " in item:
+            resolved.append(f'"{item}"')
         else:
-            resolved.append(f'"{item}"' if " " in item else item)
+            resolved.append(item)
     return " ".join(resolved)
 
 def main():
     print("=" * 70)
-    print("FACTORIO MOD PACKAGER")
+    print("FACTORIO MOD PACKAGER (.gitignore EXPORT Engine)")
     print("=" * 70)
 
     # 1. Destination is on your HDD (where package.py lives)
@@ -60,15 +89,14 @@ def main():
         input("\nPress Enter to exit...")
         return
 
-    # 3. Look for EXPORT.md
+    # 3. Look for EXPORT.md in source or destination
     config_path = ""
     if os.path.isfile(os.path.join(source, "EXPORT.md")):
         config_path = os.path.join(source, "EXPORT.md")
     elif os.path.isfile(os.path.join(destination, "EXPORT.md")):
         config_path = os.path.join(destination, "EXPORT.md")
 
-    cfg = parse_config(config_path)
-    config_filename = os.path.basename(config_path) if config_path else "EXPORT.md"
+    exclude_dirs, exclude_files = parse_export_rules(config_path, source)
 
     # 4. Read info.json from the mod folder
     info_path = os.path.join(source, "info.json")
@@ -86,12 +114,12 @@ def main():
 
     mod_name = str(info_data.get("name") or os.path.basename(os.path.normpath(source))).strip()
     
-    # Bulletproof version extraction (safely handles missing or non-string version fields)
-    raw_version = cfg.get("version") or info_data.get("version") or ""
+    # Version extraction
+    raw_version = info_data.get("version") or ""
     version = str(raw_version).lstrip("_v").strip()
 
     if not version:
-        print("\nError: Could not determine version from info.json or EXPORT.md!")
+        print("\nError: Could not determine version from info.json!")
         input("\nPress Enter to exit...")
         return
 
@@ -114,18 +142,14 @@ def main():
         except Exception as e:
             print(f"Warning: Could not remove old file: {e}")
 
-    # 6. Exclusions
-    user_folders = cfg.get("exclude folders", ".git plan")
-    user_files = cfg.get("exclude files", "")
-    all_files = f"package.py {config_filename} {user_files}".strip()
-
-    xd_resolved = resolve_exclusions(user_folders, source)
-    xf_resolved = resolve_exclusions(all_files, source)
+    # 6. Build Robocopy Flags
+    xd_resolved = format_robocopy_flags(exclude_dirs)
+    xf_resolved = format_robocopy_flags(exclude_files)
 
     xd_flag = f"/XD {xd_resolved}" if xd_resolved else ""
     xf_flag = f"/XF {xf_resolved}" if xf_resolved else ""
 
-    # 7. Staging on HDD (D:)
+    # 7. Staging and Packaging
     temp_staging = os.path.join(destination, "_temp_staging")
     staging_target = os.path.join(temp_staging, package_name)
 
@@ -146,17 +170,18 @@ def main():
 
     print(f"PACKAGING:   {package_name}")
     print(f"FROM SOURCE: {source} (SSD - Read Only)")
-    print(f"TEMP STAGE:  {temp_staging} (HDD)")
-    print(f"TO ZIP:      {dest_zip} (HDD)")
+    print(f"EXCLUDING:   {len(exclude_dirs)} folder rule(s), {len(exclude_files)} file pattern(s)")
+    print(f"TO ZIP:      {dest_zip}")
     print("=" * 70)
     print("\nRunning build...\n")
 
     # 8. Execute via PowerShell
     proc = subprocess.run(["powershell", "-NoProfile", "-Command", cmd])
 
+    # Robocopy codes 0-3 are clean transfer codes
     if proc.returncode in [0, 1, 2, 3]:
         print("\n" + "=" * 70)
-        print("SUCCESS! Ready to upload:")
+        print("SUCCESS! Release package built with zero forbidden files:")
         print(f"--> {dest_zip}")
         print("=" * 70)
     else:
@@ -164,7 +189,6 @@ def main():
 
     input("\nPress Enter to close this window...")
 
-# CRASH GUARD: Locks window open if ANY error occurs
 if __name__ == "__main__":
     try:
         main()

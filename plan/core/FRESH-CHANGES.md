@@ -213,3 +213,12 @@
 **Key Changes:**
 1. **Planetary Surface Conditions (`prototypes/recipe.lua`):** Gated specialized capsule manufacturing by environmental properties: restricted `vacuum-capsule` to 0 pressure (space platforms), `reinforced-capsule` to 4000 hPa (Vulcanus), `refrigerated-capsule` to 300 hPa (Aquilo), and both `electromagnetic-capsule` and `pneumatic-projector` to at least 99% magnetic field (Fulgora). Preserved unrestricted crafting for single-use `biodegradable-capsule` and all capsule recharging recipes across all surfaces.
 2. **Closed-Loop Cryogenic Recipe & Cadence (`prototypes/recipe.lua`):** Increased `refrigerated-capsule` fabrication time from 3.0s to 10.0s (`energy_required = 10.0`), assigned explicit `main_product = "refrigerated-capsule"`, and balanced fluid throughput to consume 100 cold fluoroketone while returning 100 hot fluoroketone as a byproduct, eliminating net coolant loss during fabrication.
+
+
+### Revision: Projector Beam Endpoint Horizon Expansion & Legendary Launch Fix
+**Date:** 2026-09-10 22:56 (EDT)
+**Context:** Resolve launch dispatch stalls on high-quality Electromagnetic Projectors where hardcoded 100-tile iteration limits prevented endpoint resolution and ballistic flight initialization along beams reaching beyond 100 tiles.
+**Key Changes:**
+1. **Dynamic Beam Scan Horizon (`scripts/capsules/capsule-runner.lua`):** Registered `MAX_BEAM_DISTANCE = 500` to supersede legacy 100-tile scan bounds, providing ample headroom for Legendary (110+ tiles) and high-quality kinetic guide beams.
+2. **Endpoint Discovery & Trajectory Initialization (`scripts/capsules/capsule-runner.lua`):** Updated `get_beam_endpoint` and `init_capsule_beam_flight` loops to scan up to `MAX_BEAM_DISTANCE`, allowing Legendary launch docks to detect active endpoints and compile complete hop chains for uninterrupted dispatch.
+3. **Motion Runner Variable Hygiene (`scripts/capsules/capsule-runner.lua`):** Removed an extraneous duplicate local declaration of `next_prominent_key` in the kinetic path evaluation block of `select_next_target`.

@@ -25,3 +25,12 @@
 **Key Changes:**
 1. **Ignorable Obstruction Filtering (`scripts/flow/flow-engine.lua`):** Registered `cliff`, `elevated-straight-rail`, `elevated-curved-rail-a`, `elevated-curved-rail-b`, and `elevated-half-diagonal-rail` into `IGNORABLE_TYPES`, preventing these entities from truncating beams or triggering queue-driven recession while leaving `rail-support` and `rail-ramp` active as physical obstacles.
 2. **Active Trajectory Wake-up Guard (`scripts/flow/flow-engine.lua`):** Added a one-time migration flag (`storage.kinetic_rail_cliff_fixed`) in `flow_engine.step` that enqueues all existing kinetic endpoints into `storage.flow_queue`, immediately extending previously blocked projector beams across cliffs and elevated tracks.
+
+
+### Revision: Dynamic Gate Occlusion and Wakeups for EM Kinetic Beams
+**Date:** 2026-09-11 13:50 EDT
+**Context:** Closed gates previously obstructed EM kinetic projector beams indefinitely with no mechanism to pass through when opened, and gate state changes did not alert intersecting trajectories. This update enables transparent kinetic routing through open gates and dynamically triggers advance or recession waves when gate doors open or shut.
+**Key Changes:**
+1. **Gate Obstruction Filtering (`scripts/flow/flow-engine.lua`):** Updated `check_tile_obstruction` to classify gate entities as ignorable non-blocking obstacles whenever `cand.is_closed()` is false, permitting kinetic trajectories to extend through open doorways.
+2. **State Transition Wakeups (`scripts/flow/flow-engine.lua`):** Linked gate open/closed transition detection in `step()` to `notify_beam_obstruction_changed`, automatically queueing upstream nodes, clearing endpoints, and waking parked capsules when doors open or close.
+3. **Active Gate Registration Lifecycle (`scripts/flow/flow-engine.lua`):** Extended `build_events` and `init_storage()` to index all standalone and perimeter gate entities into `storage.active_gates` so their state changes are continuously monitored regardless of direct pneumatic grid connection.

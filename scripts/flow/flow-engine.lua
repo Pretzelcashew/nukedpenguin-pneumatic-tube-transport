@@ -256,6 +256,21 @@ function flow_engine.init_storage()
     storage.soft_interop_registry = storage.soft_interop_registry or {}
     storage.interop_activation_queue = storage.interop_activation_queue or {}
 
+    if storage.active_gates and game and game.surfaces then
+        for _, surface in pairs(game.surfaces) do
+            local gates = surface.find_entities_filtered{type = "gate"}
+            for _, g in ipairs(gates) do
+                if g.valid and g.unit_number and g.name ~= "entity-ghost" then
+                    storage.active_gates[g.unit_number] = g
+                    if script.register_on_object_destroyed then
+                        local reg_id = script.register_on_object_destroyed(g)
+                        storage.object_destruction_map = storage.object_destruction_map or {}
+                        storage.object_destruction_map[reg_id] = { type = "entity", unit_number = g.unit_number }
+                    end
+                end
+            end
+        end
+    end
     -- Electromagnetic Projector Fields
     storage.active_projectors = storage.active_projectors or {}
     storage.projector_power_states = storage.projector_power_states or {}
@@ -961,6 +976,11 @@ function flow_engine.check_tile_obstruction(surface, tx, ty, sender_entity)
 
             local is_ignorable = (IGNORABLE_TYPES[cand_type] == true) or (PROXY_NAMES[cand_name] == true)
 
+            if not is_ignorable and cand_type == "gate" then
+                if not (cand.is_closed and cand.is_closed()) then
+                    is_ignorable = true
+                end
+            end
             if not is_ignorable then
                 if cand_name == "pneumatic-projector" then
                     return { blocked = true, is_receiver = true, receiver = cand }
@@ -1432,10 +1452,15 @@ function flow_engine.step(tick)
                 local last_term = storage.gate_cutoff_states and storage.gate_cutoff_states[unit_number]
 
                 if is_open ~= last_open or is_term ~= last_term then
+                    local open_changed = (is_open ~= last_open)
                     storage.gate_open_states = storage.gate_open_states or {}
                     storage.gate_open_states[unit_number] = is_open
                     storage.gate_cutoff_states = storage.gate_cutoff_states or {}
                     storage.gate_cutoff_states[unit_number] = is_term
+
+                    if open_changed then
+                        flow_engine.notify_beam_obstruction_changed(gate, is_open)
+                    end
 
                     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
                     if unit_ports then
@@ -2377,6 +2402,17 @@ function flow_engine.register_events()
 
             local real_name = entity.name
 
+            if real_name == "gate" or entity.type == "gate" then
+                storage.active_gates = storage.active_gates or {}
+                storage.active_gates[entity.unit_number] = entity
+                storage.gate_open_states = storage.gate_open_states or {}
+                storage.gate_open_states[entity.unit_number] = not (entity.is_closed and entity.is_closed())
+                if script.register_on_object_destroyed then
+                    local reg_id = script.register_on_object_destroyed(entity)
+                    storage.object_destruction_map = storage.object_destruction_map or {}
+                    storage.object_destruction_map[reg_id] = { type = "entity", unit_number = entity.unit_number }
+                end
+            end
             if registered_entities[real_name] then
                 flow_engine.connect_entity(entity)
             elseif is_standard_entity(real_name) then

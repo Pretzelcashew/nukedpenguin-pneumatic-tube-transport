@@ -439,6 +439,75 @@ def run_restore(start_dir: Path):
     print(f"\nDone. Successfully restored {restored}/{len(bak_files)} file(s).")
 
 
+def run_cleanup(start_dir: Path):
+    print("\n--- CLEANUP WORKSPACE ---")
+
+    # Find aggregate files (*aggregate*.txt)
+    agg_files = [
+        f for f in start_dir.rglob("aggregate*.txt")
+        if ".git" not in f.parts
+    ]
+
+    # Find backup files (*.bak)
+    bak_files = [
+        b for b in start_dir.rglob("*.bak")
+        if ".git" not in b.parts
+    ]
+
+    patch_file = start_dir / "patch.txt"
+    has_patch = patch_file.exists()
+
+    if not agg_files and not bak_files and not has_patch:
+        print("Nothing to clean up.")
+        return
+
+    print("Items found to clean:")
+    if agg_files:
+        print(f"  • {len(agg_files)} aggregate file(s) to delete")
+    if bak_files:
+        print(f"  • {len(bak_files)} backup (.bak) file(s) to delete")
+    if has_patch:
+        print("  • patch.txt to be cleared (will leave an empty file)")
+
+    confirm = input("\nProceed with cleanup? (y/n): ").strip().lower()
+    if confirm != "y":
+        print("Aborted.")
+        return
+
+    # Delete aggregate files
+    deleted_aggs = 0
+    for f in agg_files:
+        try:
+            f.unlink()
+            deleted_aggs += 1
+        except Exception as e:
+            print(f"Error deleting {f.name}: {e}")
+
+    # Delete backup files
+    deleted_baks = 0
+    for b in bak_files:
+        try:
+            b.unlink()
+            deleted_baks += 1
+        except Exception as e:
+            print(f"Error deleting {b.name}: {e}")
+
+    # Reset patch.txt to empty
+    cleared_patch = False
+    try:
+        with open(patch_file, "w", encoding="utf-8") as f:
+            pass
+        cleared_patch = True
+    except Exception as e:
+        print(f"Error clearing {patch_file.name}: {e}")
+
+    print("\nCleanup finished:")
+    print(f"  • Deleted {deleted_aggs} aggregate file(s).")
+    print(f"  • Deleted {deleted_baks} backup file(s).")
+    if cleared_patch:
+        print("  • Cleared patch.txt.")
+
+
 def run_patcher(start_dir: Path):
     print("\n--- APPLY DIFF / PATCH ---")
     patch_file_input = input("Enter patch file name [default: patch.txt]: ").strip()
@@ -506,8 +575,9 @@ def main():
         print(" [1] Aggregate files into aggregate_N.txt")
         print(" [2] Apply AI patch/diffs (from patch.txt)")
         print(" [3] Undo / Restore files from .bak backups")
+        print(" [4] Clean up (aggregates, *.bak, clear patch.txt)")
         print(" [0] Exit")
-        choice = input("\nSelect an option [0-3]: ").strip()
+        choice = input("\nSelect an option [0-4]: ").strip()
 
         if choice == "1":
             run_aggregator(start_dir)
@@ -515,6 +585,8 @@ def main():
             run_patcher(start_dir)
         elif choice == "3":
             run_restore(start_dir)
+        elif choice == "4":
+            run_cleanup(start_dir)
         elif choice == "0":
             break
         else:

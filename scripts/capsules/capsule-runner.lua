@@ -774,7 +774,6 @@ function capsule_runner.select_next_target(capsule)
         local owner_entity = storage.active_projectors and storage.active_projectors[beam_owner]
 
         local next_prominent_key = nil
-        local next_prominent_key = nil
         local obstacle_pos = nil
         local hit_player_entity = nil
 
@@ -1362,9 +1361,13 @@ function capsule_runner.update_capsules(current_tick)
         local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
         local bf = capsule.beam_flight
 
+        local is_woken = (capsule.next_retry_tick == nil)
+        local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
+
         if not node then
-            if bf and bf.hop_positions and bf.current_hop then
-                bf.current_hop = bf.current_hop + 1
+            if is_woken or is_stagger_tick then
+                capsule.next_retry_tick = current_tick + STAGGER_TICKS
+                if bf and bf.hop_positions and bf.current_hop then
                 local surface = game.surfaces[bf.surface_name or capsule.surface_name or "nauvis"]
 
                 if bf.current_hop >= bf.total_hops then
@@ -1420,7 +1423,7 @@ function capsule_runner.update_capsules(current_tick)
                         if surface and surface.valid and next_pos then
                             capsule_renderer.render(capsule, id, next_pos, surface)
                         end
-                        capsule.next_retry_tick = current_tick + 1
+                        capsule.next_retry_tick = current_tick + STAGGER_TICKS
                     end
                 end
             else
@@ -1437,16 +1440,13 @@ function capsule_runner.update_capsules(current_tick)
                     capsule_runner.wake_parked_capsules(dead_port_key)
                 end
             end
+            end
         else
             capsule.last_pos = { x = node.pos.x, y = node.pos.y }
             capsule.surface_name = node.surface_name
 
-            local is_beam = (node.is_beam_node == true) or (node.is_prominent_kinetic == true) or (bf ~= nil)
-            local is_woken = (capsule.next_retry_tick == nil)
-            local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
-
-            if is_beam or is_woken or is_stagger_tick then
-                capsule.next_retry_tick = is_beam and (current_tick + 1) or (current_tick + STAGGER_TICKS)
+            if is_woken or is_stagger_tick then
+                capsule.next_retry_tick = current_tick + STAGGER_TICKS
 
                 local hops_done = 0
                 while hops_done < MAX_NODE_HOPS_PER_STEP do
@@ -1482,6 +1482,13 @@ function capsule_runner.update_capsules(current_tick)
                     capsule_runner.wake_parked_capsules(prev_key)
 
                     hops_done = hops_done + 1
+                    if (next_node and (next_node.is_beam_node or next_node.is_prominent_kinetic))
+                       or (node and (node.is_beam_node or node.is_prominent_kinetic)) then
+                        if capsule_runner.handle_arrival(capsule, id) then
+                            break
+                        end
+                        break
+                    end
 
                     local prev_unit = capsule_queries.get_port_info(prev_key)
                     local new_unit = capsule_queries.get_port_info(next_port_key)

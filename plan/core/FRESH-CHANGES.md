@@ -230,3 +230,12 @@
 **Key Changes:**
 1. **Passive Intake Port Overlay Rendering (`scripts/flow/flow-engine.lua`):** Enhanced `update_pos_render` to detect zero-flow non-muzzle ports belonging to active `pneumatic-projector` units, rendering a 0.12-radius filled cyan dot (`PROJECTOR_INTAKE_COLOR`) in Alt-Mode to distinctly mark connection sockets while preserving normal pressure and vacuum displays when lines become pressurized.
 2. **1-Tick Active Projector Initialization Sweep (`scripts/flow/flow-engine.lua`):** Added a one-time startup sweep in `flow_engine.step` (`storage.projector_ports_initialized`) enqueuing unit ports across all registered `active_projectors`, immediately restoring and displaying intake port overlays across existing savegame facilities on tick 1 without requiring mining or rebuilding.
+
+
+### Revision: Projector Ballistic Velocity Normalization & 6-Tick Prominent Hop Cadence
+**Date:** 2026-09-11 00:13 (EDT)
+**Context:** Normalize Electromagnetic Projector projectile travel speeds by replacing the 1-tick per-frame override with the standard 6-tick staggered hop cadence, advancing payloads across exactly one 5-tile prominent node per step.
+**Key Changes:**
+1. **Standard 6-Tick Ballistic Cadence (`scripts/capsules/capsule-runner.lua`):** Removed the 1-tick per-frame hop override (`current_tick + 1`) across active beam trajectories and dead-sender ballistic flights (`beam_flight`), synchronizing in-flight kinetic payloads with the engine's standard `STAGGER_TICKS = 6` cadence (`(current_tick + id) % 6 == 0`).
+2. **Prominent Node Multi-Hop Boundary (`scripts/capsules/capsule-runner.lua`):** Added an early-exit break in the `update_capsules` multi-hop traversal loop upon entering or traversing prominent kinetic nodes, preventing multiple prominent hops from executing in a single frame and fixing velocity at 5 tiles per 6 ticks (~50 tiles/sec).
+3. **Dead-Sender Flight Pacing Synchronization (`scripts/capsules/capsule-runner.lua`):** Gated unanchored ballistic trajectories (`not node` with `beam_flight`) behind `is_woken or is_stagger_tick` with `current_tick + STAGGER_TICKS` rescheduling, ensuring consistent visual pacing and collision handling when sender projectors are deconstructed mid-flight.

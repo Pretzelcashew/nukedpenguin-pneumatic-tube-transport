@@ -1,25 +1,30 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-11 18:05:25  
-**Scope:** 15 directories, 86 files  
+**Last Generated:** 2026-09-11 18:47:17  
+**Scope:** 21 directories, 86 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
 ├── docs/
-│   └── arch/
-│       ├── ARCH-CAPSULES-MOTION.md
-│       ├── ARCH-DEVICES-CIRCUITS.md
-│       ├── ARCH-FLOW-KINETICS.md
-│       ├── ARCH-HUBS-LOGISTICS.md
-│       └── ARCH-PROTOTYPES.md
+│   ├── arch/
+│   │   ├── ARCH-CAPSULES-MOTION.md
+│   │   ├── ARCH-DEVICES-CIRCUITS.md
+│   │   ├── ARCH-FLOW-KINETICS.md
+│   │   ├── ARCH-HUBS-LOGISTICS.md
+│   │   └── ARCH-PROTOTYPES.md
+│   └── guides/
+│       └── capsule-definitions-guide.md
 ├── locale/
 │   └── en/
 │       └── config.cfg
 ├── plan/
+│   ├── archive/
+│   │   ├── CHANGES_0.3.23.md
+│   │   ├── EXPORT.md
+│   │   └── SCRATCH.md
 │   └── core/
 │       ├── ARCHITECTURE.md
 │       ├── CHANGELOG.md
-│       ├── CHANGES_0.3.23.md
 │       ├── FRESH-CHANGES.md
 │       ├── HELPERS.md
 │       ├── MANIFEST.md
@@ -28,21 +33,21 @@ nukedpenguin-pneumatic-tube-transport/
 │       ├── PROMPT-AG-DIFF.md
 │       ├── PROMPT-DOC-SYNC.md
 │       ├── PROMPT-REVISION-LOG.md
-│       ├── SCRATCH.md
 │       ├── SPLASH-PAGE.md
 │       ├── TODO.md
 │       ├── UPDATE-MOD-PAGE.md
 │       └── WORKFLOW.md
 ├── prototypes/
+│   ├── entities/
+│   │   ├── pneumatic-capsule-counter.lua
+│   │   ├── pneumatic-diverter-proxy-linkage.lua
+│   │   ├── pneumatic-diverter.lua
+│   │   ├── pneumatic-projector.lua
+│   │   ├── pneumatic-pump-proxy-linkage.lua
+│   │   └── pneumatic-pump-proxy.lua
 │   ├── custom-input.lua
 │   ├── entity.lua
 │   ├── item.lua
-│   ├── pneumatic-capsule-counter.lua
-│   ├── pneumatic-diverter-proxy-linkage.lua
-│   ├── pneumatic-diverter.lua
-│   ├── pneumatic-projector.lua
-│   ├── pneumatic-pump-proxy-linkage.lua
-│   ├── pneumatic-pump-proxy.lua
 │   ├── recipe.lua
 │   ├── shortcut.lua
 │   └── technology.lua
@@ -54,13 +59,17 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── capsule-manager.lua
 │   │   ├── capsule-queries.lua
 │   │   ├── capsule-renderer.lua
-│   │   ├── capsule-runner.lua
-│   │   └── scripts_capsules_capsule-definitions-guide.md
+│   │   └── capsule-runner.lua
 │   ├── counters/
 │   │   ├── counter-gui.lua
 │   │   ├── counter-logic.lua
 │   │   ├── counter-range.lua
 │   │   └── counter-settings.lua
+│   ├── diverters/
+│   │   ├── diverter-gui.lua
+│   │   ├── diverter-manager.lua
+│   │   ├── diverter-renderer.lua
+│   │   └── diverter-settings.lua
 │   ├── flow/
 │   │   ├── flow-engine.lua
 │   │   └── port-defs.lua
@@ -76,6 +85,12 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── hub-settings.lua
 │   │   ├── hub-spill.lua
 │   │   └── hub-unpacking.lua
+│   ├── projectors/
+│   │   └── projector-settings.lua
+│   ├── pumps/
+│   │   ├── pump-gui.lua
+│   │   ├── pump-manager.lua
+│   │   └── pump-settings.lua
 │   ├── surfaces/
 │   │   └── liminal-surface.lua
 │   ├── utils/
@@ -84,23 +99,14 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── active-device-scanner.lua
 │   ├── debug-manager.lua
 │   ├── device-settings-copier.lua
-│   ├── diverter-gui.lua
-│   ├── diverter-manager.lua
-│   ├── diverter-renderer.lua
-│   ├── diverter-settings.lua
 │   ├── event-logger.lua
 │   ├── events.lua
-│   ├── projector-settings.lua
-│   ├── proxy-manager.lua
-│   ├── pump-gui.lua
-│   ├── pump-manager.lua
-│   └── pump-settings.lua
+│   └── proxy-manager.lua
 ├── .gitignore
 ├── aggregator_patcher.py
 ├── changelog.txt
 ├── control.lua
 ├── data.lua
-├── EXPORT.md
 ├── info.json
 ├── LICENSE
 ├── patch.txt

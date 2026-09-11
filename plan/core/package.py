@@ -89,12 +89,32 @@ def main():
         input("\nPress Enter to exit...")
         return
 
-    # 3. Look for EXPORT.md in source or destination
+    # 3. Look for EXPORT.md in plan/core, source root, or destination
     config_path = ""
-    if os.path.isfile(os.path.join(source, "EXPORT.md")):
-        config_path = os.path.join(source, "EXPORT.md")
-    elif os.path.isfile(os.path.join(destination, "EXPORT.md")):
-        config_path = os.path.join(destination, "EXPORT.md")
+    checked_paths = [
+        os.path.join(source, "plan", "core", "EXPORT.md"),
+        os.path.join(source, "EXPORT.md"),
+        os.path.join(destination, "EXPORT.md")
+    ]
+
+    for path in checked_paths:
+        if os.path.isfile(path):
+            config_path = path
+            break
+
+    # Stop and prompt if EXPORT.md could not be found anywhere
+    if not config_path:
+        print("\n" + "=" * 70)
+        print("WARNING: EXPORT.md was NOT found!")
+        print("Looked in:")
+        for path in checked_paths:
+            print(f"  - {path}")
+        print("=" * 70)
+        choice = input("Proceed packaging with default fallback exclusions? (y/N): ").strip().lower()
+        if choice not in ["y", "yes"]:
+            print("\nBuild cancelled. Please place EXPORT.md in plan/core/ or the mod root.")
+            input("\nPress Enter to exit...")
+            return
 
     exclude_dirs, exclude_files = parse_export_rules(config_path, source)
 
@@ -170,6 +190,10 @@ def main():
 
     print(f"PACKAGING:   {package_name}")
     print(f"FROM SOURCE: {source} (SSD - Read Only)")
+    if config_path:
+        print(f"RULES FILE:  {config_path}")
+    else:
+        print("RULES FILE:  None found (User confirmed fallback mode)")
     print(f"EXCLUDING:   {len(exclude_dirs)} folder rule(s), {len(exclude_files)} file pattern(s)")
     print(f"TO ZIP:      {dest_zip}")
     print("=" * 70)

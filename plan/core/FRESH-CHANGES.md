@@ -222,3 +222,11 @@
 1. **Dynamic Beam Scan Horizon (`scripts/capsules/capsule-runner.lua`):** Registered `MAX_BEAM_DISTANCE = 500` to supersede legacy 100-tile scan bounds, providing ample headroom for Legendary (110+ tiles) and high-quality kinetic guide beams.
 2. **Endpoint Discovery & Trajectory Initialization (`scripts/capsules/capsule-runner.lua`):** Updated `get_beam_endpoint` and `init_capsule_beam_flight` loops to scan up to `MAX_BEAM_DISTANCE`, allowing Legendary launch docks to detect active endpoints and compile complete hop chains for uninterrupted dispatch.
 3. **Motion Runner Variable Hygiene (`scripts/capsules/capsule-runner.lua`):** Removed an extraneous duplicate local declaration of `next_prominent_key` in the kinetic path evaluation block of `select_next_target`.
+
+
+### Revision: Subtle Electromagnetic Projector Port Location Overlays & Zero-Flow Rendering
+**Date:** 2026-09-10 23:25 (EDT)
+**Context:** Provide clear visual feedback for Electromagnetic Projector logistics interfaces in Alt-Mode by rendering subtle port indicators at zero-pressure intake sockets where tubes can attach.
+**Key Changes:**
+1. **Passive Intake Port Overlay Rendering (`scripts/flow/flow-engine.lua`):** Enhanced `update_pos_render` to detect zero-flow non-muzzle ports belonging to active `pneumatic-projector` units, rendering a 0.12-radius filled cyan dot (`PROJECTOR_INTAKE_COLOR`) in Alt-Mode to distinctly mark connection sockets while preserving normal pressure and vacuum displays when lines become pressurized.
+2. **1-Tick Active Projector Initialization Sweep (`scripts/flow/flow-engine.lua`):** Added a one-time startup sweep in `flow_engine.step` (`storage.projector_ports_initialized`) enqueuing unit ports across all registered `active_projectors`, immediately restoring and displaying intake port overlays across existing savegame facilities on tick 1 without requiring mining or rebuilding.

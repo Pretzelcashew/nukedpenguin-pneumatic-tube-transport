@@ -74,6 +74,7 @@ local QUALITY_BEAM_PALETTE = {
 }
 
 local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
+local PROJECTOR_INTAKE_COLOR = {r = 0.20, g = 0.85, b = 1.00, a = 0.90}
 
 local function get_owner_color(unit_number)
     if not unit_number then
@@ -684,52 +685,80 @@ local function update_pos_render(pos_key)
     end
 
     local node, level = get_dominant_port_at_pos(pos_key)
-    if not node or level == 0 then
+    if not node then
         destroy_pos_renders(pos_key)
         return
     end
+
+    local is_intake = (level == 0) and (not node.is_muzzle)
+        and (storage.active_projectors and storage.active_projectors[node.unit_number] ~= nil and (node.port_index or 0) <= 4)
+
+    if level == 0 and not is_intake then
+        destroy_pos_renders(pos_key)
+        return
+    end
+
+    local pos = node.pos
+    local surface = game.surfaces[node.surface_name]
 
     for _, player in pairs(game.players) do
         local p_idx = player.index
         if is_debug_active("new_flow", p_idx) then
             storage.flow_renders[p_idx] = storage.flow_renders[p_idx] or {}
             local p_renders = storage.flow_renders[p_idx]
-
-            local abs_level = math.abs(level)
-            local circle_color = (level > 0)
-                and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
-                or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
-
-            local pos = node.pos
-            local surface = game.surfaces[node.surface_name]
-
             local current = p_renders[pos_key]
-            if current and current.circle and current.circle.valid and current.text and current.text.valid then
-                current.circle.color = circle_color
-                current.text.text = tostring(level)
+
+            if is_intake then
+                if current and current.circle and current.circle.valid and current.is_intake then
+                    -- Already valid intake dot
+                else
+                    destroy_pos_renders(pos_key, p_idx)
+                    if surface and surface.valid then
+                        local c_obj = rendering.draw_circle{
+                            color = PROJECTOR_INTAKE_COLOR,
+                            radius = 0.12,
+                            filled = true,
+                            target = pos,
+                            surface = surface,
+                            only_in_alt_mode = true,
+                            players = { player }
+                        }
+                        p_renders[pos_key] = { circle = c_obj, text = nil, is_intake = true }
+                    end
+                end
             else
-                destroy_pos_renders(pos_key, p_idx)
-                if surface and surface.valid then
-                    local c_obj = rendering.draw_circle{
-                        color = circle_color,
-                        radius = 0.15,
-                        filled = true,
-                        target = pos,
-                        surface = surface,
-                        only_in_alt_mode = true,
-                        players = { player }
-                    }
-                    local t_obj = rendering.draw_text{
-                        text = tostring(level),
-                        surface = surface,
-                        target = {x = pos.x, y = pos.y - 0.25},
-                        color = {r = 1, g = 1, b = 1, a = 0.9},
-                        scale = 0.7,
-                        alignment = "center",
-                        only_in_alt_mode = true,
-                        players = { player }
-                    }
-                    p_renders[pos_key] = { circle = c_obj, text = t_obj }
+                local abs_level = math.abs(level)
+                local circle_color = (level > 0)
+                    and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
+                    or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
+
+                if current and current.circle and current.circle.valid and current.text and current.text.valid and not current.is_intake then
+                    current.circle.color = circle_color
+                    current.text.text = tostring(level)
+                else
+                    destroy_pos_renders(pos_key, p_idx)
+                    if surface and surface.valid then
+                        local c_obj = rendering.draw_circle{
+                            color = circle_color,
+                            radius = 0.15,
+                            filled = true,
+                            target = pos,
+                            surface = surface,
+                            only_in_alt_mode = true,
+                            players = { player }
+                        }
+                        local t_obj = rendering.draw_text{
+                            text = tostring(level),
+                            surface = surface,
+                            target = {x = pos.x, y = pos.y - 0.25},
+                            color = {r = 1, g = 1, b = 1, a = 0.9},
+                            scale = 0.7,
+                            alignment = "center",
+                            only_in_alt_mode = true,
+                            players = { player }
+                        }
+                        p_renders[pos_key] = { circle = c_obj, text = t_obj }
+                    end
                 end
             end
         else
@@ -1363,6 +1392,14 @@ function flow_engine.step(tick)
                 if node and node.is_kinetic and node.is_endpoint then
                     flow_engine.enqueue_port(pkey)
                 end
+            end
+        end
+    end
+    if not storage.projector_ports_initialized then
+        storage.projector_ports_initialized = true
+        if storage.active_projectors then
+            for unit_number in pairs(storage.active_projectors) do
+                flow_engine.enqueue_unit_ports(unit_number)
             end
         end
     end

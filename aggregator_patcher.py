@@ -92,7 +92,7 @@ def run_aggregator(start_dir: Path):
         return
 
     output_path = get_next_aggregate_filepath(start_dir)
-    print(f"\nWriting {len(matched_files)} files to {output_path.name}...")
+    print(f"\nWriting {len(matched_files)} files to {output_path.name} and establishing baseline backups...")
 
     files_written = 0
     with open(output_path, "w", encoding="utf-8") as out:
@@ -102,6 +102,14 @@ def run_aggregator(start_dir: Path):
             lines = read_file_lines(file_path)
             if lines is None:
                 continue
+
+            # Form baseline .bak at aggregation time so session start is preserved
+            bak_path = file_path.with_name(file_path.name + ".bak")
+            try:
+                with open(bak_path, "w", encoding="utf-8") as bak:
+                    bak.writelines(lines)
+            except Exception as e:
+                print(f"Warning: Could not create baseline backup for {file_path.name}: {e}")
 
             out.write("\n\n")
             out.write("=" * 80 + "\n")
@@ -309,12 +317,14 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
         print(f"Error: Could not read file encoding: {target_path}")
         return False
 
+    # NEVER overwrite an existing baseline backup
     bak_path = target_path.with_name(target_path.name + ".bak")
-    try:
-        with open(bak_path, "w", encoding="utf-8") as bak:
-            bak.writelines(orig_lines)
-    except Exception as e:
-        print(f"Warning: Could not create backup file: {e}")
+    if not bak_path.exists():
+        try:
+            with open(bak_path, "w", encoding="utf-8") as bak:
+                bak.writelines(orig_lines)
+        except Exception as e:
+            print(f"Warning: Could not create backup file: {e}")
 
     ops.sort(key=lambda o: (o.start_line, o.end_line), reverse=True)
     modified_lines = list(orig_lines)
@@ -349,12 +359,13 @@ def apply_patch(patch: FilePatch) -> bool:
             return True
         try:
             bak_path = patch.target_path.with_name(patch.target_path.name + ".bak")
-            orig_lines = read_file_lines(patch.target_path)
-            if orig_lines:
-                with open(bak_path, "w", encoding="utf-8") as bak:
-                    bak.writelines(orig_lines)
+            if not bak_path.exists():
+                orig_lines = read_file_lines(patch.target_path)
+                if orig_lines:
+                    with open(bak_path, "w", encoding="utf-8") as bak:
+                        bak.writelines(orig_lines)
             patch.target_path.unlink()
-            print("DELETED (Backup created)")
+            print("DELETED (Backup preserved)")
             return True
         except Exception as e:
             print(f"FAILED ({e})")
@@ -418,7 +429,7 @@ def run_restore(start_dir: Path):
         target = b.parent / b.name[:-4]
         print(f"  • {b.name} -> {target.name}")
 
-    confirm = input("\nRestore all files from backups and remove .bak files? (y/n): ").strip().lower()
+    confirm = input("\nRestore all files from baseline backups? (y/n): ").strip().lower()
     if confirm != "y":
         print("Aborted.")
         return
@@ -431,12 +442,12 @@ def run_restore(start_dir: Path):
             if lines is not None:
                 with open(target, "w", encoding="utf-8") as f:
                     f.writelines(lines)
-                b.unlink()
+                # Keep .bak intact so repeated restores to baseline remain possible
                 restored += 1
         except Exception as e:
             print(f"Error restoring {target.name}: {e}")
 
-    print(f"\nDone. Successfully restored {restored}/{len(bak_files)} file(s).")
+    print(f"\nDone. Successfully restored {restored}/{len(bak_files)} file(s) to baseline.")
 
 
 def run_cleanup(start_dir: Path):

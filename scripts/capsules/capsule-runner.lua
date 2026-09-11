@@ -12,6 +12,7 @@ local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local liminal_surface = require("scripts.surfaces.liminal-surface")
 local debug_manager = require("scripts.debug-manager")
+local capsule_defs = require("scripts.capsules.capsule-definitions")
 
 local STAGGER_TICKS = 6
 local MAX_NODE_HOPS_PER_STEP = 3
@@ -29,6 +30,30 @@ local QUALITY_RANKS = {
 
 local capsule_runner = {}
 
+local function is_electromagnetic_capsule(capsule_or_id)
+    if not capsule_or_id then return false end
+    if type(capsule_or_id) == "table" then
+        if capsule_or_id.capsule_type then
+            return capsule_defs.is_electromagnetic(capsule_or_id.capsule_type)
+        end
+        local cid = capsule_or_id.capsule_id or capsule_or_id.id
+        if cid then
+            return is_electromagnetic_capsule(cid)
+        end
+        return false
+    elseif type(capsule_or_id) == "number" then
+        if capsule_manager.is_electromagnetic(capsule_or_id) then
+            return true
+        end
+        local cap = storage.capsules and storage.capsules[capsule_or_id]
+        if cap and cap.capsule_type then
+            return capsule_defs.is_electromagnetic(cap.capsule_type)
+        end
+    end
+    return false
+end
+
+capsule_runner.is_electromagnetic_capsule = is_electromagnetic_capsule
 --------------------------------------------------------------------------------
 -- MODULE-LEVEL SCRATCH BUFFERS (Zero-Allocation GC Optimization)
 --------------------------------------------------------------------------------
@@ -709,6 +734,17 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
     if not is_hop_allowed_by_diverter_filters(from_port_key, target_port_key, payload_item, payload_quality) then
         return false
     end
+    local target_unit = tonumber(target_node.unit_number) or capsule_queries.get_port_info(target_port_key)
+    local is_target_projector = (target_unit and storage.active_projectors and storage.active_projectors[target_unit] ~= nil)
+        or (target_unit and storage.projector_settings and storage.projector_settings[target_unit] ~= nil)
+        or target_node.is_kinetic
+        or target_node.is_beam_node
+        or target_node.is_muzzle
+        or target_node.kinetic_transmit
+
+    if is_target_projector and not is_electromagnetic_capsule(capsule_id) then
+        return false
+    end
 
     if not (target_node.capsule_transmit or target_node.cross_transit or target_node.emitter or target_node.kinetic_transmit) then
         return false
@@ -756,7 +792,7 @@ function capsule_runner.select_next_target(capsule)
     local current_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
     if not current_node then return nil end
 
-    local unit_number = current_node.unit_number
+    local unit_number = tonumber(current_node.unit_number) or capsule_queries.get_port_info(from_port_key)
     local cap_id = capsule.capsule_id or capsule.id
 
     -- 1. Ballistic Kinetic Trajectory: straight-line forward propagation across prominent hop nodes
@@ -838,7 +874,7 @@ function capsule_runner.select_next_target(capsule)
     end
 
     -- 2. Projector Launch Muzzle Dispatch: transition from passive intake ports onto the kinetic beam
-    if storage.active_projectors and storage.active_projectors[unit_number] then
+    if storage.active_projectors and storage.active_projectors[unit_number] and is_electromagnetic_capsule(capsule) then
         local proj_entity = storage.active_projectors[unit_number]
         if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
             return nil
@@ -1238,6 +1274,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
     local new_capsule = {
         id = capsule_id,
         capsule_id = capsule_id,
+        capsule_type = (cap_data and cap_data.capsule_type) or (cap_data and cap_data.definition and cap_data.definition.name),
         dominant_item = dominant_item,
         dominant_quality = dominant_quality,
         from_port_key = target_port_key,

@@ -32,6 +32,19 @@ function capsule_definitions.is_bio_item(item_name)
     if not item_name then return false end
     return capsule_definitions.bio_items[item_name] == true
 end
+--- Evaluates whether a capsule type or definition is an electromagnetic capsule
+--- @param def_or_name string|table|nil
+--- @return boolean
+function capsule_definitions.is_electromagnetic(def_or_name)
+    if not def_or_name then return false end
+    if type(def_or_name) == "table" then
+        return def_or_name.is_electromagnetic == true or def_or_name.name == "electromagnetic-capsule"
+    elseif type(def_or_name) == "string" then
+        local def = capsule_definitions.types[def_or_name]
+        return (def and def.is_electromagnetic == true) or def_or_name == "electromagnetic-capsule"
+    end
+    return false
+end
 
 capsule_definitions.types = {
     ["item-capsule"] = {
@@ -167,6 +180,7 @@ capsule_definitions.types = {
     ["electromagnetic-capsule"] = {
         name = "electromagnetic-capsule",
         type = "capsule",
+        is_electromagnetic = true,
         debug_color = { r = 0.85, g = 0.35, b = 0.95, a = 0.9 }, -- Holmium Pink-Magenta
         cargo_capacity = 1,                 -- Exactly 1 base net cargo slot
         quality_affected_capacity = 1,      -- +1 cargo slot per quality tier

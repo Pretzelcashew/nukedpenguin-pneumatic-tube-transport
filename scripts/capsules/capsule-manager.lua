@@ -92,5 +92,15 @@ function capsule_manager.remove(capsule_id)
         storage.active_capsules[capsule_id] = nil
     end
 end
+--- Checks whether a capsule ID corresponds to an electromagnetic capsule
+--- @param capsule_id number
+--- @return boolean
+function capsule_manager.is_electromagnetic(capsule_id)
+    if not (capsule_id and storage.active_capsules) then return false end
+    local cap_data = storage.active_capsules[capsule_id]
+    if not cap_data then return false end
+    return cap_data.capsule_type == "electromagnetic-capsule"
+        or (cap_data.definition and (cap_data.definition.is_electromagnetic == true or cap_data.definition.name == "electromagnetic-capsule"))
+end
 
 return capsule_manager

@@ -4,3 +4,4 @@ patch*.txt
 aggregate*.txt
 scripts/flow/flow-engine.lua.bak
 scripts/capsules/capsule-runner.lua.bak
+*.bak

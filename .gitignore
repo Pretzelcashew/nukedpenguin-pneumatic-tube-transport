@@ -1,7 +1,14 @@
-# Patch and aggregate files from AI diff workflow
-patch.txt
+# Python cache from running your helper scripts
+__pycache__/
+
+# AI workflow buffers
 patch*.txt
 aggregate*.txt
-scripts/flow/flow-engine.lua.bak
-scripts/capsules/capsule-runner.lua.bak
 *.bak
+
+# Local dev test scripts & editor config
+event-logger.lua
+.vscode/
+
+# Build safety net
+*.zip

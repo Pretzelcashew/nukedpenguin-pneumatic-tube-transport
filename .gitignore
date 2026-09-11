@@ -7,7 +7,6 @@ aggregate*.txt
 *.bak
 
 # Local dev test scripts & editor config
-event-logger.lua
 .vscode/
 
 # Build safety net

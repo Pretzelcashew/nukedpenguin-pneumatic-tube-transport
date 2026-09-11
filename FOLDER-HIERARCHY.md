@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-11 18:47:17  
-**Scope:** 21 directories, 86 files  
+**Last Generated:** 2026-09-11 19:05:28  
+**Scope:** 21 directories, 84 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -40,10 +40,8 @@ nukedpenguin-pneumatic-tube-transport/
 ├── prototypes/
 │   ├── entities/
 │   │   ├── pneumatic-capsule-counter.lua
-│   │   ├── pneumatic-diverter-proxy-linkage.lua
 │   │   ├── pneumatic-diverter.lua
 │   │   ├── pneumatic-projector.lua
-│   │   ├── pneumatic-pump-proxy-linkage.lua
 │   │   └── pneumatic-pump-proxy.lua
 │   ├── custom-input.lua
 │   ├── entity.lua

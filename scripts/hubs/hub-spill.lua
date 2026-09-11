@@ -18,7 +18,7 @@ local function process_spilled_containers()
         else
             local inv = entity.get_inventory(defines.inventory.chest)
             if not inv or inv.is_empty() then
-                entity.destroy()
+                entity.destroy{ raise_destroy = true }
                 storage.spilled_containers[unit_number] = nil
             end
         end
@@ -154,7 +154,7 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                             end
 
                             if container_inv.is_empty() then
-                                container_entity.destroy()
+                                container_entity.destroy{ raise_destroy = true }
                             else
                                 if container_inv.supports_bar() then
                                     container_inv.set_bar(1) -- Lock all slots against manual insertion while allowing item extraction
@@ -226,7 +226,7 @@ local removal_events = {
     defines.events.on_player_mined_entity,
     defines.events.on_robot_mined_entity,
     defines.events.on_entity_died,
-    defines.script_raised_destroy
+    defines.events.script_raised_destroy
 }
 if defines.events.on_space_platform_mined_entity then
     table.insert(removal_events, defines.events.on_space_platform_mined_entity)

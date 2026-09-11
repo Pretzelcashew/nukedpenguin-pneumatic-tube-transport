@@ -1346,6 +1346,11 @@ function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
                     end
                 end
             end
+                        if is_removal and u_ports then
+                            for _, upkey in ipairs(u_ports) do
+                                wake_port_parked(upkey)
+                            end
+                        end
         end
     end
 end
@@ -2342,7 +2347,7 @@ function flow_engine.register_events()
         defines.events.on_player_mined_entity,
         defines.events.on_robot_mined_entity,
         defines.events.on_entity_died,
-        defines.script_raised_destroy
+        defines.events.script_raised_destroy
     }
     if defines.events.on_space_platform_mined_entity then
         table.insert(removal_events, defines.events.on_space_platform_mined_entity)

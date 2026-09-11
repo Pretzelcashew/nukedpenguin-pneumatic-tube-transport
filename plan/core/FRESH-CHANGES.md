@@ -197,3 +197,11 @@
 2. **Capacitor Discharge & Dock Throttling (`scripts/capsules/capsule-runner.lua`):** Added pre-dispatch `can_fire` checks in `select_next_target`, keeping incoming payloads parked safely at projector intake docks during recharge cycles. Deducted launch energy from `proj_entity.energy` upon hop commitment and point-blank player collision, logging the dispatch tick to `storage.projector_last_fired` and clearing `storage.projector_ready_states`.
 3. **Recharge Scanner & Dock Wakeup Synchronization (`scripts/active-device-scanner.lua`):** Integrated `storage.projector_ready_states` into the 15-tick device scanner loop to track `can_fire` transitions, automatically enqueuing unit ports and triggering `capsule_runner.wake_parked_capsules` the instant the capacitor completes recharging.
 4. **Storage Bootstrap & Destruction Cleanup (`scripts/flow/flow-engine.lua`):** Initialized `storage.projector_ready_states` and `storage.projector_last_fired` in `flow_engine.init_storage`, and wired complete state cleanup into `flow_engine.disconnect_entity` and `flow_engine.handle_object_destroyed`.
+
+
+### Revision: Spilled Container Script Destruction & Kinetic Obstruction Wakeups
+**Date:** 2026-09-10 21:39 (EDT)
+**Context:** Restore kinetic beam advance and launch dock wakeups when spilled capsule containers are emptied and auto-cleaned by scripts rather than mined by players.
+**Key Changes:**
+1. **Script Destruction Raising & Event Fix (`scripts/hubs/hub-spill.lua`):** Passed `{ raise_destroy = true }` to `entity.destroy` calls across empty container cleanup and early-purge branches, and corrected the removal event listener from the nil constant `defines.script_raised_destroy` to `defines.events.script_raised_destroy`.
+2. **Script-Raised Obstruction Handling & Dock Wakeups (`scripts/flow/flow-engine.lua`):** Updated `removal_events` to listen to `defines.events.script_raised_destroy`, enabling ray-box intersection processing during programmatic container destruction, and added explicit projector intake port wakeups in `notify_beam_obstruction_changed` so queued capsules dispatch immediately once cleared.

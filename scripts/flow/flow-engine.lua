@@ -75,6 +75,7 @@ local QUALITY_BEAM_PALETTE = {
 
 local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
 local PROJECTOR_INTAKE_COLOR = {r = 0.20, g = 0.85, b = 1.00, a = 0.90}
+local PROJECTOR_MUZZLE_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.90}
 
 local function get_owner_color(unit_number)
     if not unit_number then
@@ -690,10 +691,12 @@ local function update_pos_render(pos_key)
         return
     end
 
-    local is_intake = (level == 0) and (not node.is_muzzle)
-        and (storage.active_projectors and storage.active_projectors[node.unit_number] ~= nil and (node.port_index or 0) <= 4)
+    local is_projector_port = (level == 0) and (storage.active_projectors and storage.active_projectors[node.unit_number] ~= nil and (node.port_index or 0) <= 4)
+    local is_intake = is_projector_port and (not node.is_muzzle)
+    local muzzle_pkey = is_projector_port and node.is_muzzle and make_port_key(node.unit_number, node.port_index) or nil
+    local is_muzzle_idle = muzzle_pkey and ((storage.kinetic_levels and storage.kinetic_levels[muzzle_pkey] or 0) == 0)
 
-    if level == 0 and not is_intake then
+    if level == 0 and not is_intake and not is_muzzle_idle then
         destroy_pos_renders(pos_key)
         return
     end
@@ -708,14 +711,16 @@ local function update_pos_render(pos_key)
             local p_renders = storage.flow_renders[p_idx]
             local current = p_renders[pos_key]
 
-            if is_intake then
-                if current and current.circle and current.circle.valid and current.is_intake then
-                    -- Already valid intake dot
+            if is_intake or is_muzzle_idle then
+                local dot_color = is_intake and PROJECTOR_INTAKE_COLOR or PROJECTOR_MUZZLE_COLOR
+                local render_type = is_intake and "intake" or "muzzle"
+                if current and current.circle and current.circle.valid and current.render_type == render_type then
+                    -- Already valid dot
                 else
                     destroy_pos_renders(pos_key, p_idx)
                     if surface and surface.valid then
                         local c_obj = rendering.draw_circle{
-                            color = PROJECTOR_INTAKE_COLOR,
+                            color = dot_color,
                             radius = 0.12,
                             filled = true,
                             target = pos,
@@ -723,7 +728,7 @@ local function update_pos_render(pos_key)
                             only_in_alt_mode = true,
                             players = { player }
                         }
-                        p_renders[pos_key] = { circle = c_obj, text = nil, is_intake = true }
+                        p_renders[pos_key] = { circle = c_obj, text = nil, is_intake = is_intake, render_type = render_type }
                     end
                 end
             else
@@ -1549,6 +1554,9 @@ function flow_engine.step(tick)
             if target_kinetic > 0 then
                 if kinetic_changed then
                     storage.kinetic_levels[pkey] = target_kinetic
+                    if node.is_muzzle then
+                        update_pos_render(node.pos_key)
+                    end
                 end
 
                 local surface = game.surfaces[node.surface_name]
@@ -1725,6 +1733,7 @@ function flow_engine.step(tick)
                         end
                         wake_port_parked(pkey)
                     end
+                        update_pos_render(node.pos_key)
                 end
             end
         end

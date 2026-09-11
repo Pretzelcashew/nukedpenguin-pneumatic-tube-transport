@@ -5,7 +5,7 @@ Move items and players across your factory through pressurized tube networks. Bu
 ---
 
 ### What's New in 0.3.21
-* **Electromagnetic Projector (Fulgora):** Launch Electromagnetic Capsules across open air directly into remote receiving projectors up to 500 tiles away.
+* **Electromagnetic Projector (Fulgora):** Launch Electromagnetic Capsules across open air directly into remote receiving projectors as far as 125 tiles away.
 * **Capacitor Firing Cadence:** Projectors require 9 MJ stored power per shot and pause automatically if the destination dock is backed up.
 * **Flight Hazards:** Don't stand in the beam path—flying projectiles deal impact damage to players and vehicles on collision.
 * **Planetary Recipe Requirements:** Specialized capsules now require their matching Space Age planetary environments to craft (Vacuum on platforms, Reinforced on Vulcanus, Refrigerated on Aquilo, and Electromagnetic on Fulgora).

@@ -2148,7 +2148,9 @@
 3. **Dead-Sender Flight Pacing Synchronization (`scripts/capsules/capsule-runner.lua`):** Gated unanchored ballistic trajectories (`not node` with `beam_flight`) behind `is_woken or is_stagger_tick` with `current_tick + STAGGER_TICKS` rescheduling, ensuring consistent visual pacing and collision handling when sender projectors are deconstructed mid-flight.
 
 
-#### next ver
+#### 0.3.22
+
+
 
 #### next ver
 

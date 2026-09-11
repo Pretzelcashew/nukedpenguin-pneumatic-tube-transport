@@ -4,11 +4,11 @@ Move items and players across your factory through pressurized tube networks. Bu
 
 ---
 
-### What's New in 0.3.21
-* **Electromagnetic Projector (Fulgora):** Launch Electromagnetic Capsules across open air directly into remote receiving projectors as far as 125 tiles away.
-* **Capacitor Firing Cadence:** Projectors require 9 MJ stored power per shot and pause automatically if the destination dock is backed up.
-* **Flight Hazards:** Don't stand in the beam path—flying projectiles deal impact damage to players and vehicles on collision.
-* **Planetary Recipe Requirements:** Specialized capsules now require their matching Space Age planetary environments to craft (Vacuum on platforms, Reinforced on Vulcanus, Refrigerated on Aquilo, and Electromagnetic on Fulgora).
+### What's New in 0.3.22
+* **Beam Routing Through Gates:** Kinetic projector beams now shoot freely through open perimeter gates and dynamically cut off when gates shut.
+* **Cliff & Elevated Rail Clearance:** Kinetic beams now pass cleanly through cliffs and under elevated rail tracks (rail supports and ramps still block beams).
+* **Intake Capsule Rejection:** Projectors now reject non-electromagnetic capsules at the dock, allowing reverse pressure to draw them back into the tube network instead of getting stuck.
+* **Idle Muzzle Indicators:** Projectors display an Alt-Mode muzzle indicator when idle or unpowered so you can verify launch orientation without powering the machine.
 
 ---
 

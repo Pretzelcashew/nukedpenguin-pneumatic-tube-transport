@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.3.22
+Date: 2026-09-11
+  Features:
+    - Kinetic projector beams can now shoot through open gates. Beams dynamically extend or cut off when gates open and close.
+    - Added an Alt-Mode launch muzzle indicator dot on Electromagnetic Projectors when idle or unpowered to clearly show machine orientation.
+  Bugfixes:
+    - Fixed non-electromagnetic capsules getting permanently stuck in Electromagnetic Projectors; intake ports now reject them and allow reverse pressure to pull them back into the tube network.
+    - Fixed kinetic projector beams getting blocked by cliffs and overhead elevated rail spans (rail supports and ramps still block beams).
+---------------------------------------------------------------------------------------------------
 Version: 0.3.21
 Date: 2026-09-11
   Features:

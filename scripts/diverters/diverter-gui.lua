@@ -1,5 +1,5 @@
 local events = require("scripts.events")
-local diverter_settings = require("scripts.diverter-settings")
+local diverter_settings = require("scripts.diverters.diverter-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local gui_components = require("scripts.utils.gui-components")
 

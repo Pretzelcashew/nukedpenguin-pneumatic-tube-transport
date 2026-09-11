@@ -1,10 +1,10 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
-local pump_settings = require("scripts.pump-settings")
-local diverter_settings = require("scripts.diverter-settings")
+local pump_settings = require("scripts.pumps.pump-settings")
+local diverter_settings = require("scripts.diverters.diverter-settings")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
-local projector_settings = require("scripts.projector-settings")
+local projector_settings = require("scripts.projectors.projector-settings")
 
 local flow_engine = {}
 

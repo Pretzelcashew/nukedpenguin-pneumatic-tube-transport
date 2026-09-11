@@ -1,4 +1,4 @@
-local diverter_settings = require("scripts.diverter-settings")
+local diverter_settings = require("scripts.diverters.diverter-settings")
 local port_defs = require("scripts.flow.port-defs")
 local gui_components = require("scripts.utils.gui-components")
 

@@ -1,6 +1,6 @@
 local events = require("scripts.events")
-local pump_settings = require("scripts.pump-settings")
-local projector_settings = require("scripts.projector-settings")
+local pump_settings = require("scripts.pumps.pump-settings")
+local projector_settings = require("scripts.projectors.projector-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local gui_components = require("scripts.utils.gui-components")
 

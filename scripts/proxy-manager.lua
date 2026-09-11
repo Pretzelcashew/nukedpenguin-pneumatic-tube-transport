@@ -1,6 +1,6 @@
 local events = require("scripts.events")
-local pump_gui = require("scripts.pump-gui")
-local diverter_gui = require("scripts.diverter-gui")
+local pump_gui = require("scripts.pumps.pump-gui")
+local diverter_gui = require("scripts.diverters.diverter-gui")
 local counter_gui = nil
 
 local proxy_manager = {}

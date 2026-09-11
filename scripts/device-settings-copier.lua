@@ -1,17 +1,17 @@
 local events = require("scripts.events")
-local pump_settings = require("scripts.pump-settings")
-local diverter_settings = require("scripts.diverter-settings")
+local pump_settings = require("scripts.pumps.pump-settings")
+local diverter_settings = require("scripts.diverters.diverter-settings")
 local counter_settings = require("scripts.counters.counter-settings")
-local projector_settings = require("scripts.projector-settings")
+local projector_settings = require("scripts.projectors.projector-settings")
 local hub_settings = require("scripts.hubs.hub-settings")
 local active_device_scanner = require("scripts.active-device-scanner")
 local hub_manager = require("scripts.hubs.hub-manager")
-local pump_gui = require("scripts.pump-gui")
-local diverter_gui = require("scripts.diverter-gui")
+local pump_gui = require("scripts.pumps.pump-gui")
+local diverter_gui = require("scripts.diverters.diverter-gui")
 local ok_cgui, counter_gui = pcall(require, "scripts.counters.counter-gui")
 if not ok_cgui then counter_gui = nil end
 local proxy_manager = require("scripts.proxy-manager")
-local diverter_renderer = require("scripts.diverter-renderer")
+local diverter_renderer = require("scripts.diverters.diverter-renderer")
 local util = require("util")
 
 local device_settings_copier = {}

@@ -2,7 +2,7 @@
 
 Project: Factorio Mod Documentation Maintenance
 Your Role: Lead Technical Architect & Documentation Engineer
-Context: Modular Subsystem Architecture. See attached `MANIFEST.md` and live `FOLDER-HIERARCHY.md`.
+Context: Modular Subsystem Architecture. See attached `MANIFEST.md`.
 
 Input: Batch of un-incorporated revision logs, commit notes, or scratchpad changes:
 [`INSERT RAW REVISION NOTES / FRESH-CHANGES.md HERE`]
@@ -10,7 +10,7 @@ Input: Batch of un-incorporated revision logs, commit notes, or scratchpad chang
 ---
 
 ### Core Documentation Standards
-1. **Zero Information Loss & Anti-Compression:** Never summarize, truncate, or compress existing technical specs, storage schemas, or algorithms. Keep the existing level of algorithmic rigor (exact formulas, ticks, entity prototypes, render layers).
+1. **Zero Information Loss & Anti-Compression:** When updating a document, you MUST output the entire file with all existing, unrelated algorithms, storage tables, and module definitions preserved word-for-word. Never summarize or collapse existing technical rigor into bullet points.
 2. **Strict Domain Boundary Enforcement:**
    - `docs/arch/ARCH-PROTOTYPES.md`: Prototype definitions, data stage, recipes, techs, Space Age planet constraints, sprite composite layers.
    - `docs/arch/ARCH-FLOW-KINETICS.md`: Flow v2 delta wavefront queue, pressure levels, kinetic beam trajectories, ray-box occlusion, fence/gate interop.
@@ -19,39 +19,36 @@ Input: Batch of un-incorporated revision logs, commit notes, or scratchpad chang
    - `docs/arch/ARCH-DEVICES-CIRCUITS.md`: 15t scanner, Triple-Proxy isolation, copy-paste, blueprint wire tuples, GUI widgets, Alt-Mode overlays.
    - `MANIFEST.md`: Master routing table, Master Event Hook & Lifecycle Matrix (Table 3), and Debug Commands (Table 4).
 3. **Sequential Algorithm Numbering:** New mechanics must continue the existing numbering scheme (e.g., `5.25 New Feature Name`), formatted with the exact same step-by-step numbered breakdown.
-4. **Schema Parity:** If a runtime storage variable is added, modified, or removed:
-   - It MUST be updated in the Lua code block of the owning `ARCH-*.md`.
-   - It MUST be added to the "Key Storage Tables" column in `MANIFEST.md`.
-5. **Lifecycle Parity:** If a new Factorio engine event listener is registered or modified, it MUST be updated in Table 3 of `MANIFEST.md`.
+4. **Storage & Lifecycle Parity:**
+   - If a runtime storage variable in `storage` is added or modified, it MUST be added to the Lua code block of the owning `ARCH-*.md` AND to the "Key Storage Tables" column in `MANIFEST.md`.
+   - If a new Factorio engine event listener is registered, it MUST be updated in Table 3 of `MANIFEST.md`.
 
 ---
 
-### Two-Stage Doc Sync Protocol
+### Safe Two-Stage Doc Sync Protocol
 
-#### Stage 1: Change Triage & Subsystem Routing
+#### Stage 1: Change Triage & Domain Identification
 1. Read `MANIFEST.md` and the provided raw revision notes.
-2. Filter out internal developer chatter and isolate the actual gameplay, algorithmic, and architectural mutations.
+2. Filter out development chatter and identify the actual technical, storage, and algorithmic changes.
 3. Group the changes by owning subsystem document (`docs/arch/ARCH-*.md`).
-4. Determine if `MANIFEST.md` requires updates (e.g., new engine event hooks, new console commands, new storage tables).
-5. Output a structured Triage Summary:
-   - **Net Architectural Changes:** 2–3 bullet points per affected subsystem summarizing what changed.
-   - **File Request Line:** Output a single Windows search query listing only the documentation files that need edits (e.g., `filename: "ARCH-HUBS-LOGISTICS.md" OR filename: "MANIFEST.md"`).
-6. **Stop and wait.** Do not generate patches until the user supplies the aggregated documentation files.
+4. Check if `MANIFEST.md` itself requires updates (new event hooks, commands, or storage keys).
+5. Output the Triage Summary:
+   - **Net Changes Breakdown:** 2–3 clear bullet points per affected subsystem.
+   - **Target Document Request:** State clearly which specific `ARCH-*.md` file you need the user to provide next (e.g., `REQUEST DOC: docs/arch/ARCH-HUBS-LOGISTICS.md`).
+6. **Stop and wait.** Do not generate full documents until the user provides the current file.  
+*(Fast-Path: If the user already provided the target `ARCH-*.md` in the initial prompt, proceed directly to Stage 2).*
 
-#### Stage 2: Patcher-Compatible Documentation Diff Output
-Once the user supplies the aggregated documentation files (from `aggregator_patcher.py` with line numbers `<line> | <code>`):
-1. Output all documentation updates in **EXACTLY ONE** unified fenced code block (` ```text `) using your established patcher syntax:
-   - `*** FILE: <path_to_arch_or_manifest_file>`
-   - `<<< REPLACE LINES <start>-<end>`
-   - `<<< INSERT AFTER LINE <n>`
-   - `<<< DELETE LINES <start>-<end>`
-2. Apply surgical line edits. Update tables, storage schemas, and algorithm sections in-place without replacing entire unchanged files.
-3. Obey reverse-sort line indexing (the patcher auto-reverse sorts).
+#### Stage 2: Complete Document Output (Copy & Overwrite)
+Once the user provides the current text of the target document:
+1. Output the **ENTIRE, UPDATED FILE** from line 1 to the final line.
+2. Enclose the output in a 4-backtick code block (` ````markdown ... ```` `) so it can be copied cleanly in one click.
+3. Apply the changes surgically into their proper sections (updating tables, storage code blocks, and algorithms in-place) while leaving all unchanged sections 100% intact.
+4. If multiple documentation files are affected, update them sequentially—one file per turn—so that no file gets truncated by output token limits.
 
 ---
 
 ### Strict Negative Constraints
-- Do NOT output documentation patches outside of the single fenced code block.
-- Do NOT rewrite entire files when only a table or algorithm was updated; use targeted diffs.
+- Do NOT use line-number diffs (`<<< REPLACE LINES >>>`) on documentation files.
+- Do NOT output partial files, hunks, or ellipses (`...`) for unchanged sections.
 - Do NOT drop existing algorithms or storage keys to "save space."
 - Do NOT alter unchanged subsystem files.

@@ -1,2 +1,2 @@
 exclude folders: .git plan docs .vscode
-exclude files: EXPORT.md FOLDER-HIERARCHY.md aggregator_patcher.py .gitignore patch.txt aggregate.txt event-logger.lua scripts_capsules_capsule-definitions-guide.md
+exclude files: EXPORT.md FOLDER-HIERARCHY.md aggregator_patcher.py .gitignore patch.txt aggregate.txt event-logger.lua scripts_capsules_capsule-definitions-guide.md update_hierarchy.py

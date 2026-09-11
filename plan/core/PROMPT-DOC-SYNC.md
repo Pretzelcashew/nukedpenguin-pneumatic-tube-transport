@@ -1,10 +1,10 @@
---- START OF FILE PROMPT-DOC-SYNC.md ---
+# PROMPT-DOC-SYNC.md - Modular Architecture Sync & Maintenance Prompt
 
-Project: Factorio Mod Documentation Maintenance
-Your Role: Lead Technical Architect & Documentation Engineer
+Project: Factorio Mod Documentation Maintenance  
+Your Role: Lead Technical Architect & Documentation Engineer  
 Context: Modular Subsystem Architecture. See attached `MANIFEST.md`.
 
-Input: Batch of un-incorporated revision logs, commit notes, or scratchpad changes:
+Input: Batch of un-incorporated revision logs, commit notes, or scratchpad changes:  
 [`INSERT RAW REVISION NOTES / FRESH-CHANGES.md HERE`]
 
 ---
@@ -27,19 +27,19 @@ Input: Batch of un-incorporated revision logs, commit notes, or scratchpad chang
 
 ### Safe Two-Stage Doc Sync Protocol
 
-#### Stage 1: Change Triage & Domain Identification
+#### Stage 1: Change Triage & Architecture Discovery
 1. Read `MANIFEST.md` and the provided raw revision notes.
 2. Filter out development chatter and identify the actual technical, storage, and algorithmic changes.
 3. Group the changes by owning subsystem document (`docs/arch/ARCH-*.md`).
 4. Check if `MANIFEST.md` itself requires updates (new event hooks, commands, or storage keys).
 5. Output the Triage Summary:
    - **Net Changes Breakdown:** 2–3 clear bullet points per affected subsystem.
-   - **Target Document Request:** State clearly which specific `ARCH-*.md` file you need the user to provide next (e.g., `REQUEST DOC: docs/arch/ARCH-HUBS-LOGISTICS.md`).
-6. **Stop and wait.** Do not generate full documents until the user provides the current file.  
+   - **Target Query Block:** Output **strictly** the single-line Windows search query listing the required architecture document enclosed in a fenced code block with triple backticks so it has a 1-click copy button formatted for Option `[1]` in `aggregator_patcher.py` (e.g. ` ```filename: "ARCH-FLOW-KINETICS.md"``` `).
+6. **Stop and wait.** Do not generate any full documentation files until the user runs the query through `aggregator_patcher.py` Option `[1]` and provides the resulting `aggregate_N.txt`.  
 *(Fast-Path: If the user already provided the target `ARCH-*.md` in the initial prompt, proceed directly to Stage 2).*
 
 #### Stage 2: Complete Document Output (Copy & Overwrite)
-Once the user provides the current text of the target document:
+Once the user provides the aggregated content of the target document:
 1. Output the **ENTIRE, UPDATED FILE** from line 1 to the final line.
 2. Enclose the output in a 4-backtick code block (` ````markdown ... ```` `) so it can be copied cleanly in one click.
 3. Apply the changes surgically into their proper sections (updating tables, storage code blocks, and algorithms in-place) while leaving all unchanged sections 100% intact.
@@ -48,6 +48,7 @@ Once the user provides the current text of the target document:
 ---
 
 ### Strict Negative Constraints
+- Do NOT output manual file paths or instructions like `REQUEST DOC: docs/arch/...`. ALWAYS output a 1-click fenced query block for `aggregator_patcher.py`.
 - Do NOT use line-number diffs (`<<< REPLACE LINES >>>`) on documentation files.
 - Do NOT output partial files, hunks, or ellipses (`...`) for unchanged sections.
 - Do NOT drop existing algorithms or storage keys to "save space."

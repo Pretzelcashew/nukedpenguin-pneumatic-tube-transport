@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-11 09:12:37  
-**Scope:** 15 directories, 109 files  
+**Last Generated:** 2026-09-11 10:58:38  
+**Scope:** 15 directories, 111 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -22,13 +22,15 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── FRESH-CHANGES.md
 │   │   ├── HELPERS.md
 │   │   ├── MANIFEST.md
+│   │   ├── MOD-DESCRIPTION.md
 │   │   ├── package.py
 │   │   ├── PROMPT-AG-DIFF.md
 │   │   ├── PROMPT-DOC-SYNC.md
 │   │   ├── PROMPT-REVISION-LOG.md
 │   │   ├── SPLASH-PAGE.md
 │   │   ├── TODO.md
-│   │   └── UPDATE-MOD-PAGE.md
+│   │   ├── UPDATE-MOD-PAGE.md
+│   │   └── WORKFLOW.md
 │   ├── BP-CONNECTION.md
 │   ├── CAPSULE-COUNTER-PLAN.md
 │   ├── CAPSULE-COUNTER.md

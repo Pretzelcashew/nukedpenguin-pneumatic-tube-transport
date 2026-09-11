@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-11 17:14:00  
-**Scope:** 15 directories, 112 files  
+**Last Generated:** 2026-09-11 17:27:38  
+**Scope:** 15 directories, 86 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -16,49 +16,23 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── en/
 │       └── config.cfg
 ├── plan/
-│   ├── core/
-│   │   ├── ARCHITECTURE.md
-│   │   ├── CHANGELOG.md
-│   │   ├── FRESH-CHANGES.md
-│   │   ├── HELPERS.md
-│   │   ├── MANIFEST.md
-│   │   ├── MOD-DESCRIPTION.md
-│   │   ├── package.py
-│   │   ├── PROMPT-AG-DIFF.md
-│   │   ├── PROMPT-DOC-SYNC.md
-│   │   ├── PROMPT-REVISION-LOG.md
-│   │   ├── SPLASH-PAGE.md
-│   │   ├── TODO.md
-│   │   ├── UPDATE-MOD-PAGE.md
-│   │   └── WORKFLOW.md
-│   ├── BP-CONNECTION.md
-│   ├── CAPSULE-COUNTER-PLAN.md
-│   ├── CAPSULE-COUNTER.md
-│   ├── CAPSULE-CRAFTING-MACHINES.md
-│   ├── CHANGES_0.3.1.md
-│   ├── CHANGES_0.3.2.md
-│   ├── CHANGES_0.3.21.md
-│   ├── CHANGES_0.3.22.md
-│   ├── CHANGES_0.3.23.md
-│   ├── DEVICE-REFACTOR-PLAN.md
-│   ├── DIVERTER-TODO.md
-│   ├── EM-PROJECTOR-POLISH.md
-│   ├── EM-PROJECTOR.md
-│   ├── EXPORT-POWERSHELL.md
-│   ├── GHOST-SETTINGS-SUPPORT.md
-│   ├── image-1.png
-│   ├── image.png
-│   ├── PROMPT-NEW.md
-│   ├── PROMPT.md
-│   ├── RECIPES-REFINED.md
-│   ├── ROADMAP.md
-│   ├── SCRATCH.md
-│   ├── TECH-TREE-REFINED.md
-│   ├── TECH-TREE.md
-│   ├── TODO-SORT.md
-│   ├── V1-REMOVAL-PLAN.md
-│   ├── VACUUM-CAPSULE-PLAN.md
-│   └── VACUUM-CASPULE-TASKS.md
+│   └── core/
+│       ├── ARCHITECTURE.md
+│       ├── CHANGELOG.md
+│       ├── CHANGES_0.3.23.md
+│       ├── FRESH-CHANGES.md
+│       ├── HELPERS.md
+│       ├── MANIFEST.md
+│       ├── MOD-DESCRIPTION.md
+│       ├── package.py
+│       ├── PROMPT-AG-DIFF.md
+│       ├── PROMPT-DOC-SYNC.md
+│       ├── PROMPT-REVISION-LOG.md
+│       ├── SCRATCH.md
+│       ├── SPLASH-PAGE.md
+│       ├── TODO.md
+│       ├── UPDATE-MOD-PAGE.md
+│       └── WORKFLOW.md
 ├── prototypes/
 │   ├── custom-input.lua
 │   ├── entity.lua

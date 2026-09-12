@@ -8,7 +8,8 @@
 
 | What are you trying to do? | What to paste into the AI prompt |
 | :--- | :--- |
-| **Add a feature or fix a bug** | `plan/core/MANIFEST.md` + `plan/core/PROMPT-AG-DIFF.md` + Your Task |
+| **Add a feature or fix a bug (Code)** | `plan/core/MANIFEST.md` + `plan/core/PROMPT-AG-DIFF.md` + Your Task |
+| **Update prompts, guides, or docs (Markdown)** | Direct prompt asking for full file rewrite inside 4-backtick block (Routine 3 style) |
 | **Create a Git commit & revision log** | `plan/core/PROMPT-REVISION-LOG.md` |
 | **Update Architecture docs from notes** | `plan/core/PROMPT-DOC-SYNC.md` + `plan/core/MANIFEST.md` + `plan/core/FRESH-CHANGES.md` |
 | **Update Mod Portal text / Splash** | Ask directly: *"Update short description / splash page in dry, non-flourishy Factorio style"* |
@@ -35,7 +36,8 @@ Follow the muscle memory ritual:
    * Run Option `[1]` in `aggregator_patcher.py` and paste the query.
    * Paste the resulting `aggregate_2.txt` back to the AI.
 4. **Apply the Patch:**
-   * The AI generates a single ` ```text ` patch block using **Contextual Find & Replace** (`<<< FIND` ... `=== REPLACE ===` ... `>>>`) strictly anchored with 2–4 lines of context.
+   * The AI generates a single ` ```text ` patch block using **Contextual Find & Replace** (`<<< FIND` / `=== REPLACE ===` / `>>>`) strictly anchored with 2–4 lines of context.
+   * When refactoring or extracting functions, the AI uses 1-line facade delegations (`module.foo = new_module.foo`) to avoid large deletions.
    * Copy the code block.
    * Save it into `patch.txt` and run Option `[2]` in `aggregator_patcher.py`.
    * *If paced:* Test/verify, then reply `next` for the next file.
@@ -60,9 +62,9 @@ Keep coding momentum going without stopping to rewrite documentation:
 
 ---
 
-## 📚 Routine 3: Syncing Architecture (The Doc Maintenance Pass)
+## 📚 Routine 3: Syncing Architecture & Documentation (Full Overwrites)
 
-Do this only after accumulating 5–10 revision entries in `FRESH-CHANGES.md` (or at the end of a milestone).
+Do this only after accumulating 5–10 revision entries in `FRESH-CHANGES.md`, at the end of a milestone, or when updating prompt/meta files.
 
 1. **Open a Fresh Chat.**
 2. **Send the Triage Prompt:**

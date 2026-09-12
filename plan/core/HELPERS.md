@@ -80,3 +80,9 @@ Please sync our documentation with the latest changes:
 1. Update Architecture: Modify the relevant ARCH-*.md to fully reflect all changes, incorporating the final net results and updated system architecture state.
 2. Output Format: Provide the full, updated contents of the file in a single 4-backtick code block ready to copy and paste.
 ```
+
+### Refactor Request
+Prompt for requesting a refactor of large files
+```text
+Target: Identify refactor candidates (large files with SoC violations, duplicated code which could be merged into commons).
+```

@@ -2,6 +2,7 @@
 
 local flow_common = require("scripts.flow.flow-common")
 local flow_renderer = require("scripts.flow.flow-renderer")
+local capsule_manager = require("scripts.capsules.capsule-manager")
 
 local counter_range = {}
 
@@ -13,9 +14,12 @@ function counter_range.init_storage()
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_renders = storage.counter_renders or {}
     storage.counter_capsules = storage.counter_capsules or {}
+    storage.counter_stable_summary = storage.counter_stable_summary or {}
+    storage.counter_stable_capsules = storage.counter_stable_capsules or {}
+    storage.counter_dynamic_capsules = storage.counter_dynamic_capsules or {}
 
-    if not storage.counter_capsules_initialized then
-        storage.counter_capsules_initialized = true
+    if not storage.counter_stable_summary_v3 then
+        storage.counter_stable_summary_v3 = true
         counter_range.rebuild_territory_capsules()
     end
 end
@@ -52,6 +56,9 @@ function counter_range.unregister_counter(unit_number)
         end
         storage.counter_capsules[unit_number] = nil
     end
+    if storage.counter_stable_summary then storage.counter_stable_summary[unit_number] = nil end
+    if storage.counter_stable_capsules then storage.counter_stable_capsules[unit_number] = nil end
+    if storage.counter_dynamic_capsules then storage.counter_dynamic_capsules[unit_number] = nil end
     flow_common.enqueue_unit_ports(unit_number)
 end
 
@@ -70,11 +77,167 @@ function counter_range.get_territory_capsules(counter_unit)
     return storage.counter_capsules and storage.counter_capsules[counter_unit]
 end
 
+--- Returns the pre-aggregated stable capsule signal summary for a counter unit
+--- @param counter_unit number
+--- @return table|nil summary { capsule_count = number, vessels = table, cargo = table }
+function counter_range.get_stable_summary(counter_unit)
+    if not counter_unit then return nil end
+    counter_range.init_storage()
+    return storage.counter_stable_summary and storage.counter_stable_summary[counter_unit]
+end
+
+--- Returns the set of dynamic capsule IDs in this counter's sensing territory
+--- @param counter_unit number
+--- @return table<number, boolean>|nil
+function counter_range.get_dynamic_capsules(counter_unit)
+    if not counter_unit then return nil end
+    counter_range.init_storage()
+    return storage.counter_dynamic_capsules and storage.counter_dynamic_capsules[counter_unit]
+end
+
+local function add_capsule_to_summary(summary, sig_data)
+    if not (summary and sig_data) then return end
+    summary.capsule_count = (summary.capsule_count or 0) + 1
+
+    local v = sig_data.vessel
+    if v then
+        local v_key = v.name .. "@" .. (v.quality or "normal")
+        local entry = summary.vessels[v_key]
+        if not entry then
+            entry = {
+                type = "item",
+                name = v.name,
+                quality = v.quality or "normal",
+                count = 0
+            }
+            summary.vessels[v_key] = entry
+        end
+        entry.count = entry.count + 1
+    end
+
+    if sig_data.cargo then
+        for _, c in ipairs(sig_data.cargo) do
+            local c_key = c.name .. "@" .. (c.quality or "normal")
+            local entry = summary.cargo[c_key]
+            if not entry then
+                entry = {
+                    type = "item",
+                    name = c.name,
+                    quality = c.quality or "normal",
+                    count = 0
+                }
+                summary.cargo[c_key] = entry
+            end
+            entry.count = entry.count + c.count
+        end
+    end
+end
+
+local function subtract_capsule_from_summary(summary, sig_data)
+    if not (summary and sig_data) then return end
+    summary.capsule_count = math.max(0, (summary.capsule_count or 1) - 1)
+
+    local v = sig_data.vessel
+    if v then
+        local v_key = v.name .. "@" .. (v.quality or "normal")
+        local entry = summary.vessels[v_key]
+        if entry then
+            entry.count = entry.count - 1
+            if entry.count <= 0 then
+                summary.vessels[v_key] = nil
+            end
+        end
+    end
+
+    if sig_data.cargo then
+        for _, c in ipairs(sig_data.cargo) do
+            local c_key = c.name .. "@" .. (c.quality or "normal")
+            local entry = summary.cargo[c_key]
+            if entry then
+                entry.count = entry.count - c.count
+                if entry.count <= 0 then
+                    summary.cargo[c_key] = nil
+                end
+            end
+        end
+    end
+
+    if summary.capsule_count <= 0 then
+        summary.capsule_count = 0
+        summary.vessels = {}
+        summary.cargo = {}
+    end
+end
+
+function counter_range.add_capsule_to_counter(counter_unit, cap_id)
+    if not (counter_unit and cap_id) then return end
+
+    storage.counter_capsules = storage.counter_capsules or {}
+    local c_caps = storage.counter_capsules[counter_unit]
+    if not c_caps then
+        c_caps = {}
+        storage.counter_capsules[counter_unit] = c_caps
+    end
+    if c_caps[cap_id] then
+        return
+    end
+    c_caps[cap_id] = true
+
+    local sig_data, is_stable = capsule_manager.get_signal_data(cap_id)
+    if is_stable and sig_data then
+        storage.counter_stable_capsules = storage.counter_stable_capsules or {}
+        local s_caps = storage.counter_stable_capsules[counter_unit]
+        if not s_caps then
+            s_caps = {}
+            storage.counter_stable_capsules[counter_unit] = s_caps
+        end
+        s_caps[cap_id] = sig_data
+
+        storage.counter_stable_summary = storage.counter_stable_summary or {}
+        local summary = storage.counter_stable_summary[counter_unit]
+        if not summary then
+            summary = { capsule_count = 0, vessels = {}, cargo = {} }
+            storage.counter_stable_summary[counter_unit] = summary
+        end
+        add_capsule_to_summary(summary, sig_data)
+    else
+        storage.counter_dynamic_capsules = storage.counter_dynamic_capsules or {}
+        local d_caps = storage.counter_dynamic_capsules[counter_unit]
+        if not d_caps then
+            d_caps = {}
+            storage.counter_dynamic_capsules[counter_unit] = d_caps
+        end
+        d_caps[cap_id] = true
+    end
+end
+
+function counter_range.remove_capsule_from_counter(counter_unit, cap_id)
+    if not (counter_unit and cap_id) then return end
+
+    if storage.counter_capsules and storage.counter_capsules[counter_unit] then
+        storage.counter_capsules[counter_unit][cap_id] = nil
+    end
+
+    if storage.counter_stable_capsules and storage.counter_stable_capsules[counter_unit] then
+        local sig_data = storage.counter_stable_capsules[counter_unit][cap_id]
+        if sig_data then
+            storage.counter_stable_capsules[counter_unit][cap_id] = nil
+            if storage.counter_stable_summary and storage.counter_stable_summary[counter_unit] then
+                subtract_capsule_from_summary(storage.counter_stable_summary[counter_unit], sig_data)
+            end
+        end
+    end
+
+    if storage.counter_dynamic_capsules and storage.counter_dynamic_capsules[counter_unit] then
+        storage.counter_dynamic_capsules[counter_unit][cap_id] = nil
+    end
+end
+
 --- Updates a capsule's territory registration when its from_port_key changes
 --- @param capsule table
 function counter_range.update_capsule_territory(capsule)
     if not capsule then return end
-    local cap_id = capsule.id or capsule.capsule_id
+    local cap_id = capsule.capsule_id or capsule.id
     if not cap_id then return end
 
     local current_pkey = capsule.from_port_key
@@ -85,38 +248,46 @@ function counter_range.update_capsule_territory(capsule)
         return
     end
 
-    if old_owner and storage.counter_capsules and storage.counter_capsules[old_owner] then
-        storage.counter_capsules[old_owner][cap_id] = nil
+    if old_owner then
+        counter_range.remove_capsule_from_counter(old_owner, cap_id)
     end
 
     if new_owner then
-        storage.counter_capsules = storage.counter_capsules or {}
-        local c_caps = storage.counter_capsules[new_owner]
-        if not c_caps then
-            c_caps = {}
-            storage.counter_capsules[new_owner] = c_caps
-        end
-        c_caps[cap_id] = true
+        counter_range.add_capsule_to_counter(new_owner, cap_id)
     end
 
     capsule.counter_owner = new_owner
 end
 
+--- Finds a capsule in motion storage by either runner ID or capsule ID
+--- @param cap_id number
+--- @return table|nil
+function counter_range.find_capsule_by_id(cap_id)
+    if not (cap_id and storage.capsules) then return nil end
+    if storage.capsules[cap_id] then return storage.capsules[cap_id] end
+    for _, cap in pairs(storage.capsules) do
+        if cap.capsule_id == cap_id or cap.id == cap_id then
+            return cap
+        end
+    end
+    return nil
+end
+
 --- Removes a capsule from territory registration upon arrival or removal
 --- @param capsule_or_id table|number
 function counter_range.unregister_capsule_territory(capsule_or_id)
-    local cap_id = type(capsule_or_id) == "table" and (capsule_or_id.id or capsule_or_id.capsule_id) or capsule_or_id
+    local cap_id = type(capsule_or_id) == "table" and (capsule_or_id.capsule_id or capsule_or_id.id) or capsule_or_id
     if not cap_id then return end
 
-    local capsule = type(capsule_or_id) == "table" and capsule_or_id or (storage.capsules and storage.capsules[cap_id])
+    local capsule = type(capsule_or_id) == "table" and capsule_or_id or (storage.capsules and (storage.capsules[cap_id] or counter_range.find_capsule_by_id(cap_id)))
     local old_owner = capsule and capsule.counter_owner
 
-    if old_owner and storage.counter_capsules and storage.counter_capsules[old_owner] then
-        storage.counter_capsules[old_owner][cap_id] = nil
-    elseif not old_owner and storage.counter_capsules then
-        for _, c_caps in pairs(storage.counter_capsules) do
+    if old_owner then
+        counter_range.remove_capsule_from_counter(old_owner, cap_id)
+    elseif storage.counter_capsules then
+        for c_unit, c_caps in pairs(storage.counter_capsules) do
             if c_caps[cap_id] then
-                c_caps[cap_id] = nil
+                counter_range.remove_capsule_from_counter(c_unit, cap_id)
             end
         end
     end
@@ -163,6 +334,9 @@ end
 --- One-time sweep to rebuild counter_capsules index from all active capsules
 function counter_range.rebuild_territory_capsules()
     storage.counter_capsules = {}
+    storage.counter_stable_summary = {}
+    storage.counter_stable_capsules = {}
+    storage.counter_dynamic_capsules = {}
     if not storage.capsules then return end
     for _, capsule in pairs(storage.capsules) do
         capsule.counter_owner = nil
@@ -196,7 +370,14 @@ function counter_range.register_events()
                 if caps_map then
                     for _ in pairs(caps_map) do cap_count = cap_count + 1 end
                 end
-                game.print(string.format("[Counter Status] Counter #%d (%s at x=%.1f, y=%.1f): owns %d tube node(s), %d capsule(s) in territory", unit_number, power, entity.position.x, entity.position.y, node_count, cap_count))
+                local stable_sum = storage.counter_stable_summary and storage.counter_stable_summary[unit_number]
+                local stable_count = stable_sum and stable_sum.capsule_count or 0
+                local dyn_map = storage.counter_dynamic_capsules and storage.counter_dynamic_capsules[unit_number]
+                local dyn_count = 0
+                if dyn_map then
+                    for _ in pairs(dyn_map) do dyn_count = dyn_count + 1 end
+                end
+                game.print(string.format("[Counter Status] Counter #%d (%s at x=%.1f, y=%.1f): owns %d tube node(s), %d capsule(s) in territory (%d stable, %d dynamic)", unit_number, power, entity.position.x, entity.position.y, node_count, cap_count, stable_count, dyn_count))
             end
         end
         if count == 0 then

@@ -55,15 +55,19 @@ function counter_logic.update_signals(counter_entity)
         return
     end
 
-    local owned_capsules = counter_range.get_territory_capsules(unit_number)
-    if not owned_capsules or next(owned_capsules) == nil then
+    local stable_summary = counter_range.get_stable_summary(unit_number)
+    local dynamic_capsules = counter_range.get_dynamic_capsules(unit_number)
+    local has_stable = stable_summary and (stable_summary.capsule_count or 0) > 0
+    local has_dynamic = dynamic_capsules and next(dynamic_capsules) ~= nil
+
+    if not has_stable and not has_dynamic then
         apply_filters_to_proxy(main_proxy, {})
         apply_filters_to_proxy(red_proxy, {})
         apply_filters_to_proxy(green_proxy, {})
         return
     end
 
-    local total_capsules_count = 0
+    local total_capsules_count = stable_summary and stable_summary.capsule_count or 0
     local red_signal_totals = {}
     local green_signal_totals = {}
 
@@ -85,7 +89,32 @@ function counter_logic.update_signals(counter_entity)
         entry.count = entry.count + amount
     end
 
-    for cap_id in pairs(owned_capsules) do
+    if has_stable then
+        if vessels_target ~= "off" and stable_summary.vessels then
+            for _, v in pairs(stable_summary.vessels) do
+                if vessels_target == "red" or vessels_target == "both" then
+                    add_channel_signal(red_signal_totals, "item", v.name, v.quality, v.count)
+                end
+                if vessels_target == "green" or vessels_target == "both" then
+                    add_channel_signal(green_signal_totals, "item", v.name, v.quality, v.count)
+                end
+            end
+        end
+
+        if cargo_target ~= "off" and stable_summary.cargo then
+            for _, c in pairs(stable_summary.cargo) do
+                if cargo_target == "red" or cargo_target == "both" then
+                    add_channel_signal(red_signal_totals, "item", c.name, c.quality, c.count)
+                end
+                if cargo_target == "green" or cargo_target == "both" then
+                    add_channel_signal(green_signal_totals, "item", c.name, c.quality, c.count)
+                end
+            end
+        end
+    end
+
+    if has_dynamic then
+        for cap_id in pairs(dynamic_capsules) do
         local cap = storage.capsules and storage.capsules[cap_id]
         if cap then
             local cap_data = capsule_manager.get(cap_id)
@@ -132,9 +161,10 @@ function counter_logic.update_signals(counter_entity)
                     end
                 end
             else
-                owned_capsules[cap_id] = nil
+                dynamic_capsules[cap_id] = nil
             end
         end
+    end
 
     if total_target ~= "off" and total_capsules_count > 0 and total_signal then
         local stype, sname, squal

@@ -27,40 +27,15 @@ end
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
-    if not (stack and stack.valid_for_read) then return false end
-    local proto = stack.prototype
-    if proto and proto.get_spoil_ticks then
-        local ticks = proto.get_spoil_ticks()
-        if ticks and ticks > 0 then
-            return true
-        end
-    end
-    if stack.spoil_tick and stack.spoil_tick > 0 then
-        return true
-    end
-    if stack.spoil_percent and stack.spoil_percent > 0 then
-        return true
-    end
-    return false
+    return capsule_defs.is_stack_spoilable(stack)
 end
 
 --- Evaluates if an item stack is spoilable into physical units (biters, pentapods, etc.)
 --- Uses strict C++ prototype property inspection and exact matrix lookups (zero fuzzy string matching).
 local function is_unit_spoilable(stack)
-    if not (stack and stack.valid_for_read) then return false end
-    if not is_stack_spoilable(stack) then return false end
-
-    local proto = stack.prototype
-    if proto and proto.spoil_to_trigger_result then
-        return true
-    end
-
-    if capsule_defs.is_unit_spoilable and capsule_defs.is_unit_spoilable(stack.name) then
-        return true
-    end
-
-    return false
+    return capsule_defs.is_unit_spoilable(stack)
 end
+
 
 function hub_packing.evaluate_inventory(entity)
     if not (entity and entity.valid) then return end
@@ -403,7 +378,8 @@ function hub_packing.evaluate_inventory(entity)
         return
     end
 
-    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, dominant_payload_quality, has_spoilable_items, allocated_is_wide)
+    local is_stable = capsule_defs.is_stable_capsule(capsule_def, has_spoilable_items, passenger)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, dominant_payload_quality, has_spoilable_items, allocated_is_wide, is_stable)
     if capsule_id then
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

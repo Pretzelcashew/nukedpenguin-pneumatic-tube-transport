@@ -87,4 +87,12 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 ~fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy), and the crafting recipe shouldnt be outputting hot flouroketone, thats for the recharge
 --------------------------------------------
 
-improve capsule counter performance by smartly registering capsule entry an exits on the capsule territory rather than scanning all of the counter's sensor dots every scan tick
+~improve capsule counter performance by smartly registering capsule entry an exits on the capsule territory rather than scanning all of the counter's sensor dots every scan tick
+
+further improve capsule counter scanning by letting the liminal holder checks to the updating for capsule counter for volatile/dynamic cargo
+
+improve liminal holder dynamic cargo handling to mark the next item to be spoiled, and only re-check the cargo or re update it at this time rather than every 1 second scans.
+
+improve refrigerated capsule handling liminal scanning to use the volatile cargo timed sort recheck to intercept them before they would spoil and apply the modified spoil times, and deduct from the refrigerated capsule.
+
+if the refrigerated capsule (as a primary capsule) doesnt have any spoiling cargo, it is considered a stable capsule in the eyes of the capsule counter.

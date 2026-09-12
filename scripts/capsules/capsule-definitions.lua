@@ -46,6 +46,77 @@ function capsule_definitions.is_electromagnetic(def_or_name)
     return false
 end
 
+--- Helper to safely test if an item stack or prototype is spoilable without triggering Factorio 2.0 errors
+--- @param stack LuaItemStack|nil
+--- @return boolean
+function capsule_definitions.is_stack_spoilable(stack)
+    if not (stack and stack.valid_for_read) then return false end
+    local proto = stack.prototype
+    if proto and proto.get_spoil_ticks then
+        local ticks = proto.get_spoil_ticks()
+        if ticks and ticks > 0 then
+            return true
+        end
+    end
+    if stack.spoil_tick and stack.spoil_tick > 0 then
+        return true
+    end
+    if stack.spoil_percent and stack.spoil_percent > 0 then
+        return true
+    end
+    return false
+end
+
+--- Evaluates if an item stack is spoilable into physical units (biters, pentapods, etc.)
+--- Uses strict C++ prototype property inspection and exact matrix lookups.
+--- @param stack LuaItemStack|nil
+--- @return boolean
+function capsule_definitions.is_unit_spoilable(stack)
+    if not (stack and stack.valid_for_read) then return false end
+    if not capsule_definitions.is_stack_spoilable(stack) then return false end
+
+    local proto = stack.prototype
+    if proto and proto.spoil_to_trigger_result then
+        return true
+    end
+
+    local name = stack.name
+    if name == "biter-egg" or name == "pentapod-egg" or name == "captive-biter-spawner" then
+        return true
+    end
+
+    return false
+end
+
+--- Evaluates whether a capsule definition represents a dynamic capsule shell whose state can change in transit
+--- @param def_or_name string|table|nil
+--- @return boolean
+function capsule_definitions.is_dynamic_capsule(def_or_name)
+    if not def_or_name then return false end
+    local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
+    if not def then return false end
+    -- Refrigerated capsules actively consume cooling charges in transit and convert into spent hulls.
+    -- Player transit capsules carry a live passenger who can embark, disembark, or eject.
+    -- Vacuum capsules change state at hubs rather than dynamically in transit.
+    if def.name == "refrigerated-capsule" or def.is_player_transit then
+        return true
+    end
+    return false
+end
+
+--- Reusable upper classifier for evaluating whether a capsule is fully stable
+--- A stable capsule is guaranteed to never change its primary shell identity or cargo contents during transit.
+--- @param def_or_name string|table|nil Capsule type name or definition table
+--- @param has_spoilable_items boolean|nil Whether any item in cargo can spoil
+--- @param passenger LuaPlayer|nil Whether a passenger is riding in the capsule
+--- @return boolean
+function capsule_definitions.is_stable_capsule(def_or_name, has_spoilable_items, passenger)
+    if passenger ~= nil then return false end
+    if has_spoilable_items == true then return false end
+    if capsule_definitions.is_dynamic_capsule(def_or_name) then return false end
+    return true
+end
+
 capsule_definitions.types = {
     ["item-capsule"] = {
         name = "item-capsule",

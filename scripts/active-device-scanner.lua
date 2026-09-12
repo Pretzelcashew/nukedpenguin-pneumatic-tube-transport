@@ -2,12 +2,10 @@ local events = require("scripts.events")
 local flow_engine = require("scripts.flow.flow-engine")
 local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
-local pump_settings = require("scripts.pumps.pump-settings")
-local diverter_settings = require("scripts.diverters.diverter-settings")
-local counter_settings = require("scripts.counters.counter-settings")
-local counter_logic = require("scripts.counters.counter-logic")
-local diverter_renderer = require("scripts.diverters.diverter-renderer")
-local projector_settings = require("scripts.projectors.projector-settings")
+local pump_manager = require("scripts.pumps.pump-manager")
+local diverter_manager = require("scripts.diverters.diverter-manager")
+local counter_manager = require("scripts.counters.counter-manager")
+local projector_manager = require("scripts.projectors.projector-manager")
 local util = require("util")
 
 local active_device_scanner = {}
@@ -29,14 +27,9 @@ local PROXY_NAMES = {
 
 local function get_spec_device_id(spec_name, entity)
     if not (spec_name and entity) then return nil end
-    if spec_name == "pneumatic-diverter" then
-        return diverter_settings.get_device_id(entity)
-    elseif spec_name == "pneumatic-pump" then
-        return pump_settings.get_device_id(entity)
-    elseif spec_name == "pneumatic-capsule-counter" then
-        return counter_settings.get_device_id(entity)
-    elseif spec_name == "pneumatic-projector" then
-        return projector_settings.get_device_id(entity)
+    local spec = (type(spec_name) == "table") and spec_name or device_specs_by_name[spec_name]
+    if spec and spec.get_device_id then
+        return spec.get_device_id(entity)
     end
     return nil
 end
@@ -111,17 +104,6 @@ local function find_ghost_id_at_pos(surface, position, real_name, spec_name)
     return nil, nil, nil
 end
 
-local function clear_diverter_compiled_filters(unit_number)
-    local dev_id = diverter_settings.get_device_id(unit_number)
-    local d_settings = dev_id and storage.diverter_settings and storage.diverter_settings[dev_id]
-    if d_settings and d_settings.ports then
-        for i = 1, 4 do
-            if d_settings.ports[i] then
-                d_settings.ports[i]._compiled = nil
-            end
-        end
-    end
-end
 
 function active_device_scanner.on_settings_changed(callback)
     if type(callback) == "function" then
@@ -163,10 +145,8 @@ function active_device_scanner.notify_settings_changed(entity)
         end
     end
 
-    if spec.name == "pneumatic-diverter" then
-        diverter_renderer.update_render(entity)
-    elseif spec.name == "pneumatic-capsule-counter" and not is_ghost then
-        counter_logic.update_signals(entity)
+    if spec.on_settings_changed then
+        spec.on_settings_changed(entity, is_ghost)
     end
 
     for i = 1, #settings_changed_callbacks do
@@ -215,227 +195,13 @@ local function scan_active_devices(tick)
     end
 end
 
-active_device_scanner.register_device_type({
-    name = "pneumatic-pump",
-    entity_names = { "pneumatic-pump" },
-    storage_key = "active_pumps",
+active_device_scanner.register_device_type(pump_manager.spec)
 
-    init_settings = function(entity)
-        local dev_id = pump_settings.get_device_id(entity)
-        pump_settings.get(dev_id)
-    end,
+active_device_scanner.register_device_type(diverter_manager.spec)
 
-    apply_blueprint_settings = function(entity, settings)
-        local dev_id = pump_settings.get_device_id(entity)
-        pump_settings.apply_blueprint_settings(dev_id, settings)
-    end,
+active_device_scanner.register_device_type(counter_manager.spec)
 
-    check_and_update_state = function(entity, forced)
-        local unit_number = entity.unit_number
-        storage.pump_power_states = storage.pump_power_states or {}
-        storage.pump_enabled_states = storage.pump_enabled_states or {}
-
-        local is_powered = (entity.energy > 0)
-        local is_enabled = pump_settings.is_pump_enabled(entity)
-
-        local last_power = storage.pump_power_states[unit_number]
-        local last_enabled = storage.pump_enabled_states[unit_number]
-
-        if forced or is_powered ~= last_power or is_enabled ~= last_enabled then
-            storage.pump_power_states[unit_number] = is_powered
-            storage.pump_enabled_states[unit_number] = is_enabled
-            return true
-        end
-        return false
-    end,
-
-    on_unregister = function(entity, unit_number)
-        if storage.pump_power_states then storage.pump_power_states[unit_number] = nil end
-        if storage.pump_enabled_states then storage.pump_enabled_states[unit_number] = nil end
-    end
-})
-
-active_device_scanner.register_device_type({
-    name = "pneumatic-diverter",
-    entity_names = { "pneumatic-diverter" },
-    storage_key = "active_diverters",
-
-    init_settings = function(entity)
-        local dev_id = diverter_settings.get_device_id(entity)
-        diverter_settings.get(dev_id)
-    end,
-
-    apply_blueprint_settings = function(entity, settings)
-        local dev_id = diverter_settings.get_device_id(entity)
-        diverter_settings.apply_blueprint_settings(dev_id, settings)
-    end,
-
-    on_rotate = function(entity, event)
-        local dev_id = diverter_settings.get_device_id(entity)
-        if event.previous_direction ~= nil then
-            diverter_settings.rotate_ports(dev_id, event.previous_direction, entity.direction)
-        elseif event.horizontal ~= nil or event.vertical ~= nil then
-            diverter_settings.flip_ports(dev_id, event.horizontal, event.vertical)
-        end
-    end,
-
-    check_and_update_state = function(entity, forced)
-        local unit_number = entity.unit_number
-        storage.diverter_power_states = storage.diverter_power_states or {}
-        storage.diverter_port_states = storage.diverter_port_states or {}
-
-        local is_powered = (entity.energy > 0)
-        local last_power = storage.diverter_power_states[unit_number]
-        local last_ports = storage.diverter_port_states[unit_number] or {}
-
-        local port_changed = false
-        local current_ports = {}
-        for i = 1, 4 do
-            local state = diverter_settings.is_port_enabled(entity, i)
-            current_ports[i] = state
-            if state ~= last_ports[i] then
-                port_changed = true
-            end
-        end
-
-        if forced or is_powered ~= last_power or port_changed then
-            storage.diverter_power_states[unit_number] = is_powered
-            storage.diverter_port_states[unit_number] = current_ports
-            clear_diverter_compiled_filters(unit_number)
-            return true
-        end
-        return false
-    end,
-
-    on_unregister = function(entity, unit_number)
-        if storage.diverter_power_states then storage.diverter_power_states[unit_number] = nil end
-        if storage.diverter_port_states then storage.diverter_port_states[unit_number] = nil end
-        diverter_renderer.clear_render(unit_number)
-    end
-})
-
-active_device_scanner.register_device_type({
-    name = "pneumatic-capsule-counter",
-    entity_names = { "pneumatic-capsule-counter" },
-    storage_key = "active_counters",
-
-    init_settings = function(entity)
-        local dev_id = counter_settings.get_device_id(entity)
-        counter_settings.get(dev_id)
-    end,
-
-    apply_blueprint_settings = function(entity, settings)
-        local dev_id = counter_settings.get_device_id(entity)
-        counter_settings.apply_blueprint_settings(dev_id, settings)
-    end,
-
-    check_and_update_state = function(entity, forced)
-        local unit_number = entity.unit_number
-        storage.counter_power_states = storage.counter_power_states or {}
-
-        local is_powered = (entity.energy > 0)
-        local last_power = storage.counter_power_states[unit_number]
-
-        if forced or is_powered ~= last_power then
-            storage.counter_power_states[unit_number] = is_powered
-            counter_logic.update_signals(entity)
-            return true
-        end
-        return false
-    end,
-
-    on_scan = function(entity)
-        counter_logic.update_signals(entity)
-    end,
-
-    on_unregister = function(entity, unit_number)
-        if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
-        counter_range.unregister_counter(unit_number)
-    end
-})
-
-active_device_scanner.register_device_type({
-    name = "pneumatic-projector",
-    entity_names = { "pneumatic-projector" },
-    storage_key = "active_projectors",
-
-    init_settings = function(entity)
-        local dev_id = projector_settings.get_device_id(entity)
-        projector_settings.get(dev_id, entity)
-    end,
-
-    apply_blueprint_settings = function(entity, settings)
-        local dev_id = projector_settings.get_device_id(entity)
-        projector_settings.apply_blueprint_settings(dev_id, settings)
-    end,
-
-    on_rotate = function(entity, event)
-        local dev_id = projector_settings.get_device_id(entity)
-        if event.previous_direction ~= nil then
-            projector_settings.rotate_muzzle(dev_id, event.previous_direction, entity.direction)
-        end
-    end,
-
-    check_and_update_state = function(entity, forced)
-        local unit_number = entity.unit_number
-        storage.projector_power_states = storage.projector_power_states or {}
-        storage.projector_enabled_states = storage.projector_enabled_states or {}
-        storage.projector_muzzle_states = storage.projector_muzzle_states or {}
-        storage.projector_ready_states = storage.projector_ready_states or {}
-
-        local is_powered = projector_settings.is_powered(entity)
-        local is_enabled = projector_settings.is_projector_enabled(entity)
-        local is_ready = projector_settings.can_fire(entity)
-
-        local dev_id = projector_settings.get_device_id(entity)
-        local p_set = projector_settings.get(dev_id, entity)
-        local current_muzzle = p_set and p_set.muzzle_dir or entity.direction
-
-        local last_power = storage.projector_power_states[unit_number]
-        local last_enabled = storage.projector_enabled_states[unit_number]
-        local last_muzzle = storage.projector_muzzle_states[unit_number]
-        local last_ready = storage.projector_ready_states[unit_number]
-
-        local muzzle_changed = (current_muzzle ~= last_muzzle)
-        local ready_changed = (is_ready ~= last_ready)
-
-        if forced or is_powered ~= last_power or is_enabled ~= last_enabled or muzzle_changed or ready_changed then
-            storage.projector_power_states[unit_number] = is_powered
-            storage.projector_enabled_states[unit_number] = is_enabled
-            storage.projector_muzzle_states[unit_number] = current_muzzle
-            storage.projector_ready_states[unit_number] = is_ready
-
-            if muzzle_changed and entity.valid and not (entity.name == "entity-ghost") then
-                flow_engine.notify_beam_obstruction_changed(entity, true)
-
-                -- Free and wake any incoming beam endpoints that were targeting this machine's old orientation
-                for pkey, fn in pairs(storage.flow_nodes or {}) do
-                    if fn and fn.hit_receiver == unit_number then
-                        fn.is_endpoint = false
-                        fn.hit_receiver = nil
-                        flow_engine.enqueue_port(pkey)
-                        capsule_runner.wake_parked_capsules(pkey)
-                    end
-                end
-
-                flow_engine.disconnect_entity(entity)
-                flow_engine.connect_entity(entity)
-                flow_engine.notify_beam_obstruction_changed(entity, false)
-            end
-
-            return true
-        end
-        return false
-    end,
-
-    on_unregister = function(entity, unit_number)
-        if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
-        if storage.projector_enabled_states then storage.projector_enabled_states[unit_number] = nil end
-        if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end
-        if storage.projector_ready_states then storage.projector_ready_states[unit_number] = nil end
-        if storage.projector_last_fired then storage.projector_last_fired[unit_number] = nil end
-    end
-})
+active_device_scanner.register_device_type(projector_manager.spec)
 
 function active_device_scanner.register_events()
     events.on_event(defines.events.on_tick, function(event)
@@ -540,24 +306,14 @@ function active_device_scanner.register_events()
                             end
                         end
 
-                        if is_compatible and spec.name == "pneumatic-pump" then
-                            local g_idx = diverter_settings.get_cardinal_index(src_dir)
-                            local e_idx = diverter_settings.get_cardinal_index(target_entity.direction)
-                            if (g_idx % 2) ~= (e_idx % 2) then
+                        if is_compatible and spec.is_direction_compatible then
+                            if not spec.is_direction_compatible(src_dir, target_entity.direction) then
                                 is_compatible = false
                             end
                         end
 
-                        if is_compatible then
-                            if spec.name == "pneumatic-pump" then
-                                copied = (pump_settings.copy(ghost_id, target_dev_id) ~= nil)
-                            elseif spec.name == "pneumatic-diverter" then
-                                copied = (diverter_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
-                            elseif spec.name == "pneumatic-capsule-counter" then
-                                copied = (counter_settings.copy(ghost_id, target_dev_id) ~= nil)
-                            elseif spec.name == "pneumatic-projector" then
-                                copied = (projector_settings.copy(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
-                            end
+                        if is_compatible and spec.copy_settings then
+                            copied = (spec.copy_settings(ghost_id, target_dev_id, src_dir, target_entity.direction) ~= nil)
                         end
 
                         if matched_pos_key and storage.ghost_by_pos then
@@ -569,41 +325,20 @@ function active_device_scanner.register_events()
                         if storage.ghost_devices then
                             storage.ghost_devices[ghost_id] = nil
                         end
-                        if storage.diverter_settings and spec.name == "pneumatic-diverter" then
-                            storage.diverter_settings[ghost_id] = nil
-                        elseif storage.pump_settings and spec.name == "pneumatic-pump" then
-                            storage.pump_settings[ghost_id] = nil
-                        elseif storage.counter_settings and spec.name == "pneumatic-capsule-counter" then
-                            storage.counter_settings[ghost_id] = nil
-                        elseif storage.projector_settings and spec.name == "pneumatic-projector" then
-                            storage.projector_settings[ghost_id] = nil
+                        if spec.clear_settings then
+                            spec.clear_settings(ghost_id)
                         end
                     elseif not target_is_ghost then
-                        local existing_settings = nil
-                        if spec.name == "pneumatic-pump" and storage.pump_settings then
-                            existing_settings = storage.pump_settings[target_dev_id]
-                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
-                            existing_settings = storage.diverter_settings[target_dev_id]
-                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
-                            existing_settings = storage.counter_settings[target_dev_id]
-                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
-                            existing_settings = storage.projector_settings[target_dev_id]
-                        end
+                        local existing_settings = spec.get_settings and spec.get_settings(target_dev_id)
 
                         if existing_settings then
                             copied = true
                         else
                             local replaced_real = find_existing_real_at_pos(target_entity.surface, target_entity.position, real_name, target_entity)
                             if replaced_real and replaced_real.valid and replaced_real.unit_number ~= target_entity.unit_number then
-                                local src_id = get_spec_device_id(spec.name, replaced_real)
-                                if spec.name == "pneumatic-pump" then
-                                    copied = (pump_settings.copy(src_id, target_dev_id) ~= nil)
-                                elseif spec.name == "pneumatic-diverter" then
-                                    copied = (diverter_settings.copy(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
-                                elseif spec.name == "pneumatic-capsule-counter" then
-                                    copied = (counter_settings.copy(src_id, target_dev_id) ~= nil)
-                                elseif spec.name == "pneumatic-projector" then
-                                    copied = (projector_settings.copy(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
+                                local src_id = get_spec_device_id(spec, replaced_real)
+                                if spec.copy_settings then
+                                    copied = (spec.copy_settings(src_id, target_dev_id, replaced_real.direction, target_entity.direction) ~= nil)
                                 end
                             end
 
@@ -611,22 +346,10 @@ function active_device_scanner.register_events()
                                 local cached = storage.fast_replace_cache[pos_key]
                                 local cur_tick = event.tick or game.tick
                                 if cached and cached.tick == cur_tick and cached.name == real_name then
-                                    if spec.name == "pneumatic-pump" then
-                                        pump_settings.apply_blueprint_settings(target_dev_id, cached.settings)
-                                        copied = true
-                                    elseif spec.name == "pneumatic-diverter" then
-                                        diverter_settings.apply_blueprint_settings(target_dev_id, cached.settings)
-                                        if cached.direction and cached.direction ~= target_entity.direction then
-                                            diverter_settings.rotate_ports(target_dev_id, cached.direction, target_entity.direction)
-                                        end
-                                        copied = true
-                                    elseif spec.name == "pneumatic-capsule-counter" then
-                                        counter_settings.apply_blueprint_settings(target_dev_id, cached.settings)
-                                        copied = true
-                                    elseif spec.name == "pneumatic-projector" then
-                                        projector_settings.apply_blueprint_settings(target_dev_id, cached.settings)
-                                        if cached.direction and cached.direction ~= target_entity.direction then
-                                            projector_settings.rotate_muzzle(target_dev_id, cached.direction, target_entity.direction)
+                                    if spec.apply_blueprint_settings then
+                                        spec.apply_blueprint_settings(target_dev_id, cached.settings)
+                                        if cached.direction and cached.direction ~= target_entity.direction and spec.on_rotate_delta then
+                                            spec.on_rotate_delta(target_dev_id, cached.direction, target_entity.direction)
                                         end
                                         copied = true
                                     end
@@ -645,8 +368,8 @@ function active_device_scanner.register_events()
                         spec.init_settings(target_entity)
                     end
 
-                    if spec.name == "pneumatic-diverter" then
-                        diverter_renderer.update_render(target_entity)
+                    if spec.on_settings_changed then
+                        spec.on_settings_changed(target_entity, target_is_ghost)
                     end
 
                     if not target_is_ghost then
@@ -690,8 +413,8 @@ function active_device_scanner.register_events()
                 if spec.apply_blueprint_settings then
                     spec.apply_blueprint_settings(entity, tags.pneumatic_settings)
                 end
-                if spec.name == "pneumatic-diverter" then
-                    diverter_renderer.update_render(entity)
+                if spec.on_settings_changed then
+                    spec.on_settings_changed(entity, is_ghost)
                 end
                 if not is_ghost then
                     if spec.check_and_update_state then
@@ -736,28 +459,13 @@ function active_device_scanner.register_events()
 
                         local replacement = find_existing_real_at_pos(entity.surface, entity.position, real_name, entity)
                         if replacement and replacement.valid and replacement.unit_number ~= entity.unit_number then
-                            local dest_id = get_spec_device_id(spec.name, replacement)
-                            if spec.name == "pneumatic-pump" then
-                                pump_settings.copy(dev_id, dest_id)
-                            elseif spec.name == "pneumatic-diverter" then
-                                diverter_settings.copy(dev_id, dest_id, entity.direction, replacement.direction)
-                            elseif spec.name == "pneumatic-capsule-counter" then
-                                counter_settings.copy(dev_id, dest_id)
-                            elseif spec.name == "pneumatic-projector" then
-                                projector_settings.copy(dev_id, dest_id, entity.direction, replacement.direction)
+                            local dest_id = get_spec_device_id(spec, replacement)
+                            if spec.copy_settings then
+                                spec.copy_settings(dev_id, dest_id, entity.direction, replacement.direction)
                             end
                         end
 
-                        local cur_settings = nil
-                        if spec.name == "pneumatic-pump" and storage.pump_settings then
-                            cur_settings = storage.pump_settings[dev_id]
-                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
-                            cur_settings = storage.diverter_settings[dev_id]
-                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
-                            cur_settings = storage.counter_settings[dev_id]
-                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
-                            cur_settings = storage.projector_settings[dev_id]
-                        end
+                        local cur_settings = spec.get_settings and spec.get_settings(dev_id)
 
                         if cur_settings and pos_key then
                             storage.fast_replace_cache = storage.fast_replace_cache or {}
@@ -772,14 +480,8 @@ function active_device_scanner.register_events()
                         if storage[spec.storage_key] and entity.unit_number then
                             storage[spec.storage_key][entity.unit_number] = nil
                         end
-                        if spec.name == "pneumatic-pump" and storage.pump_settings then
-                            storage.pump_settings[dev_id] = nil
-                        elseif spec.name == "pneumatic-diverter" and storage.diverter_settings then
-                            storage.diverter_settings[dev_id] = nil
-                        elseif spec.name == "pneumatic-capsule-counter" and storage.counter_settings then
-                            storage.counter_settings[dev_id] = nil
-                        elseif spec.name == "pneumatic-projector" and storage.projector_settings then
-                            storage.projector_settings[dev_id] = nil
+                        if spec.clear_settings then
+                            spec.clear_settings(dev_id)
                         end
                     end
                     if spec.on_unregister then

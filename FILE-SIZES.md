@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 09:50:36  
+**Last Generated:** 2026-09-12 10:00:59  
 **Total Scope:** 21 directories, 90 files  
-**Total Workspace Size:** 1.46 MB | **Total Text Lines:** 23,739  
+**Total Workspace Size:** 1.46 MB | **Total Text Lines:** 23,748  
 
 ---
 
@@ -63,7 +63,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── core/
 │       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [46 lines | 6.2 KB]
+│       ├── FRESH-CHANGES.md                    [55 lines | 7.7 KB]
 │       ├── HELPERS.md                          [82 lines | 3.9 KB]
 │       ├── MANIFEST.md                         [101 lines | 15.9 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]

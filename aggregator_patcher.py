@@ -193,7 +193,7 @@ def parse_line_operations(body_text: str) -> list[PatchOperation]:
     find_replace_pattern = re.compile(
         r"<<<{1,7}\s*(?:FIND|SEARCH)(?:\s+AND\s+REPLACE)?(?:\s*={0,7}\s*FIND\s*={0,7})?\s*\n"
         r"(.*?)\n"
-        r"\s*(?:={3,}|-{3,})\s*(?:REPLACE|WITH)?\s*(?:={0,7}|-{0,7})\s*\n"
+        r"\s*(?:={3,}|-{3,})\s*(?:REPLACE|WITH)\s*(?:={3,}|-{3,})\s*\n"
         r"(.*?)"
         r"\n?>>>{1,7}",
         re.DOTALL | re.IGNORECASE,

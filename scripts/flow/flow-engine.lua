@@ -1,5 +1,7 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
+local flow_renderer = require("scripts.flow.flow-renderer")
+local flow_gate_interop = require("scripts.flow.flow-gate-interop")
 local pump_settings = require("scripts.pumps.pump-settings")
 local diverter_settings = require("scripts.diverters.diverter-settings")
 local capsule_queries = require("scripts.capsules.capsule-queries")
@@ -9,7 +11,6 @@ local projector_settings = require("scripts.projectors.projector-settings")
 local flow_engine = {}
 
 local BATCH_SIZE = 50
-local INTEROP_BATCH_SIZE = 10
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
 local BASE_PROJECTOR_RANGE = 50
@@ -23,6 +24,7 @@ local PROXY_NAMES = {
     ["pneumatic-capsule-counter-green-proxy"] = true,
     ["pneumatic-projector-circuit-proxy"] = true
 }
+
 local IGNORABLE_TYPES = {
     ["resource"] = true,
     ["entity-ghost"] = true,
@@ -58,46 +60,13 @@ local IGNORABLE_TYPES = {
     ["elevated-half-diagonal-rail"] = true
 }
 
-local OWNER_PALETTE = {
-    {r = 0.30, g = 0.85, b = 0.70}, -- Teal
-    {r = 0.20, g = 0.70, b = 1.00}, -- Electric cyan
-    {r = 0.90, g = 0.40, b = 0.95}, -- Bright magenta
-    {r = 0.30, g = 0.90, b = 0.35}, -- Emerald green
-    {r = 1.00, g = 0.65, b = 0.15}, -- Bright amber
-    {r = 1.00, g = 0.30, b = 0.40}, -- Coral red
-    {r = 0.60, g = 0.50, b = 1.00}, -- Lavender blue
-    {r = 0.85, g = 0.95, b = 0.20}, -- Lemon yellow
-}
-
-local QUALITY_BEAM_PALETTE = {
-    [0] = { core = {r = 1.00, g = 0.60, b = 0.90, a = 0.95} },
-    [1] = { core = {r = 1.00, g = 0.70, b = 0.95, a = 0.95} },
-    [2] = { core = {r = 1.00, g = 0.80, b = 1.00, a = 0.98} },
-    [3] = { core = {r = 1.00, g = 0.90, b = 1.00, a = 0.98} },
-    [4] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} },
-    [5] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} }
-}
-
-local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
-local PROJECTOR_INTAKE_COLOR = {r = 0.20, g = 0.85, b = 1.00, a = 0.90}
-local PROJECTOR_MUZZLE_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.90}
-
-local function get_owner_color(unit_number)
-    if not unit_number then
-        return {r = 0.30, g = 0.85, b = 0.70, a = 0.8}
-    end
-    local idx = ((unit_number - 1) % #OWNER_PALETTE) + 1
-    local col = OWNER_PALETTE[idx]
-    return {r = col.r, g = col.g, b = col.b, a = 0.8}
-end
-
 local registered_entities = {}
 for _, name in ipairs(port_defs.registered_names) do
     registered_entities[name] = true
 end
 
 local function is_standard_entity(name)
-    return (name == "stone-wall" or name == "gate")
+    return flow_gate_interop.is_standard_entity(name)
 end
 
 local function make_port_key(unit_number, port_index)
@@ -133,87 +102,12 @@ local function wake_port_parked(pkey)
     end
 end
 
-local function is_gate_terminator(unit_number)
-    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
-    if not unit_ports or #unit_ports < 2 then return true end
-
-    local has_gate_1 = false
-    local neighbors_1 = storage.flow_connections and storage.flow_connections[unit_ports[1]]
-    if neighbors_1 then
-        for n_key in pairs(neighbors_1) do
-            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-            if n_node and storage.active_gates and storage.active_gates[n_node.unit_number] then
-                has_gate_1 = true
-                break
-            end
-        end
-    end
-
-    local has_gate_2 = false
-    local neighbors_2 = storage.flow_connections and storage.flow_connections[unit_ports[2]]
-    if neighbors_2 then
-        for n_key in pairs(neighbors_2) do
-            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-            if n_node and storage.active_gates and storage.active_gates[n_node.unit_number] then
-                has_gate_2 = true
-                break
-            end
-        end
-    end
-
-    return not (has_gate_1 and has_gate_2)
-end
-
-local function is_port_flow_active(pkey)
-    if not pkey then return false end
-    if storage.flow_levels and (storage.flow_levels[pkey] or 0) ~= 0 then return true end
-    if storage.counter_levels and (storage.counter_levels[pkey] or 0) > 0 then return true end
-    if storage.kinetic_levels and (storage.kinetic_levels[pkey] or 0) > 0 then return true end
-    local node = storage.flow_nodes and storage.flow_nodes[pkey]
-    if node and node.emitter and flow_engine.get_node_emitter_level(node) ~= 0 then return true end
-    if node and node.is_muzzle and flow_engine.get_node_kinetic_emitter(node) ~= 0 then return true end
-    return false
-end
-
 function flow_engine.is_touching_active_flow(entity)
-    if not (entity and entity.valid and storage.flow_grid) then return false end
-    local ports = port_defs.get_ports(entity)
-    if not ports then return false end
-
-    local surface_name = entity.surface.name
-    local ex, ey = entity.position.x, entity.position.y
-
-    for _, port in ipairs(ports) do
-        local px = ex + port.offset.x
-        local py = ey + port.offset.y
-        local pos_key = make_pos_key(surface_name, px, py)
-        local grid_ports = storage.flow_grid[pos_key]
-        if grid_ports then
-            for existing_pkey in pairs(grid_ports) do
-                if is_port_flow_active(existing_pkey) then return true end
-            end
-        end
-    end
-    return false
+    return flow_gate_interop.is_touching_active_flow(entity, flow_engine.get_node_emitter_level, flow_engine.get_node_kinetic_emitter)
 end
 
 function flow_engine.is_touching_pneumatic_grid(entity)
-    if not (entity and entity.valid and storage.flow_grid) then return false end
-    local ports = port_defs.get_ports(entity)
-    if not ports then return false end
-
-    local surface_name = entity.surface.name
-    local ex, ey = entity.position.x, entity.position.y
-
-    for _, port in ipairs(ports) do
-        local px = ex + port.offset.x
-        local py = ey + port.offset.y
-        local pos_key = make_pos_key(surface_name, px, py)
-        if storage.flow_grid[pos_key] and next(storage.flow_grid[pos_key]) ~= nil then
-            return true
-        end
-    end
-    return false
+    return flow_gate_interop.is_touching_pneumatic_grid(entity)
 end
 
 function flow_engine.init_storage()
@@ -248,29 +142,8 @@ function flow_engine.init_storage()
     storage.counter_renders = storage.counter_renders or {}
 
     -- Walls and Gates Fields
-    storage.active_walls = storage.active_walls or {}
-    storage.active_gates = storage.active_gates or {}
-    storage.gate_open_states = storage.gate_open_states or {}
-    storage.gate_cutoff_states = storage.gate_cutoff_states or {}
-    storage.wall_locked_group = storage.wall_locked_group or {}
-    storage.soft_interop_registry = storage.soft_interop_registry or {}
-    storage.interop_activation_queue = storage.interop_activation_queue or {}
+    flow_gate_interop.init_storage()
 
-    if storage.active_gates and game and game.surfaces then
-        for _, surface in pairs(game.surfaces) do
-            local gates = surface.find_entities_filtered{type = "gate"}
-            for _, g in ipairs(gates) do
-                if g.valid and g.unit_number and g.name ~= "entity-ghost" then
-                    storage.active_gates[g.unit_number] = g
-                    if script.register_on_object_destroyed then
-                        local reg_id = script.register_on_object_destroyed(g)
-                        storage.object_destruction_map = storage.object_destruction_map or {}
-                        storage.object_destruction_map[reg_id] = { type = "entity", unit_number = g.unit_number }
-                    end
-                end
-            end
-        end
-    end
     -- Electromagnetic Projector Fields
     storage.active_projectors = storage.active_projectors or {}
     storage.projector_power_states = storage.projector_power_states or {}
@@ -396,571 +269,25 @@ function flow_engine.get_kinetic_level(pkey)
     return storage.kinetic_levels[pkey] or 0
 end
 
-local function destroy_pos_renders(pos_key, player_index)
-    if player_index then
-        local p_renders = storage.flow_renders and storage.flow_renders[player_index]
-        if p_renders and p_renders[pos_key] then
-            local objs = p_renders[pos_key]
-            if objs.circle and objs.circle.valid then objs.circle.destroy() end
-            if objs.text and objs.text.valid then objs.text.destroy() end
-            p_renders[pos_key] = nil
-        end
-    else
-        for _, p_renders in pairs(storage.flow_renders or {}) do
-            local objs = p_renders[pos_key]
-            if objs then
-                if objs.circle and objs.circle.valid then objs.circle.destroy() end
-                if objs.text and objs.text.valid then objs.text.destroy() end
-                p_renders[pos_key] = nil
-            end
-        end
-    end
-end
+-- Aliased Renderer Primitives
+local destroy_pos_renders = flow_renderer.destroy_pos_renders
+local destroy_counter_renders = flow_renderer.destroy_counter_renders
+local destroy_edge_render = flow_renderer.destroy_edge_render
+local destroy_kinetic_pos_render = flow_renderer.destroy_kinetic_pos_render
+local update_kinetic_pos_render = flow_renderer.update_kinetic_pos_render
+local get_dominant_port_at_pos = flow_renderer.get_dominant_port_at_pos
+local get_dominant_counter_at_pos = flow_renderer.get_dominant_counter_at_pos
+local update_counter_pos_render = flow_renderer.update_counter_pos_render
+local update_pos_render = flow_renderer.update_pos_render
+local update_edge_render = flow_renderer.update_edge_render
 
-local function destroy_counter_renders(pos_key, player_index)
-    if player_index then
-        local p_renders = storage.counter_renders and storage.counter_renders[player_index]
-        if p_renders and p_renders[pos_key] then
-            local objs = p_renders[pos_key]
-            if objs.circle and objs.circle.valid then objs.circle.destroy() end
-            if objs.text and objs.text.valid then objs.text.destroy() end
-            p_renders[pos_key] = nil
-        end
-    else
-        for _, p_renders in pairs(storage.counter_renders or {}) do
-            local objs = p_renders[pos_key]
-            if objs then
-                if objs.circle and objs.circle.valid then objs.circle.destroy() end
-                if objs.text and objs.text.valid then objs.text.destroy() end
-                p_renders[pos_key] = nil
-            end
-        end
-    end
-end
-
-local function destroy_edge_render(edge_key, player_index)
-    if player_index then
-        local e_renders = storage.flow_edge_renders and storage.flow_edge_renders[player_index]
-        if e_renders and e_renders[edge_key] then
-            local line_obj = e_renders[edge_key]
-            if line_obj and line_obj.valid then line_obj.destroy() end
-            e_renders[edge_key] = nil
-        end
-    else
-        for _, e_renders in pairs(storage.flow_edge_renders or {}) do
-            local line_obj = e_renders[edge_key]
-            if line_obj and line_obj.valid then line_obj.destroy() end
-            e_renders[edge_key] = nil
-        end
-    end
-end
-
-local function destroy_kinetic_pos_render(pkey, player_index)
-    if not (pkey and storage.kinetic_renders) then return end
-    if player_index then
-        local p_renders = storage.kinetic_renders[player_index]
-        if p_renders and p_renders[pkey] then
-            local entry = p_renders[pkey]
-            if entry.dot and entry.dot.valid then entry.dot.destroy() end
-            if entry.ring and entry.ring.valid then entry.ring.destroy() end
-            p_renders[pkey] = nil
-        end
-    else
-        for _, p_renders in pairs(storage.kinetic_renders) do
-            if type(p_renders) == "table" and p_renders[pkey] then
-                local entry = p_renders[pkey]
-                if entry.dot and entry.dot.valid then entry.dot.destroy() end
-                if entry.ring and entry.ring.valid then entry.ring.destroy() end
-                p_renders[pkey] = nil
-            end
-        end
-    end
-end
-
-local function update_kinetic_pos_render(pkey, player_index)
-    local node = storage.flow_nodes and storage.flow_nodes[pkey]
-    local level = storage.kinetic_levels and storage.kinetic_levels[pkey] or 0
-
-    if not node or level == 0 or not node.is_kinetic then
-        destroy_kinetic_pos_render(pkey, player_index)
-        return
-    end
-
-    local surface = game.surfaces[node.surface_name]
-    if not (surface and surface.valid and node.pos) then
-        destroy_kinetic_pos_render(pkey, player_index)
-        return
-    end
-
-    local q_level = node.q_level or 0
-    local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
-    local is_prominent = (node.is_prominent_kinetic == true)
-    local is_endpoint = (node.is_endpoint == true)
-    local is_receiver = (node.hit_receiver ~= nil)
-    local pos = node.pos
-
-    local function draw_for_player(player, p_idx)
-        if is_debug_active("new_flow", p_idx) then
-            storage.kinetic_renders[p_idx] = storage.kinetic_renders[p_idx] or {}
-            local p_renders = storage.kinetic_renders[p_idx]
-
-            local current = p_renders[pkey]
-            if current and current.dot and current.dot.valid
-               and ((not is_endpoint and not current.ring) or (is_endpoint and current.ring and current.ring.valid))
-               and (current.is_prominent == is_prominent)
-               and (current.is_receiver == is_receiver)
-               and (current.q_level == q_level) then
-                return
-            end
-
-            destroy_kinetic_pos_render(pkey, p_idx)
-
-            local dot_obj = nil
-            local ring_obj = nil
-
-            if is_prominent then
-                dot_obj = rendering.draw_circle{
-                    color = palette.core,
-                    radius = 0.16,
-                    filled = true,
-                    target = pos,
-                    surface = surface,
-                    only_in_alt_mode = true,
-                    players = { player }
-                }
-            else
-                dot_obj = rendering.draw_circle{
-                    color = MINOR_DOT_COLOR,
-                    radius = 0.08,
-                    filled = true,
-                    target = pos,
-                    surface = surface,
-                    only_in_alt_mode = true,
-                    players = { player }
-                }
-            end
-
-            if is_endpoint then
-                local ring_color = is_receiver
-                    and {r = 0.20, g = 0.90, b = 1.00, a = 0.90}
-                    or  {r = 1.00, g = 0.35, b = 0.20, a = 0.90}
-                local ring_radius = is_receiver and 0.35 or 0.30
-
-                ring_obj = rendering.draw_circle{
-                    color = ring_color,
-                    radius = ring_radius,
-                    filled = false,
-                    width = 2,
-                    target = pos,
-                    surface = surface,
-                    only_in_alt_mode = true,
-                    players = { player }
-                }
-            end
-
-            p_renders[pkey] = {
-                dot = dot_obj,
-                ring = ring_obj,
-                is_prominent = is_prominent,
-                is_receiver = is_receiver,
-                q_level = q_level
-            }
-        else
-            destroy_kinetic_pos_render(pkey, p_idx)
-        end
-    end
-
-    if player_index then
-        local player = game.get_player(player_index)
-        if player and player.valid then
-            draw_for_player(player, player_index)
-        end
-    else
-        if not is_debug_active("new_flow") then
-            destroy_kinetic_pos_render(pkey)
-            return
-        end
-
-        for _, player in pairs(game.players) do
-            draw_for_player(player, player.index)
-        end
-    end
-end
-local function get_dominant_port_at_pos(pos_key)
-    local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
-    if not grid_ports then return nil, 0 end
-
-    local best_node = nil
-    local max_mag = -1
-    local best_level = 0
-
-    for pkey in pairs(grid_ports) do
-        local node = storage.flow_nodes and storage.flow_nodes[pkey]
-        if node then
-            local level = storage.flow_levels and storage.flow_levels[pkey] or 0
-            local mag = math.abs(level)
-            if mag > max_mag then
-                max_mag = mag
-                best_level = level
-                best_node = node
-            elseif mag == max_mag and max_mag > 0 then
-                if level > best_level then
-                    best_node = node
-                    best_level = level
-                elseif level == best_level and node.emitter and not (best_node and best_node.emitter) then
-                    best_node = node
-                    best_level = level
-                end
-            end
-        end
-    end
-
-    return best_node, best_level
-end
-
-local function get_dominant_counter_at_pos(pos_key)
-    local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
-    if not grid_ports then return nil, 0, nil end
-
-    local best_node = nil
-    local max_level = 0
-    local best_owner = nil
-
-    for pkey in pairs(grid_ports) do
-        local node = storage.flow_nodes and storage.flow_nodes[pkey]
-        if node then
-            local level = storage.counter_levels and storage.counter_levels[pkey] or 0
-            local owner = storage.counter_owners and storage.counter_owners[pkey]
-            if level > max_level and owner ~= nil then
-                max_level = level
-                best_owner = owner
-                best_node = node
-            end
-        end
-    end
-
-    return best_node, max_level, best_owner
-end
-
-local function update_counter_pos_render(pos_key)
-    if not (is_debug_active and is_debug_active("counter_range")) then
-        destroy_counter_renders(pos_key)
-        return
-    end
-
-    local node, level, owner = get_dominant_counter_at_pos(pos_key)
-    if not node or level == 0 or owner == nil then
-        destroy_counter_renders(pos_key)
-        return
-    end
-
-    for _, player in pairs(game.players) do
-        local p_idx = player.index
-        if is_debug_active("counter_range", p_idx) then
-            storage.counter_renders[p_idx] = storage.counter_renders[p_idx] or {}
-            local p_renders = storage.counter_renders[p_idx]
-
-            local circle_color = get_owner_color(owner)
-            local pos = node.pos
-            local surface = game.surfaces[node.surface_name]
-
-            local current = p_renders[pos_key]
-            if current and current.circle and current.circle.valid and current.text and current.text.valid then
-                current.circle.color = circle_color
-                current.text.text = tostring(level)
-            else
-                destroy_counter_renders(pos_key, p_idx)
-                if surface and surface.valid then
-                    local c_obj = rendering.draw_circle{
-                        color = circle_color,
-                        radius = 0.15,
-                        filled = true,
-                        target = pos,
-                        surface = surface,
-                        only_in_alt_mode = true,
-                        players = { player }
-                    }
-                    local t_obj = rendering.draw_text{
-                        text = tostring(level),
-                        surface = surface,
-                        target = {x = pos.x, y = pos.y - 0.25},
-                        color = {r = 1, g = 1, b = 1, a = 0.9},
-                        scale = 0.7,
-                        alignment = "center",
-                        only_in_alt_mode = true,
-                        players = { player }
-                    }
-                    p_renders[pos_key] = { circle = c_obj, text = t_obj }
-                end
-            end
-        else
-            destroy_counter_renders(pos_key, p_idx)
-        end
-    end
-end
-
-local function update_pos_render(pos_key)
-    if not is_debug_active("new_flow") then
-        destroy_pos_renders(pos_key)
-        return
-    end
-
-    local node, level = get_dominant_port_at_pos(pos_key)
-    if not node then
-        destroy_pos_renders(pos_key)
-        return
-    end
-
-    local is_projector_port = (level == 0) and (storage.active_projectors and storage.active_projectors[node.unit_number] ~= nil and (node.port_index or 0) <= 4)
-    local is_intake = is_projector_port and (not node.is_muzzle)
-    local muzzle_pkey = is_projector_port and node.is_muzzle and make_port_key(node.unit_number, node.port_index) or nil
-    local is_muzzle_idle = muzzle_pkey and ((storage.kinetic_levels and storage.kinetic_levels[muzzle_pkey] or 0) == 0)
-
-    if level == 0 and not is_intake and not is_muzzle_idle then
-        destroy_pos_renders(pos_key)
-        return
-    end
-
-    local pos = node.pos
-    local surface = game.surfaces[node.surface_name]
-
-    for _, player in pairs(game.players) do
-        local p_idx = player.index
-        if is_debug_active("new_flow", p_idx) then
-            storage.flow_renders[p_idx] = storage.flow_renders[p_idx] or {}
-            local p_renders = storage.flow_renders[p_idx]
-            local current = p_renders[pos_key]
-
-            if is_intake or is_muzzle_idle then
-                local dot_color = is_intake and PROJECTOR_INTAKE_COLOR or PROJECTOR_MUZZLE_COLOR
-                local render_type = is_intake and "intake" or "muzzle"
-                if current and current.circle and current.circle.valid and current.render_type == render_type then
-                    -- Already valid dot
-                else
-                    destroy_pos_renders(pos_key, p_idx)
-                    if surface and surface.valid then
-                        local c_obj = rendering.draw_circle{
-                            color = dot_color,
-                            radius = 0.12,
-                            filled = true,
-                            target = pos,
-                            surface = surface,
-                            only_in_alt_mode = true,
-                            players = { player }
-                        }
-                        p_renders[pos_key] = { circle = c_obj, text = nil, is_intake = is_intake, render_type = render_type }
-                    end
-                end
-            else
-                local abs_level = math.abs(level)
-                local circle_color = (level > 0)
-                    and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
-                    or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
-
-                if current and current.circle and current.circle.valid and current.text and current.text.valid and not current.is_intake then
-                    current.circle.color = circle_color
-                    current.text.text = tostring(level)
-                else
-                    destroy_pos_renders(pos_key, p_idx)
-                    if surface and surface.valid then
-                        local c_obj = rendering.draw_circle{
-                            color = circle_color,
-                            radius = 0.15,
-                            filled = true,
-                            target = pos,
-                            surface = surface,
-                            only_in_alt_mode = true,
-                            players = { player }
-                        }
-                        local t_obj = rendering.draw_text{
-                            text = tostring(level),
-                            surface = surface,
-                            target = {x = pos.x, y = pos.y - 0.25},
-                            color = {r = 1, g = 1, b = 1, a = 0.9},
-                            scale = 0.7,
-                            alignment = "center",
-                            only_in_alt_mode = true,
-                            players = { player }
-                        }
-                        p_renders[pos_key] = { circle = c_obj, text = t_obj }
-                    end
-                end
-            end
-        else
-            destroy_pos_renders(pos_key, p_idx)
-        end
-    end
-end
-
-local function update_edge_render(key_a, key_b)
-    if not is_debug_active("new_flow") then
-        destroy_edge_render(make_edge_key(key_a, key_b))
-        return
-    end
-
-    local edge_key = make_edge_key(key_a, key_b)
-    local level_a = storage.flow_levels and storage.flow_levels[key_a] or 0
-    local level_b = storage.flow_levels and storage.flow_levels[key_b] or 0
-    local node_a = storage.flow_nodes and storage.flow_nodes[key_a]
-    local node_b = storage.flow_nodes and storage.flow_nodes[key_b]
-
-    if (level_a == 0 and level_b == 0) or not node_a or not node_b then
-        destroy_edge_render(edge_key)
-        return
-    end
-
-    if node_a.pos_key == node_b.pos_key then
-        destroy_edge_render(edge_key)
-        return
-    end
-
-    local active_level = (level_a ~= 0) and level_a or level_b
-    local line_color = (active_level > 0)
-        and {r = 0, g = 0.7, b = 1, a = 0.8}
-        or  {r = 1, g = 0.5, b = 0, a = 0.8}
-
-    for _, player in pairs(game.players) do
-        local p_idx = player.index
-        if is_debug_active("new_flow", p_idx) then
-            storage.flow_edge_renders[p_idx] = storage.flow_edge_renders[p_idx] or {}
-            local e_renders = storage.flow_edge_renders[p_idx]
-            local existing = e_renders[edge_key]
-
-            if existing and existing.valid then
-                existing.color = line_color
-            else
-                destroy_edge_render(edge_key, p_idx)
-                local surface = game.surfaces[node_a.surface_name]
-                if surface and surface.valid then
-                    local l_obj = rendering.draw_line{
-                        color = line_color,
-                        width = 3,
-                        from = node_a.pos,
-                        to = node_b.pos,
-                        surface = surface,
-                        only_in_alt_mode = true,
-                        players = { player }
-                    }
-                    e_renders[edge_key] = l_obj
-                end
-            end
-        else
-            destroy_edge_render(edge_key, p_idx)
-        end
-    end
-end
-
-function flow_engine.clear_counter_renders(player_index)
-    if player_index then
-        if storage.counter_renders and storage.counter_renders[player_index] then
-            for pos_key, objs in pairs(storage.counter_renders[player_index]) do
-                if objs.circle and objs.circle.valid then objs.circle.destroy() end
-                if objs.text and objs.text.valid then objs.text.destroy() end
-            end
-            storage.counter_renders[player_index] = {}
-        end
-    else
-        for _, player in pairs(game.players) do
-            flow_engine.clear_counter_renders(player.index)
-        end
-    end
-end
-
-function flow_engine.clear_flow_renders(player_index)
-    if player_index then
-        if storage.flow_renders and storage.flow_renders[player_index] then
-            for pos_key, objs in pairs(storage.flow_renders[player_index]) do
-                if objs.circle and objs.circle.valid then objs.circle.destroy() end
-                if objs.text and objs.text.valid then objs.text.destroy() end
-            end
-            storage.flow_renders[player_index] = {}
-        end
-        if storage.flow_edge_renders and storage.flow_edge_renders[player_index] then
-            for e_key, line_obj in pairs(storage.flow_edge_renders[player_index]) do
-                if line_obj and line_obj.valid then line_obj.destroy() end
-            end
-            storage.flow_edge_renders[player_index] = {}
-        end
-        if storage.kinetic_renders and storage.kinetic_renders[player_index] then
-            for pkey, entry in pairs(storage.kinetic_renders[player_index]) do
-                if entry.dot and entry.dot.valid then entry.dot.destroy() end
-                if entry.ring and entry.ring.valid then entry.ring.destroy() end
-            end
-            storage.kinetic_renders[player_index] = {}
-        end
-    else
-        for _, player in pairs(game.players) do
-            flow_engine.clear_flow_renders(player.index)
-        end
-        if storage.kinetic_renders then
-            for k, v in pairs(storage.kinetic_renders) do
-                if type(k) == "string" and type(v) == "table" then
-                    if v.dot and v.dot.valid then v.dot.destroy() end
-                    if v.ring and v.ring.valid then v.ring.destroy() end
-                    storage.kinetic_renders[k] = nil
-                end
-            end
-        end
-    end
-end
-
-function flow_engine.clear_all_renders(player_index)
-    flow_engine.clear_flow_renders(player_index)
-    flow_engine.clear_counter_renders(player_index)
-end
-
-function flow_engine.draw_all_counters(player_index)
-    local pos_keys = {}
-    local count = 0
-    for pos_key in pairs(storage.flow_grid or {}) do
-        count = count + 1
-        pos_keys[count] = pos_key
-    end
-
-    table.sort(pos_keys)
-
-    for i = 1, count do
-        update_counter_pos_render(pos_keys[i])
-    end
-end
-
-function flow_engine.draw_flow(player_index)
-    local pos_keys = {}
-    local count = 0
-    for pos_key in pairs(storage.flow_grid or {}) do
-        count = count + 1
-        pos_keys[count] = pos_key
-    end
-
-    table.sort(pos_keys)
-
-    for i = 1, count do
-        local pos_key = pos_keys[i]
-        update_pos_render(pos_key)
-        local grid_ports = storage.flow_grid[pos_key]
-        if grid_ports then
-            for pkey in pairs(grid_ports) do
-                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
-                if neighbors then
-                    for n_key in pairs(neighbors) do
-                        update_edge_render(pkey, n_key)
-                    end
-                end
-            end
-        end
-    end
-
-    if storage.kinetic_levels then
-        for pkey in pairs(storage.kinetic_levels) do
-            update_kinetic_pos_render(pkey, player_index)
-        end
-    end
-end
-
-function flow_engine.draw_all(player_index)
-    flow_engine.draw_flow(player_index)
-    flow_engine.draw_all_counters(player_index)
-end
+-- Public Alt-Mode Visualization API Exports
+flow_engine.clear_counter_renders = flow_renderer.clear_counter_renders
+flow_engine.clear_flow_renders = flow_renderer.clear_flow_renders
+flow_engine.clear_all_renders = flow_renderer.clear_all_renders
+flow_engine.draw_all_counters = flow_renderer.draw_all_counters
+flow_engine.draw_flow = flow_renderer.draw_flow
+flow_engine.draw_all = flow_renderer.draw_all
 
 function flow_engine.check_tile_obstruction(surface, tx, ty, sender_entity)
     if not (surface and surface.valid) then return { blocked = false, is_receiver = false } end
@@ -1195,134 +522,15 @@ local function compute_port_flow_level(pkey)
 end
 
 local function discover_adjacent_standard_entity(node)
-    if not (node and node.pos and node.surface_name) then return end
-    local surface = game.surfaces[node.surface_name]
-    if not (surface and surface.valid) then return end
-
-    local dx, dy = 0, 0
-    if node.dir then
-        dx = node.dir.x or 0
-        dy = node.dir.y or 0
-    else
-        local off_x = node.offset and node.offset.x or 0
-        local off_y = node.offset and node.offset.y or 0
-        dx = (off_x > 0.05 and 1) or (off_x < -0.05 and -1) or 0
-        dy = (off_y > 0.05 and 1) or (off_y < -0.05 and -1) or 0
-    end
-
-    if dx == 0 and dy == 0 then return end
-
-    local target_pos = { x = node.pos.x + dx * 0.5, y = node.pos.y + dy * 0.5 }
-    local candidates = surface.find_entities_filtered{
-        position = target_pos,
-        name = {"stone-wall", "gate"}
-    }
-
-    local cand = candidates[1]
-    if cand and cand.valid and cand.unit_number then
-        if not (storage.flow_unit_ports and storage.flow_unit_ports[cand.unit_number]) then
-            local tech = cand.force and cand.force.technologies and cand.force.technologies["pneumatic-fence-gate-interoperability"]
-            if not tech or tech.researched then
-                flow_engine.connect_entity(cand)
-            else
-                storage.soft_interop_registry = storage.soft_interop_registry or {}
-                storage.soft_interop_registry[cand.unit_number] = cand
-                if script.register_on_object_destroyed then
-                    local reg_id = script.register_on_object_destroyed(cand)
-                    storage.object_destruction_map = storage.object_destruction_map or {}
-                    storage.object_destruction_map[reg_id] = { type = "entity", unit_number = cand.unit_number }
-                end
-            end
-        end
-    end
+    flow_gate_interop.discover_adjacent_standard_entity(node, flow_engine.connect_entity)
 end
 
 function flow_engine.handle_interop_research_finished(force)
-    if not storage.soft_interop_registry then return end
-    storage.interop_activation_queue = storage.interop_activation_queue or {}
-
-    for unit_number, entity in pairs(storage.soft_interop_registry) do
-        if entity and entity.valid then
-            if not force or entity.force == force then
-                storage.interop_activation_queue[unit_number] = entity
-                storage.soft_interop_registry[unit_number] = nil
-            end
-        else
-            storage.soft_interop_registry[unit_number] = nil
-        end
-    end
+    flow_gate_interop.handle_interop_research_finished(force)
 end
 
 function flow_engine.handle_interop_research_reversed(force)
-    if storage.interop_activation_queue then
-        storage.soft_interop_registry = storage.soft_interop_registry or {}
-        for unit_number, entity in pairs(storage.interop_activation_queue) do
-            if entity and entity.valid then
-                if not force or entity.force == force then
-                    storage.soft_interop_registry[unit_number] = entity
-                    storage.interop_activation_queue[unit_number] = nil
-                end
-            else
-                storage.interop_activation_queue[unit_number] = nil
-            end
-        end
-    end
-
-    local active_walls = storage.active_walls or {}
-    local active_gates = storage.active_gates or {}
-
-    local function is_interop_unit(unit_number)
-        return (active_walls[unit_number] ~= nil) or (active_gates[unit_number] ~= nil)
-    end
-
-    local function sever_boundary_interfaces(registry)
-        for unit_number, entity in pairs(registry) do
-            if entity and entity.valid and (not force or entity.force == force) then
-                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
-                if u_ports then
-                    for _, wall_pkey in pairs(u_ports) do
-                        local neighbors = storage.flow_connections and storage.flow_connections[wall_pkey]
-                        if neighbors then
-                            local to_sever = {}
-                            for n_key in pairs(neighbors) do
-                                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-                                if n_node and not is_interop_unit(n_node.unit_number) then
-                                    to_sever[#to_sever + 1] = n_key
-                                end
-                            end
-
-                            for i = 1, #to_sever do
-                                local reg_pkey = to_sever[i]
-
-                                if storage.flow_connections[wall_pkey] then
-                                    storage.flow_connections[wall_pkey][reg_pkey] = nil
-                                    if next(storage.flow_connections[wall_pkey]) == nil then
-                                        storage.flow_connections[wall_pkey] = nil
-                                    end
-                                end
-
-                                if storage.flow_connections[reg_pkey] then
-                                    storage.flow_connections[reg_pkey][wall_pkey] = nil
-                                    if next(storage.flow_connections[reg_pkey]) == nil then
-                                        storage.flow_connections[reg_pkey] = nil
-                                    end
-                                end
-
-                                destroy_edge_render(make_edge_key(wall_pkey, reg_pkey))
-                                flow_engine.enqueue_port(reg_pkey)
-                                flow_engine.enqueue_port(wall_pkey)
-                                wake_port_parked(reg_pkey)
-                                wake_port_parked(wall_pkey)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    sever_boundary_interfaces(active_walls)
-    sever_boundary_interfaces(active_gates)
+    flow_gate_interop.handle_interop_research_reversed(force, flow_engine.enqueue_port, flow_renderer.destroy_edge_render)
 end
 
 function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
@@ -1405,11 +613,11 @@ function flow_engine.notify_beam_obstruction_changed(entity, is_removal)
                     end
                 end
             end
-                        if is_removal and u_ports then
-                            for _, upkey in ipairs(u_ports) do
-                                wake_port_parked(upkey)
-                            end
-                        end
+            if is_removal and u_ports then
+                for _, upkey in ipairs(u_ports) do
+                    wake_port_parked(upkey)
+                end
+            end
         end
     end
 end
@@ -1443,100 +651,9 @@ function flow_engine.step(tick)
             end
         end
     end
-    if storage.active_gates then
-        for unit_number, gate in pairs(storage.active_gates) do
-            if gate and gate.valid then
-                local is_open = not (gate.is_closed and gate.is_closed())
-                local last_open = storage.gate_open_states and storage.gate_open_states[unit_number]
-                local is_term = is_open and is_gate_terminator(unit_number)
-                local last_term = storage.gate_cutoff_states and storage.gate_cutoff_states[unit_number]
 
-                if is_open ~= last_open or is_term ~= last_term then
-                    local open_changed = (is_open ~= last_open)
-                    storage.gate_open_states = storage.gate_open_states or {}
-                    storage.gate_open_states[unit_number] = is_open
-                    storage.gate_cutoff_states = storage.gate_cutoff_states or {}
-                    storage.gate_cutoff_states[unit_number] = is_term
-
-                    if open_changed then
-                        flow_engine.notify_beam_obstruction_changed(gate, is_open)
-                    end
-
-                    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
-                    if unit_ports then
-                        if not is_open or not is_term then
-                            for _, p in pairs(unit_ports) do
-                                local p_node = storage.flow_nodes and storage.flow_nodes[p]
-                                if p_node then
-                                    p_node.capsule_transmit = true
-                                    p_node.pressure_transmit = true
-                                    p_node.sense_transmit = true
-                                end
-                            end
-                        else
-                            for _, p in pairs(unit_ports) do
-                                local p_node = storage.flow_nodes and storage.flow_nodes[p]
-                                if p_node then
-                                    p_node.capsule_transmit = false
-                                    p_node.pressure_transmit = false
-                                end
-                            end
-                        end
-                    end
-
-                    flow_engine.enqueue_unit_ports(unit_number)
-
-                    if not is_open or not is_term then
-                        if unit_ports then
-                            for _, p in pairs(unit_ports) do
-                                wake_port_parked(p)
-                                local neighbors = storage.flow_connections and storage.flow_connections[p]
-                                if neighbors then
-                                    for n_key in pairs(neighbors) do
-                                        wake_port_parked(n_key)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    if storage.interop_activation_queue and next(storage.interop_activation_queue) ~= nil then
-        local batch = {}
-        local count = 0
-        for unit_number, entity in pairs(storage.interop_activation_queue) do
-            count = count + 1
-            batch[count] = { unit_number = unit_number, entity = entity }
-            storage.interop_activation_queue[unit_number] = nil
-            if count >= INTEROP_BATCH_SIZE then
-                break
-            end
-        end
-
-        for i = 1, count do
-            local item = batch[i]
-            local entity = item.entity
-            if entity and entity.valid then
-                if flow_engine.is_touching_pneumatic_grid(entity) then
-                    flow_engine.connect_entity(entity)
-                    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[item.unit_number]
-                    if unit_ports then
-                        for _, p in pairs(unit_ports) do
-                            local neighbors = storage.flow_connections and storage.flow_connections[p]
-                            if neighbors then
-                                for n_key in pairs(neighbors) do
-                                    wake_port_parked(n_key)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
+    flow_gate_interop.step_gates(flow_engine.notify_beam_obstruction_changed, flow_engine.enqueue_unit_ports)
+    flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
 
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
@@ -1773,111 +890,15 @@ function flow_engine.step(tick)
                         end
                         wake_port_parked(pkey)
                     end
-                        update_pos_render(node.pos_key)
+                    update_pos_render(node.pos_key)
                 end
             end
         end
 
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
-        if node and storage.active_walls and storage.active_walls[node.unit_number] then
-            local u_num = node.unit_number
-            local cur_locked = storage.wall_locked_group and storage.wall_locked_group[u_num]
-
-            if not cur_locked then
-                if target_flow ~= 0 or (target_range and target_range > 0) then
-                    storage.wall_locked_group = storage.wall_locked_group or {}
-                    storage.wall_locked_group[u_num] = node.group
-
-                    local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
-                    if u_ports then
-                        for _, p in pairs(u_ports) do
-                            local p_node = storage.flow_nodes and storage.flow_nodes[p]
-                            if p_node then
-                                local matches = (p_node.group == node.group)
-                                p_node.capsule_transmit = matches
-                                p_node.pressure_transmit = matches
-                                p_node.sense_transmit = matches
-                                if not matches then
-                                    flow_engine.enqueue_port(p)
-                                end
-                            end
-                        end
-                    end
-                end
-            else
-                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
-                if u_ports then
-                    local active_has_pressure = false
-                    for _, p in pairs(u_ports) do
-                        local p_node = storage.flow_nodes and storage.flow_nodes[p]
-                        if p_node and p_node.group == cur_locked then
-                            local f = (p == pkey) and target_flow or (storage.flow_levels and storage.flow_levels[p] or 0)
-                            local s = (p == pkey) and target_range or (storage.counter_levels and storage.counter_levels[p] or 0)
-                            if f ~= 0 or (s and s > 0) then
-                                active_has_pressure = true
-                                break
-                            end
-                        end
-                    end
-
-                    if not active_has_pressure then
-                        storage.wall_locked_group[u_num] = nil
-
-                        for _, p in pairs(u_ports) do
-                            local p_node = storage.flow_nodes and storage.flow_nodes[p]
-                            if p_node then
-                                p_node.capsule_transmit = true
-                                p_node.pressure_transmit = true
-                                p_node.sense_transmit = true
-                            end
-                            flow_engine.enqueue_port(p)
-                            wake_port_parked(p)
-                            local neighbors = storage.flow_connections and storage.flow_connections[p]
-                            if neighbors then
-                                for n_key in pairs(neighbors) do
-                                    flow_engine.enqueue_port(n_key)
-                                    wake_port_parked(n_key)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-
         if node then
-            local u_num = node.unit_number
-            local is_wall_entity = storage.active_walls and storage.active_walls[u_num]
-            local is_gate_entity = storage.active_gates and storage.active_gates[u_num]
-
-            if is_wall_entity or is_gate_entity then
-                local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
-                if u_ports then
-                    local has_flow = false
-                    for _, check_p in pairs(u_ports) do
-                        local f = (check_p == pkey) and target_flow or (storage.flow_levels and storage.flow_levels[check_p] or 0)
-                        local s = (check_p == pkey) and target_range or (storage.counter_levels and storage.counter_levels[check_p] or 0)
-                        if f ~= 0 or (s and s > 0) then
-                            has_flow = true
-                            break
-                        end
-                    end
-
-                    if not has_flow then
-                        local ent = is_gate_entity or is_wall_entity
-                        if ent and ent.valid then
-                            local tech = ent.force and ent.force.technologies and ent.force.technologies["pneumatic-fence-gate-interoperability"]
-                            if tech and not tech.researched then
-                                flow_engine.disconnect_entity(ent)
-                                if flow_engine.is_touching_pneumatic_grid(ent) then
-                                    storage.soft_interop_registry = storage.soft_interop_registry or {}
-                                    storage.soft_interop_registry[u_num] = ent
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+            flow_gate_interop.update_wall_locking(node, pkey, target_flow, target_range, flow_engine.enqueue_port)
+            flow_gate_interop.check_wall_gate_demotion(node, pkey, target_flow, target_range, flow_engine.disconnect_entity)
         end
 
         if flow_changed or range_changed or kinetic_changed then
@@ -1968,33 +989,7 @@ local function handle_entity_reorientation(entity)
         flow_engine.connect_entity(entity)
         flow_engine.notify_beam_obstruction_changed(entity, false)
     elseif is_standard_entity(real_name) then
-        flow_engine.notify_beam_obstruction_changed(entity, true)
-        local was_connected = (storage.flow_unit_ports and storage.flow_unit_ports[entity.unit_number] ~= nil)
-        if was_connected then
-            flow_engine.disconnect_entity(entity)
-        end
-
-        local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
-        local is_researched = (not tech) or tech.researched
-
-        if is_researched then
-            if flow_engine.is_touching_pneumatic_grid(entity) then
-                flow_engine.connect_entity(entity)
-            end
-        else
-            if flow_engine.is_touching_active_flow(entity) then
-                storage.soft_interop_registry = storage.soft_interop_registry or {}
-                storage.soft_interop_registry[entity.unit_number] = entity
-                if script.register_on_object_destroyed then
-                    local reg_id = script.register_on_object_destroyed(entity)
-                    storage.object_destruction_map = storage.object_destruction_map or {}
-                    storage.object_destruction_map[reg_id] = { type = "entity", unit_number = entity.unit_number }
-                end
-            elseif storage.soft_interop_registry then
-                storage.soft_interop_registry[entity.unit_number] = nil
-            end
-        end
-        flow_engine.notify_beam_obstruction_changed(entity, false)
+        flow_gate_interop.handle_standard_entity_reorientation(entity, flow_engine.disconnect_entity, flow_engine.connect_entity, flow_engine.notify_beam_obstruction_changed, flow_engine.get_node_emitter_level, flow_engine.get_node_kinetic_emitter)
     end
 end
 
@@ -2416,24 +1411,7 @@ function flow_engine.register_events()
             if registered_entities[real_name] then
                 flow_engine.connect_entity(entity)
             elseif is_standard_entity(real_name) then
-                local tech = entity.force and entity.force.technologies and entity.force.technologies["pneumatic-fence-gate-interoperability"]
-                local is_researched = (not tech) or tech.researched
-
-                if is_researched then
-                    if flow_engine.is_touching_pneumatic_grid(entity) then
-                        flow_engine.connect_entity(entity)
-                    end
-                else
-                    if flow_engine.is_touching_active_flow(entity) then
-                        storage.soft_interop_registry = storage.soft_interop_registry or {}
-                        storage.soft_interop_registry[entity.unit_number] = entity
-                        if script.register_on_object_destroyed then
-                            local reg_id = script.register_on_object_destroyed(entity)
-                            storage.object_destruction_map = storage.object_destruction_map or {}
-                            storage.object_destruction_map[reg_id] = { type = "entity", unit_number = entity.unit_number }
-                        end
-                    end
-                end
+                flow_gate_interop.handle_standard_entity_build(entity, flow_engine.connect_entity, flow_engine.get_node_emitter_level, flow_engine.get_node_kinetic_emitter)
             end
 
             flow_engine.notify_beam_obstruction_changed(entity, false)

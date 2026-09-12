@@ -408,9 +408,10 @@ function flow_renderer.update_pos_render(pos_key)
                 end
             else
                 local abs_level = math.abs(level)
+                local ratio = math.min(1.0, abs_level / MAX_FLOW)
                 local circle_color = (level > 0)
-                    and {r = 0, g = 0.4 + (abs_level / MAX_FLOW) * 0.6, b = 1, a = 0.8}
-                    or  {r = 1, g = 0.3 + (abs_level / MAX_FLOW) * 0.7, b = 0, a = 0.8}
+                    and {r = 0, g = 0.4 + ratio * 0.6, b = 1, a = 0.8}
+                    or  {r = 1, g = 0.3 + ratio * 0.7, b = 0, a = 0.8}
 
                 if current and current.circle and current.circle.valid and current.text and current.text.valid and not current.is_intake then
                     current.circle.color = circle_color

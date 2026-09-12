@@ -156,7 +156,9 @@ function flow_engine.get_node_emitter_level(node)
         if not pump_power then return 0 end
         local pump_enabled = storage.pump_enabled_states and storage.pump_enabled_states[unit_number]
         if pump_enabled == false then return 0 end
-        return node.emitter
+        local q_level = node.q_level or 0
+        local flow_mag = math.floor(10 * (1 + 0.3 * q_level))
+        return (node.emitter > 0) and flow_mag or -flow_mag
     end
 
     if storage.active_pumps and storage.active_pumps[unit_number] then
@@ -170,7 +172,9 @@ function flow_engine.get_node_emitter_level(node)
         storage.pump_enabled_states = storage.pump_enabled_states or {}
         storage.pump_enabled_states[unit_number] = is_enabled
         if not is_enabled then return 0 end
-        return node.emitter
+        local q_level = (pump_entity.quality and pump_entity.quality.level) or (node and node.q_level) or 0
+        local flow_mag = math.floor(10 * (1 + 0.3 * q_level))
+        return (node.emitter > 0) and flow_mag or -flow_mag
     end
 
     local diverter_power = storage.diverter_power_states and storage.diverter_power_states[unit_number]
@@ -181,7 +185,9 @@ function flow_engine.get_node_emitter_level(node)
         if port_states and port_states[port_idx] == false then return 0 end
         local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
         local p_setting = d_settings and d_settings.ports and d_settings.ports[port_idx]
-        return (p_setting and p_setting.mode == "input") and -10 or 10
+        local q_level = node.q_level or 0
+        local flow_mag = math.floor(10 * (1 + 0.3 * q_level))
+        return (p_setting and p_setting.mode == "input") and -flow_mag or flow_mag
     end
 
     if storage.active_diverters and storage.active_diverters[unit_number] then
@@ -199,7 +205,9 @@ function flow_engine.get_node_emitter_level(node)
         if not is_port_on then return 0 end
         local d_settings = storage.diverter_settings and storage.diverter_settings[unit_number]
         local p_setting = d_settings and d_settings.ports and d_settings.ports[port_idx]
-        return (p_setting and p_setting.mode == "input") and -10 or 10
+        local q_level = (div_entity.quality and div_entity.quality.level) or (node and node.q_level) or 0
+        local flow_mag = math.floor(10 * (1 + 0.3 * q_level))
+        return (p_setting and p_setting.mode == "input") and -flow_mag or flow_mag
     end
 
     return node.emitter
@@ -267,7 +275,8 @@ local function compute_port_counter_level(pkey)
             return 0, nil
         end
 
-        local seed = node.sense or DEFAULT_RANGE_SEED
+        local q_level = (counter_entity.quality and counter_entity.quality.level) or (node and node.q_level) or 0
+        local seed = math.floor(DEFAULT_RANGE_SEED * (1 + 0.3 * q_level))
         return seed, unit_number
     end
 
@@ -431,6 +440,24 @@ function flow_engine.step(tick)
         storage.projector_ports_initialized = true
         if storage.active_projectors then
             for unit_number in pairs(storage.active_projectors) do
+                flow_engine.enqueue_unit_ports(unit_number)
+            end
+        end
+    end
+    if not storage.flow_quality_scaling_initialized then
+        storage.flow_quality_scaling_initialized = true
+        if storage.active_pumps then
+            for unit_number in pairs(storage.active_pumps) do
+                flow_engine.enqueue_unit_ports(unit_number)
+            end
+        end
+        if storage.active_diverters then
+            for unit_number in pairs(storage.active_diverters) do
+                flow_engine.enqueue_unit_ports(unit_number)
+            end
+        end
+        if storage.active_counters then
+            for unit_number in pairs(storage.active_counters) do
                 flow_engine.enqueue_unit_ports(unit_number)
             end
         end
@@ -633,7 +660,12 @@ function flow_engine.connect_entity(entity)
         storage.flow_unit_ports[unit_number][port_index] = pkey
 
         local is_muzzle_port = (port.kinetic_transmit == true or port.is_muzzle == true)
-        local eff_emitter = (port.flow and port.flow ~= 0) and port.flow or nil
+        local eff_emitter = nil
+        if port.flow and port.flow ~= 0 then
+            local flow_mag = math.floor(math.abs(port.flow) * (1 + 0.3 * q_level))
+            eff_emitter = (port.flow > 0) and flow_mag or -flow_mag
+        end
+        local eff_sense = port.sense and math.floor(port.sense * (1 + 0.3 * q_level)) or nil
 
         storage.flow_nodes[pkey] = {
             unit_number = unit_number,
@@ -645,7 +677,7 @@ function flow_engine.connect_entity(entity)
             dir = port.dir and {x = port.dir.x, y = port.dir.y} or nil,
             surface_name = surface_name,
             emitter = eff_emitter,
-            sense = port.sense,
+            sense = eff_sense,
             group = port.group,
             capsule_transmit = (port.capsule_transmit == true),
             pressure_transmit = (port.pressure_transmit == true),

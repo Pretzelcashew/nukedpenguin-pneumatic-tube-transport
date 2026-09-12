@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 00:52:46  
-**Scope:** 21 directories, 90 files  
+**Last Generated:** 2026-09-12 09:50:38  
+**Scope:** 21 directories, 92 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -51,13 +51,15 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── technology.lua
 ├── scripts/
 │   ├── capsules/
+│   │   ├── capsule-ballistics.lua
 │   │   ├── capsule-definitions.lua
 │   │   ├── capsule-inputs.lua
 │   │   ├── capsule-lifecycle.lua
 │   │   ├── capsule-manager.lua
 │   │   ├── capsule-queries.lua
 │   │   ├── capsule-renderer.lua
-│   │   └── capsule-runner.lua
+│   │   ├── capsule-runner.lua
+│   │   └── capsule-transit.lua
 │   ├── counters/
 │   │   ├── counter-gui.lua
 │   │   ├── counter-logic.lua

@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 00:52:49  
-**Total Scope:** 21 directories, 88 files  
-**Total Workspace Size:** 1.45 MB | **Total Text Lines:** 23,653  
+**Last Generated:** 2026-09-12 09:50:36  
+**Total Scope:** 21 directories, 90 files  
+**Total Workspace Size:** 1.46 MB | **Total Text Lines:** 23,739  
 
 ---
 
@@ -12,8 +12,8 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
 | `plan/core/CHANGELOG.md` | 2,225 | 357.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/capsules/capsule-runner.lua` | 1,630 | 64.6 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/utils/gui-components.lua` | 1,038 | 39.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/capsules/capsule-runner.lua` | 1,031 | 39.7 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/flow/flow-engine.lua` | 1,014 | 42.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/active-device-scanner.lua` | 828 | 38.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
@@ -23,6 +23,7 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/proxy-manager.lua` | 628 | 21.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/flow/flow-renderer.lua` | 621 | 23.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/debug-manager.lua` | 558 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/capsules/capsule-ballistics.lua` | 534 | 21.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/flow/flow-gate-interop.lua` | 517 | 22.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/capsules/capsule-queries.lua` | 514 | 19.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/hubs/packing/belt-siphon.lua` | 464 | 19.0 KB | 🟢 **Manageable** (< 500 lines) |
@@ -35,7 +36,6 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/diverters/diverter-renderer.lua` | 324 | 15.6 KB | 🟢 **Manageable** (< 500 lines) |
 | `prototypes/recipe.lua` | 323 | 9.0 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/capsules/capsule-definitions.lua` | 323 | 13.5 KB | 🟢 **Manageable** (< 500 lines) |
-| `prototypes/technology.lua` | 304 | 9.0 KB | 🟢 **Manageable** (< 500 lines) |
 
 ---
 
@@ -89,13 +89,15 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── technology.lua                      [304 lines | 9.0 KB]
 ├── scripts/
 │   ├── capsules/
+│   │   ├── capsule-ballistics.lua              [534 lines | 21.9 KB]
 │   │   ├── capsule-definitions.lua             [323 lines | 13.5 KB]
 │   │   ├── capsule-inputs.lua                  [9 lines | 324 B]
 │   │   ├── capsule-lifecycle.lua               [129 lines | 6.3 KB]
 │   │   ├── capsule-manager.lua                 [106 lines | 4.3 KB]
 │   │   ├── capsule-queries.lua                 [514 lines | 19.2 KB]
 │   │   ├── capsule-renderer.lua                [437 lines | 15.9 KB]
-│   │   └── capsule-runner.lua                  [1,630 lines | 64.6 KB]
+│   │   ├── capsule-runner.lua                  [1,031 lines | 39.7 KB]
+│   │   └── capsule-transit.lua                 [151 lines | 5.9 KB]
 │   ├── counters/
 │   │   ├── counter-gui.lua                     [329 lines | 10.8 KB]
 │   │   ├── counter-logic.lua                   [186 lines | 7.9 KB]

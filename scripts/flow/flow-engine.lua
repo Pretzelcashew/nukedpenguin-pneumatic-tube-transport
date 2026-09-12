@@ -470,12 +470,23 @@ function flow_engine.step(tick)
 
     local batch = {}
     local batch_count = 0
+    local batch_limit = BATCH_SIZE
+    if next(storage.flow_queue) ~= nil then
+        local q_count = 0
+        for _ in pairs(storage.flow_queue) do
+            q_count = q_count + 1
+            if q_count > 500 then
+                batch_limit = 200
+                break
+            end
+        end
+    end
 
     for pkey in pairs(storage.flow_queue) do
         batch_count = batch_count + 1
         batch[batch_count] = pkey
         storage.flow_queue[pkey] = nil
-        if batch_count >= BATCH_SIZE then
+        if batch_count >= batch_limit then
             break
         end
     end
@@ -703,16 +714,27 @@ function flow_engine.connect_entity(entity)
                     storage.flow_connections[pkey][existing_pkey] = true
                     storage.flow_connections[existing_pkey][pkey] = true
 
-                    flow_engine.enqueue_port(existing_pkey)
-                    wake_port_parked(existing_pkey)
-                    wake_port_parked(pkey)
+                    local existing_has_flow = (storage.flow_levels and (storage.flow_levels[existing_pkey] or 0) ~= 0)
+                        or (storage.counter_levels and (storage.counter_levels[existing_pkey] or 0) > 0)
+                        or (existing_node.emitter and existing_node.emitter ~= 0)
+                        or (existing_node.sense and existing_node.sense > 0)
+                    local has_flow = (eff_emitter ~= nil and eff_emitter ~= 0) or (eff_sense ~= nil and eff_sense > 0)
+
+                    if has_flow or existing_has_flow then
+                        flow_engine.enqueue_port(existing_pkey)
+                        flow_engine.enqueue_port(pkey)
+                        wake_port_parked(existing_pkey)
+                        wake_port_parked(pkey)
+                    end
                 end
             end
         end
 
         storage.flow_grid[pos_key][pkey] = true
-        flow_engine.enqueue_port(pkey)
-        wake_port_parked(pkey)
+        if (eff_emitter ~= nil and eff_emitter ~= 0) or (eff_sense ~= nil and eff_sense > 0) then
+            flow_engine.enqueue_port(pkey)
+            wake_port_parked(pkey)
+        end
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
     end
@@ -744,10 +766,16 @@ function flow_engine.disconnect_entity(entity)
         flow_common.destroy_node(pkey)
 
         if pos_key then
-            update_pos_render(pos_key)
-            update_counter_pos_render(pos_key)
+            local has_renders = (storage.flow_renders and next(storage.flow_renders) ~= nil)
+                or (storage.counter_renders and next(storage.counter_renders) ~= nil)
+            if has_renders then
+                update_pos_render(pos_key)
+                update_counter_pos_render(pos_key)
+            end
         end
-        destroy_kinetic_pos_render(pkey)
+        if storage.kinetic_renders and next(storage.kinetic_renders) ~= nil then
+            destroy_kinetic_pos_render(pkey)
+        end
     end
 
     if storage.flow_unit_ports then
@@ -802,13 +830,17 @@ end
 function flow_engine.handle_object_destroyed(unit_number)
     if not unit_number then return end
 
+    local is_tracked = (storage.flow_unit_ports and storage.flow_unit_ports[unit_number] ~= nil)
+        or (storage.active_projectors and storage.active_projectors[unit_number] ~= nil)
+        or (storage.active_hubs and storage.active_hubs[unit_number] ~= nil)
+        or (storage.hub_compartments and storage.hub_compartments[unit_number] ~= nil)
+    if not is_tracked then return end
+
     -- Immediate deconstruction lifecycle purge for destroyed projectors
     if storage.active_projectors and storage.active_projectors[unit_number] then
         flow_kinetic.handle_projector_destroyed(unit_number)
+        flow_kinetic.clear_receiver_references(unit_number, flow_engine.enqueue_port, wake_port_parked)
     end
-
-    -- Free and wake any endpoints across the factory that were targeting this destroyed machine
-    flow_kinetic.clear_receiver_references(unit_number, flow_engine.enqueue_port, wake_port_parked)
 
     if storage.soft_interop_registry then
         storage.soft_interop_registry[unit_number] = nil
@@ -876,6 +908,22 @@ function flow_engine.handle_object_destroyed(unit_number)
 end
 
 function flow_engine.register_events()
+    local function print_queue_status()
+        local q_len = storage.flow_queue and table_size(storage.flow_queue) or 0
+        local node_len = storage.flow_nodes and table_size(storage.flow_nodes) or 0
+        local flow_len = storage.flow_levels and table_size(storage.flow_levels) or 0
+        local sense_len = storage.counter_levels and table_size(storage.counter_levels) or 0
+        local kinetic_len = storage.kinetic_levels and table_size(storage.kinetic_levels) or 0
+        game.print(string.format("[Flow Queue] Pending in queue: %d | Total graph nodes: %d | Pressure active: %d | Sensing active: %d | Kinetic active: %d", q_len, node_len, flow_len, sense_len, kinetic_len))
+    end
+
+    commands.add_command("check-queue", "Display pneumatic flow engine queue and active node counts", print_queue_status)
+    commands.add_command("check-flow", "Display pneumatic flow engine queue and active node counts", print_queue_status)
+    commands.add_command("clear-queue", "Flush pneumatic flow queue to 0", function()
+        storage.flow_queue = {}
+        game.print("[Flow Queue] Flow queue flushed to 0!")
+    end)
+
     events.on_event(defines.events.on_tick, function(event)
         flow_engine.step(event.tick)
     end)
@@ -971,7 +1019,7 @@ function flow_engine.register_events()
                 flow_kinetic.handle_obstacle_changed(entity, true, flow_engine.enqueue_port, wake_port_parked)
 
                 local u_num = entity.unit_number
-                if u_num then
+                if u_num and (entity.name == "pneumatic-projector" or (storage.active_projectors and storage.active_projectors[u_num])) then
                     flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
                 end
 

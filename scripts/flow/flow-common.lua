@@ -111,12 +111,27 @@ function flow_common.destroy_node(pkey)
                     storage.flow_connections[n_key] = nil
                 end
             end
-            flow_common.enqueue_port(n_key)
-            flow_common.wake_port_parked(n_key)
+            if storage.flow_nodes and storage.flow_nodes[n_key] then
+                local n_node = storage.flow_nodes[n_key]
+                local had_active = (storage.flow_levels and storage.flow_levels[pkey] ~= nil)
+                    or (storage.counter_levels and storage.counter_levels[pkey] ~= nil)
+                    or (storage.kinetic_levels and storage.kinetic_levels[pkey] ~= nil)
+                    or (node and node.emitter)
+                    or (storage.flow_levels and storage.flow_levels[n_key] ~= nil)
+                    or (storage.counter_levels and storage.counter_levels[n_key] ~= nil)
+                    or (storage.kinetic_levels and storage.kinetic_levels[n_key] ~= nil)
+                    or (n_node and n_node.emitter)
+
+                if had_active then
+                    flow_common.enqueue_port(n_key)
+                end
+                flow_common.wake_port_parked(n_key)
+            end
         end
         storage.flow_connections[pkey] = nil
     end
 
+    if storage.flow_queue then storage.flow_queue[pkey] = nil end
     if storage.flow_levels then storage.flow_levels[pkey] = nil end
     if storage.counter_levels then storage.counter_levels[pkey] = nil end
     if storage.kinetic_levels then storage.kinetic_levels[pkey] = nil end

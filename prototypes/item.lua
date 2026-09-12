@@ -135,6 +135,42 @@ data:extend({
     weight = 50 * kg,
     place_result = "pneumatic-projector"
   },
+  {
+    type = "item",
+    name = "electromagnetic-harness",
+    icons = icon("__base__/graphics/icons/discharge-defense-equipment.png", palette.electromagnetic),
+    place_as_equipment_result = "electromagnetic-harness",
+    subgroup = "pneumatic-transport",
+    order = "j[electromagnetic-harness]",
+    stack_size = 5,
+    weight = 10 * kg
+  },
+  {
+    type = "belt-immunity-equipment",
+    name = "electromagnetic-harness",
+    sprite = {
+      filename = "__base__/graphics/equipment/discharge-defense-equipment.png",
+      width = 128,
+      height = 128,
+      priority = "medium",
+      scale = 0.5,
+      tint = palette.electromagnetic
+    },
+    shape = {
+      width = 2,
+      height = 2,
+      type = "full"
+    },
+    energy_source = {
+      type = "electric",
+      buffer_capacity = "2MJ",
+      input_flow_limit = "1MW",
+      drain = "20kW",
+      usage_priority = "secondary-input"
+    },
+    energy_consumption = "100kW",
+    categories = {"armor"}
+  },
 
   -- Capsule Vessels Line Items (weight = 50 * kg enables 20 capsules per cargo rocket)
   {

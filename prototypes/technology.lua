@@ -220,6 +220,32 @@ data:extend({
     order = "c-b[pneumatic-projector]"
   },
 
+  -- Fulgora Planet Unlocks: Electromagnetic Harness
+  {
+    type = "technology",
+    name = "electromagnetic-harness",
+    icons = tech_icon("__base__/graphics/technology/discharge-defense-equipment.png", palette.electromagnetic, 128),
+    prerequisites = {
+      "electromagnetic-science-pack",
+      "pneumatic-projector",
+      "specialized-pneumatic-capsules"
+    },
+    unit = {
+      count = 250,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1},
+        {"chemical-science-pack", 1},
+        {"electromagnetic-science-pack", 1}
+      },
+      time = 45
+    },
+    effects = {
+      { type = "unlock-recipe", recipe = "electromagnetic-harness" }
+    },
+    order = "c-b[electromagnetic-harness]"
+  },
+
   -- Aquilo Planet Unlocks: Refrigerated Capsule & Recharge (Requires cryogenic plant, lithium processing, electromagnetic plant & LDS)
   {
     type = "technology",

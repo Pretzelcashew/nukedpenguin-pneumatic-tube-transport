@@ -297,5 +297,27 @@ data:extend({
     results = {
       {type = "item", name = "pneumatic-projector", amount = 1}
     }
+  },
+  {
+    type = "recipe",
+    name = "electromagnetic-harness",
+    categories = {"electromagnetics"},
+    enabled = false,
+    energy_required = 10.0,
+    surface_conditions = {
+      {
+        property = "magnetic-field",
+        min = 99
+      }
+    },
+    ingredients = {
+      {type = "item", name = "holmium-plate", amount = 10},
+      {type = "item", name = "superconductor", amount = 10},
+      {type = "item", name = "steel-plate", amount = 10},
+      {type = "item", name = "processing-unit", amount = 5}
+    },
+    results = {
+      {type = "item", name = "electromagnetic-harness", amount = 1}
+    }
   }
 })

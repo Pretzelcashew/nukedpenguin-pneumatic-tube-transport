@@ -30,9 +30,29 @@ local QUALITY_RANKS = {
 
 local capsule_runner = {}
 
+local function player_has_harness(player)
+    if not (player and player.valid) then return false end
+    local char = player.character
+    if not (char and char.valid) then return false end
+    local grid = char.grid
+    if not (grid and grid.valid) then return false end
+
+    local equipment = grid.equipment
+    for i = 1, #equipment do
+        local eq = equipment[i]
+        if eq.name == "electromagnetic-harness" and eq.energy and eq.energy > 100000 then
+            return true
+        end
+    end
+    return false
+end
+
 local function is_electromagnetic_capsule(capsule_or_id)
     if not capsule_or_id then return false end
     if type(capsule_or_id) == "table" then
+        if capsule_or_id.passenger and player_has_harness(capsule_or_id.passenger) then
+            return true
+        end
         if capsule_or_id.capsule_type then
             return capsule_defs.is_electromagnetic(capsule_or_id.capsule_type)
         end
@@ -42,6 +62,10 @@ local function is_electromagnetic_capsule(capsule_or_id)
         end
         return false
     elseif type(capsule_or_id) == "number" then
+        local cap = storage.capsules and storage.capsules[capsule_or_id]
+        if cap and cap.passenger and player_has_harness(cap.passenger) then
+            return true
+        end
         if capsule_manager.is_electromagnetic(capsule_or_id) then
             return true
         end
@@ -106,10 +130,23 @@ end
 local function check_player_collision(surface, tx, ty, capsule)
     if scratch_player_target_count == 0 or not surface then return nil end
 
+    local passenger = capsule and capsule.passenger
+    local pass_index = passenger and passenger.valid and passenger.index
+    local pass_char = passenger and passenger.valid and passenger.character
+
     for i = 1, scratch_player_target_count do
         local pdata = scratch_player_targets[i]
         if pdata and pdata.target and pdata.target.valid and pdata.surface == surface then
-            if not (capsule and capsule.passenger == pdata.player) then
+            local is_own_passenger = false
+            if pass_index and pdata.player and pdata.player.valid and pdata.player.index == pass_index then
+                is_own_passenger = true
+            elseif pass_char and pdata.target == pass_char then
+                is_own_passenger = true
+            elseif pass_index and pdata.target.player and pdata.target.player.valid and pdata.target.player.index == pass_index then
+                is_own_passenger = true
+            end
+
+            if not is_own_passenger then
                 if tx >= pdata.min_x and tx <= pdata.max_x and ty >= pdata.min_y and ty <= pdata.max_y then
                     return pdata.target, pdata.player
                 end

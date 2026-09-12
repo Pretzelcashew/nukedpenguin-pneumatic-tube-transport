@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-11 20:28:15  
-**Total Scope:** 21 directories, 84 files  
-**Total Workspace Size:** 1.43 MB | **Total Text Lines:** 23,070  
+**Last Generated:** 2026-09-11 23:18:28  
+**Total Scope:** 21 directories, 87 files  
+**Total Workspace Size:** 1.45 MB | **Total Text Lines:** 23,490  
 
 ---
 
@@ -11,17 +11,20 @@ Files flagged with 🔴 should be considered for modularization before major ref
 
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
-| `scripts/flow/flow-engine.lua` | 2,511 | 107.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/core/CHANGELOG.md` | 2,225 | 357.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-runner.lua` | 1,593 | 63.1 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-engine.lua` | 1,058 | 44.1 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/utils/gui-components.lua` | 1,038 | 39.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/active-device-scanner.lua` | 828 | 38.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/device-settings-copier.lua` | 794 | 34.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `aggregator_patcher.py` | 756 | 26.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/diverters/diverter-gui.lua` | 753 | 29.4 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/proxy-manager.lua` | 628 | 21.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
-| `aggregator_patcher.py` | 613 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/flow/flow-renderer.lua` | 623 | 23.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/debug-manager.lua` | 558 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/flow/flow-gate-interop.lua` | 537 | 23.6 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/flow/flow-kinetic.lua` | 535 | 22.5 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/capsules/capsule-queries.lua` | 514 | 19.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/hubs/packing/belt-siphon.lua` | 464 | 19.0 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 437 | 15.9 KB | 🟢 **Manageable** (< 500 lines) |
@@ -33,9 +36,6 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/capsules/capsule-definitions.lua` | 323 | 13.5 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/flow/port-defs.lua` | 302 | 33.3 KB | 🟢 **Manageable** (< 500 lines) |
 | `prototypes/recipe.lua` | 301 | 8.4 KB | 🟢 **Manageable** (< 500 lines) |
-| `scripts/hubs/hub-manager.lua` | 298 | 11.7 KB | 🟢 **Manageable** (< 500 lines) |
-| `scripts/hubs/hub-gui.lua` | 284 | 10.4 KB | 🟢 **Manageable** (< 500 lines) |
-| `scripts/projectors/projector-settings.lua` | 281 | 10.7 KB | 🟢 **Manageable** (< 500 lines) |
 
 ---
 
@@ -59,22 +59,22 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── archive/
 │   │   ├── ARCHITECTURE.md                     [830 lines | 120.9 KB]
 │   │   ├── CHANGES_0.3.23.md                   [28 lines | 3.9 KB]
-│   │   └── SCRATCH.md                          [0 lines | 0 B]
+│   │   └── SCRATCH.md                          [26 lines | 2.5 KB]
 │   └── core/
 │       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [9 lines | 809 B]
+│       ├── FRESH-CHANGES.md                    [18 lines | 2.3 KB]
 │       ├── HELPERS.md                          [82 lines | 3.9 KB]
 │       ├── MANIFEST.md                         [101 lines | 15.9 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
 │       ├── package.py                          [225 lines | 7.8 KB]
-│       ├── PROMPT-AG-DIFF.md                   [108 lines | 7.1 KB]
-│       ├── PROMPT-DOC-SYNC.md                  [55 lines | 4.4 KB]
+│       ├── PROMPT-AG-DIFF.md                   [106 lines | 7.0 KB]
+│       ├── PROMPT-DOC-SYNC.md                  [55 lines | 4.5 KB]
 │       ├── PROMPT-REVISION-LOG.md              [28 lines | 1.3 KB]
 │       ├── SPLASH-PAGE.md                      [59 lines | 4.3 KB]
-│       ├── TODO.md                             [112 lines | 6.3 KB]
+│       ├── TODO.md                             [114 lines | 6.4 KB]
 │       ├── UPDATE-MOD-PAGE.md                  [36 lines | 1.8 KB]
-│       └── WORKFLOW.md                         [106 lines | 4.8 KB]
+│       └── WORKFLOW.md                         [106 lines | 4.9 KB]
 ├── prototypes/
 │   ├── entities/
 │   │   ├── pneumatic-capsule-counter.lua       [167 lines | 5.2 KB]
@@ -107,7 +107,10 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── diverter-renderer.lua               [324 lines | 15.6 KB]
 │   │   └── diverter-settings.lua               [345 lines | 14.3 KB]
 │   ├── flow/
-│   │   ├── flow-engine.lua                     [2,511 lines | 107.2 KB]
+│   │   ├── flow-engine.lua                     [1,058 lines | 44.1 KB]
+│   │   ├── flow-gate-interop.lua               [537 lines | 23.6 KB]
+│   │   ├── flow-kinetic.lua                    [535 lines | 22.5 KB]
+│   │   ├── flow-renderer.lua                   [623 lines | 23.8 KB]
 │   │   └── port-defs.lua                       [302 lines | 33.3 KB]
 │   ├── hubs/
 │   │   ├── packing/
@@ -139,7 +142,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── events.lua                          [21 lines | 596 B]
 │   └── proxy-manager.lua                   [628 lines | 21.8 KB]
 ├── .gitignore                          [13 lines | 204 B]
-├── aggregator_patcher.py               [613 lines | 20.7 KB]
+├── aggregator_patcher.py               [756 lines | 26.9 KB]
 ├── changelog.txt                       [178 lines | 19.3 KB]
 ├── control.lua                         [127 lines | 5.3 KB]
 ├── data.lua                            [30 lines | 868 B]

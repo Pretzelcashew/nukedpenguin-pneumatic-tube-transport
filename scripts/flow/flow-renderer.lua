@@ -1,3 +1,5 @@
+local flow_common = require("scripts.flow.flow-common")
+
 local flow_renderer = {}
 
 local MAX_FLOW = 10
@@ -43,13 +45,8 @@ local function get_owner_color(unit_number)
     return {r = col.r, g = col.g, b = col.b, a = 0.8}
 end
 
-local function make_port_key(unit_number, port_index)
-    return tostring(unit_number) .. ":" .. tostring(port_index)
-end
-
-local function make_edge_key(key_a, key_b)
-    return key_a < key_b and (key_a .. "|" .. key_b) or (key_b .. "|" .. key_a)
-end
+local make_port_key = flow_common.make_port_key
+local make_edge_key = flow_common.make_edge_key
 
 flow_renderer.make_edge_key = make_edge_key
 
@@ -254,7 +251,7 @@ function flow_renderer.get_dominant_port_at_pos(pos_key)
 
     for pkey in pairs(grid_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
-        if node then
+        if node and not node.is_kinetic then
             local level = storage.flow_levels and storage.flow_levels[pkey] or 0
             local mag = math.abs(level)
             if mag > max_mag then

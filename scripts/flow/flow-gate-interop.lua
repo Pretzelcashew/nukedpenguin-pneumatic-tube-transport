@@ -1,33 +1,13 @@
 local port_defs = require("scripts.flow.port-defs")
+local flow_common = require("scripts.flow.flow-common")
 
 local flow_gate_interop = {}
 
 local INTEROP_BATCH_SIZE = 10
 
-local function make_pos_key(surface_name, x, y)
-    local rx = math.floor(x * 10 + 0.5) / 10
-    local ry = math.floor(y * 10 + 0.5) / 10
-    return string.format("%s@%.1f,%.1f", surface_name, rx, ry)
-end
-
-local function make_edge_key(key_a, key_b)
-    return key_a < key_b and (key_a .. "|" .. key_b) or (key_b .. "|" .. key_a)
-end
-
-local function wake_port_parked(pkey)
-    if not (pkey and storage.parked_by_port) then return end
-    local bucket = storage.parked_by_port[pkey]
-    if bucket then
-        for cap_id in pairs(bucket) do
-            local parked_cap = storage.capsules and storage.capsules[cap_id]
-            if parked_cap and parked_cap.to_port_key == nil then
-                parked_cap.next_retry_tick = nil
-                parked_cap.last_failed_hub = nil
-                parked_cap.last_port_key = nil
-            end
-        end
-    end
-end
+local make_pos_key = flow_common.make_pos_key
+local make_edge_key = flow_common.make_edge_key
+local wake_port_parked = flow_common.wake_port_parked
 
 function flow_gate_interop.is_standard_entity(name)
     return (name == "stone-wall" or name == "gate")
@@ -68,7 +48,6 @@ local function is_port_flow_active(pkey, get_emitter_level_fn, get_kinetic_emitt
     if not pkey then return false end
     if storage.flow_levels and (storage.flow_levels[pkey] or 0) ~= 0 then return true end
     if storage.counter_levels and (storage.counter_levels[pkey] or 0) > 0 then return true end
-    if storage.kinetic_levels and (storage.kinetic_levels[pkey] or 0) > 0 then return true end
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if node and node.emitter and get_emitter_level_fn and get_emitter_level_fn(node) ~= 0 then return true end
     if node and node.is_muzzle and get_kinetic_emitter_fn and get_kinetic_emitter_fn(node) ~= 0 then return true end

@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 10:01:00  
-**Scope:** 21 directories, 92 files  
+**Last Generated:** 2026-09-12 11:01:19  
+**Scope:** 22 directories, 96 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -63,6 +63,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── counters/
 │   │   ├── counter-gui.lua
 │   │   ├── counter-logic.lua
+│   │   ├── counter-manager.lua
 │   │   ├── counter-range.lua
 │   │   └── counter-settings.lua
 │   ├── diverters/
@@ -90,6 +91,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── hub-spill.lua
 │   │   └── hub-unpacking.lua
 │   ├── projectors/
+│   │   ├── projector-manager.lua
 │   │   └── projector-settings.lua
 │   ├── pumps/
 │   │   ├── pump-gui.lua
@@ -98,6 +100,9 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── surfaces/
 │   │   └── liminal-surface.lua
 │   ├── utils/
+│   │   ├── gui/
+│   │   │   ├── gui-filter-spec.lua
+│   │   │   └── gui-quality-bar.lua
 │   │   ├── gui-components.lua
 │   │   └── item-transfer-handler.lua
 │   ├── active-device-scanner.lua

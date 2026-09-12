@@ -6,6 +6,7 @@ local pump_manager = require("scripts.pumps.pump-manager")
 local diverter_manager = require("scripts.diverters.diverter-manager")
 local counter_manager = require("scripts.counters.counter-manager")
 local projector_manager = require("scripts.projectors.projector-manager")
+local profiler = require("scripts.utils.profiler")
 local util = require("util")
 
 local active_device_scanner = {}
@@ -160,6 +161,7 @@ function active_device_scanner.notify_settings_changed(entity)
 end
 
 local function scan_active_devices(tick)
+    local p_cache = profiler.start_sub_timer("Scanner: Cache")
     if storage.fast_replace_cache then
         local cur_tick = tick or game.tick
         for k, v in pairs(storage.fast_replace_cache) do
@@ -168,8 +170,14 @@ local function scan_active_devices(tick)
             end
         end
     end
+    profiler.stop_sub_timer("Scanner: Cache", p_cache)
 
     for _, spec in ipairs(device_specs_list) do
+        local sub_name = "Scanner: " .. (spec.name == "pneumatic-capsule-counter" and "Counters" or
+                                         spec.name == "pneumatic-diverter" and "Diverters" or
+                                         spec.name == "pneumatic-pump" and "Pumps" or
+                                         spec.name == "pneumatic-projector" and "Projectors" or spec.name)
+        local p_spec = profiler.start_sub_timer(sub_name)
         local storage_table = storage[spec.storage_key]
         if storage_table then
             for unit_number, entity in pairs(storage_table) do
@@ -192,6 +200,7 @@ local function scan_active_devices(tick)
                 end
             end
         end
+        profiler.stop_sub_timer(sub_name, p_spec)
     end
 end
 

@@ -1,5 +1,6 @@
 local flow_engine = require("scripts.flow.flow-engine")
 local events = require("scripts.events")
+local profiler = require("scripts.utils.profiler")
 
 local debug_manager = {}
 local PANEL_NAME = "pneumatic_debug_panel"
@@ -16,6 +17,7 @@ local function get_debug(player_index)
             capsules = true,
             peek = false,
             prints = false,
+            profiler = false,
             filter = nil,
         }
     else
@@ -27,6 +29,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].counter_range == nil then
             storage.debug[player_index].counter_range = true
+        end
+        if storage.debug[player_index].profiler == nil or storage.debug[player_index].profiler == true then
+            storage.debug[player_index].profiler = false
         end
     end
     return storage.debug[player_index]
@@ -167,6 +172,47 @@ function debug_manager.refresh_panel(player_index)
         chk_prints.enabled = master
         chk_prints.state = master and (dbg.prints == true)
     end
+
+    if not profiler.ENABLED then return end
+    local tbl_frame = content.profiler_table_frame
+    local prof_table = tbl_frame and tbl_frame.pneumatic_debug_profiler_table
+    if prof_table and prof_table.valid then
+        local stats = profiler.get_system_stats()
+        local results = profiler.get_latest_results()
+
+        local function set_cell(name, val)
+            local el = prof_table[name]
+            if el and el.valid then
+                pcall(function() el.caption = val end)
+            end
+        end
+
+        set_cell("lbl_time_flow", results["Flow Engine"] or "-")
+        set_cell("lbl_ctx_flow", "Queue: " .. stats.flow_queue_depth .. " | Nodes: " .. stats.flow_node_count)
+
+        set_cell("lbl_time_capsules", results["Capsule Motion"] or "-")
+        set_cell("lbl_ctx_capsules", "Active: " .. stats.active_capsules .. " (Parked: " .. stats.parked_capsules .. ")")
+
+        set_cell("lbl_time_hubs", results["Hub Logistics"] or "-")
+        set_cell("lbl_ctx_hubs", "Active Hubs: " .. stats.active_hubs)
+
+        set_cell("lbl_time_scanner", results["Device Scanner"] or "-")
+        set_cell("lbl_time_counters", results["Scanner: Counters"] or "-")
+        set_cell("lbl_ctx_counters", stats.active_counters .. " Counters")
+        set_cell("lbl_time_diverters", results["Scanner: Diverters"] or "-")
+        set_cell("lbl_ctx_diverters", stats.active_diverters .. " Diverters")
+        set_cell("lbl_time_pumps", results["Scanner: Pumps"] or "-")
+        set_cell("lbl_ctx_pumps", stats.active_pumps .. " Pumps")
+        set_cell("lbl_time_projectors", results["Scanner: Projectors"] or "-")
+        set_cell("lbl_ctx_projectors", stats.active_projectors .. " Projectors")
+        set_cell("lbl_time_cache", results["Scanner: Cache"] or "-")
+
+        if results["__TOTAL__"] then
+            set_cell("lbl_time_total", {"", "[font=default-bold]", results["__TOTAL__"], "[/font]"})
+        else
+            set_cell("lbl_time_total", "[font=default-bold]Sampling...[/font]")
+        end
+    end
 end
 
 function debug_manager.open_panel(player_index)
@@ -288,6 +334,109 @@ function debug_manager.open_panel(player_index)
         state = master and (dbg.prints == true),
         enabled = master
     }
+
+    if profiler.ENABLED then
+        content_frame.add{type = "line", direction = "horizontal"}
+
+        local profiler_label = content_frame.add{
+            type = "label",
+            caption = "Live Subsystem Performance (60t avg)",
+            style = "caption_label"
+        }
+        profiler_label.style.top_margin = 4
+        profiler_label.style.bottom_margin = 4
+
+    local btn_flow = content_frame.add{
+        type = "flow",
+        name = "profiler_btn_flow",
+        direction = "horizontal"
+    }
+    btn_flow.style.vertical_align = "center"
+    btn_flow.style.top_margin = 2
+    btn_flow.style.bottom_margin = 4
+
+    btn_flow.add{
+        type = "button",
+        name = "pneumatic_debug_btn_profile_now",
+        caption = "Snapshot to Console",
+        style = "button"
+    }
+
+    btn_flow.add{
+        type = "button",
+        name = "pneumatic_debug_btn_profile_refresh",
+        caption = "Refresh",
+        style = "button"
+    }
+
+    local tbl_frame = content_frame.add{
+        type = "frame",
+        name = "profiler_table_frame",
+        style = "deep_frame_in_shallow_frame",
+        direction = "vertical"
+    }
+    tbl_frame.style.padding = 6
+    tbl_frame.style.top_margin = 4
+    tbl_frame.style.horizontally_stretchable = true
+
+    local prof_table = tbl_frame.add{
+        type = "table",
+        name = "pneumatic_debug_profiler_table",
+        column_count = 3,
+        draw_horizontal_lines = true
+    }
+    prof_table.style.horizontally_stretchable = true
+    prof_table.style.horizontal_spacing = 16
+
+    local stats = profiler.get_system_stats()
+    local results = profiler.get_latest_results()
+
+    prof_table.add{type = "label", caption = "[font=default-bold]Subsystem / Task[/font]"}
+    prof_table.add{type = "label", caption = "[font=default-bold]Execution Time[/font]"}
+    prof_table.add{type = "label", caption = "[font=default-bold]Workload Detail[/font]"}
+
+    prof_table.add{type = "label", caption = "Flow Engine"}
+    prof_table.add{type = "label", name = "lbl_time_flow", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_flow", caption = "Queue: " .. stats.flow_queue_depth .. " | Nodes: " .. stats.flow_node_count}
+
+    prof_table.add{type = "label", caption = "Capsule Motion"}
+    prof_table.add{type = "label", name = "lbl_time_capsules", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_capsules", caption = "Active: " .. stats.active_capsules .. " (Parked: " .. stats.parked_capsules .. ")"}
+
+    prof_table.add{type = "label", caption = "Hub Logistics"}
+    prof_table.add{type = "label", name = "lbl_time_hubs", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_hubs", caption = "Active Hubs: " .. stats.active_hubs}
+
+    prof_table.add{type = "label", caption = "[font=default-semibold]Device Scanner[/font]"}
+    prof_table.add{type = "label", name = "lbl_time_scanner", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_scanner", caption = "15t Polling Cycle"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Counters[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_counters", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_counters", caption = stats.active_counters .. " Counters"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Diverters[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_diverters", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_diverters", caption = stats.active_diverters .. " Diverters"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Pumps[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_pumps", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_pumps", caption = stats.active_pumps .. " Pumps"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Projectors[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_projectors", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_projectors", caption = stats.active_projectors .. " Projectors"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Cache Prune[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_cache", caption = "-"}
+    prof_table.add{type = "label", caption = "Fast-replace prune"}
+
+    prof_table.add{type = "label", caption = "[font=default-bold]TOTAL Mod Script Time[/font]"}
+    prof_table.add{type = "label", name = "lbl_time_total", caption = "[font=default-bold]Sampling...[/font]"}
+    prof_table.add{type = "label", caption = "[font=default-bold]Combined Mod UPS Impact[/font]"}
+
+        debug_manager.refresh_panel(player_index)
+    end
 end
 
 function debug_manager.toggle_panel(player_index)
@@ -336,6 +485,17 @@ local function toggle_prints(player_index)
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Prints: " .. (dbg.prints and "[ENABLED]" or "[DISABLED]"))
+end
+
+local function toggle_profiler(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.profiler = not dbg.profiler
+
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] Live Profiler Console Stream: " .. (dbg.profiler and "[ENABLED]" or "[DISABLED]"))
 end
 
 local function toggle_new_flow(player_index)
@@ -454,6 +614,8 @@ commands.add_command("toggle-new-flow", "Toggle flow vector and kinetic beam ove
 commands.add_command("toggle-counter-range", "Toggle counter range overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_counter_range(cmd.player_index) end end)
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
+commands.add_command("toggle-profiler", "Toggle streaming 60-tick live performance profiler to chat", function(cmd) if cmd.player_index then toggle_profiler(cmd.player_index) end end)
+commands.add_command("profile-snapshot", "Print a live performance snapshot of all subsystems to chat", function(cmd) if cmd.player_index then profiler.trigger_snapshot(cmd.player_index) end end)
 commands.add_command("clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Sandbox cleanup)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
 commands.add_command("debug-filter-reset", "Reset the debug print prefix text filter", function(cmd) if cmd.player_index then reset_debug_filter(cmd.player_index, cmd.parameter) end end)
@@ -466,6 +628,8 @@ commands.add_command("pt-toggle-counter-range", "Toggle counter range overlay (A
 commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
+commands.add_command("pt-toggle-profiler", "Toggle streaming 60-tick live performance profiler to chat (Alias)", function(cmd) if cmd.player_index then toggle_profiler(cmd.player_index) end end)
+commands.add_command("pt-profile", "Print a live performance snapshot of all subsystems to chat (Alias)", function(cmd) if cmd.player_index then profiler.trigger_snapshot(cmd.player_index) end end)
 commands.add_command("pt-clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Alias)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 
 events.on_event(defines.events.on_lua_shortcut, function(event)
@@ -484,6 +648,10 @@ events.on_event(defines.events.on_gui_click, function(event)
 
     if element.name == "pneumatic_debug_close" then
         debug_manager.close_panel(event.player_index)
+    elseif element.name == "pneumatic_debug_btn_profile_now" then
+        profiler.trigger_snapshot(event.player_index)
+    elseif element.name == "pneumatic_debug_btn_profile_refresh" then
+        debug_manager.refresh_panel(event.player_index)
     end
 end)
 
@@ -554,5 +722,15 @@ end)
 events.on_event(defines.events.on_player_created, function(event)
     update_player_shortcuts(event.player_index)
 end)
+
+events.on_event(defines.events.on_tick, function(event)
+    if not profiler.ENABLED then return end
+    if event.tick % 60 ~= 0 then return end
+    for _, player in pairs(game.players) do
+        if player and player.valid and player.gui.screen[PANEL_NAME] then
+            debug_manager.refresh_panel(player.index)
+        end
+    end
+end, "Debug Manager")
 
 return debug_manager

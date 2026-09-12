@@ -76,13 +76,17 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~fix that building over a pneumatic entity to upgrade quality, would not preserve the original settings when building out of inventory
 
+~add player equipment: electromagnetic harness that lets you launch from EM projectors while in a player transit capsule
+
 --------------------------------------------
 
 consider breaking apart large files that are doing too many things (like flow-engine)
 
 fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy)
 
-add player equipment: electromagnetic harness that lets you launch from EM projectors while in a player transit capsule
+fix pasted ghosts do not show the correct settings reflected in their gui when clicked. (though, it does once the real building is placed)
+
+fix diverter circuit proxy disappearing after placing a real one on a diverter ghost
 
 
 

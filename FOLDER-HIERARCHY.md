@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 11:01:19  
-**Scope:** 22 directories, 96 files  
+**Last Generated:** 2026-09-12 11:50:31  
+**Scope:** 22 directories, 98 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -70,7 +70,8 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── diverter-gui.lua
 │   │   ├── diverter-manager.lua
 │   │   ├── diverter-renderer.lua
-│   │   └── diverter-settings.lua
+│   │   ├── diverter-settings.lua
+│   │   └── diverter-slot-modal.lua
 │   ├── flow/
 │   │   ├── flow-common.lua
 │   │   ├── flow-engine.lua
@@ -103,6 +104,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── gui/
 │   │   │   ├── gui-filter-spec.lua
 │   │   │   └── gui-quality-bar.lua
+│   │   ├── blueprint-sync.lua
 │   │   ├── gui-components.lua
 │   │   └── item-transfer-handler.lua
 │   ├── active-device-scanner.lua

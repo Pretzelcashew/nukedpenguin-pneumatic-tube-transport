@@ -91,8 +91,13 @@ def run_aggregator(start_dir: Path):
         print("No matching files found.")
         return
 
+    print(f"Found {len(matched_files)} matching file(s).")
+    line_opt = input("Include line numbers in aggregate? (y/N) [default: N]: ").strip().lower()
+    include_line_numbers = (line_opt == "y")
+
     output_path = get_next_aggregate_filepath(start_dir)
-    print(f"\nWriting {len(matched_files)} files to {output_path.name} and establishing baseline backups...")
+    mode_desc = "with line numbers" if include_line_numbers else "clean raw code"
+    print(f"\nWriting {len(matched_files)} files ({mode_desc}) to {output_path.name} and establishing baseline backups...")
 
     files_written = 0
     with open(output_path, "w", encoding="utf-8") as out:
@@ -116,15 +121,20 @@ def run_aggregator(start_dir: Path):
             out.write(f"FILE: {file_path}\n")
             out.write("=" * 80 + "\n")
 
-            pad_len = max(len(str(len(lines))), 4)
-            for idx, line in enumerate(lines, start=1):
-                clean_line = line if line.endswith("\n") else line + "\n"
-                out.write(f"{idx:>{pad_len}} | {clean_line}")
+            if include_line_numbers:
+                pad_len = max(len(str(len(lines))), 4)
+                for idx, line in enumerate(lines, start=1):
+                    clean_line = line if line.endswith("\n") else line + "\n"
+                    out.write(f"{idx:>{pad_len}} | {clean_line}")
+            else:
+                for line in lines:
+                    clean_line = line if line.endswith("\n") else line + "\n"
+                    out.write(clean_line)
 
             files_written += 1
 
     print(
-        f"Completed! Created '{output_path.name}' with {files_written} file(s)."
+        f"Completed! Created '{output_path.name}' with {files_written} file(s) ({mode_desc})."
     )
 
 
@@ -134,11 +144,19 @@ def run_aggregator(start_dir: Path):
 
 
 class PatchOperation:
-    def __init__(self, op_type: str, start_line: int, end_line: int, lines: list[str]):
-        self.op_type = op_type  # 'REPLACE', 'INSERT_AFTER', 'INSERT_BEFORE', 'DELETE'
+    def __init__(
+        self,
+        op_type: str,
+        start_line: int = 0,
+        end_line: int = 0,
+        lines: list[str] | None = None,
+        find_lines: list[str] | None = None,
+    ):
+        self.op_type = op_type  # 'REPLACE', 'INSERT_AFTER', 'INSERT_BEFORE', 'DELETE', 'FIND_REPLACE'
         self.start_line = start_line
         self.end_line = end_line
-        self.lines = lines
+        self.lines = lines or []
+        self.find_lines = find_lines or []
 
     def sort_key(self):
         return (self.start_line, self.end_line)
@@ -161,7 +179,8 @@ def resolve_file_path(raw_path: str, base_dir: Path | None) -> Path:
 
 
 def parse_line_operations(body_text: str) -> list[PatchOperation]:
-    block_pattern = re.compile(
+    # 1. Line-number based operations
+    line_block_pattern = re.compile(
         r"<<<\s*(REPLACE\s+LINES?\s+\d+(?:-\d+)?|"
         r"INSERT\s+(?:AFTER|BEFORE)\s+LINE\s+\d+|"
         r"DELETE\s+LINES?\s+\d+(?:-\d+)?)\s*\n"
@@ -170,58 +189,90 @@ def parse_line_operations(body_text: str) -> list[PatchOperation]:
         re.DOTALL | re.IGNORECASE,
     )
 
+    # 2. Find and Replace operations
+    find_replace_pattern = re.compile(
+        r"<<<{1,7}\s*(?:FIND|SEARCH)(?:\s+AND\s+REPLACE)?(?:\s*={0,7}\s*FIND\s*={0,7})?\s*\n"
+        r"(.*?)\n"
+        r"\s*(?:={3,}|-{3,})\s*(?:REPLACE|WITH)?\s*(?:={0,7}|-{0,7})\s*\n"
+        r"(.*?)"
+        r"\n?>>>{1,7}",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    raw_matches = []
+
+    for match in line_block_pattern.finditer(body_text):
+        raw_matches.append((match.start(), "LINE_OP", match))
+
+    for match in find_replace_pattern.finditer(body_text):
+        raw_matches.append((match.start(), "FIND_REPLACE", match))
+
+    # Sort matches by appearance in the text
+    raw_matches.sort(key=lambda x: x[0])
+
     ops = []
-    for match in block_pattern.finditer(body_text):
-        cmd_header = match.group(1).strip()
-        content = match.group(2)
-
-        replacement_lines = (
-            [line + "\n" for line in content.splitlines()]
-            if content
-            else []
-        )
-
-        m_rep = re.match(
-            r"REPLACE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
-            cmd_header,
-            re.IGNORECASE,
-        )
-        if m_rep:
-            s = int(m_rep.group(1))
-            e = int(m_rep.group(2)) if m_rep.group(2) else s
-            ops.append(PatchOperation("REPLACE", s, e, replacement_lines))
-            continue
-
-        m_del = re.match(
-            r"DELETE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
-            cmd_header,
-            re.IGNORECASE,
-        )
-        if m_del:
-            s = int(m_del.group(1))
-            e = int(m_del.group(2)) if m_del.group(2) else s
-            ops.append(PatchOperation("DELETE", s, e, []))
-            continue
-
-        m_ins_after = re.match(
-            r"INSERT\s+AFTER\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
-        )
-        if m_ins_after:
-            line_no = int(m_ins_after.group(1))
-            ops.append(
-                PatchOperation("INSERT_AFTER", line_no, line_no, replacement_lines)
+    for _, op_kind, match in raw_matches:
+        if op_kind == "LINE_OP":
+            cmd_header = match.group(1).strip()
+            content = match.group(2)
+            replacement_lines = (
+                [line + "\n" for line in content.splitlines()]
+                if content
+                else []
             )
-            continue
 
-        m_ins_before = re.match(
-            r"INSERT\s+BEFORE\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
-        )
-        if m_ins_before:
-            line_no = int(m_ins_before.group(1))
-            ops.append(
-                PatchOperation("INSERT_BEFORE", line_no, line_no, replacement_lines)
+            m_rep = re.match(
+                r"REPLACE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
+                cmd_header,
+                re.IGNORECASE,
             )
-            continue
+            if m_rep:
+                s = int(m_rep.group(1))
+                e = int(m_rep.group(2)) if m_rep.group(2) else s
+                ops.append(PatchOperation("REPLACE", s, e, replacement_lines))
+                continue
+
+            m_del = re.match(
+                r"DELETE\s+LINES?\s+(\d+)(?:\s*-\s*(\d+))?",
+                cmd_header,
+                re.IGNORECASE,
+            )
+            if m_del:
+                s = int(m_del.group(1))
+                e = int(m_del.group(2)) if m_del.group(2) else s
+                ops.append(PatchOperation("DELETE", s, e, []))
+                continue
+
+            m_ins_after = re.match(
+                r"INSERT\s+AFTER\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
+            )
+            if m_ins_after:
+                line_no = int(m_ins_after.group(1))
+                ops.append(
+                    PatchOperation("INSERT_AFTER", line_no, line_no, replacement_lines)
+                )
+                continue
+
+            m_ins_before = re.match(
+                r"INSERT\s+BEFORE\s+LINE\s+(\d+)", cmd_header, re.IGNORECASE
+            )
+            if m_ins_before:
+                line_no = int(m_ins_before.group(1))
+                ops.append(
+                    PatchOperation("INSERT_BEFORE", line_no, line_no, replacement_lines)
+                )
+                continue
+
+        elif op_kind == "FIND_REPLACE":
+            find_raw = match.group(1)
+            replace_raw = match.group(2)
+
+            find_lines = [l + "\n" for l in find_raw.splitlines()]
+            replace_lines = [l + "\n" for l in replace_raw.splitlines()] if replace_raw else []
+
+            ops.append(
+                PatchOperation("FIND_REPLACE", lines=replace_lines, find_lines=find_lines)
+            )
 
     return ops
 
@@ -307,14 +358,35 @@ def parse_patch_file(patch_text: str, base_dir: Path | None = None) -> list[File
     return file_patches
 
 
+def find_occurrences(file_lines: list[str], find_lines: list[str]) -> list[int]:
+    """Finds matching start line indices (0-based) for find_lines in file_lines."""
+    if not find_lines:
+        return []
+
+    # Pass 1: Line-stripped matching (ignores CRLF vs LF differences)
+    target = [l.rstrip("\r\n") for l in find_lines]
+    source = [l.rstrip("\r\n") for l in file_lines]
+    m = len(target)
+
+    matches = [i for i in range(len(source) - m + 1) if source[i : i + m] == target]
+    if matches:
+        return matches
+
+    # Pass 2: Trailing whitespace tolerance (ignores trailing spaces on lines)
+    target = [l.rstrip() for l in find_lines]
+    source = [l.rstrip() for l in file_lines]
+    matches = [i for i in range(len(source) - m + 1) if source[i : i + m] == target]
+    return matches
+
+
 def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
     if not target_path.exists():
-        print(f"Error: Target file does not exist: {target_path}")
+        print(f"\nError: Target file does not exist: {target_path}")
         return False
 
     orig_lines = read_file_lines(target_path)
     if orig_lines is None:
-        print(f"Error: Could not read file encoding: {target_path}")
+        print(f"\nError: Could not read file encoding: {target_path}")
         return False
 
     # NEVER overwrite an existing baseline backup
@@ -326,10 +398,80 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
         except Exception as e:
             print(f"Warning: Could not create backup file: {e}")
 
-    ops.sort(key=lambda o: (o.start_line, o.end_line), reverse=True)
-    modified_lines = list(orig_lines)
+    # Detect file newline convention
+    has_crlf = any("\r\n" in l for l in orig_lines[:50])
+    newline = "\r\n" if has_crlf else "\n"
+
+    # Resolve FIND_REPLACE operations to concrete line ranges
+    resolved_ops: list[PatchOperation] = []
 
     for op in ops:
+        if op.op_type == "FIND_REPLACE":
+            occurrences = find_occurrences(orig_lines, op.find_lines)
+
+            if len(occurrences) == 0:
+                print(f"\n[FIND FAILED] Could not find target snippet in {target_path.name}:")
+                preview = "".join(f"    | {l}" for l in op.find_lines[:5])
+                print(preview, end="")
+                if len(op.find_lines) > 5:
+                    print(f"    | ... ({len(op.find_lines) - 5} more lines)")
+                return False
+
+            elif len(occurrences) == 1:
+                start_line = occurrences[0] + 1
+                end_line = occurrences[0] + len(op.find_lines)
+                clean_lines = [l.rstrip("\r\n") + newline for l in op.lines]
+                resolved_ops.append(
+                    PatchOperation("REPLACE", start_line, end_line, clean_lines)
+                )
+
+            else:
+                line_nums = [str(idx + 1) for idx in occurrences]
+                print(
+                    f"\n[AMBIGUOUS MATCH] Found {len(occurrences)} occurrences in {target_path.name} at lines: {', '.join(line_nums)}"
+                )
+                preview = "".join(f"    | {l}" for l in op.find_lines[:3])
+                print(preview, end="")
+                if len(op.find_lines) > 3:
+                    print(f"    | ... ({len(op.find_lines) - 3} more lines)")
+
+                choice = input(
+                    f"Replace ALL {len(occurrences)} occurrences? (y/N): "
+                ).strip().lower()
+
+                if choice == "y":
+                    clean_lines = [l.rstrip("\r\n") + newline for l in op.lines]
+                    for idx in occurrences:
+                        start_line = idx + 1
+                        end_line = idx + len(op.find_lines)
+                        resolved_ops.append(
+                            PatchOperation("REPLACE", start_line, end_line, clean_lines)
+                        )
+                else:
+                    print(f"Aborted ambiguous operation in {target_path.name}.")
+                    return False
+        else:
+            clean_lines = [l.rstrip("\r\n") + newline for l in op.lines]
+            resolved_ops.append(
+                PatchOperation(op.op_type, op.start_line, op.end_line, clean_lines)
+            )
+
+    # Sort descending so modifications at the bottom don't alter earlier line numbers
+    resolved_ops.sort(key=lambda o: (o.start_line, o.end_line), reverse=True)
+
+    # Check for overlapping ranges
+    for i in range(len(resolved_ops) - 1):
+        if resolved_ops[i + 1].end_line >= resolved_ops[i].start_line:
+            print(
+                f"\nWarning: Overlapping operations detected between lines {resolved_ops[i + 1].start_line}-{resolved_ops[i + 1].end_line} and {resolved_ops[i].start_line}-{resolved_ops[i].end_line} in {target_path.name}"
+            )
+            confirm_overlap = input("Proceed despite overlapping operations? (y/N): ").strip().lower()
+            if confirm_overlap != "y":
+                return False
+
+    modified_lines = list(orig_lines)
+
+    for op in resolved_ops:
         if op.op_type in ("REPLACE", "DELETE"):
             start_idx = max(0, op.start_line - 1)
             end_idx = min(len(modified_lines), max(start_idx, op.end_line))
@@ -442,7 +584,6 @@ def run_restore(start_dir: Path):
             if lines is not None:
                 with open(target, "w", encoding="utf-8") as f:
                     f.writelines(lines)
-                # Keep .bak intact so repeated restores to baseline remain possible
                 restored += 1
         except Exception as e:
             print(f"Error restoring {target.name}: {e}")
@@ -453,13 +594,11 @@ def run_restore(start_dir: Path):
 def run_cleanup(start_dir: Path):
     print("\n--- CLEANUP WORKSPACE ---")
 
-    # Find aggregate files (*aggregate*.txt)
     agg_files = [
         f for f in start_dir.rglob("aggregate*.txt")
         if ".git" not in f.parts
     ]
 
-    # Find backup files (*.bak)
     bak_files = [
         b for b in start_dir.rglob("*.bak")
         if ".git" not in b.parts
@@ -485,7 +624,6 @@ def run_cleanup(start_dir: Path):
         print("Aborted.")
         return
 
-    # Delete aggregate files
     deleted_aggs = 0
     for f in agg_files:
         try:
@@ -494,7 +632,6 @@ def run_cleanup(start_dir: Path):
         except Exception as e:
             print(f"Error deleting {f.name}: {e}")
 
-    # Delete backup files
     deleted_baks = 0
     for b in bak_files:
         try:
@@ -503,7 +640,6 @@ def run_cleanup(start_dir: Path):
         except Exception as e:
             print(f"Error deleting {b.name}: {e}")
 
-    # Reset patch.txt to empty
     cleared_patch = False
     try:
         with open(patch_file, "w", encoding="utf-8") as f:
@@ -554,7 +690,14 @@ def run_patcher(start_dir: Path):
             sub = f" with {len(p.ops)} edit(s)" if p.ops else ""
             print(f"  • [MOVE]   {p.target_path.name} -> {p.dest_path.name}{sub}")
         elif p.action == "MODIFY":
-            print(f"  • [MODIFY] {p.target_path.name}: {len(p.ops)} operation(s)")
+            num_find = sum(1 for op in p.ops if op.op_type == "FIND_REPLACE")
+            num_line = len(p.ops) - num_find
+            details = []
+            if num_find:
+                details.append(f"{num_find} find-and-replace")
+            if num_line:
+                details.append(f"{num_line} line-based")
+            print(f"  • [MODIFY] {p.target_path.name}: {', '.join(details)} operation(s)")
 
     confirm = input("\nProceed with applying changes? (y/n): ").strip().lower()
     if confirm != "y":

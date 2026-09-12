@@ -34,7 +34,7 @@ Never think about which architecture files to find. Follow the muscle memory rit
    * Run Option `[1]` in `aggregator_patcher.py` and paste the query.
    * Paste the resulting `aggregate_2.txt` back to the AI.
 4. **Apply the Patch:**
-   * The AI gives you a single ` ```text ` patch block.
+   * The AI generates a single ` ```text ` patch block using robust **Contextual Find & Replace** (`<<< FIND` ... `=== REPLACE ===` ... `>>>`), eliminating brittle line-number math and syntax errors.
    * Copy the code block.
    * Save it into `patch.txt` (or clipboard) and run Option `[2]` in `aggregator_patcher.py`.
 5. **Test in Factorio:**

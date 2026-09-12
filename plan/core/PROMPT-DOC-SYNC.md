@@ -49,7 +49,7 @@ Once the user provides the aggregated content of the target document:
 
 ### Strict Negative Constraints
 - Do NOT output manual file paths or instructions like `REQUEST DOC: docs/arch/...`. ALWAYS output a 1-click fenced query block for `aggregator_patcher.py`.
-- Do NOT use line-number diffs (`<<< REPLACE LINES >>>`) on documentation files.
+- Do NOT use diffs, line-number operations (`<<< REPLACE LINES >>>`), or find-and-replace blocks (`<<< FIND ... === REPLACE === >>>`) on documentation files; always output full files.
 - Do NOT output partial files, hunks, or ellipses (`...`) for unchanged sections.
 - Do NOT drop existing algorithms or storage keys to "save space."
 - Do NOT alter unchanged subsystem files.

@@ -37,26 +37,25 @@ Once the user provides the aggregated files (with absolute paths and 1-based lin
    - **Modify Existing File:** `*** FILE: <absolute_or_relative_path>`
    - **Create New File:** `*** CREATE FILE: <path>` (automatically creates parent directories)
    - **Delete Existing File:** `*** DELETE FILE: <path>`
-   - **Move / Rename File:** `*** MOVE FILE: <source_path> -> <destination_path>` (can be immediately followed by line edits applied to the destination file)
-5. **Original Aggregate Line Numbers Only (Patcher Auto-Reverse Sorts):** 
-   - The patcher engine automatically sorts all operations in reverse/descending line order before modifying the file buffer.
-   - Because operations are applied from bottom to top, modifying later lines never alters line numbers of earlier lines.
-   - You MUST use the exact, original line numbers from the provided `aggregate_N.txt` for EVERY operation.
-   - **NEVER** calculate, predict, or apply manual offset math to subsequent operations in the same file.
-6. **Pure Source Delimiters:** Inside the code delimiter tags (`<<<` and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown tags, or file markers.
-7. **Surgical Granularity (No Block Collapsing):**
-   - Diff operations must target ONLY the specific property lines being modified, inserted, or removed.
-   - **NEVER** collapse multiple independent definitions, functions, or recipes across unchanged code into a single large `REPLACE LINES` block to avoid writing multiple hunks.
-   - Prefer `INSERT AFTER LINE <n>` or single-property `REPLACE LINES <n>-<n>` over replacing entire multi-line entity/table/function definitions.
-8. **Syntax & Table Boundary Invariance:**
-   - When modifying an entire entity, recipe, or table block, your `<start>` and `<end>` line numbers must encompass the complete syntactic block (from opening brace `{` to closing brace `},`).
-   - When modifying internal properties or variables, your `<start>` and `<end>` line numbers must be strictly bounded INSIDE the enclosing table/block without re-declaring outer braces.
+   - **Move / Rename File:** `*** MOVE FILE: <source_path> -> <destination_path>` (can be immediately followed by edits applied to the destination file)
+
+5. **Mandatory Contextual Find & Replace (High-Reliability Standard):**
+   - You **MUST** use `<<< FIND` and `=== REPLACE ===` for all modifications and deletions of existing code.
+   - Do **NOT** compute, guess, or output line-number replacements (`REPLACE LINES`). Line-number arithmetic has an unacceptably high failure rate across LLMs due to attention drift on large files and off-by-one errors that corrupt block syntax. Line numbers in `aggregate_N.txt` are provided strictly for human reference.
+   - **Unique Context Requirement:** Provide 2 to 4 lines of exact, unique surrounding code context inside `<<< FIND` so the patcher matches the exact target block unambiguously.
+   - **Code Deletions:** To delete existing code, match the exact snippet in `<<< FIND` and leave the `=== REPLACE ===` section completely empty.
+
+6. **Pure Source Delimiters:** Inside the code delimiter tags (`<<<`, `=== REPLACE ===`, and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown formatting, or file markers.
+
+7. **Syntactic Completeness & Block Balance:**
+   - When modifying Lua control structures (`if`, `for`, `function`, tables), ensure that opening keywords and closing `end` statements are completely balanced within the replacement.
+   - Always encompass the full syntactic header and footer of the block being modified inside the `<<< FIND` block so the patcher cannot attach code to the wrong outer scope.
 
 ---
 
 ### Error Handling & Workspace State Protocol
 If the user reports a syntax error, patch failure, or engine crash:
-1. **Never guess line positions in a corrupted file.** Once lines are spliced incorrectly, line numbers no longer match `aggregate_N.txt`.
+1. **Never guess line positions or patch dirty files.**
 2. Explicitly prompt the user to choose one of two recovery paths:
    - **Option A (Clean Undo):** Restore the modified file via patcher option `[3]` or `git checkout <file>`.
    - **Option B (Fresh Aggregate):** Run Option `[1]` in `aggregator_patcher.py` to produce a fresh `aggregate_N.txt` reflecting the current file state on disk before generating any new patch.
@@ -73,26 +72,24 @@ If the user reports a syntax error, patch failure, or engine crash:
 >>>
 
 *** MOVE FILE: <source_path> -> <destination_path>
-<<< REPLACE LINES <start>-<end>
-<optional replacement code applied to moved file>
+<<< FIND
+<exact existing code snippet in moved file>
+=== REPLACE ===
+<replacement code>
 >>>
 
 *** DELETE FILE: <path_to_delete>
 
 *** FILE: <path_to_modify>
-<<< REPLACE LINES <start>-<end>
+<<< FIND
+<exact existing code snippet with 2-4 lines of unique surrounding context>
+=== REPLACE ===
 <replacement code>
 >>>
 
-<<< INSERT AFTER LINE <line_number>
-<code to insert>
->>>
-
-<<< INSERT BEFORE LINE <line_number>
-<code to insert>
->>>
-
-<<< DELETE LINES <start>-<end>
+<<< FIND
+<unwanted existing code snippet to delete>
+=== REPLACE ===
 >>>
 ```
 
@@ -104,5 +101,6 @@ If the user reports a syntax error, patch failure, or engine crash:
 - Do NOT split diff blocks across multiple separate markdown code boxes; package all modified/created/moved files into one unified code block.
 - Do NOT include file delineation markers inside generated code blocks.
 - Do NOT output full files for existing files; only output targeted diff blocks.
+- Do NOT calculate or output line-number replacement operations (`REPLACE LINES <start>-<end>`); always use semantic `<<< FIND ... === REPLACE === >>>`.
 - Do NOT automatically write revision summaries at the end; the user will ask if needed.
 - Do NOT regenerate `MANIFEST.md`, `FOLDER-HIERARCHY.md`, or any `ARCH-*.md` file.

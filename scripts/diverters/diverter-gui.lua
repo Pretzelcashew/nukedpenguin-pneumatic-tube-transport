@@ -446,6 +446,11 @@ function diverter_gui.open(player, entity, initial_view)
 
     local current_view = initial_view or "all"
     local dev_id = diverter_settings.get_device_id(entity)
+    if entity.name == "entity-ghost" and entity.tags and entity.tags.pneumatic_settings then
+        if not storage.diverter_settings or not storage.diverter_settings[dev_id] then
+            diverter_settings.apply_blueprint_settings(dev_id, entity.tags.pneumatic_settings)
+        end
+    end
     local settings = diverter_settings.get(dev_id)
 
     if entity.name == "entity-ghost" then
@@ -726,5 +731,16 @@ events.on_event(defines.events.on_gui_switch_state_changed, on_gui_switch_state_
 events.on_event(defines.events.on_gui_elem_changed, on_gui_elem_changed)
 events.on_event(defines.events.on_gui_selection_state_changed, on_gui_selection_state_changed)
 events.on_event(defines.events.on_gui_text_changed, on_gui_text_changed)
+
+if active_device_scanner.on_settings_changed then
+    active_device_scanner.on_settings_changed(function(entity)
+        if not (entity and entity.valid) then return end
+        local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+        if real_name == "pneumatic-diverter" then
+            local dev_id = diverter_settings.get_device_id(entity)
+            diverter_gui.refresh_if_open(dev_id)
+        end
+    end)
+end
 
 return diverter_gui

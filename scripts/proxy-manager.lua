@@ -133,15 +133,54 @@ local function destroy_all_proxies_at(surface, pos, spec)
         end
     end
     for _, pname in ipairs(names) do
-        local proxies = surface.find_entities_filtered{ name = pname, position = pos }
+        local proxies = surface.find_entities_filtered{ name = pname, position = pos, radius = 0.5 }
         for _, p in ipairs(proxies) do
             if p.valid then p.destroy() end
         end
-        local ghost_proxies = surface.find_entities_filtered{ ghost_name = pname, position = pos }
+        local ghost_proxies = surface.find_entities_filtered{ ghost_name = pname, position = pos, radius = 0.5 }
         for _, g in ipairs(ghost_proxies) do
             if g.valid then g.destroy() end
         end
     end
+end
+
+local function find_main_at(surface, main_name, pos)
+    if not (surface and surface.valid and main_name and pos) then return nil end
+    local px = pos.x or pos[1] or 0
+    local py = pos.y or pos[2] or 0
+    local reals = surface.find_entities_filtered{
+        name = main_name,
+        position = pos,
+        radius = 0.5
+    }
+    if reals then
+        for _, r in ipairs(reals) do
+            if r.valid then
+                local rx = r.position.x or r.position[1] or 0
+                local ry = r.position.y or r.position[2] or 0
+                if math.abs(rx - px) < 0.5 and math.abs(ry - py) < 0.5 then
+                    return r
+                end
+            end
+        end
+    end
+    local ghosts = surface.find_entities_filtered{
+        ghost_name = main_name,
+        position = pos,
+        radius = 0.5
+    }
+    if ghosts then
+        for _, g in ipairs(ghosts) do
+            if g.valid then
+                local gx = g.position.x or g.position[1] or 0
+                local gy = g.position.y or g.position[2] or 0
+                if math.abs(gx - px) < 0.5 and math.abs(gy - py) < 0.5 then
+                    return g
+                end
+            end
+        end
+    end
+    return nil
 end
 
 function proxy_manager.purge_orphans()
@@ -231,12 +270,14 @@ local function on_created(event)
 
         local ghost_proxies = entity.surface.find_entities_filtered{
             ghost_name = main_spec.proxy_entity_name,
-            position = pos
+            position = pos,
+            radius = 0.5
         }
 
         local existing = entity.surface.find_entities_filtered{
             name = main_spec.proxy_entity_name,
-            position = pos
+            position = pos,
+            radius = 0.5
         }
 
         local primary_proxy = existing[1]
@@ -395,19 +436,10 @@ local function on_object_destroyed(event)
 
     local pos = data.position
     if data.offset then
-        pos = { x = pos.x + data.offset.x, y = data.offset.y }
+        pos = { x = pos.x + data.offset.x, y = pos.y + data.offset.y }
     end
 
-    local remaining_main = surface.find_entity(data.main_name, pos)
-    if not (remaining_main and remaining_main.valid) then
-        local ghost_mains = surface.find_entities_filtered{
-            ghost_name = data.main_name,
-            position = pos
-        }
-        if ghost_mains and ghost_mains[1] and ghost_mains[1].valid then
-            remaining_main = ghost_mains[1]
-        end
-    end
+    local remaining_main = find_main_at(surface, data.main_name, pos)
 
     if not (remaining_main and remaining_main.valid) then
         destroy_all_proxies_at(surface, pos, {

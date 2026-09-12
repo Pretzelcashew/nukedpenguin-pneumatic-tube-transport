@@ -87,8 +87,12 @@ local function apply_live_settings_copy(source, destination, player)
         local success = false
 
         if src_name == "pneumatic-pump" and dest_name == "pneumatic-pump" then
-            if pump_settings.copy(source_entity.unit_number, destination.unit_number) then
+            local copied_settings = pump_settings.copy(source_entity, destination)
+            if copied_settings then
                 success = true
+                if destination.name == "entity-ghost" then
+                    destination.tags = { pneumatic_settings = copied_settings }
+                end
                 active_device_scanner.notify_settings_changed(destination)
                 if player and player.valid and player.opened and player.opened.valid and player.opened.name == "pump_configuration_frame" then
                     pump_gui.open(player, destination)
@@ -96,8 +100,12 @@ local function apply_live_settings_copy(source, destination, player)
             end
 
         elseif src_name == "pneumatic-diverter" and dest_name == "pneumatic-diverter" then
-            if diverter_settings.copy(source_entity.unit_number, destination.unit_number, source_entity.direction, destination.direction) then
+            local copied_settings = diverter_settings.copy(source_entity, destination, source_entity.direction, destination.direction)
+            if copied_settings then
                 success = true
+                if destination.name == "entity-ghost" then
+                    destination.tags = { pneumatic_settings = copied_settings }
+                end
                 active_device_scanner.notify_settings_changed(destination)
                 if player and player.valid and player.opened and player.opened.valid and player.opened.name == "diverter_configuration_frame" then
                     diverter_gui.open(player, destination)
@@ -105,8 +113,12 @@ local function apply_live_settings_copy(source, destination, player)
             end
 
         elseif src_name == "pneumatic-capsule-counter" and dest_name == "pneumatic-capsule-counter" then
-            if counter_settings.copy(source_entity.unit_number, destination.unit_number) then
+            local copied_settings = counter_settings.copy(source_entity, destination)
+            if copied_settings then
                 success = true
+                if destination.name == "entity-ghost" then
+                    destination.tags = { pneumatic_settings = copied_settings }
+                end
                 active_device_scanner.notify_settings_changed(destination)
                 if player and player.valid and player.opened and player.opened.valid and player.opened.name == "counter_configuration_frame" then
                     if counter_gui and counter_gui.open then
@@ -116,14 +128,22 @@ local function apply_live_settings_copy(source, destination, player)
             end
 
         elseif src_name == "pneumatic-projector" and dest_name == "pneumatic-projector" then
-            if projector_settings.copy(source_entity.unit_number, destination.unit_number, source_entity.direction, destination.direction) then
+            local copied_settings = projector_settings.copy(source_entity, destination, source_entity.direction, destination.direction)
+            if copied_settings then
                 success = true
+                if destination.name == "entity-ghost" then
+                    destination.tags = { pneumatic_settings = copied_settings }
+                end
                 active_device_scanner.notify_settings_changed(destination)
             end
 
         elseif HUB_NAMES[src_name] and HUB_NAMES[dest_name] then
-            if hub_settings.copy(source_entity.unit_number, destination.unit_number) then
+            local copied_settings = hub_settings.copy(source_entity, destination)
+            if copied_settings then
                 success = true
+                if destination.name == "entity-ghost" then
+                    destination.tags = { pneumatic_settings = copied_settings }
+                end
                 hub_manager.notify_settings_changed(destination)
             end
         end
@@ -132,35 +152,38 @@ local function apply_live_settings_copy(source, destination, player)
     else
         local bp_settings, bp_direction = blueprint_sync.extract_settings_from_blueprint_source(source, destination)
         if bp_settings then
+            if destination.name == "entity-ghost" then
+                destination.tags = { pneumatic_settings = bp_settings }
+            end
             if dest_name == "pneumatic-pump" then
-                pump_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                pump_settings.apply_blueprint_settings(destination, bp_settings)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif dest_name == "pneumatic-diverter" then
                 if bp_direction and destination.direction ~= bp_direction then
                     local prev_dir = destination.direction
                     destination.direction = bp_direction
-                    diverter_settings.rotate_ports(destination.unit_number, prev_dir, bp_direction)
+                    diverter_settings.rotate_ports(destination, prev_dir, bp_direction)
                 end
-                diverter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                diverter_settings.apply_blueprint_settings(destination, bp_settings)
                 diverter_renderer.update_render(destination)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif dest_name == "pneumatic-capsule-counter" then
-                counter_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                counter_settings.apply_blueprint_settings(destination, bp_settings)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif dest_name == "pneumatic-projector" then
                 if bp_direction and destination.direction ~= bp_direction then
                     local prev_dir = destination.direction
                     destination.direction = bp_direction
-                    projector_settings.rotate_muzzle(destination.unit_number, prev_dir, bp_direction)
+                    projector_settings.rotate_muzzle(destination, prev_dir, bp_direction)
                 end
-                projector_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                projector_settings.apply_blueprint_settings(destination, bp_settings)
                 active_device_scanner.notify_settings_changed(destination)
                 return true
             elseif HUB_NAMES[dest_name] then
-                hub_settings.apply_blueprint_settings(destination.unit_number, bp_settings)
+                hub_settings.apply_blueprint_settings(destination, bp_settings)
                 hub_manager.notify_settings_changed(destination)
                 return true
             end

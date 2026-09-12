@@ -274,7 +274,8 @@ function active_device_scanner.register_events()
                     end
 
                     local copied = false
-                    if event.tags and event.tags.pneumatic_settings then
+                    local bp_tags = event.tags or (is_ghost and entity.tags)
+                    if bp_tags and bp_tags.pneumatic_settings then
                         if spec.apply_blueprint_settings then
                             if existing_real and existing_real.valid and existing_real.direction ~= entity.direction then
                                 local prev_dir = existing_real.direction
@@ -283,7 +284,7 @@ function active_device_scanner.register_events()
                                     spec.on_rotate(existing_real, { previous_direction = prev_dir })
                                 end
                             end
-                            spec.apply_blueprint_settings(target_entity, event.tags.pneumatic_settings)
+                            spec.apply_blueprint_settings(target_entity, bp_tags.pneumatic_settings)
                             copied = true
                         end
                     elseif ghost_id and ghost_id ~= target_dev_id then
@@ -412,6 +413,11 @@ function active_device_scanner.register_events()
                 end
                 if spec.apply_blueprint_settings then
                     spec.apply_blueprint_settings(entity, tags.pneumatic_settings)
+                end
+                if is_ghost then
+                    local etags = entity.tags or {}
+                    etags.pneumatic_settings = tags.pneumatic_settings
+                    entity.tags = etags
                 end
                 if spec.on_settings_changed then
                     spec.on_settings_changed(entity, is_ghost)

@@ -52,6 +52,18 @@ function pump_gui.open(player, entity)
     local dev_id = is_projector and projector_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
     dev_id = dev_id or entity.unit_number
 
+    if is_ghost and entity.tags and entity.tags.pneumatic_settings then
+        if is_projector then
+            if not storage.projector_settings or not storage.projector_settings[dev_id] then
+                projector_settings.apply_blueprint_settings(dev_id, entity.tags.pneumatic_settings)
+            end
+        else
+            if not storage.pump_settings or not storage.pump_settings[dev_id] then
+                pump_settings.apply_blueprint_settings(dev_id, entity.tags.pneumatic_settings)
+            end
+        end
+    end
+
     local settings = is_projector and projector_settings.get(dev_id, entity) or pump_settings.get(dev_id)
     if not settings then return end
 
@@ -228,5 +240,26 @@ events.on_event(defines.events.on_gui_checked_state_changed, on_gui_checked_stat
 events.on_event(defines.events.on_gui_elem_changed, on_gui_elem_changed)
 events.on_event(defines.events.on_gui_selection_state_changed, on_gui_selection_state_changed)
 events.on_event(defines.events.on_gui_text_changed, on_gui_text_changed)
+
+if active_device_scanner.on_settings_changed then
+    active_device_scanner.on_settings_changed(function(entity)
+        if not (entity and entity.valid) then return end
+        local real_name = (entity.name == "entity-ghost") and entity.ghost_name or entity.name
+        if real_name == "pneumatic-pump" or real_name == "pneumatic-projector" then
+            local is_proj = (real_name == "pneumatic-projector")
+            local d_id = is_proj and projector_settings.get_device_id(entity) or pump_settings.get_device_id(entity)
+            d_id = d_id or entity.unit_number
+            local frame_name = is_proj and PROJECTOR_FRAME_NAME or PUMP_FRAME_NAME
+            for _, player in pairs(game.players) do
+                if player and player.valid and player.opened and player.opened.valid and player.opened.name == frame_name then
+                    local open_tags = player.opened.tags
+                    if open_tags and open_tags.unit_number == d_id then
+                        pump_gui.open(player, entity)
+                    end
+                end
+            end
+        end
+    end)
+end
 
 return pump_gui

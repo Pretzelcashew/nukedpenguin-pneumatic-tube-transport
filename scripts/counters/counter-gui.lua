@@ -64,6 +64,11 @@ function counter_gui.open(player, entity)
     counter_gui.close(player)
 
     local dev_id = counter_settings.get_device_id(entity)
+    if entity.name == "entity-ghost" and entity.tags and entity.tags.pneumatic_settings then
+        if not storage.counter_settings or not storage.counter_settings[dev_id] then
+            counter_settings.apply_blueprint_settings(dev_id, entity.tags.pneumatic_settings)
+        end
+    end
     local settings = counter_settings.get(dev_id)
 
     if entity.name == "entity-ghost" then

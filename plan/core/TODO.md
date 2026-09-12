@@ -82,6 +82,8 @@ consider breaking apart large files that are doing too many things (like flow-en
 
 fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy)
 
+add player equipment: electromagnetic harness that lets you launch from EM projectors while in a player transit capsule
+
 
 
 

@@ -1,0 +1,151 @@
+# FILE-SIZES.md - Workspace Size & Metric Audit
+**Project:** `nukedpenguin-pneumatic-tube-transport`  
+**Last Generated:** 2026-09-11 20:28:15  
+**Total Scope:** 21 directories, 84 files  
+**Total Workspace Size:** 1.43 MB | **Total Text Lines:** 23,070  
+
+---
+
+## 1. Refactor Watchlist (Largest Files by Line Count)
+Files flagged with 🔴 should be considered for modularization before major refactors to prevent AI patch failures.
+
+| Relative File Path | Lines | Size | Patch Risk / Refactor Status |
+| :--- | :---: | :---: | :--- |
+| `scripts/flow/flow-engine.lua` | 2,511 | 107.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `plan/core/CHANGELOG.md` | 2,225 | 357.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/capsules/capsule-runner.lua` | 1,593 | 63.1 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/utils/gui-components.lua` | 1,038 | 39.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/active-device-scanner.lua` | 828 | 38.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/device-settings-copier.lua` | 794 | 34.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/diverters/diverter-gui.lua` | 753 | 29.4 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/proxy-manager.lua` | 628 | 21.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `aggregator_patcher.py` | 613 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/debug-manager.lua` | 558 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/capsules/capsule-queries.lua` | 514 | 19.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/hubs/packing/belt-siphon.lua` | 464 | 19.0 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/capsules/capsule-renderer.lua` | 437 | 15.9 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/hubs/hub-packing.lua` | 415 | 16.1 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/diverters/diverter-settings.lua` | 345 | 14.3 KB | 🟢 **Manageable** (< 500 lines) |
+| `prototypes/entity.lua` | 338 | 10.7 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/counters/counter-gui.lua` | 329 | 10.8 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/diverters/diverter-renderer.lua` | 324 | 15.6 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/capsules/capsule-definitions.lua` | 323 | 13.5 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/flow/port-defs.lua` | 302 | 33.3 KB | 🟢 **Manageable** (< 500 lines) |
+| `prototypes/recipe.lua` | 301 | 8.4 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/hubs/hub-manager.lua` | 298 | 11.7 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/hubs/hub-gui.lua` | 284 | 10.4 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/projectors/projector-settings.lua` | 281 | 10.7 KB | 🟢 **Manageable** (< 500 lines) |
+
+---
+
+## 2. Full Workspace Metric Tree
+
+```text
+nukedpenguin-pneumatic-tube-transport/
+├── docs/
+│   ├── arch/
+│   │   ├── ARCH-CAPSULES-MOTION.md             [144 lines | 20.7 KB]
+│   │   ├── ARCH-DEVICES-CIRCUITS.md            [220 lines | 32.3 KB]
+│   │   ├── ARCH-FLOW-KINETICS.md               [150 lines | 21.0 KB]
+│   │   ├── ARCH-HUBS-LOGISTICS.md              [94 lines | 16.3 KB]
+│   │   └── ARCH-PROTOTYPES.md                  [57 lines | 11.8 KB]
+│   └── guides/
+│       └── capsule-definitions-guide.md        [214 lines | 8.5 KB]
+├── locale/
+│   └── en/
+│       └── config.cfg                          [157 lines | 10.8 KB]
+├── plan/
+│   ├── archive/
+│   │   ├── ARCHITECTURE.md                     [830 lines | 120.9 KB]
+│   │   ├── CHANGES_0.3.23.md                   [28 lines | 3.9 KB]
+│   │   └── SCRATCH.md                          [0 lines | 0 B]
+│   └── core/
+│       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
+│       ├── EXPORT.md                           [43 lines | 1.5 KB]
+│       ├── FRESH-CHANGES.md                    [9 lines | 809 B]
+│       ├── HELPERS.md                          [82 lines | 3.9 KB]
+│       ├── MANIFEST.md                         [101 lines | 15.9 KB]
+│       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
+│       ├── package.py                          [225 lines | 7.8 KB]
+│       ├── PROMPT-AG-DIFF.md                   [108 lines | 7.1 KB]
+│       ├── PROMPT-DOC-SYNC.md                  [55 lines | 4.4 KB]
+│       ├── PROMPT-REVISION-LOG.md              [28 lines | 1.3 KB]
+│       ├── SPLASH-PAGE.md                      [59 lines | 4.3 KB]
+│       ├── TODO.md                             [112 lines | 6.3 KB]
+│       ├── UPDATE-MOD-PAGE.md                  [36 lines | 1.8 KB]
+│       └── WORKFLOW.md                         [106 lines | 4.8 KB]
+├── prototypes/
+│   ├── entities/
+│   │   ├── pneumatic-capsule-counter.lua       [167 lines | 5.2 KB]
+│   │   ├── pneumatic-diverter.lua              [83 lines | 2.6 KB]
+│   │   ├── pneumatic-projector.lua             [159 lines | 4.9 KB]
+│   │   └── pneumatic-pump-proxy.lua            [44 lines | 1.1 KB]
+│   ├── custom-input.lua                    [38 lines | 904 B]
+│   ├── entity.lua                          [338 lines | 10.7 KB]
+│   ├── item.lua                            [221 lines | 6.9 KB]
+│   ├── recipe.lua                          [301 lines | 8.4 KB]
+│   ├── shortcut.lua                        [14 lines | 393 B]
+│   └── technology.lua                      [278 lines | 8.3 KB]
+├── scripts/
+│   ├── capsules/
+│   │   ├── capsule-definitions.lua             [323 lines | 13.5 KB]
+│   │   ├── capsule-inputs.lua                  [9 lines | 324 B]
+│   │   ├── capsule-lifecycle.lua               [129 lines | 6.3 KB]
+│   │   ├── capsule-manager.lua                 [106 lines | 4.3 KB]
+│   │   ├── capsule-queries.lua                 [514 lines | 19.2 KB]
+│   │   ├── capsule-renderer.lua                [437 lines | 15.9 KB]
+│   │   └── capsule-runner.lua                  [1,593 lines | 63.1 KB]
+│   ├── counters/
+│   │   ├── counter-gui.lua                     [329 lines | 10.8 KB]
+│   │   ├── counter-logic.lua                   [186 lines | 7.9 KB]
+│   │   ├── counter-range.lua                   [73 lines | 2.4 KB]
+│   │   └── counter-settings.lua                [93 lines | 3.5 KB]
+│   ├── diverters/
+│   │   ├── diverter-gui.lua                    [753 lines | 29.4 KB]
+│   │   ├── diverter-manager.lua                [9 lines | 253 B]
+│   │   ├── diverter-renderer.lua               [324 lines | 15.6 KB]
+│   │   └── diverter-settings.lua               [345 lines | 14.3 KB]
+│   ├── flow/
+│   │   ├── flow-engine.lua                     [2,511 lines | 107.2 KB]
+│   │   └── port-defs.lua                       [302 lines | 33.3 KB]
+│   ├── hubs/
+│   │   ├── packing/
+│   │   │   ├── belt-siphon.lua                     [464 lines | 19.0 KB]
+│   │   │   ├── cargo-planner.lua                   [155 lines | 6.9 KB]
+│   │   │   └── quality-filter.lua                  [77 lines | 2.5 KB]
+│   │   ├── hub-definitions.lua                 [15 lines | 318 B]
+│   │   ├── hub-gui.lua                         [284 lines | 10.4 KB]
+│   │   ├── hub-manager.lua                     [298 lines | 11.7 KB]
+│   │   ├── hub-packing.lua                     [415 lines | 16.1 KB]
+│   │   ├── hub-settings.lua                    [162 lines | 6.0 KB]
+│   │   ├── hub-spill.lua                       [244 lines | 10.6 KB]
+│   │   └── hub-unpacking.lua                   [239 lines | 9.5 KB]
+│   ├── projectors/
+│   │   └── projector-settings.lua              [281 lines | 10.7 KB]
+│   ├── pumps/
+│   │   ├── pump-gui.lua                        [232 lines | 9.6 KB]
+│   │   ├── pump-manager.lua                    [9 lines | 241 B]
+│   │   └── pump-settings.lua                   [138 lines | 5.2 KB]
+│   ├── surfaces/
+│   │   └── liminal-surface.lua                 [180 lines | 6.1 KB]
+│   ├── utils/
+│   │   ├── gui-components.lua                  [1,038 lines | 39.4 KB]
+│   │   └── item-transfer-handler.lua           [208 lines | 7.8 KB]
+│   ├── active-device-scanner.lua           [828 lines | 38.4 KB]
+│   ├── debug-manager.lua                   [558 lines | 20.7 KB]
+│   ├── device-settings-copier.lua          [794 lines | 34.9 KB]
+│   ├── event-logger.lua                    [35 lines | 899 B]
+│   ├── events.lua                          [21 lines | 596 B]
+│   └── proxy-manager.lua                   [628 lines | 21.8 KB]
+├── .gitignore                          [13 lines | 204 B]
+├── aggregator_patcher.py               [613 lines | 20.7 KB]
+├── changelog.txt                       [178 lines | 19.3 KB]
+├── control.lua                         [127 lines | 5.3 KB]
+├── data.lua                            [30 lines | 868 B]
+├── info.json                           [13 lines | 426 B]
+├── LICENSE                             [21 lines | 1.1 KB]
+├── patch.txt                           [0 lines | 0 B]
+├── settings.lua                        [1 lines | 30 B]
+└── thumbnail.png                       [64.7 KB]
+```

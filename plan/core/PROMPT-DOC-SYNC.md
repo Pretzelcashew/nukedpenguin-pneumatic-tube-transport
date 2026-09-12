@@ -34,7 +34,7 @@ Input: Batch of un-incorporated revision logs, commit notes, or scratchpad chang
 4. Check if `MANIFEST.md` itself requires updates (new event hooks, commands, or storage keys).
 5. Output the Triage Summary:
    - **Net Changes Breakdown:** 2–3 clear bullet points per affected subsystem.
-   - **Target Query Block:** Output **strictly** the single-line Windows search query listing the required architecture document enclosed in a fenced code block with triple backticks so it has a 1-click copy button formatted for Option `[1]` in `aggregator_patcher.py` (e.g. ` ```filename: "ARCH-FLOW-KINETICS.md"``` `).
+   - **Target Query Block:** Output **strictly** the single-line Windows search query listing the required architecture document enclosed in a fenced code block with triple backticks so it has a 1-click copy button formatted for Option `[1]` in `aggregator_patcher.py` (e.g. ` ```filename: "ARCH-FLOW-KINETICS.md"``` `). Output zero conversational text outside the query.
 6. **Stop and wait.** Do not generate any full documentation files until the user runs the query through `aggregator_patcher.py` Option `[1]` and provides the resulting `aggregate_N.txt`.  
 *(Fast-Path: If the user already provided the target `ARCH-*.md` in the initial prompt, proceed directly to Stage 2).*
 

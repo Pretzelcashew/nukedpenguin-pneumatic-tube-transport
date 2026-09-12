@@ -32,24 +32,31 @@ Once the user provides the aggregated files (with absolute paths and 1-based lin
 
 1. **NEVER print full rewritten files for existing files.** Full file contents are strictly reserved for brand-new files created via `*** CREATE FILE:`.
 2. **Strict Commentary Separation:** State your 3-sentence plain-English plan as standard text *outside and above* the code block. Do NOT include conversational text, notes, or markdown formatting inside the code block.
-3. **Single 1-Click Copy Code Block:** Enclose **ALL** patch operations across all files into **EXACTLY ONE** unified fenced code block (using ```` ```text ````) so the user can copy the entire patch in a single click.
+3. **Single 1-Click Copy Code Block:** Enclose **ALL** patch operations across all files in that turn into **EXACTLY ONE** unified fenced code block (using ```` ```text ````) so the user can copy the entire patch in a single click.
 4. **File Action Headers:**
    - **Modify Existing File:** `*** FILE: <absolute_or_relative_path>`
    - **Create New File:** `*** CREATE FILE: <path>` (automatically creates parent directories)
    - **Delete Existing File:** `*** DELETE FILE: <path>`
    - **Move / Rename File:** `*** MOVE FILE: <source_path> -> <destination_path>` (can be immediately followed by edits applied to the destination file)
 
-5. **Mandatory Contextual Find & Replace (High-Reliability Standard):**
+5. **Mandatory Contextual Find & Replace (High-Reliability & Lean-Anchor Standard):**
    - You **MUST** use `<<< FIND` and `=== REPLACE ===` for all modifications and deletions of existing code.
-   - Do **NOT** compute, guess, or output line-number replacements (`REPLACE LINES`). Line-number arithmetic has an unacceptably high failure rate across LLMs due to attention drift on large files and off-by-one errors that corrupt block syntax. Line numbers in `aggregate_N.txt` are provided strictly for human reference.
-   - **Unique Context Requirement:** Provide 2 to 4 lines of exact, unique surrounding code context inside `<<< FIND` so the patcher matches the exact target block unambiguously.
-   - **Code Deletions:** To delete existing code, match the exact snippet in `<<< FIND` and leave the `=== REPLACE ===` section completely empty.
+   - Do **NOT** compute, guess, or output line-number replacements (`REPLACE LINES`). Line-number arithmetic has an unacceptably high failure rate across LLMs due to attention drift on large files and off-by-one errors that corrupt block syntax.
+   - **Strict Context Limit (Anti-Bloat Ceiling):** Provide **strictly 2 to 4 lines** of exact, unique surrounding code context inside `<<< FIND`. A single `<<< FIND` block must **NEVER exceed 12 lines**. Never reprint large untouched blocks, entire function bodies, or enclosing outer loops just to change inner lines. Break edits into multiple small, surgical replacement operations.
+   - **Byte-for-Byte Indentation Parity:** Inside `<<< FIND`, copy whitespace and indentation character-for-character from `aggregate_N.txt`. Never re-indent, re-tab, or reformat code in `<<< FIND`.
+   - **Large Deletions:** To delete large blocks of code (>20 lines), do not echo hundreds of doomed lines through the output buffer. Instead, anchor strictly on the block's header and footer statements (e.g. `function foo(...)` down to `end`), replacing the body with a concise delegation or leaving it empty.
 
 6. **Pure Source Delimiters:** Inside the code delimiter tags (`<<<`, `=== REPLACE ===`, and `>>>`), provide **ONLY raw source code**—do NOT include line number prefixes (`|`), markdown formatting, or file markers.
 
-7. **Syntactic Completeness & Block Balance:**
-   - When modifying Lua control structures (`if`, `for`, `function`, tables), ensure that opening keywords and closing `end` statements are completely balanced within the replacement.
-   - Always encompass the full syntactic header and footer of the block being modified inside the `<<< FIND` block so the patcher cannot attach code to the wrong outer scope.
+7. **Syntactic Completeness & Localized Scope:**
+   - Replacement code inside `=== REPLACE ===` must be syntactically valid Lua with completely balanced keywords (`if`, `for`, `function`, `end`, `{}`).
+   - Do **NOT** expand `<<< FIND` to swallow outer enclosing loops or outer functions just to satisfy scope matching. Anchor strictly on the localized lines being modified.
+
+8. **Paced Execution Protocol (The "Say Next" Safety Valve):**
+   - If a task touches **more than 2 existing files** or exceeds **150 lines of total diff**, or if the user requests step-by-step diffs:
+     1. Package the patch for the primary or foundational file(s) first in that turn's single code block.
+     2. Below the code block, state: `[Phase 1 complete. Apply patch, verify, and reply 'next' to continue.]`
+     3. **Stop and wait.** Do not generate subsequent file diffs until the user confirms or says "next".
 
 ---
 
@@ -98,9 +105,10 @@ If the user reports a syntax error, patch failure, or engine crash:
 ### Strict Negative Constraints
 - All `require` statements MUST remain strictly at the top level of the script.
 - Do NOT output patch code outside of the single fenced code block.
-- Do NOT split diff blocks across multiple separate markdown code boxes; package all modified/created/moved files into one unified code block.
+- Do NOT split diff blocks across multiple separate markdown code boxes; package all modified/created/moved files for that turn into one unified code block.
 - Do NOT include file delineation markers inside generated code blocks.
 - Do NOT output full files for existing files; only output targeted diff blocks.
 - Do NOT calculate or output line-number replacement operations (`REPLACE LINES <start>-<end>`); always use semantic `<<< FIND ... === REPLACE === >>>`.
+- Do NOT output `<<< FIND` blocks longer than 12 lines.
 - Do NOT automatically write revision summaries at the end; the user will ask if needed.
 - Do NOT regenerate `MANIFEST.md`, `FOLDER-HIERARCHY.md`, or any `ARCH-*.md` file.

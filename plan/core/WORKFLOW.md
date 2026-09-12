@@ -17,13 +17,14 @@
 
 ## 🛠️ Routine 1: Coding a Feature or Bugfix (The Loop)
 
-Never think about which architecture files to find. Follow the muscle memory ritual:
+Follow the muscle memory ritual:
 
 1. **Start the Chat:**
    Paste `plan/core/MANIFEST.md` + `plan/core/PROMPT-AG-DIFF.md` + your task idea:
    ```text
    Target Task: [Describe the feature or fix in plain English]
    ```
+   *Tip for large refactors (3+ files):* Append *"Break this into phases: patch 1 file at a time and wait for me to say 'next'."*
 2. **First Search Query (Architecture):**
    * The AI outputs Query 1 (e.g., `filename: "ARCH-FLOW-KINETICS.md"`).
    * Copy that line.
@@ -34,9 +35,10 @@ Never think about which architecture files to find. Follow the muscle memory rit
    * Run Option `[1]` in `aggregator_patcher.py` and paste the query.
    * Paste the resulting `aggregate_2.txt` back to the AI.
 4. **Apply the Patch:**
-   * The AI generates a single ` ```text ` patch block using robust **Contextual Find & Replace** (`<<< FIND` ... `=== REPLACE ===` ... `>>>`), eliminating brittle line-number math and syntax errors.
+   * The AI generates a single ` ```text ` patch block using **Contextual Find & Replace** (`<<< FIND` ... `=== REPLACE ===` ... `>>>`) strictly anchored with 2–4 lines of context.
    * Copy the code block.
-   * Save it into `patch.txt` (or clipboard) and run Option `[2]` in `aggregator_patcher.py`.
+   * Save it into `patch.txt` and run Option `[2]` in `aggregator_patcher.py`.
+   * *If paced:* Test/verify, then reply `next` for the next file.
 5. **Test in Factorio:**
    * If it works: Move to Routine 2.
    * If it crashes: Don't guess. Paste the exact Factorio crash log to the AI.
@@ -66,9 +68,10 @@ Do this only after accumulating 5–10 revision entries in `FRESH-CHANGES.md` (o
 2. **Send the Triage Prompt:**
    Paste `plan/core/PROMPT-DOC-SYNC.md` + `plan/core/MANIFEST.md` + the contents of `plan/core/FRESH-CHANGES.md`.
 3. **AI Triages the Changes:**
-   * The AI tells you which specific subsystem document is affected (e.g., `REQUEST DOC: docs/arch/ARCH-HUBS-LOGISTICS.md`).
-4. **Supply the File:**
-   * Open that file in VS Code, `Ctrl+A` -> `Ctrl+C`, and paste it into chat.
+   * The AI outputs a single 1-click Windows search query block for `aggregator_patcher.py` (e.g. ` ```filename: "ARCH-HUBS-LOGISTICS.md"``` `).
+4. **Supply the File via Aggregator:**
+   * Run Option `[1]` in `aggregator_patcher.py` with that query.
+   * Paste the resulting `aggregate_1.txt` back into chat.
 5. **Overwrite the File (Zero Silent Corruption):**
    * The AI outputs the **complete, updated file** inside a 4-backtick code block.
    * Click **Copy**.

@@ -55,15 +55,14 @@ function counter_logic.update_signals(counter_entity)
         return
     end
 
-    local owned_units = {}
-    for key in pairs(owned_nodes) do
-        local u_num = type(key) == "number" and key or capsule_queries.get_port_info(key)
-        if u_num then
-            owned_units[u_num] = true
-        end
+    local owned_capsules = counter_range.get_territory_capsules(unit_number)
+    if not owned_capsules or next(owned_capsules) == nil then
+        apply_filters_to_proxy(main_proxy, {})
+        apply_filters_to_proxy(red_proxy, {})
+        apply_filters_to_proxy(green_proxy, {})
+        return
     end
 
-    local scanned_capsules = {}
     local total_capsules_count = 0
     local red_signal_totals = {}
     local green_signal_totals = {}
@@ -86,12 +85,10 @@ function counter_logic.update_signals(counter_entity)
         entry.count = entry.count + amount
     end
 
-    for tube_unit in pairs(owned_units) do
-        local cap_ids = capsule_queries.find_capsules_at_entity(tube_unit)
-        for _, cap_id in ipairs(cap_ids) do
-            if not scanned_capsules[cap_id] then
-                scanned_capsules[cap_id] = true
-                local cap_data = capsule_manager.get(cap_id)
+    for cap_id in pairs(owned_capsules) do
+        local cap = storage.capsules and storage.capsules[cap_id]
+        if cap then
+            local cap_data = capsule_manager.get(cap_id)
                 if cap_data then
                     total_capsules_count = total_capsules_count + 1
 
@@ -134,9 +131,10 @@ function counter_logic.update_signals(counter_entity)
                         end
                     end
                 end
+            else
+                owned_capsules[cap_id] = nil
             end
         end
-    end
 
     if total_target ~= "off" and total_capsules_count > 0 and total_signal then
         local stype, sname, squal

@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 15:18:28  
-**Total Scope:** 22 directories, 96 files  
-**Total Workspace Size:** 1.49 MB | **Total Text Lines:** 24,413  
+**Last Generated:** 2026-09-12 17:10:09  
+**Total Scope:** 22 directories, 97 files  
+**Total Workspace Size:** 1.51 MB | **Total Text Lines:** 24,980  
 
 ---
 
@@ -17,12 +17,12 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `aggregator_patcher.py` | 756 | 26.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/diverters/diverter-gui.lua` | 746 | 29.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/debug-manager.lua` | 736 | 29.5 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/proxy-manager.lua` | 660 | 22.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/utils/gui-components.lua` | 627 | 23.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/flow/flow-renderer.lua` | 621 | 23.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/utils/blueprint-sync.lua` | 614 | 26.3 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
-| `scripts/debug-manager.lua` | 558 | 20.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
-| `scripts/active-device-scanner.lua` | 536 | 23.5 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/active-device-scanner.lua` | 545 | 24.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/capsules/capsule-ballistics.lua` | 534 | 21.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/flow/flow-gate-interop.lua` | 517 | 22.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/capsules/capsule-queries.lua` | 514 | 19.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
@@ -30,12 +30,12 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/flow/flow-kinetic.lua` | 457 | 19.2 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 437 | 15.9 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/hubs/hub-packing.lua` | 415 | 16.1 KB | 🟢 **Manageable** (< 500 lines) |
+| `scripts/utils/profiler.lua` | 387 | 10.9 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/diverters/diverter-settings.lua` | 345 | 14.3 KB | 🟢 **Manageable** (< 500 lines) |
 | `prototypes/entity.lua` | 338 | 10.7 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/counters/counter-gui.lua` | 334 | 11.1 KB | 🟢 **Manageable** (< 500 lines) |
 | `prototypes/recipe.lua` | 324 | 9.0 KB | 🟢 **Manageable** (< 500 lines) |
 | `scripts/diverters/diverter-renderer.lua` | 324 | 15.6 KB | 🟢 **Manageable** (< 500 lines) |
-| `scripts/capsules/capsule-definitions.lua` | 323 | 13.5 KB | 🟢 **Manageable** (< 500 lines) |
 
 ---
 
@@ -63,7 +63,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── core/
 │       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [119 lines | 17.5 KB]
+│       ├── FRESH-CHANGES.md                    [129 lines | 19.1 KB]
 │       ├── HELPERS.md                          [88 lines | 4.1 KB]
 │       ├── MANIFEST.md                         [101 lines | 15.9 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
@@ -72,7 +72,7 @@ nukedpenguin-pneumatic-tube-transport/
 │       ├── PROMPT-DOC-SYNC.md                  [55 lines | 4.5 KB]
 │       ├── PROMPT-REVISION-LOG.md              [28 lines | 1.3 KB]
 │       ├── SPLASH-PAGE.md                      [59 lines | 4.3 KB]
-│       ├── TODO.md                             [122 lines | 6.7 KB]
+│       ├── TODO.md                             [88 lines | 6.6 KB]
 │       ├── UPDATE-MOD-PAGE.md                  [36 lines | 1.8 KB]
 │       └── WORKFLOW.md                         [111 lines | 5.4 KB]
 ├── prototypes/
@@ -144,12 +144,13 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   │   └── gui-quality-bar.lua                 [213 lines | 8.1 KB]
 │   │   ├── blueprint-sync.lua                  [614 lines | 26.3 KB]
 │   │   ├── gui-components.lua                  [627 lines | 23.7 KB]
-│   │   └── item-transfer-handler.lua           [208 lines | 7.8 KB]
-│   ├── active-device-scanner.lua           [536 lines | 23.5 KB]
-│   ├── debug-manager.lua                   [558 lines | 20.7 KB]
+│   │   ├── item-transfer-handler.lua           [208 lines | 7.8 KB]
+│   │   └── profiler.lua                        [387 lines | 10.9 KB]
+│   ├── active-device-scanner.lua           [545 lines | 24.2 KB]
+│   ├── debug-manager.lua                   [736 lines | 29.5 KB]
 │   ├── device-settings-copier.lua          [239 lines | 10.9 KB]
 │   ├── event-logger.lua                    [35 lines | 899 B]
-│   ├── events.lua                          [21 lines | 596 B]
+│   ├── events.lua                          [38 lines | 1.2 KB]
 │   └── proxy-manager.lua                   [660 lines | 22.8 KB]
 ├── .gitignore                          [13 lines | 204 B]
 ├── aggregator_patcher.py               [756 lines | 26.9 KB]

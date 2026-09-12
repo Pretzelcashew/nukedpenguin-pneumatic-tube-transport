@@ -6,6 +6,7 @@ local flow_gate_interop = require("scripts.flow.flow-gate-interop")
 local flow_kinetic = require("scripts.flow.flow-kinetic")
 local pump_settings = require("scripts.pumps.pump-settings")
 local diverter_settings = require("scripts.diverters.diverter-settings")
+local counter_range = require("scripts.counters.counter-range")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local projector_settings = require("scripts.projectors.projector-settings")
@@ -117,6 +118,11 @@ function flow_engine.init_storage()
     storage.active_counters = storage.active_counters or {}
     storage.counter_power_states = storage.counter_power_states or {}
     storage.counter_renders = storage.counter_renders or {}
+    storage.counter_capsules = storage.counter_capsules or {}
+    if not storage.counter_capsules_initialized then
+        storage.counter_capsules_initialized = true
+        counter_range.rebuild_territory_capsules()
+    end
 
     -- Walls and Gates Fields
     flow_gate_interop.init_storage()
@@ -344,6 +350,8 @@ local function set_port_counter_ownership(pkey, target_level, target_owner)
         storage.counter_levels[pkey] = nil
         storage.counter_owners[pkey] = nil
     end
+
+    counter_range.handle_port_owner_changed(pkey)
 
     return true
 end
@@ -895,6 +903,15 @@ function flow_engine.handle_object_destroyed(unit_number)
     if storage.diverter_settings then storage.diverter_settings[unit_number] = nil end
     if storage.active_counters then storage.active_counters[unit_number] = nil end
     if storage.counter_power_states then storage.counter_power_states[unit_number] = nil end
+    if storage.counter_capsules and storage.counter_capsules[unit_number] then
+        for cap_id in pairs(storage.counter_capsules[unit_number]) do
+            local cap = storage.capsules and storage.capsules[cap_id]
+            if cap and cap.counter_owner == unit_number then
+                cap.counter_owner = nil
+            end
+        end
+        storage.counter_capsules[unit_number] = nil
+    end
     if storage.spilled_containers then storage.spilled_containers[unit_number] = nil end
     if storage.active_walls then storage.active_walls[unit_number] = nil end
     if storage.active_gates then storage.active_gates[unit_number] = nil end

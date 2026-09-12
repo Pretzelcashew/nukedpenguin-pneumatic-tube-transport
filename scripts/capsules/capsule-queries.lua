@@ -1,4 +1,5 @@
 local port_defs = require("scripts.flow.port-defs")
+local counter_range = require("scripts.counters.counter-range")
 
 local MAX_CAPSULES_PER_ENTITY_NETWORK = 1
 
@@ -274,6 +275,8 @@ function capsule_queries.update_capsule_occupancy(capsule)
             all_map[id] = true
         end
     end
+
+    counter_range.update_capsule_territory(capsule)
 end
 
 --- Rebuilds the complete O(1) capsule occupancy index from storage.capsules
@@ -345,6 +348,7 @@ function capsule_queries.remove_capsule(id)
         -- 2. Unregister occupancy and clear renders
         capsule_queries.unregister_capsule_occupancy(id)
         capsule_queries.clear_capsule_render(capsule)
+        counter_range.unregister_capsule_territory(capsule or id)
         storage.capsules[id] = nil
 
         -- 3. Wake up other parked capsules waiting at this location and connected neighbors

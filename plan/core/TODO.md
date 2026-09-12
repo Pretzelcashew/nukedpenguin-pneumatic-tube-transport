@@ -86,3 +86,5 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy), and the crafting recipe shouldnt be outputting hot flouroketone, thats for the recharge
 --------------------------------------------
+
+improve capsule counter performance by smartly registering capsule entry an exits on the capsule territory rather than scanning all of the counter's sensor dots every scan tick

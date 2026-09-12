@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-12 11:50:31  
-**Scope:** 22 directories, 98 files  
+**Last Generated:** 2026-09-12 12:44:53  
+**Scope:** 22 directories, 100 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -47,6 +47,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── entity.lua
 │   ├── item.lua
 │   ├── recipe.lua
+│   ├── recipe.lua.bak
 │   ├── shortcut.lua
 │   └── technology.lua
 ├── scripts/
@@ -114,6 +115,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── events.lua
 │   └── proxy-manager.lua
 ├── .gitignore
+├── aggregate.txt
 ├── aggregator_patcher.py
 ├── changelog.txt
 ├── control.lua

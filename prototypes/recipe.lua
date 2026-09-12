@@ -48,8 +48,7 @@ data:extend({
       {type = "item", name = "low-density-structure", amount = 2}
     },
     results = {
-      {type = "item", name = "refrigerated-capsule", amount = 1},
-      {type = "fluid", name = "fluoroketone-hot", amount = 100}
+      {type = "item", name = "refrigerated-capsule", amount = 1}
     }
   },
   {
@@ -58,6 +57,8 @@ data:extend({
     subgroup = "pneumatic-capsules",
     order = "c[refrigerated]-b[recharge]",
     categories = {"cryogenics"},
+    main_product = "refrigerated-capsule",
+    auto_recycle = false,
     enabled = false,
     allow_productivity = false,
     energy_required = 2.0,

@@ -326,6 +326,7 @@ function capsule_ballistics.advance_kinetic_trajectory(capsule, current_node, un
         end
         runner.mark_capsule_unparked(capsule)
         local crash_port_key = capsule.from_port_key
+        capsule_ballistics.remove_flight(cap_id, beam_owner)
         hub_spill.spill_capsule(cap_id, surface, obstacle_pos, nil, true)
         runner.wake_parked_capsules(crash_port_key)
         return nil
@@ -541,6 +542,7 @@ function capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_t
             end
             runner.mark_capsule_unparked(capsule)
             local dead_port_key = capsule.from_port_key
+            capsule_ballistics.remove_flight(id, bf.owner)
             hub_spill.spill_capsule(id, surface, obst_pos, nil, true)
             if dead_port_key then
                 runner.wake_parked_capsules(dead_port_key)

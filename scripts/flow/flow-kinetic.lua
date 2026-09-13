@@ -86,27 +86,32 @@ function flow_kinetic.register_endpoint_in_bvh(node)
     local mx = node.pos.x - node.dir.x * cur_dist
     local my = node.pos.y - node.dir.y * cur_dist
 
-    if cur_dist > last_boundary then
-        local seg_idx = math.floor(cur_dist / 16) + 1
-        local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
-        local start_pos = { x = mx + node.dir.x * last_boundary, y = my + node.dir.y * last_boundary }
-        local end_pos = { x = node.pos.x, y = node.pos.y }
-        local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
-        if tree then
-            tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
-            trajectory_bvh.refresh_active_renders()
+    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+    if tree then
+        local owner_rec = tree.trajectories and tree.trajectories[owner_unit]
+        if owner_rec and owner_rec.segments then
+            for s_key, leaf in pairs(owner_rec.segments) do
+                if leaf.d_start >= cur_dist then
+                    tree:remove_segment(owner_unit, s_key)
+                end
+            end
         end
-    else
+
+        if cur_dist > last_boundary then
+            local seg_idx = math.floor(cur_dist / 16) + 1
+            local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
+            local start_pos = { x = mx + node.dir.x * last_boundary, y = my + node.dir.y * last_boundary }
+            local end_pos = { x = node.pos.x, y = node.pos.y }
+            tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
+        end
         trajectory_bvh.refresh_active_renders()
     end
 end
 
 function flow_kinetic.unregister_trajectory_in_bvh(owner_unit, surface_name, force)
     if not owner_unit then return end
-    if not force and storage.projector_flights and storage.projector_flights[owner_unit] and #storage.projector_flights[owner_unit] > 0 then
-        storage.pending_bvh_removals = storage.pending_bvh_removals or {}
-        storage.pending_bvh_removals[owner_unit] = surface_name or true
-        return
+    if storage.pending_bvh_removals then
+        storage.pending_bvh_removals[owner_unit] = nil
     end
 
     if surface_name then
@@ -127,38 +132,29 @@ function flow_kinetic.unregister_trajectory_in_bvh(owner_unit, surface_name, for
     trajectory_bvh.refresh_active_renders()
 end
 
-function flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+function flow_kinetic.unregister_segment_in_bvh(node)
     if not (node and node.dist and node.dir) then return end
     local cur_dist = node.dist
-    if cur_dist % 16 ~= 0 then
-        local seg_idx = math.floor(cur_dist / 16) + 1
-        local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
-        local surface = game.surfaces[node.surface_name]
-        if surface and surface.valid and storage.surface_bvh then
-            local tree = storage.surface_bvh[surface.index]
-            if tree then
-                trajectory_bvh.attach(tree)
-                tree:remove_segment(node.beam_owner or node.unit_number, seg_key)
-                trajectory_bvh.refresh_active_renders()
-            end
-        end
-    end
-end
-
-function flow_kinetic.unregister_segment_in_bvh(node)
-    if not (node and node.dist and node.dist % 16 == 0 and node.dir) then return end
-    local seg_idx = node.dist / 16
-    local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
     local surface = game.surfaces[node.surface_name]
     if surface and surface.valid and storage.surface_bvh then
         local tree = storage.surface_bvh[surface.index]
         if tree then
             trajectory_bvh.attach(tree)
-            tree:remove_segment(node.beam_owner or node.unit_number, seg_key)
+            local owner_u = node.beam_owner or node.unit_number
+            local owner_rec = tree.trajectories and tree.trajectories[owner_u]
+            if owner_rec and owner_rec.segments then
+                for seg_key, leaf in pairs(owner_rec.segments) do
+                    if leaf.d_end == cur_dist then
+                        tree:remove_segment(owner_u, seg_key)
+                    end
+                end
+            end
             trajectory_bvh.refresh_active_renders()
         end
     end
 end
+
+flow_kinetic.unregister_endpoint_remainder_in_bvh = flow_kinetic.unregister_segment_in_bvh
 
 function flow_kinetic.get_node_kinetic_emitter(node)
     if not node or not node.kinetic_transmit or not node.is_muzzle then return 0 end
@@ -420,13 +416,15 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
             flow_renderer.destroy_kinetic_pos_render(pkey)
 
             if not node.is_muzzle then
-                if node.is_endpoint then
-                    flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
-                end
-                if node.dist and node.dist % 16 == 0 then
-                    flow_kinetic.unregister_segment_in_bvh(node)
-                end
+                flow_kinetic.unregister_segment_in_bvh(node)
+                local neighbors = storage.flow_connections and storage.flow_connections[pkey]
                 flow_common.destroy_node(pkey)
+                if neighbors then
+                    for n_key in pairs(neighbors) do
+                        enqueue_port_fn(n_key)
+                        wake_port_fn(n_key)
+                    end
+                end
             else
                 local neighbors = storage.flow_connections and storage.flow_connections[pkey]
                 if neighbors then
@@ -562,15 +560,11 @@ function flow_kinetic.clear_receiver_references(receiver_unit, enqueue_port_fn, 
 end
 
 function flow_kinetic.handle_projector_destroyed(unit_number)
-    if not unit_number then return end
-    flow_kinetic.unregister_trajectory_in_bvh(unit_number)
+    -- Queue-driven recession handles beam nodes and BVH segments naturally
+end
 
-    for pkey, node in pairs(storage.flow_nodes or {}) do
-        if node and node.beam_owner == unit_number and not node.is_muzzle then
-            flow_renderer.destroy_kinetic_pos_render(pkey)
-            flow_common.destroy_node(pkey)
-        end
-    end
+function flow_kinetic.handle_projector_rotated(unit_number)
+    -- Queue-driven recession handles beam nodes and BVH segments naturally
 end
 
 return flow_kinetic

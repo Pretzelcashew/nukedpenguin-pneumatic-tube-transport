@@ -235,6 +235,10 @@ function capsule_runner.remove_capsule(capsule_id)
         if storage.kinetic_arrival_heap then
             storage.kinetic_arrival_heap:remove(capsule_id)
         end
+        if capsule_ballistics.remove_flight then
+            local bf = capsule.beam_flight
+            capsule_ballistics.remove_flight(capsule_id, bf and bf.owner)
+        end
     end
     local target_key = capsule and capsule.from_port_key
     capsule_queries.remove_capsule(capsule_id)

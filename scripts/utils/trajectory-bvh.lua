@@ -175,7 +175,11 @@ local function remove_leaf_node(bvh, leaf)
     end
 
     local parent = leaf.parent
-    local grandparent = parent and parent.parent
+    if not parent then
+        leaf.parent = nil
+        return
+    end
+    local grandparent = parent.parent
     local sibling = (parent.left == leaf) and parent.right or parent.left
 
     if grandparent then
@@ -277,6 +281,8 @@ function trajectory_bvh.insert_trajectory(bvh, owner_id, start_pos, end_pos)
     if dist < 0.001 then dist = 1.0 end
 
     local num_segs = math.max(1, math.ceil(dist / MAX_LEAF_SEGMENT))
+    local d_x = (dx > 0 and 1) or (dx < 0 and -1) or 0
+    local d_y = (dy > 0 and 1) or (dy < 0 and -1) or 0
     for s = 1, num_segs do
         local d_start = (s - 1) * MAX_LEAF_SEGMENT
         local d_end = math.min(dist, s * MAX_LEAF_SEGMENT)
@@ -285,8 +291,9 @@ function trajectory_bvh.insert_trajectory(bvh, owner_id, start_pos, end_pos)
 
         local s_pos = { x = start_pos.x + dx * p_start, y = start_pos.y + dy * p_start }
         local e_pos = { x = start_pos.x + dx * p_end, y = start_pos.y + dy * p_end }
+        local seg_key = string.format("%d,%d:%d", d_x, d_y, s)
 
-        bvh:insert_segment(owner_id, s, s_pos, e_pos, d_start, d_end, s)
+        bvh:insert_segment(owner_id, seg_key, s_pos, e_pos, d_start, d_end, s)
     end
 end
 

@@ -601,7 +601,6 @@ local function handle_entity_reorientation(entity)
         end
 
         flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
-        flow_kinetic.unregister_trajectory_in_bvh(u_num, entity.surface.name)
 
         if storage.flow_unit_ports and storage.flow_unit_ports[u_num] then
             flow_engine.disconnect_entity(entity)
@@ -689,7 +688,7 @@ function flow_engine.connect_entity(entity)
 
         storage.flow_nodes[pkey] = {
             unit_number = unit_number,
-            beam_owner = unit_number,
+            beam_owner = is_muzzle_port and unit_number or nil,
             port_index = port_index,
             pos_key = pos_key,
             pos = {x = px, y = py},
@@ -775,16 +774,10 @@ function flow_engine.disconnect_entity(entity)
         flow_common.destroy_node(pkey)
 
         if pos_key then
-            local has_renders = (storage.flow_renders and next(storage.flow_renders) ~= nil)
-                or (storage.counter_renders and next(storage.counter_renders) ~= nil)
-            if has_renders then
-                update_pos_render(pos_key)
-                update_counter_pos_render(pos_key)
-            end
+            update_pos_render(pos_key)
+            update_counter_pos_render(pos_key)
         end
-        if storage.kinetic_renders and next(storage.kinetic_renders) ~= nil then
-            destroy_kinetic_pos_render(pkey)
-        end
+        destroy_kinetic_pos_render(pkey)
     end
 
     if storage.flow_unit_ports then
@@ -845,9 +838,7 @@ function flow_engine.handle_object_destroyed(unit_number)
         or (storage.hub_compartments and storage.hub_compartments[unit_number] ~= nil)
     if not is_tracked then return end
 
-    -- Immediate deconstruction lifecycle purge for destroyed projectors
     if storage.active_projectors and storage.active_projectors[unit_number] then
-        flow_kinetic.handle_projector_destroyed(unit_number)
         flow_kinetic.clear_receiver_references(unit_number, flow_engine.enqueue_port, wake_port_parked)
     end
 
@@ -1041,7 +1032,6 @@ function flow_engine.register_events()
                 local u_num = entity.unit_number
                 if u_num and (entity.name == "pneumatic-projector" or (storage.active_projectors and storage.active_projectors[u_num])) then
                     flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
-                    flow_kinetic.handle_projector_destroyed(u_num)
                 end
 
                 flow_engine.disconnect_entity(entity)

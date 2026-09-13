@@ -85,21 +85,29 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 ~consider breaking apart large files that are doing too many things (like flow-engine)
 
 ~fix the recipe for the refrigerated capsule (so recharging coolant isnt lossy), and the crafting recipe shouldnt be outputting hot flouroketone, thats for the recharge
---------------------------------------------
 
 ~improve capsule counter performance by smartly registering capsule entry an exits on the capsule territory rather than scanning all of the counter's sensor dots every scan tick
 
-further improve capsule counter scanning by letting the liminal holder checks to the updating for capsule counter for volatile/dynamic cargo
+~further improve capsule counter scanning by letting the liminal holder checks to the updating for capsule counter for volatile/dynamic cargo
 
-improve liminal holder dynamic cargo handling to mark the next item to be spoiled, and only re-check the cargo or re update it at this time rather than every 1 second scans.
+~improve liminal holder dynamic cargo handling to mark the next item to be spoiled, and only re-check the cargo or re update it at this time rather than every 1 second scans.
 
-improve refrigerated capsule handling liminal scanning to use the volatile cargo timed sort recheck to intercept them before they would spoil and apply the modified spoil times, and deduct from the refrigerated capsule.
+~improve refrigerated capsule handling liminal scanning to use the volatile cargo timed sort recheck to intercept them before they would spoil and apply the modified spoil times, and deduct from the refrigerated capsule.
 
-if the refrigerated capsule (as a primary capsule) doesnt have any spoiling cargo, it is considered a stable capsule in the eyes of the capsule counter.
+~if the refrigerated capsule (as a primary capsule) doesnt have any spoiling cargo, it is considered a stable capsule in the eyes of the capsule counter.
 
+~use the same latent volatile/dynamic cargo checker to monitor unit spawning type spoilables (biter egg/pentapod egg), or better, turn it into virtual cargo so we dont have to guess what capsule the units belong to, and thus removing the separate moat grid that was designed to deal with them. So in essence, we only virtualize cargo that is spoilable inside a refrigerated capsule, or when it is a spoilable producing units in any capsule. so potentially any capsule could just about be qualified for virtual cargo because of this, but doesnt have to virtualize all unnecessary cargo
 
+~also verify that all spoilable cargo in liminal capsules now utilizes the latent timer checker rather than periodic rechecks, so we can change the state of the capsule, such as dominant cargo for re-renders, or notifying capsule counters. this is a goal to eliminate frequent rechecks of all dynamic cargo in liminal item holders
 
-use the same latent volatile/dynamic cargo checker to monitor unit spawning type spoilables (biter egg/pentapod egg), or better, turn it into virtual cargo so we dont have to guess what capsule the units belong to, and thus removing the separate moat grid that was designed to deal with them. So in essence, we only virtualize cargo that is spoilable inside a refrigerated capsule, or when it is a spoilable producing units in any capsule. so potentially any capsule could just about be qualified for virtual cargo because of this, but doesnt have to virtualize all unnecessary cargo
+--------------------------------------------
 
-also verify that all spoilable cargo in liminal capsules now utilizes the latent timer checker rather than periodic rechecks, so we can change the state of the capsule, such as dominant cargo for re-renders, or notifying capsule counters. this is a goal to eliminate frequent rechecks of all dynamic cargo in liminal item holders
+introduce binary heap, and the heap itself has a sliding allocation so popping is a virtual line within it, (may need a paired hash map or be a hash map itself), this way it doesnt need to reallocate over and over as the items in it grow and shrink
 
+the purpose, a reusable fast heap sort, which can be made multiples of for different systems in my mod. 
+
+Example 1: my new virtual cargo spoil timer system could greatly benefit from this, we just keep track of the single most spoiled item in the game, and we only keep a timer going for that one, and heap insert new entries, and as the lowest spoil timer spoils we check the next one, quick exit if the next one still has time left.
+
+Example 2: i havent implemented it yet, but the binary heap i described will be critical, when i migrate my capsule travel to arrive on time rather than iterating every capsule periodically. we just arrive them as needed with the binary heap sort. (but will implement a viewport culled capsule interpolation rendering to hide that they are teleporting, also critical for example 2 to work, but first we just need to prove the heap works for example 1 first)
+
+let's make the heap i described, and have some automated printouts in the game console to test that it works when we're done before we use it for my virtual cargo spoil system

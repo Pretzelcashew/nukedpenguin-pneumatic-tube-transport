@@ -4,8 +4,29 @@ local capsule_queries = require("scripts.capsules.capsule-queries")
 local hub_spill = require("scripts.hubs.hub-spill")
 local item_transfer_handler = require("scripts.utils.item-transfer-handler")
 local counter_range = require("scripts.counters.counter-range")
+local binary_heap = require("scripts.utils.binary-heap")
 
 local capsule_lifecycle = {}
+
+local function get_spoil_heap()
+    if not storage.spoil_heap then
+        storage.spoil_heap = binary_heap.new()
+        if storage.active_capsules then
+            for cid, cap_data in pairs(storage.active_capsules) do
+                if cap_data.virtual_cargo or cap_data.has_spoilable_items then
+                    local tick = cap_data.next_spoil_tick
+                    if tick then
+                        storage.spoil_heap:push(cid, tick)
+                    end
+                end
+            end
+        end
+    else
+        binary_heap.attach(storage.spoil_heap)
+    end
+    return storage.spoil_heap
+end
+capsule_lifecycle.get_spoil_heap = get_spoil_heap
 
 --- Finds the earliest spoil tick across all spoilable cargo stacks in the holder inventory
 --- @param inv LuaInventory
@@ -125,6 +146,17 @@ function capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, current_tick)
         phys_capsule.has_spoilable_items = false
         phys_capsule.is_stable = true
     end
+
+    local cap_id = phys_capsule.capsule_id or (phys_capsule.holder and phys_capsule.holder.valid and phys_capsule.holder.unit_number)
+    if cap_id then
+        local heap = get_spoil_heap()
+        if next_tick then
+            heap:push(cap_id, next_tick)
+        else
+            heap:remove(cap_id)
+        end
+    end
+
     return next_tick
 end
 
@@ -214,7 +246,7 @@ function capsule_lifecycle.intercept_refrigeration(phys_capsule, current_tick)
         if new_charges <= 0 then
             ran_out = true
         else
-            p_stack.health = math.max(0.01, new_charges / max_charges)
+            p_stack.health = math.max(0.0001, new_charges / max_charges)
         end
     else
         local cooled_ticks = cur_charges * 60
@@ -258,13 +290,13 @@ function capsule_lifecycle.intercept_refrigeration(phys_capsule, current_tick)
 
     if ran_out then
         local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
-        local quality = p_stack.quality
+        local qual_name = (type(p_stack.quality) == "string" and p_stack.quality) or (p_stack.quality and p_stack.quality.name) or "normal"
         local src_grid = p_stack.grid
         inv[p_slot].clear()
         inv[p_slot].set_stack({
             name = spent_item_name,
             count = 1,
-            quality = quality
+            quality = qual_name
         })
         if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
             item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])
@@ -365,6 +397,15 @@ end
 function capsule_lifecycle.calculate_virtual_dilated_recheck(phys_capsule, current_tick)
     if not (phys_capsule and phys_capsule.virtual_cargo) then return nil end
 
+    local has_spoilable = false
+    for _, item in ipairs(phys_capsule.virtual_cargo) do
+        if item.count and item.count > 0 and item.base_spoil_ticks and item.base_spoil_ticks > 0 then
+            has_spoilable = true
+            break
+        end
+    end
+    if not has_spoilable then return nil end
+
     local holder = phys_capsule.holder
     local inv = holder and holder.valid and holder.get_inventory(defines.inventory.chest)
     local p_slot = phys_capsule.primary_slot or 1
@@ -396,8 +437,6 @@ function capsule_lifecycle.calculate_virtual_dilated_recheck(phys_capsule, curre
 
     if coolant_horizon and spoil_horizon then
         return math.min(coolant_horizon, spoil_horizon)
-    elseif coolant_horizon then
-        return coolant_horizon
     elseif spoil_horizon then
         return spoil_horizon
     end
@@ -514,7 +553,7 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
         if new_charges <= 0 then
             ran_out = true
         elseif p_stack and p_stack.valid_for_read then
-            p_stack.health = math.max(0.01, new_charges / max_charges)
+            p_stack.health = math.max(0.0001, new_charges / max_charges)
         end
     else
         cooled_ticks = coolant_ticks
@@ -524,19 +563,25 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
 
     if ran_out and p_stack and p_stack.valid_for_read then
         local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
-        local quality = p_stack.quality
+        local qual_name = (type(p_stack.quality) == "string" and p_stack.quality) or (p_stack.quality and p_stack.quality.name) or "normal"
         local src_grid = p_stack.grid
         inv[p_slot].clear()
         inv[p_slot].set_stack({
             name = spent_item_name,
             count = 1,
-            quality = quality
+            quality = qual_name
         })
         if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
             item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])
         end
         phys_capsule.capsule_type = spent_item_name
         phys_capsule.definition = capsule_defs.types[spent_item_name] or phys_capsule.definition
+        if storage.capsules and capsule_id and storage.capsules[capsule_id] then
+            storage.capsules[capsule_id].capsule_type = spent_item_name
+            if storage.capsules[capsule_id].render_cache then
+                storage.capsules[capsule_id].render_cache.variant_color = nil
+            end
+        end
     end
 
     local any_spoiled = false
@@ -599,7 +644,7 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
 
     ref.last_update_tick = current_tick
 
-    if any_spoiled then
+    if any_spoiled or ran_out then
         local max_c = 0
         local dom_c = nil
         local dom_q = "normal"
@@ -622,7 +667,7 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
         end
     end
 
-    if any_spoiled and capsule_id then
+    if (any_spoiled or ran_out) and capsule_id then
         local old_sig = phys_capsule.signal_data
         local new_sig = capsule_manager.extract_holder_signal_data(
             phys_capsule.holder,
@@ -807,23 +852,120 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
         end
     end
 
-    if not phys_capsule.next_spoil_tick and (phys_capsule.virtual_cargo or phys_capsule.has_spoilable_items) then
-        capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, game.tick)
-    end
-
-    if phys_capsule.next_spoil_tick and game.tick >= phys_capsule.next_spoil_tick then
-        local cap_id = capsule.capsule_id or id
-        if phys_capsule.virtual_cargo and (not phys_capsule.virtual_next_spoil_tick or game.tick >= phys_capsule.virtual_next_spoil_tick) then
-            capsule_lifecycle.update_virtual_refrigeration(phys_capsule, game.tick, cap_id, curr_pos, surface, capsule)
-        end
-        if phys_capsule.has_spoilable_items and (not phys_capsule.physical_next_spoil_tick or game.tick >= phys_capsule.physical_next_spoil_tick) then
-            capsule_lifecycle.process_dynamic_cargo(capsule, phys_capsule, game.tick)
-        end
-        local next_tick = capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, game.tick)
-        if capsule then capsule.next_spoil_tick = next_tick end
-    end
-
     return false
+end
+
+local function get_capsule_world_location(cap_id)
+    local cap = storage.capsules and storage.capsules[cap_id]
+    if not cap then return nil, nil end
+    local pkey = cap.from_port_key
+    local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
+    if node and node.surface_name and node.pos then
+        local surf = game.surfaces[node.surface_name]
+        if surf and surf.valid then
+            return node.pos, surf
+        end
+    end
+    if cap.last_pos and cap.surface_name then
+        local surf = game.surfaces[cap.surface_name]
+        if surf and surf.valid then
+            return cap.last_pos, surf
+        end
+    end
+    return nil, nil
+end
+
+--- Advances the spoil heap by popping and processing any capsules whose recheck horizon has arrived
+--- @param current_tick number
+function capsule_lifecycle.step_spoil_heap(current_tick)
+    local heap = get_spoil_heap()
+    if not heap or heap:is_empty() then return end
+
+    local limit = 500
+    local processed = 0
+
+    while processed < limit do
+        local cap_id, spoil_tick = heap:peek()
+        if not cap_id or spoil_tick > current_tick then
+            break
+        end
+
+        heap:pop()
+        processed = processed + 1
+
+        local phys_capsule = capsule_manager.get(cap_id)
+        if phys_capsule then
+            local curr_pos, surface = get_capsule_world_location(cap_id)
+            local motion_capsule = storage.capsules and storage.capsules[cap_id]
+
+            if phys_capsule.virtual_cargo and (not phys_capsule.virtual_next_spoil_tick or current_tick >= phys_capsule.virtual_next_spoil_tick) then
+                capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_tick, cap_id, curr_pos, surface, motion_capsule)
+            end
+            if phys_capsule.has_spoilable_items and (not phys_capsule.physical_next_spoil_tick or current_tick >= phys_capsule.physical_next_spoil_tick) then
+                capsule_lifecycle.process_dynamic_cargo(motion_capsule, phys_capsule, current_tick)
+            end
+
+            local next_tick = capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, current_tick)
+            if motion_capsule then
+                motion_capsule.next_spoil_tick = next_tick
+            end
+        end
+    end
+end
+
+--- Returns diagnostic statistics for the spoil heap
+--- @return table stats
+function capsule_lifecycle.get_heap_stats()
+    local heap = get_spoil_heap()
+    local count = heap:count()
+    local cap = heap:capacity()
+    local next_id, next_tick = heap:peek()
+    return {
+        count = count,
+        capacity = cap,
+        next_id = next_id,
+        next_tick = next_tick,
+        ticks_remaining = next_tick and (next_tick - game.tick) or nil
+    }
+end
+
+--- Purges any capsules from the spoil heap that no longer contain spoilable items
+--- @return number purged_count
+function capsule_lifecycle.purge_non_spoilables()
+    local heap = get_spoil_heap()
+    if not (heap and storage.active_capsules) then return 0 end
+    local purged = 0
+    for cid, cap_data in pairs(storage.active_capsules) do
+        if heap:contains(cid) then
+            local has_spoilable = false
+            if cap_data.virtual_cargo then
+                for _, item in ipairs(cap_data.virtual_cargo) do
+                    if item.count and item.count > 0 and item.base_spoil_ticks and item.base_spoil_ticks > 0 then
+                        has_spoilable = true
+                        break
+                    end
+                end
+            end
+            if not has_spoilable and cap_data.holder and cap_data.holder.valid then
+                local inv = cap_data.holder.get_inventory(defines.inventory.chest)
+                if inv and inv.valid and not inv.is_empty() then
+                    local p_slot = cap_data.primary_slot or 1
+                    local _, has_p = capsule_lifecycle.find_earliest_spoil_tick(inv, #inv, p_slot, game.tick)
+                    if has_p then has_spoilable = true end
+                end
+            end
+            if not has_spoilable then
+                heap:remove(cid)
+                cap_data.next_spoil_tick = nil
+                cap_data.virtual_next_spoil_tick = nil
+                cap_data.physical_next_spoil_tick = nil
+                cap_data.has_spoilable_items = false
+                cap_data.is_stable = true
+                purged = purged + 1
+            end
+        end
+    end
+    return purged
 end
 
 return capsule_lifecycle

@@ -1,8 +1,11 @@
 local flow_engine = require("scripts.flow.flow-engine")
 local events = require("scripts.events")
 local profiler = require("scripts.utils.profiler")
+local binary_heap = require("scripts.utils.binary-heap")
+local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 
 local debug_manager = {}
+debug_manager.binary_heap = binary_heap
 local PANEL_NAME = "pneumatic_debug_panel"
 
 local function get_debug(player_index)
@@ -631,6 +634,38 @@ commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", fun
 commands.add_command("pt-toggle-profiler", "Toggle streaming 60-tick live performance profiler to chat (Alias)", function(cmd) if cmd.player_index then toggle_profiler(cmd.player_index) end end)
 commands.add_command("pt-profile", "Print a live performance snapshot of all subsystems to chat (Alias)", function(cmd) if cmd.player_index then profiler.trigger_snapshot(cmd.player_index) end end)
 commands.add_command("pt-clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Alias)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
+commands.add_command("pt-test-heap", "Run self-tests on the reusable binary heap priority queue", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    binary_heap.run_tests(player)
+end)
+commands.add_command("test-heap", "Run self-tests on the reusable binary heap priority queue (Alias)", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    binary_heap.run_tests(player)
+end)
+
+local function print_spoil_heap_status(player_index)
+    local stats = capsule_lifecycle.get_heap_stats()
+    local p = player_index and game.get_player(player_index)
+    local line
+    if stats.count == 0 then
+        line = "[Spoil Heap] Active timers: 0 | Reusable buffer capacity: " .. stats.capacity .. " (Empty)"
+    else
+        local rem_str = stats.ticks_remaining and (stats.ticks_remaining .. " ticks (" .. string.format("%.1fs", stats.ticks_remaining / 60) .. ")") or "now"
+        line = "[Spoil Heap] Active timers: " .. stats.count .. " | Buffer capacity: " .. stats.capacity .. " | Next: Capsule #" .. tostring(stats.next_id) .. " at tick " .. tostring(stats.next_tick) .. " (in " .. rem_str .. ")"
+    end
+    if p and p.valid then
+        p.print(line)
+    else
+        log(line)
+    end
+end
+
+commands.add_command("check-spoil-heap", "Check status of the binary heap spoil timer scheduler", function(cmd)
+    print_spoil_heap_status(cmd.player_index)
+end)
+commands.add_command("pt-check-spoil-heap", "Check status of the binary heap spoil timer scheduler (Alias)", function(cmd)
+    print_spoil_heap_status(cmd.player_index)
+end)
 
 events.on_event(defines.events.on_lua_shortcut, function(event)
     local p_name = event.prototype_name

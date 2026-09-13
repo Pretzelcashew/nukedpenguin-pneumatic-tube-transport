@@ -1,6 +1,7 @@
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local liminal_surface_mgr = require("scripts.surfaces.liminal-surface")
 local item_transfer_handler = require("scripts.utils.item-transfer-handler")
+local binary_heap = require("scripts.utils.binary-heap")
 
 local capsule_manager = {}
 
@@ -43,6 +44,7 @@ function capsule_manager.register(holder_entity, capsule_item_name, primary_slot
         holder = holder_entity,
         type = def.type,
         capsule_type = capsule_item_name,
+        capsule_id = capsule_id,
         definition = def,
         primary_slot = primary_slot,
         position = { x = pos.x, y = pos.y },
@@ -90,6 +92,10 @@ end
 --- @param capsule_id number
 function capsule_manager.remove(capsule_id)
     if not storage.active_capsules then return end
+
+    if storage.spoil_heap then
+        binary_heap.remove(storage.spoil_heap, capsule_id)
+    end
 
     local data = storage.active_capsules[capsule_id]
     if data then
@@ -257,7 +263,7 @@ function capsule_manager.collapse_virtual_cargo(phys_capsule, current_tick, caps
             if new_charges <= 0 then
                 ran_out = true
             elseif p_stack and p_stack.valid_for_read then
-                p_stack.health = math.max(0.01, new_charges / max_charges)
+                p_stack.health = math.max(0.0001, new_charges / max_charges)
             end
         else
             cooled_ticks = coolant_ticks
@@ -267,13 +273,13 @@ function capsule_manager.collapse_virtual_cargo(phys_capsule, current_tick, caps
 
         if ran_out and p_stack and p_stack.valid_for_read then
             local spent_item_name = caps_def.spent_capsule_item or "spent-refrigerated-capsule"
-            local quality = p_stack.quality
+            local qual_name = (type(p_stack.quality) == "string" and p_stack.quality) or (p_stack.quality and p_stack.quality.name) or "normal"
             local src_grid = p_stack.grid
             inv[p_slot].clear()
             inv[p_slot].set_stack({
                 name = spent_item_name,
                 count = 1,
-                quality = quality
+                quality = qual_name
             })
             if src_grid and src_grid.valid and inv[p_slot].valid_for_read then
                 item_transfer_handler.copy_equipment_grid(src_grid, inv[p_slot])

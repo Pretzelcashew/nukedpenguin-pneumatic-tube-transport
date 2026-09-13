@@ -894,6 +894,7 @@ function capsule_runner.update_capsules(current_tick)
 
     capsule_renderer.prepare_frame()
     capsule_transit.prepare_player_targets()
+    capsule_lifecycle.step_spoil_heap(current_tick)
 
     for id, capsule in pairs(storage.capsules) do
         local from_key = capsule.from_port_key

@@ -1,5 +1,6 @@
 local flow_common = require("scripts.flow.flow-common")
 local flow_renderer = require("scripts.flow.flow-renderer")
+local port_defs = require("scripts.flow.port-defs")
 local projector_settings = require("scripts.projectors.projector-settings")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 
@@ -186,6 +187,15 @@ end
 
 function flow_kinetic.check_tile_obstruction(surface, tx, ty, sender_entity)
     if not (surface and surface.valid) then return { blocked = false, is_receiver = false } end
+
+    if storage.character_colliders then
+        local pos_key = make_pos_key(surface.name, tx, ty)
+        local char_collider = storage.character_colliders[pos_key]
+        if char_collider and char_collider.valid then
+            return { blocked = true, is_receiver = false, obstacle = char_collider, is_character = true }
+        end
+    end
+
     local candidates = surface.find_entities_filtered{
         area = {{tx - 0.45, ty - 0.45}, {tx + 0.45, ty + 0.45}}
     }
@@ -565,6 +575,114 @@ end
 
 function flow_kinetic.handle_projector_rotated(unit_number)
     -- Queue-driven recession handles beam nodes and BVH segments naturally
+end
+
+local CARDINALS = {
+    {dx =  1, dy =  0},
+    {dx = -1, dy =  0},
+    {dx =  0, dy =  1},
+    {dx =  0, dy = -1}
+}
+
+local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, enqueue_port_fn, wake_port_fn)
+    if not (surface_name and target_pos and storage.flow_grid) then return end
+    for i = 1, 4 do
+        local c = CARDINALS[i]
+        local nx = target_pos.x - c.dx
+        local ny = target_pos.y - c.dy
+        local n_key = make_pos_key(surface_name, nx, ny)
+        local ports = storage.flow_grid[n_key]
+        if ports then
+            for pkey in pairs(ports) do
+                local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
+                if b_node and b_node.is_kinetic and b_node.dir and b_node.dir.x == c.dx and b_node.dir.y == c.dy then
+                    if is_evacuation and b_node.is_endpoint then
+                        b_node.is_endpoint = false
+                        b_node.hit_receiver = nil
+                        local is_prom = (not b_node.is_muzzle) and ((b_node.dist or 0) > 0) and ((b_node.dist or 0) % HOP_DISTANCE == 0)
+                        b_node.is_prominent_kinetic = is_prom
+                        b_node.is_beam_node = is_prom
+                        b_node.capsule_transmit = is_prom
+                    end
+                    enqueue_port_fn(pkey)
+                    wake_port_fn(pkey)
+                end
+            end
+        end
+    end
+end
+
+function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
+    storage.character_colliders = storage.character_colliders or {}
+    storage.character_last_pos_key = storage.character_last_pos_key or {}
+    storage.character_last_cpos = storage.character_last_cpos or {}
+    storage.character_last_surface = storage.character_last_surface or {}
+
+    enqueue_port_fn = enqueue_port_fn or enqueue_port
+    wake_port_fn = wake_port_fn or wake_port_parked
+
+    local active_chars = {}
+
+    for _, player in pairs(game.connected_players) do
+        local char = player.character
+        if char and char.valid and char.surface and char.surface.valid then
+            local char_key = char.unit_number or player.index
+            active_chars[char_key] = true
+
+            local cpos = port_defs.get_character_port_pos(char.position, char.direction)
+            if cpos then
+                local new_pos_key = make_pos_key(char.surface.name, cpos.x, cpos.y)
+                local old_pos_key = storage.character_last_pos_key[char_key]
+
+                if new_pos_key ~= old_pos_key then
+                    -- 1. Evacuate old position: unblock preceding endpoint in flow_grid hash map
+                    local old_cpos = storage.character_last_cpos[char_key]
+                    local old_sname = storage.character_last_surface[char_key]
+                    if old_pos_key and old_cpos and old_sname then
+                        storage.character_colliders[old_pos_key] = nil
+                        wake_beam_pointing_at(old_sname, old_cpos, true, enqueue_port_fn, wake_port_fn)
+                    elseif old_pos_key then
+                        storage.character_colliders[old_pos_key] = nil
+                    end
+
+                    -- 2. Occupy new position: set collider and alert incoming beam nodes
+                    storage.character_colliders[new_pos_key] = char
+                    storage.character_last_pos_key[char_key] = new_pos_key
+                    storage.character_last_cpos[char_key] = { x = cpos.x, y = cpos.y }
+                    storage.character_last_surface[char_key] = char.surface.name
+
+                    local new_ports = storage.flow_grid and storage.flow_grid[new_pos_key]
+                    if new_ports then
+                        for pkey in pairs(new_ports) do
+                            local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
+                            if b_node and b_node.is_kinetic then
+                                enqueue_port_fn(pkey)
+                                wake_port_fn(pkey)
+                            end
+                        end
+                    end
+                    wake_beam_pointing_at(char.surface.name, cpos, false, enqueue_port_fn, wake_port_fn)
+                end
+            end
+        end
+    end
+
+    -- 3. Cleanup disconnected or dead characters
+    for char_key, last_key in pairs(storage.character_last_pos_key) do
+        if not active_chars[char_key] then
+            if last_key and storage.character_colliders then
+                storage.character_colliders[last_key] = nil
+                local old_cpos = storage.character_last_cpos and storage.character_last_cpos[char_key]
+                local old_sname = storage.character_last_surface and storage.character_last_surface[char_key]
+                if old_cpos and old_sname then
+                    wake_beam_pointing_at(old_sname, old_cpos, true, enqueue_port_fn, wake_port_fn)
+                end
+            end
+            storage.character_last_pos_key[char_key] = nil
+            if storage.character_last_cpos then storage.character_last_cpos[char_key] = nil end
+            if storage.character_last_surface then storage.character_last_surface[char_key] = nil end
+        end
+    end
 end
 
 return flow_kinetic

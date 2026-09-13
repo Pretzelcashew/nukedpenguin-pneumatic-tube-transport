@@ -205,3 +205,13 @@
 3. **Projector Port Dot Deconstruction Cleanup (`scripts/flow/flow-engine.lua`):** Scoped `beam_owner` in `storage.flow_nodes` strictly to kinetic launch muzzles, preserving passive intake port coordinates during entity teardown so `flow_engine.disconnect_entity` cleanly wipes Alt-Mode intake and muzzle dots via `destroy_pos_renders`.
 4. **BVH Key Normalization and Detached Node Safety (`scripts/utils/trajectory-bvh.lua`):** Guarded `remove_leaf_node` against nil parent references during structural tree collapses and aligned fallback `insert_trajectory` segment keys to standard directional string formatting (`dx,dy:s`).
 5. **Flight Record Eviction & Spill Cleanup (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-ballistics.lua`):** Hooked `capsule_runner.remove_capsule` and ballistic collision/spill handlers to clear records from `storage.projector_flights`, preventing orphaned in-flight references from lingering in memory.
+
+
+### Revision: Grid-Aligned Character Port Collision and Kinetic Beam Interception
+**Date:** 2026-09-13 12:07 EDT
+**Context:** Enabled player characters to act as mobile 1-tile grid entities on the pneumatic network, resolving dual-axis half-offset alignment with electromagnetic projector beams and enabling pure spatial hash-map beam interception and regrowth.
+**Key Changes:**
+1. **Dual-Grid Character Port Resolution (`scripts/flow/port-defs.lua`):** Implemented `get_character_port_pos` and `get_character_port` to calculate distance squared against North/South (half-x, int-y) and East/West (int-x, half-y) projector beam alignments, dynamically snapping moving characters to the matching beam axis with directional tie-breaking.
+2. **Alt-Mode Character Dot Overlay (`scripts/flow/flow-renderer.lua`):** Added `update_character_renders` and `destroy_character_renders` to render a 0.12r magenta dot at the character's grid-aligned port position, leveraging in-place C++ `current.target` mutation to eliminate garbage collection overhead.
+3. **Kinetic Grid Port Collider & Hash-Map Wakeups (`scripts/flow/flow-kinetic.lua`):** Added an $O(1)$ spatial check to `check_tile_obstruction` and implemented `step_character_colliders` with a 4-cardinal `wake_beam_pointing_at` neighbor lookup in `storage.flow_grid`, intercepting incoming beams upon entering a tile and unblocking preceding endpoints (`d_start - 1`) upon evacuation without ray-box scans.
+4. **Step Loop & Lifecycle Wiring (`scripts/flow/flow-engine.lua`):** Initialized character collider and position tracking tables in `init_storage`, wired collider transitions and overlay updates into `flow_engine.step` prior to queue sleep checks, and exported public facade aliases.

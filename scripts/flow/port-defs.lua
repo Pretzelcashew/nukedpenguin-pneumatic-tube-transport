@@ -299,4 +299,51 @@ function port_defs.get_ports(entity)
     return ports
 end
 
+function port_defs.get_character_port_pos(pos, direction)
+    if not pos then return nil end
+    local cx = pos.x or pos[1]
+    local cy = pos.y or pos[2]
+    if not (cx and cy) then return nil end
+
+    -- Candidate 1: North/South vertical beam alignment (x is half-integer, y is integer)
+    local x1 = math.floor(cx) + 0.5
+    local y1 = math.floor(cy + 0.5)
+    local d1 = (cx - x1) * (cx - x1) + (cy - y1) * (cy - y1)
+
+    -- Candidate 2: East/West horizontal beam alignment (x is integer, y is half-integer)
+    local x2 = math.floor(cx + 0.5)
+    local y2 = math.floor(cy) + 0.5
+    local d2 = (cx - x2) * (cx - x2) + (cy - y2) * (cy - y2)
+
+    if math.abs(d1 - d2) < 0.001 and direction then
+        if direction == defines.direction.east or direction == defines.direction.west then
+            return {x = x2, y = y2}, "horizontal"
+        else
+            return {x = x1, y = y1}, "vertical"
+        end
+    elseif d1 <= d2 then
+        return {x = x1, y = y1}, "vertical"
+    else
+        return {x = x2, y = y2}, "horizontal"
+    end
+end
+
+function port_defs.get_character_port(character)
+    if not (character and character.valid) then return nil end
+    local ppos, alignment = port_defs.get_character_port_pos(character.position, character.direction)
+    if not ppos then return nil end
+    return {
+        unit_number = character.unit_number,
+        entity = character,
+        surface_name = character.surface.name,
+        pos = ppos,
+        alignment = alignment,
+        capsule_transmit = true,
+        pressure_transmit = false,
+        sense_transmit = false,
+        kinetic_transmit = true,
+        is_character = true
+    }
+end
+
 return port_defs

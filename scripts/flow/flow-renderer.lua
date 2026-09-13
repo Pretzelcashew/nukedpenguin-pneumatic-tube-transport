@@ -1,4 +1,5 @@
 local flow_common = require("scripts.flow.flow-common")
+local port_defs = require("scripts.flow.port-defs")
 
 local flow_renderer = {}
 
@@ -544,6 +545,7 @@ function flow_renderer.clear_flow_renders(player_index)
             end
             storage.kinetic_renders[player_index] = {}
         end
+        flow_renderer.destroy_character_renders(player_index)
     else
         for _, player in pairs(game.players) do
             flow_renderer.clear_flow_renders(player.index)
@@ -556,6 +558,89 @@ function flow_renderer.clear_flow_renders(player_index)
                     storage.kinetic_renders[k] = nil
                 end
             end
+        end
+        flow_renderer.destroy_character_renders()
+    end
+end
+
+function flow_renderer.destroy_character_renders(player_index)
+    if not storage.character_renders then return end
+    if player_index then
+        local p_renders = storage.character_renders[player_index]
+        if p_renders then
+            for key, obj in pairs(p_renders) do
+                if obj and obj.valid then obj.destroy() end
+            end
+            storage.character_renders[player_index] = {}
+        end
+    else
+        for _, p_renders in pairs(storage.character_renders) do
+            if type(p_renders) == "table" then
+                for key, obj in pairs(p_renders) do
+                    if obj and obj.valid then obj.destroy() end
+                end
+            end
+        end
+        storage.character_renders = {}
+    end
+end
+
+function flow_renderer.update_character_renders(target_player_index)
+    storage.character_renders = storage.character_renders or {}
+
+    local function update_for_player(player)
+        local p_idx = player.index
+        if not check_debug("new_flow", p_idx) then
+            flow_renderer.destroy_character_renders(p_idx)
+            return
+        end
+
+        storage.character_renders[p_idx] = storage.character_renders[p_idx] or {}
+        local p_renders = storage.character_renders[p_idx]
+        local active_keys = {}
+
+        for _, target_player in pairs(game.connected_players) do
+            local char = target_player.character
+            if char and char.valid and char.surface == player.surface then
+                local key = char.unit_number or target_player.index
+                active_keys[key] = true
+                local cpos = port_defs.get_character_port_pos(char.position, char.direction)
+                if cpos then
+                    local current = p_renders[key]
+                    if current and current.valid then
+                        current.target = cpos
+                    else
+                        if current and current.valid then current.destroy() end
+                        p_renders[key] = rendering.draw_circle{
+                            color = PROJECTOR_MUZZLE_COLOR,
+                            radius = 0.12,
+                            filled = true,
+                            target = cpos,
+                            surface = char.surface,
+                            only_in_alt_mode = true,
+                            players = { player }
+                        }
+                    end
+                end
+            end
+        end
+
+        for key, obj in pairs(p_renders) do
+            if not active_keys[key] then
+                if obj and obj.valid then obj.destroy() end
+                p_renders[key] = nil
+            end
+        end
+    end
+
+    if target_player_index then
+        local player = game.get_player(target_player_index)
+        if player and player.valid then
+            update_for_player(player)
+        end
+    else
+        for _, player in pairs(game.connected_players) do
+            update_for_player(player)
         end
     end
 end
@@ -611,6 +696,7 @@ function flow_renderer.draw_flow(player_index)
             flow_renderer.update_kinetic_pos_render(pkey, player_index)
         end
     end
+    flow_renderer.update_character_renders(player_index)
 end
 
 function flow_renderer.draw_all(player_index)

@@ -110,12 +110,14 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
     let's make the heap i described, and have some automated printouts in the game console to test that it works when we're done before we use it for my virtual cargo spoil system
 
---------------------------------------------
-
-my plan is to add an arrival time for capsules, this means that they will essentially teleport to their target endpoint or junction (whenever there is a branching path), after a time that they wouldve reached it with my current motion script (though, it could be actually distance based arrival time rather than hop based that is currently variable). 
+~my plan is to add an arrival time for capsules, this means that they will essentially teleport to their target endpoint or junction (whenever there is a branching path), after a time that they wouldve reached it with my current motion script (though, it could be actually distance based arrival time rather than hop based that is currently variable). 
 
     i know its a big refactor, but i want to do it in small pieces, and i will start with the low hanging fruit, which is capsules on kinetic flows, which already feature a known endpoint. so we will only implement it for this part initially, and i want an easy bool in the top of the script for it to switch back to the normal kinetic motion if i dont like it. you'll see why im saying that in a sec.
 
     the success of this timed arrival is dependent on if i can also implement a reliable viewport based renderer to interpolate motion for only capsules that would be viewed by a player at that moment, to hide the fact that it is really being efficiently teleported behind the scenes.
 
     and the timed arrival will use the binary heap i just created too so its starting off with a leg up
+
+--------------------------------------------
+
+fix player characters not intercepting kintectic capsules in the new system (can probably just poll if each character (+user index or unit id) in a modulo tick against the hash map for kinectic flow dot nodes, and officially cut the flow as if you placed a building there)

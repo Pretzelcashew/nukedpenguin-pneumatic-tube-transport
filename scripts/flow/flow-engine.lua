@@ -98,6 +98,11 @@ function flow_engine.init_storage()
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
     storage.kinetic_renders = storage.kinetic_renders or {}
+    storage.character_renders = storage.character_renders or {}
+    storage.character_colliders = storage.character_colliders or {}
+    storage.character_last_pos_key = storage.character_last_pos_key or {}
+    storage.character_last_cpos = storage.character_last_cpos or {}
+    storage.character_last_surface = storage.character_last_surface or {}
     for k, v in pairs(storage.kinetic_renders) do
         if type(k) == "string" then
             if type(v) == "table" then
@@ -247,6 +252,8 @@ flow_engine.clear_all_renders = flow_renderer.clear_all_renders
 flow_engine.draw_all_counters = flow_renderer.draw_all_counters
 flow_engine.draw_flow = flow_renderer.draw_flow
 flow_engine.draw_all = flow_renderer.draw_all
+flow_engine.update_character_renders = flow_renderer.update_character_renders
+flow_engine.destroy_character_renders = flow_renderer.destroy_character_renders
 
 flow_engine.check_tile_obstruction = flow_kinetic.check_tile_obstruction
 flow_engine.notify_beam_obstruction_changed = flow_kinetic.handle_obstacle_changed
@@ -473,6 +480,8 @@ function flow_engine.step(tick)
 
     flow_gate_interop.step_gates(flow_kinetic.handle_obstacle_changed, flow_engine.enqueue_unit_ports)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
+    flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
+    flow_renderer.update_character_renders()
 
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 

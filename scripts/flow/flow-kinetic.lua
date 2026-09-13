@@ -365,6 +365,12 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     flow_renderer.update_kinetic_pos_render(pkey)
                     wake_port_fn(pkey)
 
+                    local owner_unit = node.beam_owner or node.unit_number
+                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
+                    if cb and cb.update_projector_flights then
+                        cb.update_projector_flights(owner_unit)
+                    end
+
                     if occ.is_receiver and occ.receiver and occ.receiver.unit_number then
                         local r_unit = occ.receiver.unit_number
                         local r_ports = storage.flow_unit_ports and storage.flow_unit_ports[r_unit]
@@ -390,6 +396,12 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
                     node.is_endpoint = false
                     node.hit_receiver = nil
+
+                    local owner_unit = node.beam_owner or node.unit_number
+                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
+                    if cb and cb.update_projector_flights then
+                        cb.update_projector_flights(owner_unit)
+                    end
                     node.is_prominent_kinetic = node_is_prom
                     node.is_beam_node = node_is_prom
                     node.capsule_transmit = node_is_prom
@@ -582,6 +594,10 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                                 wake_port_fn(pkey)
                             end
                         end
+                        local cb = package.loaded["scripts.capsules.capsule-ballistics"]
+                        if cb and cb.update_projector_flights then
+                            cb.update_projector_flights(unit_number)
+                        end
                     end
                 end
             end
@@ -651,6 +667,11 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
                     end
                     enqueue_port_fn(pkey)
                     wake_port_fn(pkey)
+                    local b_owner = b_node.beam_owner or b_node.unit_number
+                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
+                    if b_owner and cb and cb.update_projector_flights then
+                        cb.update_projector_flights(b_owner)
+                    end
                 end
             end
         end
@@ -704,6 +725,11 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                                 if b_node and b_node.is_kinetic then
                                     enqueue_port_fn(pkey)
                                     wake_port_fn(pkey)
+                                    local b_owner = b_node.beam_owner or b_node.unit_number
+                                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
+                                    if b_owner and cb and cb.update_projector_flights then
+                                        cb.update_projector_flights(b_owner)
+                                    end
                                 end
                             end
                         end

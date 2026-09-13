@@ -242,3 +242,12 @@
 1. **Isolated Remainder Unregistration (`scripts/flow/flow-kinetic.lua`):** Decoupled `unregister_endpoint_remainder_in_bvh` from general segment unregistration so advancing terminal nodes specifically target matching `:rem:%d` keys, preventing boundary endpoints (e.g., tile 16 or 32) from mistakenly purging full 16-tile corridor segments.
 2. **Pending Removal Invalidation (`scripts/flow/flow-kinetic.lua`):** Updated `register_segment_in_bvh` to immediately scrub matching pending removal items from `storage.pending_bvh_segments` whenever a corridor segment regrows.
 3. **Reference Equality Guard (`scripts/flow/flow-kinetic.lua`):** Hardened `step_pending_bvh_segments` to verify that the active tree node strictly matches the queued leaf reference (`current_leaf == leaf`), preventing deferred cleanup sweeps from unindexing freshly regrown segments.
+
+
+### Revision: Dynamic Crash Site Rescheduling and Occlusion Clearance for Ballistic Projectiles
+**Date:** 2026-09-13 18:52 EDT
+**Context:** Enabled in-flight kinetic projectiles scheduled for impact to dynamically recalculate their crash sites and arrival horizons when corridor occlusions move, clear, or realign with downstream receivers before impact occurs, eliminating phantom mid-air crashes.
+**Key Changes:**
+1. **Dynamic Projector Flight Updater (`scripts/capsules/capsule-ballistics.lua`):** Implemented `update_projector_flights` to evaluate capsule positions from elapsed flight time ($1.2\text{ ticks/tile}$), raycast forward along the beam vector for active obstacles or receivers, recalculate terminal coordinates, hop chains, and arrival horizons, re-index arrival heap entries in `storage.kinetic_arrival_heap`, and synchronize spatial BVH trajectories.
+2. **Just-In-Time Impact Clearance Guard (`scripts/capsules/capsule-ballistics.lua`):** Hardened `finalize_timed_arrival` to verify physical obstacle presence at `bf.terminal_pos` before executing spillage, dynamically extending cleared or receiver-aligned projectiles forward to downstream targets without premature destruction.
+3. **Corridor Occlusion Event Hooks (`scripts/flow/flow-kinetic.lua`):** Wired `update_projector_flights` into `handle_obstacle_changed`, `step_port`, `wake_beam_pointing_at`, and `step_character_colliders`, immediately triggering trajectory recalculations when structures are built or mined, gates toggle, or characters traverse beam paths.

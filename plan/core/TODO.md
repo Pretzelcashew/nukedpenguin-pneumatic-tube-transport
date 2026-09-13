@@ -118,10 +118,13 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
     and the timed arrival will use the binary heap i just created too so its starting off with a leg up
 
---------------------------------------------
-
 ~fix player characters not intercepting kintectic capsules in the new system (can probably just poll if each character (+user index or unit id) in a modulo tick against the hash map for kinectic flow dot nodes, and officially cut the flow as if you placed a building there)
 
 ~expand the player kinetic port influence by 1 node so moving along a kinetic flow doesnt cause so many micro wakes from player kinetic dot staggered walk
 
-make it so that intercepted kinetic flows with a capsule schedule for crash, can have an opportunity to update the crash site if the occlusion updates before the crash occurs
+~make it so that intercepted kinetic flows with a capsule schedule for crash, can have an opportunity to update the crash site if the occlusion updates before the crash occurs
+--------------------------------------------
+
+make it so capsule crashes with kinetic flows cause damage (look like the player sometimes recieves damage, but only if their collider was close); i think this is a result of the kinetic beam sometimes stopping before the occlusion port, so it looks both visually far and too far to damage when it does crash.
+
+remove the rumble/ripple effect or make it render only with render capsules mode, or something

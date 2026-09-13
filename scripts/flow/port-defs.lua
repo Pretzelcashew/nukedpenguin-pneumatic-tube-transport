@@ -315,17 +315,48 @@ function port_defs.get_character_port_pos(pos, direction)
     local y2 = math.floor(cy) + 0.5
     local d2 = (cx - x2) * (cx - x2) + (cy - y2) * (cy - y2)
 
-    if math.abs(d1 - d2) < 0.001 and direction then
+    local primary, secondary, alignment
+    if math.abs(d1 - d2) < 0.15 and direction then
         if direction == defines.direction.east or direction == defines.direction.west then
-            return {x = x2, y = y2}, "horizontal"
+            primary = {x = x2, y = y2}
+            secondary = {x = x1, y = y1}
+            alignment = "horizontal"
         else
-            return {x = x1, y = y1}, "vertical"
+            primary = {x = x1, y = y1}
+            secondary = {x = x2, y = y2}
+            alignment = "vertical"
         end
     elseif d1 <= d2 then
-        return {x = x1, y = y1}, "vertical"
+        primary = {x = x1, y = y1}
+        secondary = {x = x2, y = y2}
+        alignment = "vertical"
     else
-        return {x = x2, y = y2}, "horizontal"
+        primary = {x = x2, y = y2}
+        secondary = {x = x1, y = y1}
+        alignment = "horizontal"
     end
+    return primary, alignment, secondary
+end
+
+function port_defs.get_character_influence_positions(pos, direction)
+    local primary, alignment, secondary = port_defs.get_character_port_pos(pos, direction)
+    if not primary then return nil end
+
+    local positions = {
+        primary,
+        {x = primary.x + 1, y = primary.y},
+        {x = primary.x - 1, y = primary.y},
+        {x = primary.x, y = primary.y + 1},
+        {x = primary.x, y = primary.y - 1}
+    }
+    if secondary then
+        positions[#positions + 1] = secondary
+        positions[#positions + 1] = {x = secondary.x + 1, y = secondary.y}
+        positions[#positions + 1] = {x = secondary.x - 1, y = secondary.y}
+        positions[#positions + 1] = {x = secondary.x, y = secondary.y + 1}
+        positions[#positions + 1] = {x = secondary.x, y = secondary.y - 1}
+    end
+    return positions, primary
 end
 
 function port_defs.get_character_port(character)

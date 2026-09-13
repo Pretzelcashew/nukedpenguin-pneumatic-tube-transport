@@ -614,8 +614,7 @@ end
 
 function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
     storage.character_colliders = storage.character_colliders or {}
-    storage.character_last_pos_key = storage.character_last_pos_key or {}
-    storage.character_last_cpos = storage.character_last_cpos or {}
+    storage.character_last_keys = storage.character_last_keys or {}
     storage.character_last_surface = storage.character_last_surface or {}
 
     enqueue_port_fn = enqueue_port_fn or enqueue_port
@@ -628,58 +627,62 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
         if char and char.valid and char.surface and char.surface.valid then
             local char_key = char.unit_number or player.index
             active_chars[char_key] = true
+            local sname = char.surface.name
 
-            local cpos = port_defs.get_character_port_pos(char.position, char.direction)
-            if cpos then
-                local new_pos_key = make_pos_key(char.surface.name, cpos.x, cpos.y)
-                local old_pos_key = storage.character_last_pos_key[char_key]
+            local positions = port_defs.get_character_influence_positions(char.position, char.direction)
+            if positions then
+                local new_keys = {}
+                for i = 1, #positions do
+                    local p = positions[i]
+                    local k = make_pos_key(sname, p.x, p.y)
+                    new_keys[k] = p
+                end
 
-                if new_pos_key ~= old_pos_key then
-                    -- 1. Evacuate old position: unblock preceding endpoint in flow_grid hash map
-                    local old_cpos = storage.character_last_cpos[char_key]
-                    local old_sname = storage.character_last_surface[char_key]
-                    if old_pos_key and old_cpos and old_sname then
-                        storage.character_colliders[old_pos_key] = nil
-                        wake_beam_pointing_at(old_sname, old_cpos, true, enqueue_port_fn, wake_port_fn)
-                    elseif old_pos_key then
-                        storage.character_colliders[old_pos_key] = nil
+                local old_keys = storage.character_last_keys[char_key] or {}
+
+                -- 1. Evacuate positions no longer in 1-node influence
+                for old_k, old_p in pairs(old_keys) do
+                    if not new_keys[old_k] then
+                        storage.character_colliders[old_k] = nil
+                        wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
                     end
+                end
 
-                    -- 2. Occupy new position: set collider and alert incoming beam nodes
-                    storage.character_colliders[new_pos_key] = char
-                    storage.character_last_pos_key[char_key] = new_pos_key
-                    storage.character_last_cpos[char_key] = { x = cpos.x, y = cpos.y }
-                    storage.character_last_surface[char_key] = char.surface.name
-
-                    local new_ports = storage.flow_grid and storage.flow_grid[new_pos_key]
-                    if new_ports then
-                        for pkey in pairs(new_ports) do
-                            local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
-                            if b_node and b_node.is_kinetic then
-                                enqueue_port_fn(pkey)
-                                wake_port_fn(pkey)
+                -- 2. Occupy newly entered positions
+                for new_k, new_p in pairs(new_keys) do
+                    storage.character_colliders[new_k] = char
+                    if not old_keys[new_k] then
+                        local ports = storage.flow_grid and storage.flow_grid[new_k]
+                        if ports then
+                            for pkey in pairs(ports) do
+                                local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
+                                if b_node and b_node.is_kinetic then
+                                    enqueue_port_fn(pkey)
+                                    wake_port_fn(pkey)
+                                end
                             end
                         end
+                        wake_beam_pointing_at(sname, new_p, false, enqueue_port_fn, wake_port_fn)
                     end
-                    wake_beam_pointing_at(char.surface.name, cpos, false, enqueue_port_fn, wake_port_fn)
                 end
+
+                storage.character_last_keys[char_key] = new_keys
+                storage.character_last_surface[char_key] = sname
             end
         end
     end
 
     -- 3. Cleanup disconnected or dead characters
-    for char_key, last_key in pairs(storage.character_last_pos_key) do
+    for char_key, old_keys in pairs(storage.character_last_keys) do
         if not active_chars[char_key] then
-            if last_key and storage.character_colliders then
-                storage.character_colliders[last_key] = nil
-                local old_cpos = storage.character_last_cpos and storage.character_last_cpos[char_key]
-                local old_sname = storage.character_last_surface and storage.character_last_surface[char_key]
-                if old_cpos and old_sname then
-                    wake_beam_pointing_at(old_sname, old_cpos, true, enqueue_port_fn, wake_port_fn)
+            local sname = storage.character_last_surface and storage.character_last_surface[char_key]
+            if old_keys and sname then
+                for old_k, old_p in pairs(old_keys) do
+                    storage.character_colliders[old_k] = nil
+                    wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
                 end
             end
-            storage.character_last_pos_key[char_key] = nil
-            if storage.character_last_cpos then storage.character_last_cpos[char_key] = nil end
+            storage.character_last_keys[char_key] = nil
             if storage.character_last_surface then storage.character_last_surface[char_key] = nil end
         end
     end

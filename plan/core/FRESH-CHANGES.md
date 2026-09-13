@@ -215,3 +215,11 @@
 2. **Alt-Mode Character Dot Overlay (`scripts/flow/flow-renderer.lua`):** Added `update_character_renders` and `destroy_character_renders` to render a 0.12r magenta dot at the character's grid-aligned port position, leveraging in-place C++ `current.target` mutation to eliminate garbage collection overhead.
 3. **Kinetic Grid Port Collider & Hash-Map Wakeups (`scripts/flow/flow-kinetic.lua`):** Added an $O(1)$ spatial check to `check_tile_obstruction` and implemented `step_character_colliders` with a 4-cardinal `wake_beam_pointing_at` neighbor lookup in `storage.flow_grid`, intercepting incoming beams upon entering a tile and unblocking preceding endpoints (`d_start - 1`) upon evacuation without ray-box scans.
 4. **Step Loop & Lifecycle Wiring (`scripts/flow/flow-engine.lua`):** Initialized character collider and position tracking tables in `init_storage`, wired collider transitions and overlay updates into `flow_engine.step` prior to queue sleep checks, and exported public facade aliases.
+
+
+### Revision: Expand Player Kinetic Port Footprint to 1-Node Influence Radius
+**Date:** 2026-09-13 12:35 EDT
+**Context:** Resolved repetitive beam unblocking and micro-wake chatter caused by single-tile character collider transitions and axis-snapping jitter during player motion along kinetic beam corridors.
+**Key Changes:**
+1. **1-Node Multi-Axis Influence Footprint (`scripts/flow/port-defs.lua`):** Implemented `get_character_influence_positions` to generate a 1-node radius neighborhood spanning both primary and secondary grid alignments, and widened the `get_character_port_pos` directional deadband to 0.15 to prevent diagonal axis oscillation while walking.
+2. **Delta Influence Set Management (`scripts/flow/flow-kinetic.lua`):** Refactored `step_character_colliders` to track active influence keys (`storage.character_last_keys`), maintaining continuous collider coverage across overlapping tiles during movement and restricting wakeups strictly to nodes that completely exit the 1-node footprint.

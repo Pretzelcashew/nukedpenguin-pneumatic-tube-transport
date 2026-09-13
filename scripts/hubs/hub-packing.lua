@@ -8,6 +8,7 @@ local cargo_planner = require("scripts.hubs.packing.cargo-planner")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local hub_settings = require("scripts.hubs.hub-settings")
 local item_transfer_handler = require("scripts.utils.item-transfer-handler")
+local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 
 local hub_packing = {}
 
@@ -328,11 +329,13 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    -- 2. Insert Cargo Extractions SECOND into dest_inv, track dominant payload item name & quality
+    -- 2. Insert Cargo Extractions SECOND into dest_inv or virtual cargo, track dominant payload item name & quality
     local dominant_cargo_item = nil
     local dominant_cargo_quality = "normal"
     local max_cargo_count = 0
     local cargo_counts = {}
+    local use_virtual_cargo = (capsule_def.spoilage_modifier and capsule_def.spoilage_modifier < 1.0) == true
+    local virtual_cargo = use_virtual_cargo and {} or nil
 
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
@@ -353,7 +356,22 @@ function hub_packing.evaluate_inventory(entity)
                 dominant_cargo_quality = item_q_name
             end
 
-            item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
+            if use_virtual_cargo then
+                local spec = item_transfer_handler.build_stack_spec(stack, amount_to_transfer)
+                local proto = stack.prototype
+                spec.quality = item_q_name
+                spec.base_spoil_ticks = (proto and proto.get_spoil_ticks and proto.get_spoil_ticks()) or 0
+                spec.is_unit = capsule_defs.is_unit_spoilable(stack)
+                spec.spoil_result = proto and proto.spoil_result and proto.spoil_result.name
+                if stack.count > amount_to_transfer then
+                    stack.count = stack.count - amount_to_transfer
+                else
+                    stack.clear()
+                end
+                table.insert(virtual_cargo, spec)
+            else
+                item_transfer_handler.transfer_stack(stack, dest_inv, max_search, amount_to_transfer)
+            end
         end
     end
 
@@ -379,8 +397,16 @@ function hub_packing.evaluate_inventory(entity)
     end
 
     local is_stable = capsule_defs.is_stable_capsule(capsule_def, has_spoilable_items, passenger)
-    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, dominant_payload_quality, has_spoilable_items, allocated_is_wide, is_stable)
+    local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, dominant_payload_quality, has_spoilable_items, allocated_is_wide, is_stable, virtual_cargo)
     if capsule_id then
+        local cap_data = capsule_manager.get(capsule_id)
+        if cap_data and virtual_cargo then
+            cap_data.refrigeration = {
+                pack_tick = game.tick,
+                last_update_tick = game.tick
+            }
+            cap_data.next_spoil_tick = capsule_lifecycle.calculate_virtual_dilated_recheck(cap_data, game.tick)
+        end
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then
             capsule_runner.remove_capsule(capsule_id)

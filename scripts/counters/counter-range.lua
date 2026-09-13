@@ -184,7 +184,7 @@ function counter_range.add_capsule_to_counter(counter_unit, cap_id)
     c_caps[cap_id] = true
 
     local sig_data, is_stable = capsule_manager.get_signal_data(cap_id)
-    if is_stable and sig_data then
+    if sig_data then
         storage.counter_stable_capsules = storage.counter_stable_capsules or {}
         local s_caps = storage.counter_stable_capsules[counter_unit]
         if not s_caps then
@@ -200,7 +200,9 @@ function counter_range.add_capsule_to_counter(counter_unit, cap_id)
             storage.counter_stable_summary[counter_unit] = summary
         end
         add_capsule_to_summary(summary, sig_data)
-    else
+    end
+
+    if not is_stable then
         storage.counter_dynamic_capsules = storage.counter_dynamic_capsules or {}
         local d_caps = storage.counter_dynamic_capsules[counter_unit]
         if not d_caps then
@@ -230,6 +232,40 @@ function counter_range.remove_capsule_from_counter(counter_unit, cap_id)
 
     if storage.counter_dynamic_capsules and storage.counter_dynamic_capsules[counter_unit] then
         storage.counter_dynamic_capsules[counter_unit][cap_id] = nil
+    end
+end
+
+--- Updates memoized signal tracking and counter summary when dynamic capsule cargo changes
+--- @param cap_id number
+--- @param old_sig_data table|nil
+--- @param new_sig_data table
+function counter_range.update_capsule_signals(cap_id, old_sig_data, new_sig_data)
+    if not (cap_id and new_sig_data) then return end
+    counter_range.init_storage()
+
+    local cap = storage.capsules and storage.capsules[cap_id]
+    local counter_unit = cap and cap.counter_owner
+    if not counter_unit and storage.counter_capsules then
+        for c_unit, caps in pairs(storage.counter_capsules) do
+            if caps[cap_id] then
+                counter_unit = c_unit
+                break
+            end
+        end
+    end
+
+    if not counter_unit then return end
+
+    if storage.counter_stable_capsules and storage.counter_stable_capsules[counter_unit] then
+        storage.counter_stable_capsules[counter_unit][cap_id] = new_sig_data
+    end
+
+    if storage.counter_stable_summary and storage.counter_stable_summary[counter_unit] then
+        local summary = storage.counter_stable_summary[counter_unit]
+        if old_sig_data then
+            subtract_capsule_from_summary(summary, old_sig_data)
+        end
+        add_capsule_to_summary(summary, new_sig_data)
     end
 end
 

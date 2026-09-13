@@ -94,6 +94,11 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
     -- Resolve fallback force from holder entity if not explicitly provided (e.g., mid-transit rupture)
     local effective_force = force or (holder and holder.valid and holder.force) or "player"
 
+    local final_virtual_cargo = nil
+    if capsule_data.virtual_cargo then
+        final_virtual_cargo = capsule_manager.collapse_virtual_cargo(capsule_data, game.tick, capsule_id)
+    end
+
     -- Explicitly false suppresses spilling entirely
     if raw_spill ~= false then
         local mode = "ground"
@@ -153,6 +158,24 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                                 end
                             end
 
+                            if final_virtual_cargo then
+                                for _, item in ipairs(final_virtual_cargo) do
+                                    if item.count and item.count > 0 then
+                                        local stack_spec = {
+                                            name = item.name,
+                                            count = item.count,
+                                            quality = item.quality or "normal",
+                                            spoil_percent = math.min(0.999, item.spoil_percent or 0)
+                                        }
+                                        local inserted = container_inv.insert(stack_spec)
+                                        if inserted < item.count then
+                                            stack_spec.count = item.count - inserted
+                                            item_transfer_handler.spill_stack(surface, safe_container_pos, stack_spec, mark_decon, effective_force)
+                                        end
+                                    end
+                                end
+                            end
+
                             if container_inv.is_empty() then
                                 container_entity.destroy{ raise_destroy = true }
                             else
@@ -172,6 +195,20 @@ function hub_spill.spill_capsule(capsule_id, surface, position, force, create_ex
                         if stack and stack.valid_for_read then
                             item_transfer_handler.spill_stack(surface, position, stack, mark_decon, effective_force)
                             stack.clear()
+                        end
+                    end
+
+                    if final_virtual_cargo then
+                        for _, item in ipairs(final_virtual_cargo) do
+                            if item.count and item.count > 0 then
+                                local stack_spec = {
+                                    name = item.name,
+                                    count = item.count,
+                                    quality = item.quality or "normal",
+                                    spoil_percent = math.min(0.999, item.spoil_percent or 0)
+                                }
+                                item_transfer_handler.spill_stack(surface, position, stack_spec, mark_decon, effective_force)
+                            end
                         end
                     end
                 end

@@ -105,6 +105,42 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
         end
     end
 
+    if cap_data and cap_data.virtual_cargo then
+        local max_cargo_count = 0
+        local dominant_cargo_item = nil
+        local dominant_cargo_quality = "normal"
+        local still_has_spoilable = false
+
+        for _, item in ipairs(cap_data.virtual_cargo) do
+            if item.count and item.count > 0 then
+                if item.base_spoil_ticks and item.base_spoil_ticks > 0 and (item.spoil_percent or 0) < 1.0 then
+                    still_has_spoilable = true
+                end
+                if item.count > max_cargo_count then
+                    max_cargo_count = item.count
+                    dominant_cargo_item = item.name
+                    dominant_cargo_quality = (type(item.quality) == "string" and item.quality) or (item.quality and item.quality.name) or "normal"
+                end
+            end
+        end
+
+        local dominant_item = dominant_cargo_item or (cap_data.definition and cap_data.definition.name)
+
+        cap_data.dominant_item = dominant_item
+        cap_data.dominant_quality = dominant_cargo_quality
+
+        if storage.capsules and storage.capsules[capsule_id] then
+            storage.capsules[capsule_id].dominant_item = dominant_item
+            storage.capsules[capsule_id].dominant_quality = dominant_cargo_quality
+        end
+
+        if cap_data.has_spoilable_items and not still_has_spoilable then
+            cap_data.has_spoilable_items = false
+        end
+
+        return dominant_item
+    end
+
     if not (cap_data and cap_data.holder and cap_data.holder.valid) then
         return cap_data and cap_data.dominant_item
     end

@@ -26,9 +26,9 @@ local function clear_scratch()
     for k in pairs(scratch_filtered) do scratch_filtered[k] = nil end
 end
 
-local function can_insert_all(holder_inv, hub_inv, ignore_slot)
+local function can_insert_all(holder_inv, hub_inv, ignore_slot, virtual_cargo)
     if not (holder_inv and hub_inv) then return false end
-    if holder_inv.is_empty() then return true end
+    if holder_inv.is_empty() and (not virtual_cargo or #virtual_cargo == 0) then return true end
 
     local max_usable_slot = #hub_inv
     if hub_inv.supports_bar() then
@@ -60,6 +60,27 @@ local function can_insert_all(holder_inv, hub_inv, ignore_slot)
                     scratch_req_keys[num_req_keys] = key
                 end
                 scratch_req_counts[key] = scratch_req_counts[key] + stack.count
+            end
+        end
+    end
+
+    if virtual_cargo then
+        for _, item in ipairs(virtual_cargo) do
+            if item.count and item.count > 0 then
+                local q_name = item.quality or "normal"
+                local item_name = item.name
+                local key = (q_name == "normal") and item_name or (item_name .. "|" .. q_name)
+
+                if not scratch_req_counts[key] then
+                    scratch_req_counts[key] = 0
+                    scratch_req_names[key] = item_name
+                    scratch_req_qualities[key] = q_name
+                    local proto = prototypes.item[item_name]
+                    scratch_req_sizes[key] = (proto and proto.stack_size) or 50
+                    num_req_keys = num_req_keys + 1
+                    scratch_req_keys[num_req_keys] = key
+                end
+                scratch_req_counts[key] = scratch_req_counts[key] + item.count
             end
         end
     end
@@ -181,12 +202,17 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
     local hub_inv = hub_entity.get_inventory(defines.inventory.chest)
 
     if not holder_inv or not hub_inv then return false end
-    if holder_inv.is_empty() then return true end
+    if holder_inv.is_empty() and not phys_capsule.virtual_cargo then return true end
 
     local hub_unit = hub_entity.unit_number
     local cur_hub_count = hub_inv.get_item_count()
     local cur_hub_bar = hub_inv.supports_bar() and hub_inv.get_bar() or 0
     local cur_cap_count = holder_inv.get_item_count()
+    if phys_capsule.virtual_cargo then
+        for _, it in ipairs(phys_capsule.virtual_cargo) do
+            cur_cap_count = cur_cap_count + (it.count or 0)
+        end
+    end
 
     -- State Guard: Short-circuit if destination container space and capsule payload have not changed
     if capsule_tracker.last_failed_hub == hub_unit
@@ -198,7 +224,7 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
 
     local ignore_slot = (phys_capsule.definition and phys_capsule.definition.destroy_self) and phys_capsule.primary_slot or nil
 
-    if not can_insert_all(holder_inv, hub_inv, ignore_slot) then
+    if not can_insert_all(holder_inv, hub_inv, ignore_slot, phys_capsule.virtual_cargo) then
         capsule_tracker.last_failed_hub = hub_unit
         capsule_tracker.last_failed_hub_count = cur_hub_count
         capsule_tracker.last_failed_hub_bar = cur_hub_bar
@@ -216,6 +242,23 @@ function hub_unpacking.capture(capsule_tracker, hub_entity)
 
     if ignore_slot and holder_inv[ignore_slot] and holder_inv[ignore_slot].valid_for_read then
         holder_inv[ignore_slot].clear()
+    end
+
+    if phys_capsule.virtual_cargo then
+        local final_cargo = capsule_manager.collapse_virtual_cargo(phys_capsule, game.tick, capsule_tracker.id)
+        if final_cargo then
+            for _, item in ipairs(final_cargo) do
+                if item.count and item.count > 0 then
+                    hub_inv.insert({
+                        name = item.name,
+                        count = item.count,
+                        quality = item.quality or "normal",
+                        spoil_percent = math.min(0.999, item.spoil_percent or 0)
+                    })
+                end
+            end
+        end
+        phys_capsule.virtual_cargo = nil
     end
 
     item_transfer_handler.transfer_inventory(holder_inv, hub_inv, max_holder_slot, max_hub_slot)

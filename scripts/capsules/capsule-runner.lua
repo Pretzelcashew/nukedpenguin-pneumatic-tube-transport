@@ -725,6 +725,7 @@ function capsule_runner.handle_arrival(capsule, id)
 
     local hub_entity = storage.active_hubs and storage.active_hubs[node.unit_number]
     if hub_entity and hub_entity.valid and capsule.source_hub ~= node.unit_number then
+        capsule_lifecycle.finalize_refrigeration(capsule.capsule_id or id, game.tick)
         local unpacked = hub_unpacking.capture(capsule, hub_entity)
         if unpacked then
             capsule_runner.remove_capsule(id)

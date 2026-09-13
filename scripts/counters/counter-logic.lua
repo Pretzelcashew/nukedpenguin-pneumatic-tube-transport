@@ -56,11 +56,9 @@ function counter_logic.update_signals(counter_entity)
     end
 
     local stable_summary = counter_range.get_stable_summary(unit_number)
-    local dynamic_capsules = counter_range.get_dynamic_capsules(unit_number)
     local has_stable = stable_summary and (stable_summary.capsule_count or 0) > 0
-    local has_dynamic = dynamic_capsules and next(dynamic_capsules) ~= nil
 
-    if not has_stable and not has_dynamic then
+    if not has_stable then
         apply_filters_to_proxy(main_proxy, {})
         apply_filters_to_proxy(red_proxy, {})
         apply_filters_to_proxy(green_proxy, {})
@@ -113,7 +111,7 @@ function counter_logic.update_signals(counter_entity)
         end
     end
 
-    if has_dynamic then
+    if false then
         for cap_id in pairs(dynamic_capsules) do
         local cap = storage.capsules and storage.capsules[cap_id]
         if cap then

@@ -90,16 +90,17 @@ end
 
 --- Evaluates whether a capsule definition represents a dynamic capsule shell whose state can change in transit
 --- @param def_or_name string|table|nil
+--- @param has_spoilable_items boolean|nil
 --- @return boolean
-function capsule_definitions.is_dynamic_capsule(def_or_name)
+function capsule_definitions.is_dynamic_capsule(def_or_name, has_spoilable_items)
     if not def_or_name then return false end
     local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
     if not def then return false end
-    -- Refrigerated capsules actively consume cooling charges in transit and convert into spent hulls.
-    -- Player transit capsules carry a live passenger who can embark, disembark, or eject.
-    -- Vacuum capsules change state at hubs rather than dynamically in transit.
-    if def.name == "refrigerated-capsule" or def.is_player_transit then
+    if def.is_player_transit then
         return true
+    end
+    if def.name == "refrigerated-capsule" then
+        return has_spoilable_items == true
     end
     return false
 end
@@ -113,7 +114,8 @@ end
 function capsule_definitions.is_stable_capsule(def_or_name, has_spoilable_items, passenger)
     if passenger ~= nil then return false end
     if has_spoilable_items == true then return false end
-    if capsule_definitions.is_dynamic_capsule(def_or_name) then return false end
+    local def = type(def_or_name) == "table" and def_or_name or capsule_definitions.types[def_or_name]
+    if def and def.is_player_transit then return false end
     return true
 end
 

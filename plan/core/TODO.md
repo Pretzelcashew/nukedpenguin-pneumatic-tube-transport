@@ -96,3 +96,8 @@ improve liminal holder dynamic cargo handling to mark the next item to be spoile
 improve refrigerated capsule handling liminal scanning to use the volatile cargo timed sort recheck to intercept them before they would spoil and apply the modified spoil times, and deduct from the refrigerated capsule.
 
 if the refrigerated capsule (as a primary capsule) doesnt have any spoiling cargo, it is considered a stable capsule in the eyes of the capsule counter.
+
+
+
+use the same latent volatile/dynamic cargo checker to monitor unit spawning type spoilables (biter egg/pentapod egg), or better, turn it into virtual cargo so we dont have to guess what capsule the units belong to, and thus removing the separate moat grid that was designed to deal with them. So in essence, we only virtualize cargo that is spoilable inside a refrigerated capsule, or when it is a spoilable producing units in any capsule. so potentially any capsule could just about be qualified for virtual cargo because of this, but doesnt have to virtualize all unnecessary cargo
+

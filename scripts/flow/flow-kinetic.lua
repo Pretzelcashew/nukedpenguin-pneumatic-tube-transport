@@ -1,6 +1,7 @@
 local flow_common = require("scripts.flow.flow-common")
 local flow_renderer = require("scripts.flow.flow-renderer")
 local projector_settings = require("scripts.projectors.projector-settings")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 
 local flow_kinetic = {}
 
@@ -59,6 +60,105 @@ local make_pos_key = flow_common.make_pos_key
 local make_port_key = flow_common.make_port_key
 local enqueue_port = flow_common.enqueue_port
 local wake_port_parked = flow_common.wake_port_parked
+
+function flow_kinetic.register_segment_in_bvh(surface, owner_unit, dir, d_start, d_end, seg_idx, mx, my)
+    if not (surface and surface.valid and dir) then return end
+    local seg_key = string.format("%d,%d:%d", dir.x, dir.y, seg_idx)
+    local start_pos = { x = mx + dir.x * d_start, y = my + dir.y * d_start }
+    local end_pos = { x = mx + dir.x * d_end, y = my + dir.y * d_end }
+    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+    if tree then
+        tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, d_start, d_end, seg_idx)
+        trajectory_bvh.refresh_active_renders()
+    end
+end
+
+function flow_kinetic.register_endpoint_in_bvh(node)
+    local surface = game.surfaces[node.surface_name]
+    if not (surface and surface.valid and node.dir and node.dist) then return end
+    local owner_unit = node.beam_owner or node.unit_number
+    local start_pos = {
+        x = node.pos.x - node.dir.x * node.dist,
+        y = node.pos.y - node.dir.y * node.dist
+    }
+    local cur_dist = node.dist or 0
+    local last_boundary = math.floor(cur_dist / 16) * 16
+    local mx = node.pos.x - node.dir.x * cur_dist
+    local my = node.pos.y - node.dir.y * cur_dist
+
+    if cur_dist > last_boundary then
+        local seg_idx = math.floor(cur_dist / 16) + 1
+        local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
+        local start_pos = { x = mx + node.dir.x * last_boundary, y = my + node.dir.y * last_boundary }
+        local end_pos = { x = node.pos.x, y = node.pos.y }
+        local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+        if tree then
+            tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
+            trajectory_bvh.refresh_active_renders()
+        end
+    else
+        trajectory_bvh.refresh_active_renders()
+    end
+end
+
+function flow_kinetic.unregister_trajectory_in_bvh(owner_unit, surface_name, force)
+    if not owner_unit then return end
+    if not force and storage.projector_flights and storage.projector_flights[owner_unit] and #storage.projector_flights[owner_unit] > 0 then
+        storage.pending_bvh_removals = storage.pending_bvh_removals or {}
+        storage.pending_bvh_removals[owner_unit] = surface_name or true
+        return
+    end
+
+    if surface_name then
+        local surface = game.surfaces[surface_name]
+        if surface and surface.valid and storage.surface_bvh then
+            local tree = storage.surface_bvh[surface.index]
+            if tree then
+                trajectory_bvh.attach(tree)
+                tree:remove_trajectory(owner_unit)
+            end
+        end
+    elseif storage.surface_bvh then
+        for _, tree in pairs(storage.surface_bvh) do
+            trajectory_bvh.attach(tree)
+            tree:remove_trajectory(owner_unit)
+        end
+    end
+    trajectory_bvh.refresh_active_renders()
+end
+
+function flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+    if not (node and node.dist and node.dir) then return end
+    local cur_dist = node.dist
+    if cur_dist % 16 ~= 0 then
+        local seg_idx = math.floor(cur_dist / 16) + 1
+        local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
+        local surface = game.surfaces[node.surface_name]
+        if surface and surface.valid and storage.surface_bvh then
+            local tree = storage.surface_bvh[surface.index]
+            if tree then
+                trajectory_bvh.attach(tree)
+                tree:remove_segment(node.beam_owner or node.unit_number, seg_key)
+                trajectory_bvh.refresh_active_renders()
+            end
+        end
+    end
+end
+
+function flow_kinetic.unregister_segment_in_bvh(node)
+    if not (node and node.dist and node.dist % 16 == 0 and node.dir) then return end
+    local seg_idx = node.dist / 16
+    local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
+    local surface = game.surfaces[node.surface_name]
+    if surface and surface.valid and storage.surface_bvh then
+        local tree = storage.surface_bvh[surface.index]
+        if tree then
+            trajectory_bvh.attach(tree)
+            tree:remove_segment(node.beam_owner or node.unit_number, seg_key)
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
+end
 
 function flow_kinetic.get_node_kinetic_emitter(node)
     if not node or not node.kinetic_transmit or not node.is_muzzle then return 0 end
@@ -200,6 +300,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 node.is_beam_node = true
                 node.capsule_transmit = true
                 node.hit_receiver = nil
+                flow_kinetic.register_endpoint_in_bvh(node)
                 flow_renderer.update_kinetic_pos_render(pkey)
                 wake_port_fn(pkey)
             elseif target_kinetic > 1 and node.dir then
@@ -214,6 +315,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     node.is_beam_node = true
                     node.capsule_transmit = true
                     node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
+                    flow_kinetic.register_endpoint_in_bvh(node)
                     flow_renderer.update_kinetic_pos_render(pkey)
                     wake_port_fn(pkey)
 
@@ -278,6 +380,13 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
 
                     flow_renderer.update_kinetic_pos_render(pkey)
 
+                    if next_dist % 16 == 0 then
+                        local owner_u = node.beam_owner or node.unit_number
+                        local mx = nx - node.dir.x * next_dist
+                        local my = ny - node.dir.y * next_dist
+                        flow_kinetic.register_segment_in_bvh(surface, owner_u, node.dir, next_dist - 16, next_dist, next_dist / 16, mx, my)
+                    end
+
                     if is_prom then
                         local owner_unit = node.beam_owner or node.unit_number
                         local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[owner_unit]
@@ -292,6 +401,9 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
         else
             local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
             if node.is_endpoint or (node.is_prominent_kinetic ~= node_is_prom) then
+                if node.is_endpoint then
+                    flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+                end
                 node.is_endpoint = false
                 node.hit_receiver = nil
                 node.is_prominent_kinetic = node_is_prom
@@ -308,6 +420,12 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
             flow_renderer.destroy_kinetic_pos_render(pkey)
 
             if not node.is_muzzle then
+                if node.is_endpoint then
+                    flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+                end
+                if node.dist and node.dist % 16 == 0 then
+                    flow_kinetic.unregister_segment_in_bvh(node)
+                end
                 flow_common.destroy_node(pkey)
             else
                 local neighbors = storage.flow_connections and storage.flow_connections[pkey]
@@ -445,6 +563,7 @@ end
 
 function flow_kinetic.handle_projector_destroyed(unit_number)
     if not unit_number then return end
+    flow_kinetic.unregister_trajectory_in_bvh(unit_number)
 
     for pkey, node in pairs(storage.flow_nodes or {}) do
         if node and node.beam_owner == unit_number and not node.is_muzzle then

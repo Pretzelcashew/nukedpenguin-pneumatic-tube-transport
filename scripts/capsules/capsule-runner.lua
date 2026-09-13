@@ -232,6 +232,9 @@ function capsule_runner.remove_capsule(capsule_id)
     local capsule = storage.capsules and storage.capsules[capsule_id]
     if capsule then
         mark_capsule_unparked(capsule)
+        if storage.kinetic_arrival_heap then
+            storage.kinetic_arrival_heap:remove(capsule_id)
+        end
     end
     local target_key = capsule and capsule.from_port_key
     capsule_queries.remove_capsule(capsule_id)
@@ -580,6 +583,8 @@ function capsule_runner.select_next_target(capsule)
     local launch_result = capsule_ballistics.try_projector_launch(capsule, unit_number, capsule_runner)
     if launch_result == "docked" then
         return nil
+    elseif launch_result == "timed_launched" then
+        return "timed_launched"
     elseif launch_result then
         return launch_result
     end
@@ -895,8 +900,13 @@ function capsule_runner.update_capsules(current_tick)
     capsule_renderer.prepare_frame()
     capsule_transit.prepare_player_targets()
     capsule_lifecycle.step_spoil_heap(current_tick)
+    if capsule_ballistics.USE_TIMED_ARRIVAL then
+        capsule_ballistics.step_timed_arrivals(current_tick, capsule_runner)
+        capsule_renderer.update_timed_capsules(current_tick)
+    end
 
     for id, capsule in pairs(storage.capsules) do
+        if not capsule.in_timed_flight then
         local from_key = capsule.from_port_key
         local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
         local bf = capsule.beam_flight
@@ -942,6 +952,8 @@ function capsule_runner.update_capsules(current_tick)
                         capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
                         capsule.last_port_key = nil
                         mark_capsule_parked(capsule)
+                        break
+                    elseif next_port_key == "timed_launched" then
                         break
                     end
 
@@ -999,6 +1011,7 @@ function capsule_runner.update_capsules(current_tick)
                 end
             end
         end
+        end -- if not capsule.in_timed_flight
     end
 end
 

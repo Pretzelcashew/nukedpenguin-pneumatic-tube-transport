@@ -601,6 +601,7 @@ local function handle_entity_reorientation(entity)
         end
 
         flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
+        flow_kinetic.unregister_trajectory_in_bvh(u_num, entity.surface.name)
 
         if storage.flow_unit_ports and storage.flow_unit_ports[u_num] then
             flow_engine.disconnect_entity(entity)
@@ -869,9 +870,10 @@ function flow_engine.handle_object_destroyed(unit_number)
     local runner_ids = capsule_queries.find_capsules_at_entity(unit_number)
     for _, id in ipairs(runner_ids) do
         local cap = storage.capsules and storage.capsules[id]
-        local capsule_id = cap and (cap.capsule_id or cap.id) or id
+        if not (cap and (cap.in_timed_flight or cap.beam_flight)) then
+            local capsule_id = cap and (cap.capsule_id or cap.id) or id
 
-        if storage.parked_by_port and cap then
+            if storage.parked_by_port and cap then
             if cap.parked_at_port then
                 local bucket = storage.parked_by_port[cap.parked_at_port]
                 if bucket then
@@ -883,8 +885,9 @@ function flow_engine.handle_object_destroyed(unit_number)
             end
         end
 
-        capsule_queries.remove_capsule(capsule_id)
-        capsule_manager.remove(capsule_id)
+            capsule_queries.remove_capsule(capsule_id)
+            capsule_manager.remove(capsule_id)
+        end
     end
 
     flow_engine.enqueue_unit_ports(unit_number)
@@ -1038,6 +1041,7 @@ function flow_engine.register_events()
                 local u_num = entity.unit_number
                 if u_num and (entity.name == "pneumatic-projector" or (storage.active_projectors and storage.active_projectors[u_num])) then
                     flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
+                    flow_kinetic.handle_projector_destroyed(u_num)
                 end
 
                 flow_engine.disconnect_entity(entity)

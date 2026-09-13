@@ -3,6 +3,7 @@ local events = require("scripts.events")
 local profiler = require("scripts.utils.profiler")
 local binary_heap = require("scripts.utils.binary-heap")
 local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 
 local debug_manager = {}
 debug_manager.binary_heap = binary_heap
@@ -32,6 +33,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].counter_range == nil then
             storage.debug[player_index].counter_range = true
+        end
+        if storage.debug[player_index].bvh == nil then
+            storage.debug[player_index].bvh = false
         end
         if storage.debug[player_index].profiler == nil or storage.debug[player_index].profiler == true then
             storage.debug[player_index].profiler = false
@@ -597,6 +601,7 @@ local function clear_and_reconstruct_renders(player_index)
     if not (player and player.valid) then return end
 
     flow_engine.clear_all_renders(player_index)
+    trajectory_bvh.clear_renders(player_index)
 
     if is_debug_active("new_flow", player_index) then
         flow_engine.draw_flow(player_index)
@@ -604,8 +609,28 @@ local function clear_and_reconstruct_renders(player_index)
     if is_debug_active("counter_range", player_index) then
         flow_engine.draw_all_counters(player_index)
     end
+    if is_debug_active("bvh", player_index) then
+        trajectory_bvh.draw_for_player(player_index)
+    end
 
     player.print("[Debug] Overlays cleared and reconstructed.")
+end
+
+local function toggle_bvh(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.bvh = not dbg.bvh
+
+    if dbg.master and dbg.bvh then
+        trajectory_bvh.draw_for_player(player_index)
+    else
+        trajectory_bvh.clear_renders(player_index)
+    end
+
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] Trajectory BVH Overlay: " .. (dbg.bvh and "[ENABLED]" or "[DISABLED]"))
 end
 
 commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
@@ -641,6 +666,20 @@ end)
 commands.add_command("test-heap", "Run self-tests on the reusable binary heap priority queue (Alias)", function(cmd)
     local player = cmd.player_index and game.get_player(cmd.player_index)
     binary_heap.run_tests(player)
+end)
+commands.add_command("pt-test-bvh", "Run self-tests on the Trajectory BVH spatial tree", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    trajectory_bvh.run_tests(player)
+end)
+commands.add_command("test-bvh", "Run self-tests on the Trajectory BVH spatial tree (Alias)", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    trajectory_bvh.run_tests(player)
+end)
+commands.add_command("toggle-bvh", "Toggle Trajectory BVH partition bounding box overlays", function(cmd)
+    if cmd.player_index then toggle_bvh(cmd.player_index) end
+end)
+commands.add_command("pt-toggle-bvh", "Toggle Trajectory BVH partition bounding box overlays (Alias)", function(cmd)
+    if cmd.player_index then toggle_bvh(cmd.player_index) end
 end)
 
 local function print_spoil_heap_status(player_index)

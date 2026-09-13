@@ -1,6 +1,7 @@
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -9,6 +10,8 @@ local capsule_renderer = {}
 local last_prepared_tick = -1
 local active_debug_players = {}
 local active_debug_count = 0
+local active_viewports = {}
+local active_viewport_count = 0
 
 local scratch_debug_players = {}
 local scratch_debug_keys = {}
@@ -41,10 +44,40 @@ function capsule_renderer.prepare_frame()
     last_prepared_tick = current_tick
 
     active_debug_count = 0
+    active_viewport_count = 0
 
     local players = game.players
     for _, player in pairs(players) do
         if player and player.valid then
+            local p_surf = player.surface
+            local p_pos = player.position
+            if p_surf and p_surf.valid and p_pos and (player.connected ~= false) then
+                local res = player.display_resolution
+                local w = (res and res.width) or 1920
+                local h = (res and res.height) or 1080
+                local zoom = player.zoom or 1.0
+                if zoom <= 0 then zoom = 1.0 end
+                local scale = player.display_scale or 1.0
+                if scale <= 0 then scale = 1.0 end
+
+                local tile_w = (w / scale) / (32 * zoom)
+                local tile_h = (h / scale) / (32 * zoom)
+                local half_w = math.min(150, (tile_w * 0.5) + 12)
+                local half_h = math.min(150, (tile_h * 0.5) + 12)
+
+                active_viewport_count = active_viewport_count + 1
+                local vp = active_viewports[active_viewport_count]
+                if not vp then
+                    vp = {}
+                    active_viewports[active_viewport_count] = vp
+                end
+                vp.surface_name = p_surf.name
+                vp.left = p_pos.x - half_w
+                vp.right = p_pos.x + half_w
+                vp.top = p_pos.y - half_h
+                vp.bottom = p_pos.y + half_h
+            end
+
             local p_idx = player.index
             local view_settings = player.game_view_settings
             local alt_mode = view_settings and view_settings.show_entity_info
@@ -80,9 +113,12 @@ function capsule_renderer.prepare_frame()
         end
     end
 
-    -- Clear trailing references in pre-allocated array
+    -- Clear trailing references in pre-allocated arrays
     for i = active_debug_count + 1, #active_debug_players do
         active_debug_players[i] = nil
+    end
+    for i = active_viewport_count + 1, #active_viewports do
+        active_viewports[i] = nil
     end
 end
 
@@ -464,6 +500,134 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
             ring_color = ring_color,
             target_offsets = nil
         }
+    end
+end
+
+--------------------------------------------------------------------------------
+-- VIEWPORT INTERPOLATION & TIMED ARRIVAL RENDERING
+--------------------------------------------------------------------------------
+function capsule_renderer.is_in_any_viewport(surface_name, x, y)
+    if active_viewport_count == 0 or not surface_name or not x or not y then
+        return false
+    end
+    for i = 1, active_viewport_count do
+        local vp = active_viewports[i]
+        if vp.surface_name == surface_name then
+            if x >= vp.left and x <= vp.right and y >= vp.top and y <= vp.bottom then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function capsule_renderer.get_interpolated_position(bf, current_tick)
+    local start_tick = bf.start_tick or current_tick
+    local arrival_tick = bf.arrival_tick or (start_tick + 6)
+    local total_ticks = arrival_tick - start_tick
+    if total_ticks <= 0 then total_ticks = 1 end
+
+    local progress = (current_tick - start_tick) / total_ticks
+    if progress < 0 then progress = 0 end
+    if progress > 1 then progress = 1 end
+
+    local start_pos = bf.start_pos or bf.terminal_pos
+    local term_pos = bf.terminal_pos or start_pos
+
+    local cur_x = start_pos.x + (term_pos.x - start_pos.x) * progress
+    local cur_y = start_pos.y + (term_pos.y - start_pos.y) * progress
+
+    return { x = cur_x, y = cur_y }, progress
+end
+
+function capsule_renderer.render_timed_kinetic_capsule(capsule, id, current_tick)
+    local bf = capsule.beam_flight
+    if not bf then return end
+
+    local surface_name = bf.surface_name or capsule.surface_name or "nauvis"
+    local surface = game.surfaces[surface_name]
+    if not (surface and surface.valid) then return end
+
+    local curr_pos, progress = capsule_renderer.get_interpolated_position(bf, current_tick)
+    capsule.last_pos = curr_pos
+    capsule.surface_name = surface_name
+
+    local passenger = capsule.passenger
+    local passenger_valid = passenger and passenger.valid
+    if passenger_valid then
+        passenger.teleport(curr_pos, surface)
+    end
+
+    local is_visible = passenger_valid or capsule_renderer.is_in_any_viewport(surface_name, curr_pos.x, curr_pos.y)
+
+    if is_visible then
+        if current_tick % 3 == 0 then
+            pcall(function()
+                surface.create_entity{
+                    name = "spark-explosion",
+                    position = curr_pos
+                }
+            end)
+        end
+        capsule_renderer.render(capsule, id, curr_pos, surface)
+    else
+        if capsule.render_id then
+            capsule_queries.clear_capsule_render(capsule)
+        end
+    end
+end
+
+local scratch_visible_capsules = {}
+local previous_rendering_capsules = {}
+
+function capsule_renderer.update_timed_capsules(current_tick)
+    if not storage.projector_flights or next(storage.projector_flights) == nil then
+        if next(previous_rendering_capsules) ~= nil then
+            for cap_id in pairs(previous_rendering_capsules) do
+                local cap = storage.capsules and storage.capsules[cap_id]
+                if cap and cap.render_id then
+                    capsule_queries.clear_capsule_render(cap)
+                end
+                previous_rendering_capsules[cap_id] = nil
+            end
+        end
+        return
+    end
+
+    for k in pairs(scratch_visible_capsules) do
+        scratch_visible_capsules[k] = nil
+    end
+
+    if active_viewport_count > 0 and storage.surface_bvh then
+        for i = 1, active_viewport_count do
+            local vp = active_viewports[i]
+            local surf = vp.surface_name and game.surfaces[vp.surface_name]
+            if surf and surf.valid then
+                local tree = storage.surface_bvh[surf.index]
+                if tree and tree.root then
+                    trajectory_bvh.attach(tree)
+                    tree:query_visible_flights(vp.left, vp.top, vp.right, vp.bottom, storage.projector_flights, current_tick, scratch_visible_capsules)
+                end
+            end
+        end
+    end
+
+    for cap_id in pairs(scratch_visible_capsules) do
+        local capsule = storage.capsules and storage.capsules[cap_id]
+        if capsule and capsule.in_timed_flight and capsule.beam_flight then
+            capsule_renderer.render_timed_kinetic_capsule(capsule, cap_id, current_tick)
+            previous_rendering_capsules[cap_id] = true
+        end
+    end
+
+    for cap_id in pairs(previous_rendering_capsules) do
+        if not scratch_visible_capsules[cap_id] then
+            local cap = storage.capsules and storage.capsules[cap_id]
+            if cap and cap.render_id then
+                capsule_queries.clear_capsule_render(cap)
+            end
+            previous_rendering_capsules[cap_id] = nil
+        end
     end
 end
 

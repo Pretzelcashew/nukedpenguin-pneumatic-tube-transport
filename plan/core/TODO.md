@@ -100,14 +100,22 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~also verify that all spoilable cargo in liminal capsules now utilizes the latent timer checker rather than periodic rechecks, so we can change the state of the capsule, such as dominant cargo for re-renders, or notifying capsule counters. this is a goal to eliminate frequent rechecks of all dynamic cargo in liminal item holders
 
+~introduce binary heap, and the heap itself has a sliding allocation so popping is a virtual line within it, (may need a paired hash map or be a hash map itself), this way it doesnt need to reallocate over and over as the items in it grow and shrink
+
+    the purpose, a reusable fast heap sort, which can be made multiples of for different systems in my mod. 
+
+    Example 1: my new virtual cargo spoil timer system could greatly benefit from this, we just keep track of the single most spoiled item in the game, and we only keep a timer going for that one, and heap insert new entries, and as the lowest spoil timer spoils we check the next one, quick exit if the next one still has time left.
+
+    Example 2: i havent implemented it yet, but the binary heap i described will be critical, when i migrate my capsule travel to arrive on time rather than iterating every capsule periodically. we just arrive them as needed with the binary heap sort. (but will implement a viewport culled capsule interpolation rendering to hide that they are teleporting, also critical for example 2 to work, but first we just need to prove the heap works for example 1 first)
+
+    let's make the heap i described, and have some automated printouts in the game console to test that it works when we're done before we use it for my virtual cargo spoil system
+
 --------------------------------------------
 
-introduce binary heap, and the heap itself has a sliding allocation so popping is a virtual line within it, (may need a paired hash map or be a hash map itself), this way it doesnt need to reallocate over and over as the items in it grow and shrink
+my plan is to add an arrival time for capsules, this means that they will essentially teleport to their target endpoint or junction (whenever there is a branching path), after a time that they wouldve reached it with my current motion script (though, it could be actually distance based arrival time rather than hop based that is currently variable). 
 
-the purpose, a reusable fast heap sort, which can be made multiples of for different systems in my mod. 
+    i know its a big refactor, but i want to do it in small pieces, and i will start with the low hanging fruit, which is capsules on kinetic flows, which already feature a known endpoint. so we will only implement it for this part initially, and i want an easy bool in the top of the script for it to switch back to the normal kinetic motion if i dont like it. you'll see why im saying that in a sec.
 
-Example 1: my new virtual cargo spoil timer system could greatly benefit from this, we just keep track of the single most spoiled item in the game, and we only keep a timer going for that one, and heap insert new entries, and as the lowest spoil timer spoils we check the next one, quick exit if the next one still has time left.
+    the success of this timed arrival is dependent on if i can also implement a reliable viewport based renderer to interpolate motion for only capsules that would be viewed by a player at that moment, to hide the fact that it is really being efficiently teleported behind the scenes.
 
-Example 2: i havent implemented it yet, but the binary heap i described will be critical, when i migrate my capsule travel to arrive on time rather than iterating every capsule periodically. we just arrive them as needed with the binary heap sort. (but will implement a viewport culled capsule interpolation rendering to hide that they are teleporting, also critical for example 2 to work, but first we just need to prove the heap works for example 1 first)
-
-let's make the heap i described, and have some automated printouts in the game console to test that it works when we're done before we use it for my virtual cargo spoil system
+    and the timed arrival will use the binary heap i just created too so its starting off with a leg up

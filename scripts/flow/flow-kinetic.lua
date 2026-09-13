@@ -89,23 +89,15 @@ function flow_kinetic.register_endpoint_in_bvh(node)
 
     local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
     if tree then
-        local owner_rec = tree.trajectories and tree.trajectories[owner_unit]
-        if owner_rec and owner_rec.segments then
-            for s_key, leaf in pairs(owner_rec.segments) do
-                if leaf.d_start >= cur_dist then
-                    tree:remove_segment(owner_unit, s_key)
-                end
-            end
-        end
 
         if cur_dist > last_boundary then
             local seg_idx = math.floor(cur_dist / 16) + 1
-            local seg_key = string.format("%d,%d:%d", node.dir.x, node.dir.y, seg_idx)
+            local seg_key = string.format("%d,%d:rem:%d", node.dir.x, node.dir.y, cur_dist)
             local start_pos = { x = mx + node.dir.x * last_boundary, y = my + node.dir.y * last_boundary }
             local end_pos = { x = node.pos.x, y = node.pos.y }
             tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
+            trajectory_bvh.refresh_active_renders()
         end
-        trajectory_bvh.refresh_active_renders()
     end
 end
 
@@ -144,13 +136,34 @@ function flow_kinetic.unregister_segment_in_bvh(node)
             local owner_u = node.beam_owner or node.unit_number
             local owner_rec = tree.trajectories and tree.trajectories[owner_u]
             if owner_rec and owner_rec.segments then
+                local to_remove = nil
+                local current_tick = game.tick
                 for seg_key, leaf in pairs(owner_rec.segments) do
                     if leaf.d_end == cur_dist then
-                        tree:remove_segment(owner_u, seg_key)
+                        local has_capsule, max_exit = trajectory_bvh.has_flight_in_leaf(leaf, storage.projector_flights, current_tick)
+                        if has_capsule then
+                            leaf.pending_removal = true
+                            leaf.removal_expiry_tick = max_exit
+                            storage.pending_bvh_segments = storage.pending_bvh_segments or {}
+                            storage.pending_bvh_segments[#storage.pending_bvh_segments + 1] = {
+                                surface_index = surface.index,
+                                owner_id = owner_u,
+                                seg_key = seg_key,
+                                leaf = leaf
+                            }
+                        else
+                            to_remove = to_remove or {}
+                            to_remove[#to_remove + 1] = seg_key
+                        end
                     end
                 end
+                if to_remove then
+                    for i = 1, #to_remove do
+                        tree:remove_segment(owner_u, to_remove[i])
+                    end
+                    trajectory_bvh.refresh_active_renders()
+                end
             end
-            trajectory_bvh.refresh_active_renders()
         end
     end
 end
@@ -344,6 +357,9 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                         end
                     end
                 else
+                    if node.is_endpoint then
+                        flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+                    end
                     local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
                     node.is_endpoint = false
                     node.hit_receiver = nil
@@ -527,6 +543,7 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                             local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                             if b_node then
                                 if is_removal and b_node.is_endpoint then
+                                    flow_kinetic.unregister_endpoint_remainder_in_bvh(b_node)
                                     b_node.is_endpoint = false
                                     b_node.hit_receiver = nil
                                     local is_prom = (not b_node.is_muzzle) and ((b_node.dist or 0) > 0) and ((b_node.dist or 0) % HOP_DISTANCE == 0)
@@ -597,6 +614,7 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
                 local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                 if b_node and b_node.is_kinetic and b_node.dir and b_node.dir.x == c.dx and b_node.dir.y == c.dy then
                     if is_evacuation and b_node.is_endpoint then
+                        flow_kinetic.unregister_endpoint_remainder_in_bvh(b_node)
                         b_node.is_endpoint = false
                         b_node.hit_receiver = nil
                         local is_prom = (not b_node.is_muzzle) and ((b_node.dist or 0) > 0) and ((b_node.dist or 0) % HOP_DISTANCE == 0)
@@ -685,6 +703,57 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
             storage.character_last_keys[char_key] = nil
             if storage.character_last_surface then storage.character_last_surface[char_key] = nil end
         end
+    end
+
+    flow_kinetic.step_pending_bvh_segments(game.tick)
+end
+
+function flow_kinetic.step_pending_bvh_segments(current_tick)
+    local pending = storage.pending_bvh_segments
+    if not pending or #pending == 0 then return end
+
+    local p_flights = storage.projector_flights
+    local write_idx = 1
+    local changed = false
+
+    for i = 1, #pending do
+        local item = pending[i]
+        local leaf = item.leaf
+        local tree = storage.surface_bvh and storage.surface_bvh[item.surface_index]
+
+        if not (leaf and tree and tree.trajectories and tree.trajectories[item.owner_id]) then
+            -- Leaf or trajectory was already removed
+        elseif leaf.pending_removal ~= true then
+            -- Segment was re-registered or re-activated by advancing beam
+        else
+            local owner_flights = p_flights and p_flights[item.owner_id]
+            local can_remove = false
+
+            if not (owner_flights and #owner_flights > 0) then
+                can_remove = true
+            elseif current_tick > (leaf.removal_expiry_tick or 0) then
+                can_remove = true
+            end
+
+            if can_remove then
+                trajectory_bvh.attach(tree)
+                tree:remove_segment(item.owner_id, item.seg_key)
+                changed = true
+            else
+                if write_idx ~= i then
+                    pending[write_idx] = item
+                end
+                write_idx = write_idx + 1
+            end
+        end
+    end
+
+    for i = write_idx, #pending do
+        pending[i] = nil
+    end
+
+    if changed then
+        trajectory_bvh.refresh_active_renders()
     end
 end
 

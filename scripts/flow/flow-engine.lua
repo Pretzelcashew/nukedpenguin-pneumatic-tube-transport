@@ -137,6 +137,7 @@ function flow_engine.init_storage()
     storage.projector_power_states = storage.projector_power_states or {}
     storage.projector_ready_states = storage.projector_ready_states or {}
     storage.projector_last_fired = storage.projector_last_fired or {}
+    storage.pending_bvh_segments = storage.pending_bvh_segments or {}
     if storage.flow_nodes then
         for pkey, node in pairs(storage.flow_nodes) do
             if node and node.is_kinetic and node.is_endpoint then

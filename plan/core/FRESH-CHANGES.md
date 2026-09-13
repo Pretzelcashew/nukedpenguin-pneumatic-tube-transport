@@ -223,3 +223,13 @@
 **Key Changes:**
 1. **1-Node Multi-Axis Influence Footprint (`scripts/flow/port-defs.lua`):** Implemented `get_character_influence_positions` to generate a 1-node radius neighborhood spanning both primary and secondary grid alignments, and widened the `get_character_port_pos` directional deadband to 0.15 to prevent diagonal axis oscillation while walking.
 2. **Delta Influence Set Management (`scripts/flow/flow-kinetic.lua`):** Refactored `step_character_colliders` to track active influence keys (`storage.character_last_keys`), maintaining continuous collider coverage across overlapping tiles during movement and restricting wakeups strictly to nodes that completely exit the 1-node footprint.
+
+
+### Revision: Defer Kinetic BVH Segment Unregistration for In-Flight Capsule Time Slices
+**Date:** 2026-09-13 13:03 EDT
+**Context:** Resolved viewport capsule rendering dropouts caused by building obstructions, character collisions, and beam recession waves abruptly purging BVH spatial segments while projectiles were still traversing their spatiotemporal intervals.
+**Key Changes:**
+1. **Temporal Flight Boundary Inspection (`scripts/utils/trajectory-bvh.lua`):** Implemented `trajectory_bvh.has_flight_in_leaf` to check if active projectile flights are traversing or approaching a leaf node's time slice window based on calculated departure ticks ($t_{\text{exit}} = t_{\text{start}} + \lceil d_{\text{end}} \times 1.2 \rceil$).
+2. **Deferred Segment Unregistration & Remainder Namespacing (`scripts/flow/flow-kinetic.lua`):** Purged premature forward segment truncation from `register_endpoint_in_bvh`, isolated remainder keys with `:rem:%d` so terminal bounds do not overwrite full 16-tile segments, deferred receding segment removals in `unregister_segment_in_bvh` when active flights remain, and added `step_pending_bvh_segments` for zero-allocation in-place queue compaction.
+3. **Launch Trajectory Re-insertion Guard & Arrival Cleanup (`scripts/capsules/capsule-ballistics.lua`):** Guarded batch trajectory insertion during projectile launch to avoid wiping active incremental or deferred BVH segments, and triggered immediate pending segment pruning upon flight arrival or collision in `remove_flight`.
+4. **Storage Schema Persistence (`scripts/flow/flow-engine.lua`):** Initialized `storage.pending_bvh_segments` in `flow_engine.init_storage` to guarantee persistent tracking across save and load cycles.

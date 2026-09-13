@@ -397,6 +397,32 @@ function trajectory_bvh.query_visible_flights(bvh, q_min_x, q_min_y, q_max_x, q_
     return out_capsules
 end
 
+--- Checks if a BVH leaf currently has active flights traversing or approaching its time slice.
+--- @param leaf table Leaf node in BVH
+--- @param active_flights table Map of [owner_id] = { flight1, ... }
+--- @param current_tick number
+--- @return boolean has_active_flight, number max_exit_tick
+function trajectory_bvh.has_flight_in_leaf(leaf, active_flights, current_tick)
+    if not (leaf and active_flights) then return false, 0 end
+    local proj_flights = active_flights[leaf.owner_id]
+    if not (proj_flights and #proj_flights > 0) then return false, 0 end
+
+    local max_exit = 0
+    local found = false
+    for f = 1, #proj_flights do
+        local flight = proj_flights[f]
+        local t_start = flight.start_tick or 0
+        local t_exit = t_start + math.ceil((leaf.d_end or 16) * TICKS_PER_TILE)
+        if current_tick <= t_exit then
+            found = true
+            if t_exit > max_exit then
+                max_exit = t_exit
+            end
+        end
+    end
+    return found, max_exit
+end
+
 --------------------------------------------------------------------------------
 -- STORAGE REGISTRY HELPER
 --------------------------------------------------------------------------------

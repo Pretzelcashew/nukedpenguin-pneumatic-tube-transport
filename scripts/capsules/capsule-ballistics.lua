@@ -170,7 +170,10 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
         if surface and surface.valid then
             local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
             if tree then
-                tree:insert_trajectory(beam_owner, muzzle_node.pos, terminal_pos)
+                local owner_rec = tree.trajectories and tree.trajectories[beam_owner]
+                if not (owner_rec and owner_rec.segments and next(owner_rec.segments)) then
+                    tree:insert_trajectory(beam_owner, muzzle_node.pos, terminal_pos)
+                end
             end
         end
     end
@@ -688,6 +691,7 @@ function capsule_ballistics.remove_flight(capsule_id, beam_owner)
             end
         end
     end
+    flow_kinetic.step_pending_bvh_segments(game.tick)
 end
 
 return capsule_ballistics

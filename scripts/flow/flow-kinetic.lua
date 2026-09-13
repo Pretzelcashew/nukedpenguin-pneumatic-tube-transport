@@ -69,6 +69,14 @@ function flow_kinetic.register_segment_in_bvh(surface, owner_unit, dir, d_start,
     local end_pos = { x = mx + dir.x * d_end, y = my + dir.y * d_end }
     local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
     if tree then
+        if storage.pending_bvh_segments then
+            for i = #storage.pending_bvh_segments, 1, -1 do
+                local item = storage.pending_bvh_segments[i]
+                if item.owner_id == owner_unit and item.seg_key == seg_key then
+                    table.remove(storage.pending_bvh_segments, i)
+                end
+            end
+        end
         tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, d_start, d_end, seg_idx)
         trajectory_bvh.refresh_active_renders()
     end
@@ -168,7 +176,26 @@ function flow_kinetic.unregister_segment_in_bvh(node)
     end
 end
 
-flow_kinetic.unregister_endpoint_remainder_in_bvh = flow_kinetic.unregister_segment_in_bvh
+function flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+    if not (node and node.dist and node.dir) then return end
+    local cur_dist = node.dist
+    local surface = game.surfaces[node.surface_name]
+    if surface and surface.valid and storage.surface_bvh then
+        local tree = storage.surface_bvh[surface.index]
+        if tree then
+            trajectory_bvh.attach(tree)
+            local owner_u = node.beam_owner or node.unit_number
+            local owner_rec = tree.trajectories and tree.trajectories[owner_u]
+            if owner_rec and owner_rec.segments then
+                local rem_key = string.format("%d,%d:rem:%d", node.dir.x, node.dir.y, cur_dist)
+                if owner_rec.segments[rem_key] then
+                    tree:remove_segment(owner_u, rem_key)
+                    trajectory_bvh.refresh_active_renders()
+                end
+            end
+        end
+    end
+end
 
 function flow_kinetic.get_node_kinetic_emitter(node)
     if not node or not node.kinetic_transmit or not node.is_muzzle then return 0 end
@@ -721,10 +748,15 @@ function flow_kinetic.step_pending_bvh_segments(current_tick)
         local leaf = item.leaf
         local tree = storage.surface_bvh and storage.surface_bvh[item.surface_index]
 
-        if not (leaf and tree and tree.trajectories and tree.trajectories[item.owner_id]) then
+        local owner_rec = tree and tree.trajectories and tree.trajectories[item.owner_id]
+        local current_leaf = owner_rec and owner_rec.segments and owner_rec.segments[item.seg_key]
+
+        if not (leaf and current_leaf) then
             -- Leaf or trajectory was already removed
+        elseif current_leaf ~= leaf then
+            -- Segment was re-registered or replaced by advancing beam; drop stale deletion
         elseif leaf.pending_removal ~= true then
-            -- Segment was re-registered or re-activated by advancing beam
+            -- Segment was re-activated
         else
             local owner_flights = p_flights and p_flights[item.owner_id]
             local can_remove = false

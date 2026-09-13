@@ -122,4 +122,6 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~fix player characters not intercepting kintectic capsules in the new system (can probably just poll if each character (+user index or unit id) in a modulo tick against the hash map for kinectic flow dot nodes, and officially cut the flow as if you placed a building there)
 
-expand the player kinetic port influence by 1 node so moving along a kinetic flow doesnt cause so many micro wakes from player kinetic dot staggered walk
+~expand the player kinetic port influence by 1 node so moving along a kinetic flow doesnt cause so many micro wakes from player kinetic dot staggered walk
+
+make it so that intercepted kinetic flows with a capsule schedule for crash, can have an opportunity to update the crash site if the occlusion updates before the crash occurs

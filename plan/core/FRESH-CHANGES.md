@@ -233,3 +233,12 @@
 2. **Deferred Segment Unregistration & Remainder Namespacing (`scripts/flow/flow-kinetic.lua`):** Purged premature forward segment truncation from `register_endpoint_in_bvh`, isolated remainder keys with `:rem:%d` so terminal bounds do not overwrite full 16-tile segments, deferred receding segment removals in `unregister_segment_in_bvh` when active flights remain, and added `step_pending_bvh_segments` for zero-allocation in-place queue compaction.
 3. **Launch Trajectory Re-insertion Guard & Arrival Cleanup (`scripts/capsules/capsule-ballistics.lua`):** Guarded batch trajectory insertion during projectile launch to avoid wiping active incremental or deferred BVH segments, and triggered immediate pending segment pruning upon flight arrival or collision in `remove_flight`.
 4. **Storage Schema Persistence (`scripts/flow/flow-engine.lua`):** Initialized `storage.pending_bvh_segments` in `flow_engine.init_storage` to guarantee persistent tracking across save and load cycles.
+
+
+### Revision: Isolate Remainder Unregistration and Guard Regrown BVH Segments
+**Date:** 2026-09-13 13:55 EDT
+**Context:** Resolved a critical BVH index regression where beam regrowth after obstacle movement or evacuation failed to restore upstream corridor segments (e.g., missing `[0-16]`), caused by remainder unregistration aliasing and stale deferred deletion queues purging newly inserted leaves.
+**Key Changes:**
+1. **Isolated Remainder Unregistration (`scripts/flow/flow-kinetic.lua`):** Decoupled `unregister_endpoint_remainder_in_bvh` from general segment unregistration so advancing terminal nodes specifically target matching `:rem:%d` keys, preventing boundary endpoints (e.g., tile 16 or 32) from mistakenly purging full 16-tile corridor segments.
+2. **Pending Removal Invalidation (`scripts/flow/flow-kinetic.lua`):** Updated `register_segment_in_bvh` to immediately scrub matching pending removal items from `storage.pending_bvh_segments` whenever a corridor segment regrows.
+3. **Reference Equality Guard (`scripts/flow/flow-kinetic.lua`):** Hardened `step_pending_bvh_segments` to verify that the active tree node strictly matches the queued leaf reference (`current_leaf == leaf`), preventing deferred cleanup sweeps from unindexing freshly regrown segments.

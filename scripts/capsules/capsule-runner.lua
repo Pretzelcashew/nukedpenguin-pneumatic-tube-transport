@@ -821,9 +821,15 @@ function capsule_runner.emergency_eject(player)
 end
 
 --------------------------------------------------------------------------------
--- LIMINAL SPAWN & TICK EXECUTION ENGINE
+-- TICK EXECUTION ENGINE
 --------------------------------------------------------------------------------
 local function handle_liminal_entity_spawn(entity)
+    if entity and entity.valid and entity.surface and entity.surface.name == "liminal_surface" then
+        entity.destroy()
+    end
+end
+
+local function _unused_handle_liminal_entity_spawn(entity)
     if not (entity and entity.valid) then return end
 
     local surface = entity.surface
@@ -996,6 +1002,12 @@ function capsule_runner.update_capsules(current_tick)
 end
 
 function capsule_runner.register_events()
+    events.on_event(defines.events.on_tick, function(event)
+        capsule_runner.update_capsules(event.tick)
+    end)
+end
+
+function capsule_runner._legacy_register_events()
     events.on_event(defines.events.on_trigger_created_entity, function(event)
         handle_liminal_entity_spawn(event.entity)
     end)

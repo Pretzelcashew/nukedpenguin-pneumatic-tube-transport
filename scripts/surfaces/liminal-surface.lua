@@ -2,10 +2,7 @@ local liminal_surface = {}
 
 local SURFACE_NAME = "liminal_surface"
 
--- Dual Grid Spacing & Domain Configuration
-local WIDE_SPACING = 8
-local WIDE_GRID_WIDTH = 50
-
+-- Unified Grid Configuration (2-tile spacing, standard lab floor, zero moats)
 local TIGHT_SPACING = 2
 local TIGHT_GRID_WIDTH = 100
 local TIGHT_BASE_Y = -100
@@ -15,12 +12,10 @@ function liminal_surface.init_storage()
     storage.liminal_grid = storage.liminal_grid or {}
     local grid = storage.liminal_grid
 
-    if grid.wide_next_index == nil then
-        grid.wide_next_index = grid.next_index or 0
-        grid.wide_free_slots = grid.free_slots or {}
-        grid.tight_next_index = 0
-        grid.tight_free_slots = {}
-    end
+    grid.tight_next_index = grid.tight_next_index or grid.next_index or 0
+    grid.tight_free_slots = grid.tight_free_slots or grid.free_slots or {}
+    grid.next_index = grid.tight_next_index
+    grid.free_slots = grid.tight_free_slots
 end
 
 --- Retrieves the liminal surface, creating it as an unconstrained surface if it doesn't exist.
@@ -55,10 +50,12 @@ end
 --- @param is_wide boolean
 local function paint_cell_tiles(surface, pos, is_wide)
     if not (surface and surface.valid and pos) then return end
+    surface.set_tiles({{ name = "lab-dark-1", position = { math.floor(pos.x), math.floor(pos.y) } }}, true)
+end
 
+local function _unused_paint_cell_tiles(surface, pos, is_wide)
     local cx = math.floor(pos.x)
     local cy = math.floor(pos.y)
-
     local tiles = {}
     if is_wide then
         -- 7x7 block: 3x3 island platform centered at (cx, cy) surrounded by a 2-tile thick water moat
@@ -104,6 +101,25 @@ function liminal_surface.allocate_position(is_wide)
     liminal_surface.init_storage()
     local grid = storage.liminal_grid
 
+    if #grid.tight_free_slots > 0 then
+        return table.remove(grid.tight_free_slots), false
+    end
+
+    local idx = grid.tight_next_index
+    grid.tight_next_index = idx + 1
+    grid.next_index = grid.tight_next_index
+
+    local col = idx % TIGHT_GRID_WIDTH
+    local row = math.floor(idx / TIGHT_GRID_WIDTH)
+
+    return {
+        x = col * TIGHT_SPACING + 0.5,
+        y = (TIGHT_BASE_Y - (row * TIGHT_SPACING)) + 0.5
+    }, false
+end
+
+function liminal_surface._legacy_allocate_position(is_wide)
+    local grid = storage.liminal_grid
     if is_wide then
         if #grid.wide_free_slots > 0 then
             return table.remove(grid.wide_free_slots), true
@@ -144,16 +160,7 @@ function liminal_surface.release_position(pos, is_wide)
     if not (pos and pos.x and pos.y) then return end
     liminal_surface.init_storage()
 
-    local wide_slot = is_wide
-    if wide_slot == nil then
-        wide_slot = (pos.y >= 0)
-    end
-
-    if wide_slot then
-        table.insert(storage.liminal_grid.wide_free_slots, { x = pos.x, y = pos.y })
-    else
-        table.insert(storage.liminal_grid.tight_free_slots, { x = pos.x, y = pos.y })
-    end
+    table.insert(storage.liminal_grid.tight_free_slots, { x = pos.x, y = pos.y })
 end
 
 --- Finds a liminal capsule holder entity near a given surface position by proximity.

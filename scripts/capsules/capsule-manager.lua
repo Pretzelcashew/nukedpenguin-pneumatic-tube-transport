@@ -139,7 +139,7 @@ function capsule_manager.extract_holder_signal_data(holder_entity, primary_slot,
                 end
             end
 
-            if not virtual_cargo then
+            do
                 for slot_idx = 1, #inv do
                     if slot_idx ~= prim_idx then
                         local stack = inv[slot_idx]
@@ -262,7 +262,7 @@ function capsule_manager.collapse_virtual_cargo(phys_capsule, current_tick, caps
         else
             cooled_ticks = coolant_ticks
             uncooled_ticks = elapsed_ticks - coolant_ticks
-            ran_out = true
+            ran_out = (modifier < 1.0)
         end
 
         if ran_out and p_stack and p_stack.valid_for_read then

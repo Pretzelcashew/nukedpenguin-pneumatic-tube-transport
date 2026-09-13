@@ -90,7 +90,49 @@ end
 --- Initializes dynamic cargo tracking and calculates the next scheduled spoil recheck tick
 --- @param phys_capsule table Active capsule tracking data
 --- @param current_tick number
+function capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, current_tick)
+    if not phys_capsule then return nil end
+    local v_next = nil
+    if phys_capsule.virtual_cargo then
+        v_next = capsule_lifecycle.calculate_virtual_dilated_recheck(phys_capsule, current_tick)
+        phys_capsule.virtual_next_spoil_tick = v_next
+    end
+
+    local p_next = nil
+    local inv = phys_capsule.holder and phys_capsule.holder.valid and phys_capsule.holder.get_inventory(defines.inventory.chest)
+    if inv and inv.valid and not inv.is_empty() then
+        local max_slot = #inv
+        if inv.supports_bar() then
+            local bar = inv.get_bar()
+            if bar then max_slot = math.min(#inv, bar - 1) end
+        end
+        local primary_slot = phys_capsule.primary_slot or 1
+        local min_spoil_tick, has_spoilable = capsule_lifecycle.find_earliest_spoil_tick(inv, max_slot, primary_slot, current_tick)
+        if has_spoilable then
+            phys_capsule.has_spoilable_items = true
+            phys_capsule.last_spoil_check_tick = current_tick
+            p_next = calculate_next_recheck_tick(phys_capsule, inv, max_slot, primary_slot, min_spoil_tick, current_tick)
+            phys_capsule.physical_next_spoil_tick = p_next
+        else
+            phys_capsule.physical_next_spoil_tick = nil
+        end
+    end
+
+    local next_tick = (v_next and p_next) and math.min(v_next, p_next) or (v_next or p_next)
+    phys_capsule.next_spoil_tick = next_tick
+
+    if not next_tick and not (phys_capsule.definition and phys_capsule.definition.is_player_transit) then
+        phys_capsule.has_spoilable_items = false
+        phys_capsule.is_stable = true
+    end
+    return next_tick
+end
+
 function capsule_lifecycle.init_dynamic_cargo(phys_capsule, current_tick)
+    return capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, current_tick)
+end
+
+function capsule_lifecycle._legacy_init_dynamic_cargo(phys_capsule, current_tick)
     if not (phys_capsule and phys_capsule.holder and phys_capsule.holder.valid) then return end
     local inv = phys_capsule.holder.get_inventory(defines.inventory.chest)
     if not (inv and inv.valid and not inv.is_empty()) then return end
@@ -256,13 +298,40 @@ function capsule_lifecycle.process_dynamic_cargo(capsule, phys_capsule, current_
     end
     local primary_slot = phys_capsule.primary_slot or 1
 
-    local cap_id = capsule.capsule_id or capsule.id
+    local cap_id = capsule and (capsule.capsule_id or capsule.id) or (phys_capsule.holder and phys_capsule.holder.unit_number)
+
+    local max_cargo_c = 0
+    local dom_cargo_item = nil
+    local dom_cargo_qual = "normal"
+    for s_idx = 1, max_slot do
+        if s_idx ~= primary_slot then
+            local stk = inv[s_idx]
+            if stk and stk.valid_for_read and stk.count > max_cargo_c then
+                max_cargo_c = stk.count
+                dom_cargo_item = stk.name
+                dom_cargo_qual = (stk.quality and stk.quality.name) or "normal"
+            end
+        end
+    end
+    if dom_cargo_item then
+        phys_capsule.dominant_item = dom_cargo_item
+        phys_capsule.dominant_quality = dom_cargo_qual
+        if capsule then
+            capsule.dominant_item = dom_cargo_item
+            capsule.dominant_quality = dom_cargo_qual
+            if capsule.render_cache and capsule.render_cache.dominant_item ~= dom_cargo_item then
+                capsule.render_cache.dominant_item = nil
+            end
+        end
+    end
+
     local old_sig_data = phys_capsule.signal_data
     local new_sig_data = capsule_manager.extract_holder_signal_data(
         phys_capsule.holder,
         phys_capsule.primary_slot,
         phys_capsule.dominant_item or phys_capsule.capsule_type,
-        phys_capsule.dominant_quality or "normal"
+        phys_capsule.dominant_quality or "normal",
+        phys_capsule.virtual_cargo
     )
     phys_capsule.signal_data = new_sig_data
 
@@ -272,16 +341,18 @@ function capsule_lifecycle.process_dynamic_cargo(capsule, phys_capsule, current_
 
     local min_spoil_tick, has_spoilable = capsule_lifecycle.find_earliest_spoil_tick(inv, max_slot, primary_slot, current_tick)
     if not has_spoilable then
-        phys_capsule.has_spoilable_items = false
-        local cur_def = phys_capsule.definition
-        if not (cur_def and cur_def.is_player_transit) then
-            phys_capsule.is_stable = true
+        phys_capsule.physical_next_spoil_tick = nil
+        if not phys_capsule.virtual_cargo then
+            phys_capsule.has_spoilable_items = false
+            local cur_def = phys_capsule.definition
+            if not (cur_def and cur_def.is_player_transit) then
+                phys_capsule.is_stable = true
+            end
         end
-        phys_capsule.next_spoil_tick = nil
-        if capsule then capsule.next_spoil_tick = nil end
     else
         phys_capsule.last_spoil_check_tick = current_tick
-        local next_tick = calculate_next_recheck_tick(phys_capsule, inv, max_slot, primary_slot, min_spoil_tick, current_tick)
+        phys_capsule.physical_next_spoil_tick = calculate_next_recheck_tick(phys_capsule, inv, max_slot, primary_slot, min_spoil_tick, current_tick)
+        local next_tick = phys_capsule.physical_next_spoil_tick
         phys_capsule.next_spoil_tick = next_tick
         if capsule then capsule.next_spoil_tick = next_tick end
     end
@@ -338,10 +409,82 @@ end
 --- @param phys_capsule table
 --- @param current_tick number
 --- @param capsule_id number|nil
-function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_tick, capsule_id)
+local function resolve_spoil_trigger_info(item_name)
+    local proto = prototypes.item[item_name]
+    if not proto then return nil, 1 end
+
+    local spoil_trig = proto.spoil_to_trigger_result
+    local items_per_trigger = (spoil_trig and spoil_trig.items_per_trigger) or 1
+    local entity_name = nil
+
+    if spoil_trig and spoil_trig.trigger then
+        local function scan_effects(effects)
+            if not effects then return nil end
+            for _, eff in ipairs(effects) do
+                if eff.type == "create-entity" and eff.entity_name then
+                    return eff.entity_name
+                end
+            end
+            return nil
+        end
+
+        local function scan_trigger(trig)
+            if not trig then return nil end
+            if trig.action_delivery then
+                local ad = trig.action_delivery
+                if ad.source_effects then
+                    local ent = scan_effects(ad.source_effects)
+                    if ent then return ent end
+                end
+                if ad.target_effects then
+                    local ent = scan_effects(ad.target_effects)
+                    if ent then return ent end
+                end
+            end
+            if type(trig) == "table" then
+                for _, sub in ipairs(trig) do
+                    local ent = scan_trigger(sub)
+                    if ent then return ent end
+                end
+            end
+            return nil
+        end
+
+        entity_name = scan_trigger(spoil_trig.trigger)
+    end
+
+    if not entity_name then
+        if item_name == "biter-egg" then
+            entity_name = "big-biter"
+            items_per_trigger = 25
+        elseif item_name == "pentapod-egg" then
+            entity_name = "big-wriggler-pentapod-premature"
+            items_per_trigger = 1
+        elseif item_name == "captive-biter-spawner" then
+            entity_name = "behemoth-biter"
+            items_per_trigger = 1
+        end
+    end
+
+    if entity_name and not prototypes.entity[entity_name] then
+        if item_name == "pentapod-egg" and prototypes.entity["small-wriggler-pentapod-premature"] then
+            entity_name = "small-wriggler-pentapod-premature"
+        elseif prototypes.entity["big-biter"] then
+            entity_name = "big-biter"
+        elseif prototypes.entity["small-biter"] then
+            entity_name = "small-biter"
+        else
+            entity_name = nil
+        end
+    end
+
+    return entity_name, items_per_trigger
+end
+
+function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_tick, capsule_id, curr_pos, surface, capsule)
     if not (phys_capsule and phys_capsule.virtual_cargo) then return end
+    phys_capsule.refrigeration = phys_capsule.refrigeration or { pack_tick = current_tick, last_update_tick = current_tick }
     local ref = phys_capsule.refrigeration
-    if not ref then return end
 
     local last_tick = ref.last_update_tick or ref.pack_tick or current_tick
     local elapsed_ticks = math.max(0, current_tick - last_tick)
@@ -376,7 +519,7 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
     else
         cooled_ticks = coolant_ticks
         uncooled_ticks = elapsed_ticks - coolant_ticks
-        ran_out = true
+        ran_out = (modifier < 1.0)
     end
 
     if ran_out and p_stack and p_stack.valid_for_read then
@@ -406,18 +549,41 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
             if new_spoil >= 1.0 then
                 any_spoiled = true
                 if item.is_unit then
-                    local loc_pos, loc_surf = nil, nil
-                    if holder and holder.valid then
-                        loc_pos, loc_surf = holder.position, holder.surface
+                    local loc_pos = curr_pos
+                    local loc_surf = surface
+                    if not (loc_surf and loc_surf.valid and loc_pos and loc_surf.name ~= "liminal_surface") then
+                        local cap = storage.capsules and (storage.capsules[capsule_id] or capsule)
+                        local pkey = cap and cap.from_port_key
+                        local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
+                        if node and node.surface_name then
+                            loc_surf = game.surfaces[node.surface_name]
+                            loc_pos = node.pos or (node.x and { x = node.x, y = node.y })
+                        end
+                        if not (loc_surf and loc_surf.valid and loc_pos and loc_surf.name ~= "liminal_surface") and cap and cap.source_hub then
+                            local hub = storage.active_hubs and storage.active_hubs[cap.source_hub]
+                            if hub and hub.valid then
+                                loc_surf = hub.surface
+                                loc_pos = hub.position
+                            end
+                        end
+                        if not (loc_surf and loc_surf.valid and loc_pos and loc_surf.name ~= "liminal_surface") and cap and cap.last_pos and cap.surface_name then
+                            loc_surf = game.surfaces[cap.surface_name]
+                            loc_pos = cap.last_pos
+                        end
                     end
-                    if loc_surf and loc_surf.valid and loc_pos then
-                        local spawn_name = (item.name == "pentapod-egg") and "small-wriggler" or "small-biter"
-                        local safe_pos = loc_surf.find_non_colliding_position(spawn_name, loc_pos, 4, 0.5) or loc_pos
-                        loc_surf.create_entity{
-                            name = spawn_name,
-                            position = safe_pos,
-                            force = "enemy"
-                        }
+                    local ent_name, per_trig = resolve_spoil_trigger_info(item.name)
+                    if loc_surf and loc_surf.valid and loc_pos and loc_surf.name ~= "liminal_surface" and ent_name and prototypes.entity[ent_name] then
+                        local spawn_count = math.max(1, math.ceil((item.count or 1) / per_trig))
+                        local item_qual = (type(item.quality) == "string" and item.quality) or (item.quality and item.quality.name) or "normal"
+                        for s_i = 1, spawn_count do
+                            local safe_pos = loc_surf.find_non_colliding_position(ent_name, loc_pos, 4 + s_i * 0.5, 0.5) or loc_pos
+                            loc_surf.create_entity{
+                                name = ent_name,
+                                position = safe_pos,
+                                force = "enemy",
+                                quality = item_qual
+                            }
+                        end
                     end
                     item.count = 0
                 else
@@ -432,6 +598,29 @@ function capsule_lifecycle.update_virtual_refrigeration(phys_capsule, current_ti
     end
 
     ref.last_update_tick = current_tick
+
+    if any_spoiled then
+        local max_c = 0
+        local dom_c = nil
+        local dom_q = "normal"
+        for _, it in ipairs(phys_capsule.virtual_cargo) do
+            if it.count and it.count > max_c then
+                max_c = it.count
+                dom_c = it.name
+                dom_q = (type(it.quality) == "string" and it.quality) or (it.quality and it.quality.name) or "normal"
+            end
+        end
+        local new_dom = dom_c or (phys_capsule.definition and phys_capsule.definition.name) or phys_capsule.capsule_type
+        phys_capsule.dominant_item = new_dom
+        phys_capsule.dominant_quality = dom_q
+        if storage.capsules and capsule_id and storage.capsules[capsule_id] then
+            storage.capsules[capsule_id].dominant_item = new_dom
+            storage.capsules[capsule_id].dominant_quality = dom_q
+            if storage.capsules[capsule_id].render_cache then
+                storage.capsules[capsule_id].render_cache.dominant_item = nil
+            end
+        end
+    end
 
     if any_spoiled and capsule_id then
         local old_sig = phys_capsule.signal_data
@@ -618,17 +807,20 @@ function capsule_lifecycle.update(capsule, id, curr_pos, surface)
         end
     end
 
-    if phys_capsule.virtual_cargo then
-        if phys_capsule.next_spoil_tick and game.tick >= phys_capsule.next_spoil_tick then
-            capsule_lifecycle.update_virtual_refrigeration(phys_capsule, game.tick, capsule.capsule_id or id)
+    if not phys_capsule.next_spoil_tick and (phys_capsule.virtual_cargo or phys_capsule.has_spoilable_items) then
+        capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, game.tick)
+    end
+
+    if phys_capsule.next_spoil_tick and game.tick >= phys_capsule.next_spoil_tick then
+        local cap_id = capsule.capsule_id or id
+        if phys_capsule.virtual_cargo and (not phys_capsule.virtual_next_spoil_tick or game.tick >= phys_capsule.virtual_next_spoil_tick) then
+            capsule_lifecycle.update_virtual_refrigeration(phys_capsule, game.tick, cap_id, curr_pos, surface, capsule)
         end
-    elseif phys_capsule.has_spoilable_items then
-        if not phys_capsule.next_spoil_tick then
-            capsule_lifecycle.init_dynamic_cargo(phys_capsule, game.tick)
-        end
-        if phys_capsule.next_spoil_tick and game.tick >= phys_capsule.next_spoil_tick then
+        if phys_capsule.has_spoilable_items and (not phys_capsule.physical_next_spoil_tick or game.tick >= phys_capsule.physical_next_spoil_tick) then
             capsule_lifecycle.process_dynamic_cargo(capsule, phys_capsule, game.tick)
         end
+        local next_tick = capsule_lifecycle.schedule_dynamic_cargo(phys_capsule, game.tick)
+        if capsule then capsule.next_spoil_tick = next_tick end
     end
 
     return false

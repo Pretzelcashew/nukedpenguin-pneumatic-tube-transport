@@ -221,16 +221,8 @@ function hub_packing.evaluate_inventory(entity)
     local total_slots_processed = #packing_plan.insertions + self_slot_cost
     if total_slots_processed < required_min_slots and not capsule_def.is_player_transit then return end
 
-    -- Evaluate whether cargo or primary vessel can spoil into physical units
-    local spill_contents = capsule_def.spill_contents
-    local units_allowed = true
-    if type(spill_contents) == "table" and spill_contents.units == false then
-        units_allowed = false
-    elseif spill_contents == false then
-        units_allowed = false
-    end
-
     local is_unit_cargo = false
+    if false then
     if units_allowed then
         if is_unit_spoilable(inventory[primary_slot]) then
             is_unit_cargo = true
@@ -246,11 +238,11 @@ function hub_packing.evaluate_inventory(entity)
         end
     end
 
-    local requires_wide_cell = is_unit_cargo and units_allowed
+    end
 
     local liminal_surface = liminal_surface_mgr.get()
     local holder_prototype = capsule_def.holder_type or "invisible-capsule-holder"
-    local holder_pos, allocated_is_wide = liminal_surface_mgr.allocate_position(requires_wide_cell)
+    local holder_pos, allocated_is_wide = liminal_surface_mgr.allocate_position(false)
 
     -- Synchronously ensure target chunk exists and cell tiles/moat are painted before entity creation
     liminal_surface_mgr.ensure_chunk_at(liminal_surface, holder_pos, allocated_is_wide)
@@ -334,8 +326,8 @@ function hub_packing.evaluate_inventory(entity)
     local dominant_cargo_quality = "normal"
     local max_cargo_count = 0
     local cargo_counts = {}
-    local use_virtual_cargo = (capsule_def.spoilage_modifier and capsule_def.spoilage_modifier < 1.0) == true
-    local virtual_cargo = use_virtual_cargo and {} or nil
+    local is_refrigerated_capsule = (capsule_def.spoilage_modifier and capsule_def.spoilage_modifier < 1.0) == true
+    local virtual_cargo = nil
 
     for _, ext in ipairs(packing_plan.extractions) do
         local stack = inventory[ext.slot_index]
@@ -356,7 +348,9 @@ function hub_packing.evaluate_inventory(entity)
                 dominant_cargo_quality = item_q_name
             end
 
-            if use_virtual_cargo then
+            local should_virtualize = (is_refrigerated_capsule and is_stack_spoilable(stack)) or is_unit_spoilable(stack)
+            if should_virtualize then
+                virtual_cargo = virtual_cargo or {}
                 local spec = item_transfer_handler.build_stack_spec(stack, amount_to_transfer)
                 local proto = stack.prototype
                 spec.quality = item_q_name
@@ -389,7 +383,7 @@ function hub_packing.evaluate_inventory(entity)
     local dominant_payload_item = dominant_cargo_item or capsule_name
     local dominant_payload_quality = dominant_cargo_quality or quality_name or "normal"
 
-    if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() and not passenger then
+    if capsule_def.destroy_holder_if_empty and dest_inv.is_empty() and not passenger and (not virtual_cargo or #virtual_cargo == 0) then
         local pos = holder.position
         holder.destroy()
         liminal_surface_mgr.release_position(pos, allocated_is_wide)
@@ -400,12 +394,16 @@ function hub_packing.evaluate_inventory(entity)
     local capsule_id = capsule_manager.register(holder, capsule_name, primary_holder_slot, dominant_payload_item, dominant_payload_quality, has_spoilable_items, allocated_is_wide, is_stable, virtual_cargo)
     if capsule_id then
         local cap_data = capsule_manager.get(capsule_id)
-        if cap_data and virtual_cargo then
-            cap_data.refrigeration = {
-                pack_tick = game.tick,
-                last_update_tick = game.tick
-            }
-            cap_data.next_spoil_tick = capsule_lifecycle.calculate_virtual_dilated_recheck(cap_data, game.tick)
+        if cap_data then
+            if virtual_cargo then
+                cap_data.refrigeration = {
+                    pack_tick = game.tick,
+                    last_update_tick = game.tick
+                }
+            end
+            if virtual_cargo or has_spoilable_items then
+                capsule_lifecycle.init_dynamic_cargo(cap_data, game.tick)
+            end
         end
         local success = capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         if not success then

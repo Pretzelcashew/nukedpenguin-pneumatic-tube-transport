@@ -99,10 +99,7 @@ function capsule_definitions.is_dynamic_capsule(def_or_name, has_spoilable_items
     if def.is_player_transit then
         return true
     end
-    if def.name == "refrigerated-capsule" then
-        return has_spoilable_items == true
-    end
-    return false
+    return has_spoilable_items == true
 end
 
 --- Reusable upper classifier for evaluating whether a capsule is fully stable

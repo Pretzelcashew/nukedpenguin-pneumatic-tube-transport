@@ -28,6 +28,10 @@ Fills inventory with 500 near-spoil biter eggs to test Wide Liminal Surface allo
 /c local player = game.player for i=1, 500 do player.insert{name="biter-egg", count=1, spoil_percent=0.95} end
 ```
 
+```lua
+/c local player = game.player for i=1, 20 do player.insert{name="pentapod-egg", count=1, quality="legendary", spoil_percent=0.95} end
+```
+
 ### Full-Spectrum Metadata Test Chest
 Spawns an iron chest at your feet filled with every category of item metadata to verify that packing, unpacking, spills, and capsule transit preserve 100% of item state:
 ```lua

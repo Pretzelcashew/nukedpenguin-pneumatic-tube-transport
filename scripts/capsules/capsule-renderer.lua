@@ -293,17 +293,14 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         render_objects_valid = false
     end
 
-    -- Evaluate dominant item lazily with a 60-tick periodic recheck to capture natural engine spoilage on parked capsules containing spoilable items
+    -- Serve cached dominant payload item directly; state changes are pushed by latent spoil events
     local dominant_item = nil
     if debug_key ~= 0 and debug_key ~= "" and not passenger_valid then
-        local has_spoilable = cap_data and (cap_data.has_spoilable_items ~= false)
-        local tick_offset = cap_id or 0
-        local recheck_spoilage = has_spoilable and ((game.tick + tick_offset) % 60 == 0)
-
-        if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid and not recheck_spoilage then
+        local current_dom = cap_data and cap_data.dominant_item
+        if cache and cache.dominant_item and cache.pos_x == curr_pos.x and cache.pos_y == curr_pos.y and render_objects_valid and (not current_dom or cache.dominant_item == current_dom) then
             dominant_item = cache.dominant_item
         else
-            dominant_item = capsule_renderer.get_dominant_item(cap_id, recheck_spoilage)
+            dominant_item = current_dom or capsule_renderer.get_dominant_item(cap_id)
         end
     end
 

@@ -23,6 +23,8 @@ local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
 local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
+local binary_heap = require("scripts.utils.binary-heap")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 
 proxy_manager.register_events()
 active_device_scanner.register_events()
@@ -67,6 +69,24 @@ local function setup_storage()
     storage.object_destruction_map = storage.object_destruction_map or {}
 
     proxy_manager.purge_orphans()
+
+    -- Save-file boundary pool compaction (Phase 1.5)
+    if storage.spoil_heap then
+        binary_heap.compact(storage.spoil_heap, 64)
+    end
+    if storage.kinetic_arrival_heap then
+        binary_heap.compact(storage.kinetic_arrival_heap, 64)
+    end
+    if storage.surface_bvh then
+        for _, tree in pairs(storage.surface_bvh) do
+            trajectory_bvh.compact(tree, 64)
+        end
+    end
+    if storage.viewport_bvh then
+        for _, tree in pairs(storage.viewport_bvh) do
+            trajectory_bvh.compact(tree, 64)
+        end
+    end
 
     if storage.active_diverters then
         for _, entity in pairs(storage.active_diverters) do
@@ -124,4 +144,24 @@ script.on_configuration_changed(function(data)
     storage.port_to_network = nil
     storage.bio_integrity_levels = nil
     setup_storage(data)
+end)
+
+-- Low-frequency maintenance cadence (Phase 1.5 amortized trickle decay)
+script.on_nth_tick(120, function()
+    if storage.spoil_heap then
+        binary_heap.step_decay(storage.spoil_heap, 8)
+    end
+    if storage.kinetic_arrival_heap then
+        binary_heap.step_decay(storage.kinetic_arrival_heap, 8)
+    end
+    if storage.surface_bvh then
+        for _, tree in pairs(storage.surface_bvh) do
+            trajectory_bvh.step_decay(tree, 8)
+        end
+    end
+    if storage.viewport_bvh then
+        for _, tree in pairs(storage.viewport_bvh) do
+            trajectory_bvh.step_decay(tree, 8)
+        end
+    end
 end)

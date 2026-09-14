@@ -355,6 +355,53 @@ function binary_heap.clear(heap)
     end
 end
 
+--- Amortized buffer decay for sliding buffer tail compaction with dual-watermark hysteresis
+--- @param heap table
+--- @param max_evictions number|nil Max tail slots to evict per call (default 8)
+--- @return number evicted_count
+function binary_heap.step_decay(heap, max_evictions)
+    if not heap or not heap.nodes then return 0 end
+    local cap = #heap.nodes
+    local size = heap.size or 0
+    local ceiling = math.max(128, size * 3 + 128)
+    local floor_cap = math.max(64, math.floor(size * 1.5 + 64))
+
+    if cap > ceiling then
+        heap.is_decaying = true
+    elseif cap <= floor_cap then
+        heap.is_decaying = false
+    end
+
+    if heap.is_decaying and cap > floor_cap then
+        local evictions = math.min(max_evictions or 8, cap - floor_cap)
+        for i = cap, cap - evictions + 1, -1 do
+            heap.nodes[i] = nil
+        end
+        return evictions
+    end
+    return 0
+end
+
+--- Explicitly compacts idle buffer slots beyond active size plus safety margin
+--- @param heap table
+--- @param safety_margin number|nil Optional idle slots to retain above size (default 0)
+--- @return number evicted_count
+function binary_heap.compact(heap, safety_margin)
+    if not heap or not heap.nodes then return 0 end
+    safety_margin = safety_margin or 0
+    local target = (heap.size or 0) + safety_margin
+    local cap = #heap.nodes
+    local evicted = 0
+    if cap > target then
+        for i = cap, target + 1, -1 do
+            heap.nodes[i] = nil
+            evicted = evicted + 1
+        end
+    end
+    heap.is_decaying = false
+    return evicted
+end
+
 --- Runs an automated test suite verifying correctness, buffer sliding, and timer patterns
 --- @param player LuaPlayer|nil
 --- @return boolean success
@@ -545,7 +592,42 @@ function binary_heap.run_tests(player)
     end
     log_line("[color=green][BinaryHeap Test] Test 7: Max-Heap Mode -> PASSED[/color]")
 
-    log_line("[color=green][font=default-bold][BinaryHeap Test] ALL 7 TESTS PASSED SUCCESSFULLY! Ready for virtual cargo spoil integration.[/font][/color]")
+    -- Test 8: Buffer Deflation, Amortized Decay & Hysteresis
+    local h8 = binary_heap.new()
+    for i = 1, 200 do
+        h8:push("item_" .. i, i)
+    end
+    if h8:capacity() < 200 then
+        log_line("[color=red][BinaryHeap Test] Test 8 FAILED: Expected capacity >= 200[/color]")
+        return false
+    end
+
+    for _ = 1, 190 do h8:pop() end
+    if h8:count() ~= 10 then
+        log_line("[color=red][BinaryHeap Test] Test 8 FAILED: Expected count 10[/color]")
+        return false
+    end
+
+    local evicted = h8:step_decay(8)
+    if evicted ~= 8 or h8:capacity() ~= 192 then
+        log_line("[color=red][BinaryHeap Test] Test 8 FAILED: Expected 8 evictions from step_decay, got " .. tostring(evicted) .. "[/color]")
+        return false
+    end
+
+    local comp_evicted = h8:compact(64)
+    if h8:capacity() ~= 74 or comp_evicted ~= (192 - 74) then
+        log_line("[color=red][BinaryHeap Test] Test 8 FAILED: Expected capacity 74 after compact(64), got " .. tostring(h8:capacity()) .. "[/color]")
+        return false
+    end
+
+    h8:compact(0)
+    if h8:capacity() ~= 10 then
+        log_line("[color=red][BinaryHeap Test] Test 8 FAILED: Expected capacity 10 after compact(0), got " .. tostring(h8:capacity()) .. "[/color]")
+        return false
+    end
+    log_line("[color=green][BinaryHeap Test] Test 8: Buffer Deflation, Amortized Decay & Compaction -> PASSED[/color]")
+
+    log_line("[color=green][font=default-bold][BinaryHeap Test] ALL 8 TESTS PASSED SUCCESSFULLY! Ready for virtual cargo spoil integration.[/font][/color]")
     return true
 end
 

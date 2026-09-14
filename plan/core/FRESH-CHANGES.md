@@ -321,3 +321,14 @@
 3. **Generic Procedural BVH API (`scripts/utils/trajectory-bvh.lua`):** Exported procedural methods taking `tree` as their first parameter (`insert`, `remove`, `update`, `get_leaf`, `clear`, `capacity`), supported polymorphic `query_box` handling both AABB tables and 4-point scalar coordinates, and maintained 100% backwards-compatible colon-syntax for existing kinetic callers.
 4. **Speed-Agnostic Automated Test Suite (`scripts/utils/trajectory-bvh.lua`):** Extended `/test-bvh` with Test 5 (pure table operations with metatables stripped) and Test 6 (zero-reallocation recycling verification), and updated Test 3 to dynamically calculate spatiotemporal distance arrival windows against `TICKS_PER_TILE`.
 5. **Roadmap Architecture Expansion (`MOTION-REFACTOR.md`):** Formulated Phase 1.5 defining working-set proportional gating, amortized trickle decay, and save-file serialization compaction across both Spatial Trajectory BVHs and Indexed Binary Heaps.
+
+
+### Revision: Dual-Watermark Pool Deflation, Amortized Decay, and Boundary Compaction
+**Date:** 2026-09-14 10:02 EDT
+**Context:** Implemented Phase 1.5 of the Motion Refactor to eliminate memory retention and save-file serialization bloat across both high-water pooling structures (Spatial Trajectory BVH free lists and Indexed Binary Heap sliding buffers) following deconstruction spikes or arrival bursts.
+**Key Changes:**
+1. **Binary Heap Sliding Buffer Deflation (`scripts/utils/binary-heap.lua`):** Implemented `step_decay` with dual-watermark hysteresis (trigger ceiling at `size * 3 + 128`, retention floor at `size * 1.5 + 64`), truncating up to 8 idle tail slots per cycle into `nil` without allocation thrashing. Added `compact(safety_margin)` for immediate tail truncation.
+2. **Trajectory BVH Proportional Gating & Pool Decay (`scripts/utils/trajectory-bvh.lua`):** Gated `recycle_node` to drop detached nodes directly to Lua GC once `free_count >= max(64, size * 2)`. Implemented amortized `step_decay` with dual-watermark bounds and added `compact(safety_margin)` for immediate free list clamping.
+3. **Save-File Boundary Compaction (`control.lua`):** Clamped cold buffers for `storage.spoil_heap`, `storage.kinetic_arrival_heap`, and all trees in `storage.surface_bvh` and `storage.viewport_bvh` to 64 safety items during `setup_storage` (`on_init` and `on_configuration_changed`), preventing deconstructed megabases from inflating save files or autosave times.
+4. **Low-Frequency Maintenance Cadence (`control.lua`):** Registered a 120-tick maintenance cycle via `script.on_nth_tick(120)` to bleed down surplus pooling buffers smoothly over 10–30 seconds.
+5. **Automated Verification Suites (`scripts/utils/binary-heap.lua`, `scripts/utils/trajectory-bvh.lua`):** Extended `/test-heap` with Test 8 and `/test-bvh` with Test 7, validating working-set limits, step-by-step evictions, and compaction boundaries.

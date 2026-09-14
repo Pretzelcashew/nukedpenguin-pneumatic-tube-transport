@@ -117,8 +117,15 @@ local function recycle_node(bvh, node)
     node.pending_removal = nil
     node.removal_expiry_tick = nil
 
+    local size = bvh.size or 0
+    local max_free = math.max(64, size * 2)
+    local fc = bvh.free_count or 0
+    if fc >= max_free then
+        return
+    end
+
     bvh.free_nodes = bvh.free_nodes or {}
-    local fc = (bvh.free_count or 0) + 1
+    fc = fc + 1
     bvh.free_count = fc
     bvh.free_nodes[fc] = node
 end
@@ -538,6 +545,58 @@ function trajectory_bvh.capacity(tree)
     return (tree.size or 0) + (tree.free_count or 0)
 end
 
+--- Amortized trickle decay for free node recycling pool with dual-watermark hysteresis
+--- @param tree table
+--- @param max_evictions number|nil Max free nodes to evict per call (default 8)
+--- @return number evicted_count
+function trajectory_bvh.step_decay(tree, max_evictions)
+    if not tree or not tree.free_nodes then return 0 end
+    local size = tree.size or 0
+    local fc = tree.free_count or 0
+    local cap = size + fc
+    local ceiling = math.max(128, size * 3 + 128)
+    local floor_cap = math.max(64, math.floor(size * 1.5 + 64))
+    local target_free = math.max(64, floor_cap - size)
+
+    if cap > ceiling then
+        tree.is_decaying = true
+    elseif cap <= floor_cap or fc <= target_free then
+        tree.is_decaying = false
+    end
+
+    if tree.is_decaying and fc > target_free then
+        local max_batch = max_evictions or 8
+        local evictions = math.min(max_batch, fc - target_free)
+        for i = fc, fc - evictions + 1, -1 do
+            tree.free_nodes[i] = nil
+        end
+        tree.free_count = fc - evictions
+        return evictions
+    end
+    return 0
+end
+
+--- Immediately compacts the free node pool down to safety_margin
+--- @param tree table
+--- @param safety_margin number|nil Retained free nodes in pool (default 64)
+--- @return number evicted_count
+function trajectory_bvh.compact(tree, safety_margin)
+    if not tree or not tree.free_nodes then return 0 end
+    safety_margin = safety_margin or 64
+    local target = math.max(0, safety_margin)
+    local fc = tree.free_count or 0
+    local evicted = 0
+    if fc > target then
+        for i = fc, target + 1, -1 do
+            tree.free_nodes[i] = nil
+            evicted = evicted + 1
+        end
+        tree.free_count = target
+    end
+    tree.is_decaying = false
+    return evicted
+end
+
 --------------------------------------------------------------------------------
 -- QUERY & SPATIOTEMPORAL HIT-TESTING
 --------------------------------------------------------------------------------
@@ -803,7 +862,38 @@ function trajectory_bvh.run_tests(player)
     end
     log_msg("[color=green][TrajectoryBVH Test] Test 6: High-water node recycling pool -> PASSED (0 garbage allocations)[/color]")
 
-    log_msg("[color=green][font=default-bold][TrajectoryBVH Test] ALL 6 TESTS PASSED! Instantiable procedural BVH ready.[/font][/color]")
+    -- Test 7: Working-set proportional gating, amortized decay & pool compaction
+    local p_tree2 = trajectory_bvh.new_tree(1)
+    for i = 1, 4 do
+        trajectory_bvh.insert(p_tree2, { min_x = i * 10, min_y = 0, max_x = i * 10 + 5, max_y = 5 }, "test_" .. i)
+    end
+    p_tree2.free_nodes = {}
+    for i = 1, 200 do
+        p_tree2.free_nodes[i] = { id = 1000 + i }
+    end
+    p_tree2.free_count = 200
+
+    local dummy = { id = 9999 }
+    recycle_node(p_tree2, dummy)
+    if p_tree2.free_count ~= 200 then
+        log_msg("[color=red][TrajectoryBVH Test] Test 7 FAILED: Proportional gating failed to drop node at capacity[/color]")
+        return false
+    end
+
+    local bvh_evicted = trajectory_bvh.step_decay(p_tree2, 8)
+    if bvh_evicted ~= 8 or p_tree2.free_count ~= 192 then
+        log_msg("[color=red][TrajectoryBVH Test] Test 7 FAILED: Expected 8 evictions from step_decay, got " .. tostring(bvh_evicted) .. "[/color]")
+        return false
+    end
+
+    local bvh_comp = trajectory_bvh.compact(p_tree2, 32)
+    if p_tree2.free_count ~= 32 or bvh_comp ~= (192 - 32) then
+        log_msg("[color=red][TrajectoryBVH Test] Test 7 FAILED: Expected free_count 32 after compact(32), got " .. tostring(p_tree2.free_count) .. "[/color]")
+        return false
+    end
+    log_msg("[color=green][TrajectoryBVH Test] Test 7: Proportional gating, step_decay & compaction -> PASSED[/color]")
+
+    log_msg("[color=green][font=default-bold][TrajectoryBVH Test] ALL 7 TESTS PASSED! Instantiable procedural BVH ready.[/font][/color]")
     return true
 end
 

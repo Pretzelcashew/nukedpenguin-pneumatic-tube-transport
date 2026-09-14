@@ -16,24 +16,41 @@ local BOX_PADDING = 0.5     -- Padding margin to ensure sub-tile overlap coverag
 --- Creates a new empty BVH instance for a surface
 --- @param surface_index number|nil
 --- @return table bvh
-function trajectory_bvh.new(surface_index)
-    local bvh = {
+--- Procedural constructor: Creates a new pure data table BVH instance
+--- @param surface_index number|nil
+--- @return table tree Pure data table schema
+function trajectory_bvh.new_tree(surface_index)
+    local tree = {
         surface_index = surface_index or 1,
         root = nil,
-        trajectories = {}, -- [owner_id] = { leaves = { leaf1, leaf2, ... }, start_pos = {...}, end_pos = {...} }
+        size = 0,
+        free_nodes = {},
+        free_count = 0,
+        leaves_by_key = {},
+        trajectories = {},
         next_node_id = 1,
         leaf_count = 0,
     }
-    return setmetatable(bvh, bvh_mt)
+    return setmetatable(tree, bvh_mt)
+end
+
+function trajectory_bvh.new(surface_index)
+    return trajectory_bvh.new_tree(surface_index)
 end
 
 --- Re-attaches metatable to a deserialized BVH table
 --- @param bvh table
 --- @return table bvh
 function trajectory_bvh.attach(bvh)
-    if bvh and not getmetatable(bvh) then
+    if not bvh then return nil end
+    if not getmetatable(bvh) then
         setmetatable(bvh, bvh_mt)
     end
+    bvh.free_nodes = bvh.free_nodes or {}
+    bvh.free_count = bvh.free_count or #bvh.free_nodes
+    bvh.leaves_by_key = bvh.leaves_by_key or {}
+    bvh.trajectories = bvh.trajectories or {}
+    bvh.size = bvh.size or bvh.leaf_count or 0
     return bvh
 end
 
@@ -58,6 +75,54 @@ end
 --------------------------------------------------------------------------------
 -- TREE INSERTION & BALANCING
 --------------------------------------------------------------------------------
+local function lease_node(bvh)
+    local fc = bvh.free_count or 0
+    if fc > 0 then
+        local node = bvh.free_nodes[fc]
+        bvh.free_nodes[fc] = nil
+        bvh.free_count = fc - 1
+        node.parent = nil
+        node.left = nil
+        node.right = nil
+        node.is_leaf = false
+        node.min_x = 0
+        node.min_y = 0
+        node.max_x = 0
+        node.max_y = 0
+        return node
+    end
+    return {
+        id = bvh.next_node_id,
+        parent = nil,
+        left = nil,
+        right = nil,
+        is_leaf = false,
+        min_x = 0,
+        min_y = 0,
+        max_x = 0,
+        max_y = 0
+    }
+end
+
+local function recycle_node(bvh, node)
+    if not (bvh and node) then return end
+    node.parent = nil
+    node.left = nil
+    node.right = nil
+    node.is_leaf = false
+    node.data = nil
+    node.key = nil
+    node.owner_id = nil
+    node.seg_key = nil
+    node.pending_removal = nil
+    node.removal_expiry_tick = nil
+
+    bvh.free_nodes = bvh.free_nodes or {}
+    local fc = (bvh.free_count or 0) + 1
+    bvh.free_count = fc
+    bvh.free_nodes[fc] = node
+end
+
 local function update_node_aabb(node)
     local l = node.left
     local r = node.right
@@ -134,15 +199,17 @@ local function insert_leaf_node(bvh, leaf)
     local sibling = curr
     local old_parent = sibling.parent
 
-    local new_parent = {
-        id = bvh.next_node_id,
-        parent = old_parent,
-        left = sibling,
-        right = leaf,
-        is_leaf = false,
-        min_x = 0, min_y = 0, max_x = 0, max_y = 0
-    }
+    local new_parent = lease_node(bvh)
+    new_parent.id = bvh.next_node_id
     bvh.next_node_id = bvh.next_node_id + 1
+    new_parent.parent = old_parent
+    new_parent.left = sibling
+    new_parent.right = leaf
+    new_parent.is_leaf = false
+    new_parent.min_x = 0
+    new_parent.min_y = 0
+    new_parent.max_x = 0
+    new_parent.max_y = 0
 
     sibling.parent = new_parent
     leaf.parent = new_parent
@@ -201,6 +268,7 @@ local function remove_leaf_node(bvh, leaf)
     end
 
     leaf.parent = nil
+    recycle_node(bvh, parent)
 end
 
 --------------------------------------------------------------------------------
@@ -223,29 +291,36 @@ function trajectory_bvh.insert_segment(bvh, owner_id, seg_key, start_pos, end_po
     owner_rec.segments = owner_rec.segments or {}
 
     if owner_rec.segments[seg_key] then
-        bvh:remove_segment(owner_id, seg_key)
+        trajectory_bvh.remove_segment(bvh, owner_id, seg_key)
     end
 
-    local leaf = {
-        id = bvh.next_node_id,
-        owner_id = owner_id,
-        seg_key = seg_key,
-        is_leaf = true,
-        min_x = math.min(start_pos.x, end_pos.x) - BOX_PADDING,
-        min_y = math.min(start_pos.y, end_pos.y) - BOX_PADDING,
-        max_x = math.max(start_pos.x, end_pos.x) + BOX_PADDING,
-        max_y = math.max(start_pos.y, end_pos.y) + BOX_PADDING,
-        d_start = d_start or 0,
-        d_end = d_end or 16,
-        seg_idx = seg_idx or 1,
-        start_pos = { x = start_pos.x, y = start_pos.y },
-        end_pos = { x = end_pos.x, y = end_pos.y }
-    }
+    local leaf = lease_node(bvh)
+    leaf.id = bvh.next_node_id
+    leaf.owner_id = owner_id
+    leaf.seg_key = seg_key
+    leaf.key = tostring(owner_id) .. ":" .. tostring(seg_key)
+    leaf.is_leaf = true
+    leaf.min_x = math.min(start_pos.x, end_pos.x) - BOX_PADDING
+    leaf.min_y = math.min(start_pos.y, end_pos.y) - BOX_PADDING
+    leaf.max_x = math.max(start_pos.x, end_pos.x) + BOX_PADDING
+    leaf.max_y = math.max(start_pos.y, end_pos.y) + BOX_PADDING
+    leaf.d_start = d_start or 0
+    leaf.d_end = d_end or 16
+    leaf.seg_idx = seg_idx or 1
+    leaf.start_pos = leaf.start_pos or {}
+    leaf.start_pos.x = start_pos.x
+    leaf.start_pos.y = start_pos.y
+    leaf.end_pos = leaf.end_pos or {}
+    leaf.end_pos.x = end_pos.x
+    leaf.end_pos.y = end_pos.y
     bvh.next_node_id = bvh.next_node_id + 1
     insert_leaf_node(bvh, leaf)
 
     owner_rec.segments[seg_key] = leaf
-    bvh.leaf_count = bvh.leaf_count + 1
+    bvh.leaves_by_key = bvh.leaves_by_key or {}
+    bvh.leaves_by_key[leaf.key] = leaf
+    bvh.size = (bvh.size or 0) + 1
+    bvh.leaf_count = bvh.size
     return leaf
 end
 
@@ -262,7 +337,12 @@ function trajectory_bvh.remove_segment(bvh, owner_id, seg_key)
     if leaf then
         remove_leaf_node(bvh, leaf)
         owner_rec.segments[seg_key] = nil
-        bvh.leaf_count = math.max(0, bvh.leaf_count - 1)
+        if leaf.key and bvh.leaves_by_key then
+            bvh.leaves_by_key[leaf.key] = nil
+        end
+        bvh.size = math.max(0, (bvh.size or 1) - 1)
+        bvh.leaf_count = bvh.size
+        recycle_node(bvh, leaf)
     end
 end
 
@@ -308,17 +388,154 @@ function trajectory_bvh.remove_trajectory(bvh, owner_id)
     if owner_rec.segments then
         for _, leaf in pairs(owner_rec.segments) do
             remove_leaf_node(bvh, leaf)
-            bvh.leaf_count = math.max(0, bvh.leaf_count - 1)
+            if leaf.key and bvh.leaves_by_key then
+                bvh.leaves_by_key[leaf.key] = nil
+            end
+            bvh.size = math.max(0, (bvh.size or 1) - 1)
+            bvh.leaf_count = bvh.size
+            recycle_node(bvh, leaf)
         end
     end
     if owner_rec.leaves then
         for i = 1, #owner_rec.leaves do
-            remove_leaf_node(bvh, owner_rec.leaves[i])
-            bvh.leaf_count = math.max(0, bvh.leaf_count - 1)
+            local leaf = owner_rec.leaves[i]
+            remove_leaf_node(bvh, leaf)
+            if leaf.key and bvh.leaves_by_key then
+                bvh.leaves_by_key[leaf.key] = nil
+            end
+            bvh.size = math.max(0, (bvh.size or 1) - 1)
+            bvh.leaf_count = bvh.size
+            recycle_node(bvh, leaf)
         end
     end
 
     bvh.trajectories[owner_id] = nil
+end
+
+--------------------------------------------------------------------------------
+-- GENERIC PROCEDURAL BVH API (PHASE 1)
+--------------------------------------------------------------------------------
+--- Inserts a generic leaf node into the BVH
+--- @param tree table Pure data table or attached BVH instance
+--- @param leaf table Node with min_x, min_y, max_x, max_y (or aabb fields)
+--- @param key any Optional unique string/number key for O(1) tracking
+--- @return table leaf
+function trajectory_bvh.insert(tree, leaf, key)
+    if not (tree and leaf) then return nil end
+
+    if key then
+        leaf.key = key
+    end
+    if leaf.key and tree.leaves_by_key then
+        if tree.leaves_by_key[leaf.key] then
+            trajectory_bvh.remove(tree, tree.leaves_by_key[leaf.key])
+        end
+        tree.leaves_by_key[leaf.key] = leaf
+    end
+
+    leaf.id = leaf.id or tree.next_node_id
+    tree.next_node_id = (tree.next_node_id or 1) + 1
+    leaf.is_leaf = true
+
+    insert_leaf_node(tree, leaf)
+    tree.size = (tree.size or 0) + 1
+    tree.leaf_count = tree.size
+    return leaf
+end
+
+--- Removes a generic leaf from the BVH by reference or key
+--- @param tree table Pure data table or attached BVH instance
+--- @param leaf_or_key table|any Leaf table reference or unique key
+--- @return boolean removed
+function trajectory_bvh.remove(tree, leaf_or_key)
+    if not (tree and leaf_or_key) then return false end
+
+    local leaf = nil
+    if type(leaf_or_key) == "table" and leaf_or_key.is_leaf then
+        leaf = leaf_or_key
+    elseif tree.leaves_by_key then
+        leaf = tree.leaves_by_key[leaf_or_key]
+    end
+
+    if not leaf then return false end
+
+    remove_leaf_node(tree, leaf)
+
+    if leaf.key and tree.leaves_by_key then
+        tree.leaves_by_key[leaf.key] = nil
+    end
+
+    tree.size = math.max(0, (tree.size or 1) - 1)
+    tree.leaf_count = tree.size
+
+    recycle_node(tree, leaf)
+    return true
+end
+
+--- Updates the spatial bounding box of an existing leaf in-place
+--- @param tree table
+--- @param leaf table
+--- @param min_x number|table New min_x or AABB table
+--- @param min_y number|nil
+--- @param max_x number|nil
+--- @param max_y number|nil
+function trajectory_bvh.update(tree, leaf, min_x, min_y, max_x, max_y)
+    if not (tree and leaf) then return end
+    remove_leaf_node(tree, leaf)
+    if min_x then
+        if type(min_x) == "table" then
+            local aabb = min_x
+            leaf.min_x = aabb.min_x or aabb.left or (aabb.left_top and aabb.left_top.x) or leaf.min_x
+            leaf.min_y = aabb.min_y or aabb.top or (aabb.left_top and aabb.left_top.y) or leaf.min_y
+            leaf.max_x = aabb.max_x or aabb.right or (aabb.right_bottom and aabb.right_bottom.x) or leaf.max_x
+            leaf.max_y = aabb.max_y or aabb.bottom or (aabb.right_bottom and aabb.right_bottom.y) or leaf.max_y
+        else
+            leaf.min_x = min_x
+            leaf.min_y = min_y
+            leaf.max_x = max_x
+            leaf.max_y = max_y
+        end
+    end
+    insert_leaf_node(tree, leaf)
+end
+
+--- Fetches a leaf by key in O(1)
+--- @param tree table
+--- @param key any
+--- @return table|nil
+function trajectory_bvh.get_leaf(tree, key)
+    return tree and tree.leaves_by_key and tree.leaves_by_key[key]
+end
+
+--- Clears all nodes from the tree and recycles them into the free pool
+--- @param tree table
+function trajectory_bvh.clear(tree)
+    if not tree then return end
+    local function recycle_subtree(node)
+        if not node then return end
+        if not node.is_leaf then
+            if node.left then recycle_subtree(node.left) end
+            if node.right then recycle_subtree(node.right) end
+        end
+        recycle_node(tree, node)
+    end
+
+    if tree.root then
+        recycle_subtree(tree.root)
+        tree.root = nil
+    end
+
+    tree.size = 0
+    tree.leaf_count = 0
+    tree.leaves_by_key = {}
+    tree.trajectories = {}
+end
+
+--- Returns the total capacity (active leaves + pooled free nodes)
+--- @param tree table
+--- @return number
+function trajectory_bvh.capacity(tree)
+    return (tree.size or 0) + (tree.free_count or 0)
 end
 
 --------------------------------------------------------------------------------
@@ -333,7 +550,16 @@ end
 --- @param out_hits table Array to populate with matching leaf tables
 --- @return table out_hits
 function trajectory_bvh.query_box(bvh, q_min_x, q_min_y, q_max_x, q_max_y, out_hits)
-    out_hits = out_hits or {}
+    if type(q_min_x) == "table" then
+        local aabb = q_min_x
+        out_hits = q_min_y or {}
+        q_min_x = aabb.min_x or aabb.left or (aabb.left_top and aabb.left_top.x) or 0
+        q_min_y = aabb.min_y or aabb.top or (aabb.left_top and aabb.left_top.y) or 0
+        q_max_x = aabb.max_x or aabb.right or (aabb.right_bottom and aabb.right_bottom.x) or 0
+        q_max_y = aabb.max_y or aabb.bottom or (aabb.right_bottom and aabb.right_bottom.y) or 0
+    else
+        out_hits = out_hits or {}
+    end
     local root = bvh.root
     if not root then return out_hits end
 
@@ -438,7 +664,7 @@ function trajectory_bvh.get_surface_tree(store, surface_index)
 
     local tree = store.surface_bvh[surface_index]
     if not tree then
-        tree = trajectory_bvh.new(surface_index)
+        tree = trajectory_bvh.new_tree(surface_index)
         store.surface_bvh[surface_index] = tree
     else
         trajectory_bvh.attach(tree)
@@ -510,17 +736,22 @@ function trajectory_bvh.run_tests(player)
         }
     }
 
+    local tpt = trajectory_bvh.TICKS_PER_TILE or 1.2
+    local t_entry = 1000 + math.floor(48 * tpt)
+    local t_exit = 1000 + math.ceil(64 * tpt)
+    local t_mid = math.floor((t_entry + t_exit) * 0.5)
+
     local active_early = {}
-    bvh:query_visible_flights(50, -2, 60, 2, dummy_flights, 1020, active_early)
+    bvh:query_visible_flights(50, -2, 60, 2, dummy_flights, t_entry - 5, active_early)
     if active_early[999] ~= nil then
-        log_msg("[color=red][TrajectoryBVH Test] Test 3 FAILED: Capsule detected too early in segment (tick 1020 vs entry 1057)[/color]")
+        log_msg("[color=red][TrajectoryBVH Test] Test 3 FAILED: Capsule detected too early in segment[/color]")
         return false
     end
 
     local active_mid = {}
-    bvh:query_visible_flights(50, -2, 60, 2, dummy_flights, 1065, active_mid)
+    bvh:query_visible_flights(50, -2, 60, 2, dummy_flights, t_mid, active_mid)
     if not active_mid[999] then
-        log_msg("[color=red][TrajectoryBVH Test] Test 3 FAILED: Capsule NOT detected during valid window at tick 1065[/color]")
+        log_msg("[color=red][TrajectoryBVH Test] Test 3 FAILED: Capsule NOT detected during valid window[/color]")
         return false
     end
     log_msg("[color=green][TrajectoryBVH Test] Test 3: Spatiotemporal distance window gate -> PASSED[/color]")
@@ -533,7 +764,46 @@ function trajectory_bvh.run_tests(player)
     end
     log_msg("[color=green][TrajectoryBVH Test] Test 4: Dynamic removal & root collapse -> PASSED[/color]")
 
-    log_msg("[color=green][font=default-bold][TrajectoryBVH Test] ALL 4 TESTS PASSED! Surface-isolated spatial tree ready.[/font][/color]")
+    -- Test 5: Procedural Generic BVH without metatables (100% storage serialization safe)
+    local p_tree = trajectory_bvh.new_tree(1)
+    setmetatable(p_tree, nil) -- Strip metatable completely
+    local l1 = { min_x = 10, min_y = 10, max_x = 20, max_y = 20, payload = "p1" }
+    local l2 = { min_x = 50, min_y = 50, max_x = 60, max_y = 60, payload = "p2" }
+    trajectory_bvh.insert(p_tree, l1, "key_1")
+    trajectory_bvh.insert(p_tree, l2, "key_2")
+
+    if p_tree.size ~= 2 or not trajectory_bvh.get_leaf(p_tree, "key_1") then
+        log_msg("[color=red][TrajectoryBVH Test] Test 5 FAILED: Procedural insert or get_leaf failed[/color]")
+        return false
+    end
+
+    local q_hits = {}
+    trajectory_bvh.query_box(p_tree, { min_x = 5, min_y = 5, max_x = 25, max_y = 25 }, q_hits)
+    if #q_hits ~= 1 or q_hits[1].payload ~= "p1" then
+        log_msg("[color=red][TrajectoryBVH Test] Test 5 FAILED: Query box on pure table failed[/color]")
+        return false
+    end
+    log_msg("[color=green][TrajectoryBVH Test] Test 5: Procedural BVH without metatables -> PASSED[/color]")
+
+    -- Test 6: High-water recycling node pool reuse
+    local pre_free = p_tree.free_count or 0
+    trajectory_bvh.remove(p_tree, "key_1")
+    if (p_tree.free_count or 0) <= pre_free or p_tree.size ~= 1 then
+        log_msg("[color=red][TrajectoryBVH Test] Test 6 FAILED: Node not returned to free pool on remove[/color]")
+        return false
+    end
+
+    local cap_before = trajectory_bvh.capacity(p_tree)
+    local l3 = { min_x = 15, min_y = 15, max_x = 25, max_y = 25, payload = "p3" }
+    trajectory_bvh.insert(p_tree, l3, "key_3")
+    local cap_after = trajectory_bvh.capacity(p_tree)
+    if cap_after ~= cap_before then
+        log_msg("[color=red][TrajectoryBVH Test] Test 6 FAILED: Free node pool failed to reuse existing allocated node[/color]")
+        return false
+    end
+    log_msg("[color=green][TrajectoryBVH Test] Test 6: High-water node recycling pool -> PASSED (0 garbage allocations)[/color]")
+
+    log_msg("[color=green][font=default-bold][TrajectoryBVH Test] ALL 6 TESTS PASSED! Instantiable procedural BVH ready.[/font][/color]")
     return true
 end
 

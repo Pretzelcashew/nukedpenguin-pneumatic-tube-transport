@@ -23,6 +23,7 @@ local function get_debug(player_index)
             prints = false,
             profiler = false,
             filter = nil,
+            arrival_dots = true,
         }
     else
         if storage.debug[player_index].peek == nil then
@@ -36,6 +37,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].bvh == nil then
             storage.debug[player_index].bvh = false
+        end
+        if storage.debug[player_index].arrival_dots == nil then
+            storage.debug[player_index].arrival_dots = true
         end
         if storage.debug[player_index].profiler == nil or storage.debug[player_index].profiler == true then
             storage.debug[player_index].profiler = false
@@ -172,6 +176,12 @@ function debug_manager.refresh_panel(player_index)
     if chk_peek then
         chk_peek.enabled = master
         chk_peek.state = master and (dbg.peek == true)
+    end
+
+    local chk_arrival_dots = content.pneumatic_debug_chk_arrival_dots
+    if chk_arrival_dots then
+        chk_arrival_dots.enabled = master
+        chk_arrival_dots.state = master and (dbg.arrival_dots == true)
     end
 
     local chk_prints = content.pneumatic_debug_chk_prints
@@ -321,6 +331,14 @@ function debug_manager.open_panel(player_index)
         name = "pneumatic_debug_chk_peek",
         caption = {"gui-debug.toggle-peek"},
         state = master and (dbg.peek == true),
+        enabled = master
+    }
+
+    content_frame.add{
+        type = "checkbox",
+        name = "pneumatic_debug_chk_arrival_dots",
+        caption = "Timed Arrival Dots",
+        state = master and (dbg.arrival_dots == true),
         enabled = master
     }
 
@@ -633,6 +651,17 @@ local function toggle_bvh(player_index)
     player.print("[Debug] Trajectory BVH Overlay: " .. (dbg.bvh and "[ENABLED]" or "[DISABLED]"))
 end
 
+local function toggle_arrival_dots(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.arrival_dots = not dbg.arrival_dots
+
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] Timed Arrival Dots: " .. (dbg.arrival_dots and "[ENABLED]" or "[DISABLED]"))
+end
+
 commands.add_command("pneumatic-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("debug-panel", "Toggle the Pneumatic Debug & Control Panel", function(cmd) if cmd.player_index then debug_manager.toggle_panel(cmd.player_index) end end)
 commands.add_command("toggle-debug", "Toggle master debug state", function(cmd) if cmd.player_index then toggle_master(cmd.player_index) end end)
@@ -680,6 +709,12 @@ commands.add_command("toggle-bvh", "Toggle Trajectory BVH partition bounding box
 end)
 commands.add_command("pt-toggle-bvh", "Toggle Trajectory BVH partition bounding box overlays (Alias)", function(cmd)
     if cmd.player_index then toggle_bvh(cmd.player_index) end
+end)
+commands.add_command("toggle-arrival-dots", "Toggle timed capsule arrival dot rendering", function(cmd)
+    if cmd.player_index then toggle_arrival_dots(cmd.player_index) end
+end)
+commands.add_command("pt-toggle-arrival-dots", "Toggle timed capsule arrival dot rendering (Alias)", function(cmd)
+    if cmd.player_index then toggle_arrival_dots(cmd.player_index) end
 end)
 
 local function print_spoil_heap_status(player_index)
@@ -785,6 +820,9 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
         dbg.peek = element.state
         if dbg.peek then dbg.capsules = false end
         update_player_shortcuts(p_idx)
+        debug_manager.refresh_panel(p_idx)
+    elseif name == "pneumatic_debug_chk_arrival_dots" then
+        dbg.arrival_dots = element.state
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_prints" then
         dbg.prints = element.state

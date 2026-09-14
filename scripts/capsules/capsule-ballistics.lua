@@ -661,6 +661,7 @@ function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_por
     local surface = game.surfaces[muzzle_node.surface_name]
     capsule_ballistics.play_dispatch_effects(surface, muzzle_node.pos)
     runner.wake_parked_capsules(from_port_key)
+    capsule_renderer.update_arrival_dots(capsule, cap_id)
     return "timed_launched"
 end
 
@@ -718,6 +719,8 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                             trajectory_bvh.refresh_active_renders()
                         end
                     end
+
+                    capsule_renderer.update_arrival_dots(cap, cap_id)
                 end
             end
         end
@@ -725,6 +728,7 @@ function capsule_ballistics.update_projector_flights(beam_owner)
 end
 
 function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
+    capsule_renderer.destroy_arrival_dot(capsule)
     local bf = capsule.beam_flight
     if not bf then
         capsule.in_timed_flight = nil
@@ -776,6 +780,9 @@ function capsule_ballistics.step_timed_arrivals(current_tick, runner)
 end
 
 function capsule_ballistics.remove_flight(capsule_id, beam_owner)
+    if capsule_id and storage.capsules and storage.capsules[capsule_id] then
+        capsule_renderer.destroy_arrival_dot(storage.capsules[capsule_id])
+    end
     if not storage.projector_flights then return end
     if beam_owner and storage.projector_flights[beam_owner] then
         local p_flights = storage.projector_flights[beam_owner]

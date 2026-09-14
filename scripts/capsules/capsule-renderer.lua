@@ -581,6 +581,8 @@ local scratch_visible_capsules = {}
 local previous_rendering_capsules = {}
 
 function capsule_renderer.update_timed_capsules(current_tick)
+    capsule_renderer.sync_all_arrival_dots()
+
     if not storage.projector_flights or next(storage.projector_flights) == nil then
         if next(previous_rendering_capsules) ~= nil then
             for cap_id in pairs(previous_rendering_capsules) do
@@ -628,6 +630,161 @@ function capsule_renderer.update_timed_capsules(current_tick)
             end
             previous_rendering_capsules[cap_id] = nil
         end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- TIMED ARRIVAL DOT DEBUG RENDERING
+--------------------------------------------------------------------------------
+local previous_arrival_capsules = {}
+
+local function destroy_arrival_dot_for_player(cap, p_idx)
+    local p_entry = cap.arrival_render_objects and cap.arrival_render_objects[p_idx]
+    if p_entry then
+        if type(p_entry) == "table" then
+            for i = 1, #p_entry do
+                local o = p_entry[i]
+                if o and o.valid then o.destroy() end
+            end
+        elseif p_entry.valid then
+            p_entry.destroy()
+        end
+        cap.arrival_render_objects[p_idx] = nil
+    end
+end
+
+function capsule_renderer.destroy_arrival_dot(cap)
+    if not (cap and cap.arrival_render_objects) then return end
+    for p_idx, p_entry in pairs(cap.arrival_render_objects) do
+        if type(p_entry) == "table" then
+            for i = 1, #p_entry do
+                local o = p_entry[i]
+                if o and o.valid then o.destroy() end
+            end
+        elseif p_entry and p_entry.valid then
+            p_entry.destroy()
+        end
+    end
+    cap.arrival_render_objects = nil
+end
+
+function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
+    if not (capsule and player and player.valid) then return end
+    local p_idx = player.index
+    if not is_debug_active("arrival_dots", p_idx) then
+        destroy_arrival_dot_for_player(capsule, p_idx)
+        return
+    end
+
+    local bf = capsule.beam_flight
+    if not (bf and bf.terminal_pos) then
+        destroy_arrival_dot_for_player(capsule, p_idx)
+        return
+    end
+
+    local surface_name = bf.surface_name or capsule.surface_name or "nauvis"
+    local surface = game.surfaces[surface_name]
+    if not (surface and surface.valid) then
+        destroy_arrival_dot_for_player(capsule, p_idx)
+        return
+    end
+
+    local term_pos = bf.terminal_pos
+    local cap_data = capsule_manager.get(cap_id)
+    local def = cap_data and cap_data.definition
+    local cap_color = capsule_defs.get_debug_color(def or (cap_data and cap_data.type) or capsule.capsule_type)
+        or { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }
+
+    local is_receiver = bf.hit_receiver_unit ~= nil
+    local ring_color = is_receiver and { r = 0.2, g = 0.95, b = 0.4, a = 0.9 } or { r = 1.0, g = 0.25, b = 0.1, a = 0.9 }
+
+    capsule.arrival_render_objects = capsule.arrival_render_objects or {}
+    local existing = capsule.arrival_render_objects[p_idx]
+
+    if existing and #existing == 2 and existing[1].valid and existing[2].valid then
+        local t1 = existing[1].target
+        if t1.x ~= term_pos.x or t1.y ~= term_pos.y then
+            existing[1].target = term_pos
+            existing[2].target = term_pos
+        end
+        existing[1].color = cap_color
+        existing[2].color = ring_color
+        return
+    end
+
+    destroy_arrival_dot_for_player(capsule, p_idx)
+
+    local dot = rendering.draw_circle{
+        color = cap_color,
+        radius = 0.2,
+        filled = true,
+        target = term_pos,
+        surface = surface,
+        render_layer = "entity-info-icon-above",
+        players = { player }
+    }
+
+    local ring = rendering.draw_circle{
+        color = ring_color,
+        radius = 0.4,
+        width = 2,
+        filled = false,
+        target = term_pos,
+        surface = surface,
+        render_layer = "entity-info-icon-above",
+        players = { player }
+    }
+
+    capsule.arrival_render_objects[p_idx] = { dot, ring }
+end
+
+function capsule_renderer.update_arrival_dots(capsule, cap_id)
+    if not (capsule and capsule.in_timed_flight and capsule.beam_flight) then return end
+    for _, player in pairs(game.players) do
+        if player and player.valid then
+            capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
+        end
+    end
+end
+
+function capsule_renderer.sync_all_arrival_dots()
+    if not storage.projector_flights or next(storage.projector_flights) == nil then
+        if next(previous_arrival_capsules) ~= nil then
+            for cap_id in pairs(previous_arrival_capsules) do
+                local cap = storage.capsules and storage.capsules[cap_id]
+                if cap then
+                    capsule_renderer.destroy_arrival_dot(cap)
+                end
+                previous_arrival_capsules[cap_id] = nil
+            end
+        end
+        return
+    end
+
+    local active_caps = {}
+    for owner, p_flights in pairs(storage.projector_flights) do
+        for i = 1, #p_flights do
+            local cap_id = p_flights[i].capsule_id
+            local cap = storage.capsules and storage.capsules[cap_id]
+            if cap and cap.in_timed_flight and cap.beam_flight then
+                active_caps[cap_id] = true
+                capsule_renderer.update_arrival_dots(cap, cap_id)
+            end
+        end
+    end
+
+    for cap_id in pairs(previous_arrival_capsules) do
+        if not active_caps[cap_id] then
+            local cap = storage.capsules and storage.capsules[cap_id]
+            if cap then
+                capsule_renderer.destroy_arrival_dot(cap)
+            end
+            previous_arrival_capsules[cap_id] = nil
+        end
+    end
+
+    for cap_id in pairs(active_caps) do
+        previous_arrival_capsules[cap_id] = true
     end
 end
 

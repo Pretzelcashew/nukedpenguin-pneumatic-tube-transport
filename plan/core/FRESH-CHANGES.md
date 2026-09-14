@@ -261,3 +261,12 @@
 2. **Graph-Bound Trajectory Synchronization (`scripts/capsules/capsule-ballistics.lua`):** Replaced unbounded 50-tile in-flight raycasts in `update_projector_flights` with active flow graph endpoint queries (`get_beam_endpoint`), preventing projectiles from retargeting to disconnected downstream projectors across severed gaps.
 3. **Crash Damage Engine & Immunity Refinement (`scripts/capsules/capsule-ballistics.lua`):** Implemented `apply_crash_damage` with a 3.5-tile blast radius and quality-scaled impact falloff, replaced beam-ignorable filters with dedicated entity immunity checks so players and vehicles take impact damage, and shielded `visible-capsule-holder` spill containers from damage.
 4. **Immediate Non-Receiver Arrival Finalization (`scripts/capsules/capsule-ballistics.lua`):** Streamlined `finalize_timed_arrival` to immediately trigger impact spillage and crash damage upon reaching non-receiver endpoints, preventing false clearance re-checks from rescheduling arrivals into endless fly-through loops.
+
+
+### Revision: Timed Arrival Dot Visualizer and Dynamic Trajectory Reticle Sync
+**Date:** 2026-09-13 21:43 EDT
+**Context:** Implemented visual arrival target reticles for in-flight timed capsules to display scheduled landing positions and crash sites on the map, dynamically reflecting in-flight obstacle clearance and trajectory updates with player-scoped debug controls.
+**Key Changes:**
+1. **Arrival Dot Visualizer & Viewport Synchronization (`scripts/capsules/capsule-renderer.lua`):** Implemented `render_arrival_dot_for_player` and `sync_all_arrival_dots` to render dual-component arrival reticles (capsule variant color inner dot, green receiver ring, or orange-red obstacle crash ring), updating target positions in-place on existing render objects to eliminate allocation churn.
+2. **Ballistic State & Trajectory Hook Integration (`scripts/capsules/capsule-ballistics.lua`):** Wired arrival dot generation into `dispatch_timed_launch`, dynamically shifted reticle targets to updated coordinates during occlusion recalculations in `update_projector_flights`, and ensured immediate destruction on arrival or impact in `finalize_timed_arrival` and `remove_flight`.
+3. **Decoupled Debug Toggle & Panel Controls (`scripts/debug-manager.lua`):** Added the `arrival_dots` player storage setting and migration, added the "Timed Arrival Dots" checkbox to the Pneumatic Debug Panel, and registered `/toggle-arrival-dots` console commands while keeping the module decoupled from runtime rendering requirements to prevent circular load cycles.

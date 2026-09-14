@@ -245,8 +245,8 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
         local r_ent = storage.active_projectors[hit_receiver_unit]
         if r_ent and r_ent.valid then
             terminal_pos = {
-                x = r_ent.position.x - dx * 1.5,
-                y = r_ent.position.y - dy * 1.5
+                x = (dx ~= 0) and (r_ent.position.x - dx * 1.5) or muzzle_node.pos.x,
+                y = (dy ~= 0) and (r_ent.position.y - dy * 1.5) or muzzle_node.pos.y
             }
         end
     end
@@ -457,10 +457,10 @@ function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
 
     local proj_entity = storage.active_projectors[unit_number]
     if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
-        return "docked"
+        return nil
     end
     if not projector_settings.can_fire(proj_entity) then
-        return "docked"
+        return nil
     end
 
     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
@@ -486,13 +486,13 @@ function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
 
             local endpoint_key, endpoint_node = capsule_ballistics.get_beam_endpoint(unit_number, dx, dy)
             if not endpoint_node then
-                return "docked"
+                return nil
             end
 
             local max_cap = projector_settings.MAX_ENDPOINT_CAPSULES or 2
             local endpoint_count = capsule_ballistics.count_endpoint_capsules(unit_number, endpoint_key, endpoint_node)
             if endpoint_count >= max_cap then
-                return "docked"
+                return nil
             end
 
             local cap_id = capsule.capsule_id or capsule.id
@@ -522,7 +522,7 @@ function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
                         runner.mark_capsule_unparked(capsule)
                         hub_spill.spill_capsule(cap_id, surface, { x = tx, y = ty }, nil, true)
                         runner.wake_parked_capsules(from_port_key)
-                        return "docked"
+                        return nil
                     end
                 end
 
@@ -549,7 +549,7 @@ function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
         end
     end
 
-    return "docked"
+    return nil
 end
 
 --------------------------------------------------------------------------------
@@ -711,8 +711,8 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                     local r_ent = storage.active_projectors[new_receiver]
                     if r_ent and r_ent.valid then
                         new_term = {
-                            x = r_ent.position.x - bf.dx * 1.5,
-                            y = r_ent.position.y - bf.dy * 1.5
+                            x = (bf.dx ~= 0) and (r_ent.position.x - bf.dx * 1.5) or bf.start_pos.x,
+                            y = (bf.dy ~= 0) and (r_ent.position.y - bf.dy * 1.5) or bf.start_pos.y
                         }
                     end
                 end
@@ -916,8 +916,8 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                                 local new_term
                                 if is_receiver then
                                     new_term = {
-                                        x = entity.position.x - dx * 1.5,
-                                        y = entity.position.y - dy * 1.5
+                                        x = (dx ~= 0) and (entity.position.x - dx * 1.5) or sp.x,
+                                        y = (dy ~= 0) and (entity.position.y - dy * 1.5) or sp.y
                                     }
                                     bf.hit_receiver_unit = entity.unit_number
                                 else

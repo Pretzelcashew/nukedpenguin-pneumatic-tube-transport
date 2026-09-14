@@ -160,3 +160,6 @@ fix that placing an entity at the end of the projector's termintor would not for
 fix rotating an entity would cause a kinetic flow to lose its tip bvh node
 
 fix occlusion no longer working for in flight kinetic capsules when the projector is gone, goes highlt against what ive strived to build, a clean separation so one isnt reliant on the other. so many reghressions fromt he last few refactors
+
+
+fix capsules getting pressure trapped inside projectors again (i cant siphon it back out if i had just pushed it in? could it be erroneously not letting just entered with pressure capsules be siphoned back out with pressure?)

@@ -414,3 +414,12 @@
 **Key Changes:**
 1. **Dynamic Receiver Interception (`scripts/capsules/capsule-ballistics.lua`):** Refined `handle_motion_obstacle_changed` to inspect `entity.name == "pneumatic-projector"`, snapping terminal arrival coordinates directly to the projector's perimeter intake socket (`position - dir * 1.5`) and assigning `bf.hit_receiver_unit = entity.unit_number` for safe dock catchment, while preserving crash explosions and terminal spillage for non-projector structures.
 2. **Visual Reticle Dynamic State Sync (`scripts/capsules/capsule-ballistics.lua`):** Synchronized `capsule_renderer.update_arrival_dots` during obstacle evaluation so the scheduled reticle immediately transitions from an orange crash ring to a green receiver ring when intercepted by a newly placed projector.
+
+
+### Revision: Lock Colinear Receiver Docking and Enable Reverse Vacuum Evacuation
+**Date:** 2026-09-14 13:05 EDT
+**Context:** Resolved an axis-snapping regression where kinetic beam endpoints, Trajectory BVH leaf segments, and landing reticles dog-legged sideways when contacting 3x3 receiving projectors, and eliminated capsule trapping inside projectors by clearing last port memory and permitting reverse vacuum evacuation.
+**Key Changes:**
+1. **Invariant Perpendicular Coordinate Snapping (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Locked the perpendicular axis across all receiver docking calculations (`dock_receiver_endpoint`, `step_port`, `init_capsule_beam_flight`, `update_projector_flights`, `handle_motion_obstacle_changed`), ensuring vertical beams strictly preserve `node.pos.x` and horizontal beams strictly preserve `node.pos.y` rather than jumping to the receiver chassis center.
+2. **Colinear BVH Remainder & Regrowth Geometry (`scripts/flow/flow-kinetic.lua`):** Aligned terminal remainder segment registration to the true beam vector, eliminating staggered multi-column leaf AABBs, skewed parent bounding boxes, and slanted post-deconstruction beam regrowth.
+3. **Reverse Vacuum Evacuation & Siphoning (`scripts/capsules/capsule-ballistics.lua`, `scripts/capsules/capsule-runner.lua`):** Replaced hardcoded `"docked"` returns in `try_projector_launch` with `nil` so pathfinding falls through to candidate hop evaluation when unready to launch, cleared `capsule.last_port_key` upon entering projector docks, and registered capsules in the spatial parked index so reverse negative pressure can siphon them back out into the entry tube.

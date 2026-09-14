@@ -320,8 +320,8 @@ local function dock_receiver_endpoint(node, pkey, nx, ny, receiver_ent, enqueue_
     node.is_beam_node = node_is_prom
     node.capsule_transmit = node_is_prom
 
-    local rx = receiver_ent.position.x - node.dir.x * 1.5
-    local ry = receiver_ent.position.y - node.dir.y * 1.5
+    local rx = (node.dir.x ~= 0) and (receiver_ent.position.x - node.dir.x * 1.5) or node.pos.x
+    local ry = (node.dir.y ~= 0) and (receiver_ent.position.y - node.dir.y * 1.5) or node.pos.y
     local next_dist = (node.dist or 0) + 1
     local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
     local next_pos_key = make_pos_key(node.surface_name, rx, ry)
@@ -438,8 +438,8 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                         end
                         node.is_endpoint = false
                         node.hit_receiver = nil
-                        local rx = occ.receiver.position.x - node.dir.x * 1.5
-                        local ry = occ.receiver.position.y - node.dir.y * 1.5
+                        local rx = (node.dir.x ~= 0) and (occ.receiver.position.x - node.dir.x * 1.5) or node.pos.x
+                        local ry = (node.dir.y ~= 0) and (occ.receiver.position.y - node.dir.y * 1.5) or node.pos.y
                         local next_dist = (node.dist or 0) + 1
                         local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
                         local next_pos_key = make_pos_key(node.surface_name, rx, ry)

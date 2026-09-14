@@ -588,9 +588,7 @@ function capsule_runner.select_next_target(capsule)
 
     -- 2. Projector Launch Muzzle Dispatch
     local launch_result = capsule_ballistics.try_projector_launch(capsule, unit_number, capsule_runner)
-    if launch_result == "docked" then
-        return nil
-    elseif launch_result == "timed_launched" then
+    if launch_result == "timed_launched" then
         return "timed_launched"
     elseif launch_result then
         return launch_result
@@ -999,6 +997,8 @@ function capsule_runner.update_capsules(current_tick)
                     if prev_unit ~= new_unit then
                         if new_unit and storage.active_projectors and storage.active_projectors[new_unit] then
                             capsule.entered_via_pressure = true
+                            capsule.last_port_key = nil
+                            mark_capsule_parked(capsule)
                         elseif prev_unit and storage.active_projectors and storage.active_projectors[prev_unit] then
                             capsule.entered_via_pressure = false
                         end

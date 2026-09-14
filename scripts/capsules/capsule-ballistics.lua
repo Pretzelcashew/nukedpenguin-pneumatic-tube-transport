@@ -577,8 +577,8 @@ function capsule_ballistics.handle_endpoint_arrival(capsule, id, node, bf, runne
     local term_pos = (node and node.pos) or (bf and bf.terminal_pos) or capsule.last_pos
 
     if receiver_entity and receiver_entity.valid then
+        capsule.beam_flight = nil
         if capsule_ballistics.catch_in_receiver(capsule, receiver_entity, runner) then
-            capsule.beam_flight = nil
             return true, true
         end
         return true, false
@@ -769,6 +769,7 @@ function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
                 end
             end
         end
+        capsule.beam_flight = nil
         if dock_port then
             capsule.from_port_key = dock_port
             capsule.last_pos = bf.terminal_pos

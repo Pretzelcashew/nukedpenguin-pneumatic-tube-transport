@@ -249,7 +249,9 @@ function hub_spill.handle_entity_destruction(entity)
         local pkey = cap and cap.from_port_key
         local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
         -- Exclude in-flight ballistic capsules: let them finish trajectory or crash at their in-flight position
-        if not (node and node.is_beam_node) and not (cap and (cap.in_timed_flight or cap.beam_flight)) then
+        local is_in_flight = cap and cap.in_timed_flight
+        local is_on_beam = node and (node.is_beam_node or node.is_kinetic)
+        if not is_in_flight and not is_on_beam then
             hub_spill.spill_capsule(capsule_id, surface, position, force)
         end
     end

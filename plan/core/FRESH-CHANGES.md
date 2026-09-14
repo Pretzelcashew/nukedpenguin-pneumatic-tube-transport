@@ -423,3 +423,11 @@
 1. **Invariant Perpendicular Coordinate Snapping (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Locked the perpendicular axis across all receiver docking calculations (`dock_receiver_endpoint`, `step_port`, `init_capsule_beam_flight`, `update_projector_flights`, `handle_motion_obstacle_changed`), ensuring vertical beams strictly preserve `node.pos.x` and horizontal beams strictly preserve `node.pos.y` rather than jumping to the receiver chassis center.
 2. **Colinear BVH Remainder & Regrowth Geometry (`scripts/flow/flow-kinetic.lua`):** Aligned terminal remainder segment registration to the true beam vector, eliminating staggered multi-column leaf AABBs, skewed parent bounding boxes, and slanted post-deconstruction beam regrowth.
 3. **Reverse Vacuum Evacuation & Siphoning (`scripts/capsules/capsule-ballistics.lua`, `scripts/capsules/capsule-runner.lua`):** Replaced hardcoded `"docked"` returns in `try_projector_launch` with `nil` so pathfinding falls through to candidate hop evaluation when unready to launch, cleared `capsule.last_port_key` upon entering projector docks, and registered capsules in the spatial parked index so reverse negative pressure can siphon them back out into the entry tube.
+
+
+### Revision: Clear Ballistic Flight Records on Receiver Docking and Normalize Deconstruction Spilling
+**Date:** 2026-09-14 14:15 EDT
+**Context:** Resolved a severe lag spike and erroneous hypersonic crash explosion occurring when deconstructing an electromagnetic receiving projector holding a captured capsule by clearing ballistic flight state on arrival and permitting standard peaceful cargo spilling.
+**Key Changes:**
+1. **Receiver Arrival State Clearing (`scripts/capsules/capsule-ballistics.lua`):** Ensured `capsule.beam_flight = nil` is explicitly cleared upon contacting a valid receiver dock in `handle_endpoint_arrival` and `finalize_timed_arrival`, transitioning received capsules cleanly to stationary docked status.
+2. **Deconstruction Spill Normalization (`scripts/hubs/hub-spill.lua`):** Refined `handle_entity_destruction` to filter out only active mid-air capsules (`cap.in_timed_flight` or `node.is_beam_node`), allowing docked capsules inside mined projectors to immediately trigger standard peaceful item spilling rather than falling through to dead-node emergency crash damage routines.

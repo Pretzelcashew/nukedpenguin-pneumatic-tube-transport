@@ -346,6 +346,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 node.is_beam_node = true
                 node.capsule_transmit = true
                 node.hit_receiver = nil
+                game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: reached max range endpoint at %s (dist=%s)", pkey, tostring(node.dist)))
                 flow_kinetic.register_endpoint_in_bvh(node)
                 flow_renderer.update_kinetic_pos_render(pkey)
                 wake_port_fn(pkey)
@@ -361,14 +362,14 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     node.is_beam_node = true
                     node.capsule_transmit = true
                     node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
+                    game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: established endpoint at %s (dist=%s, receiver=%s)", pkey, tostring(node.dist), tostring(node.hit_receiver)))
                     flow_kinetic.register_endpoint_in_bvh(node)
                     flow_renderer.update_kinetic_pos_render(pkey)
                     wake_port_fn(pkey)
 
                     local owner_unit = node.beam_owner or node.unit_number
-                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
-                    if cb and cb.update_projector_flights then
-                        cb.update_projector_flights(owner_unit)
+                    if flow_kinetic.update_projector_flights then
+                        flow_kinetic.update_projector_flights(owner_unit)
                     end
 
                     if occ.is_receiver and occ.receiver and occ.receiver.unit_number then
@@ -392,15 +393,15 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 else
                     if node.is_endpoint then
                         flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+                        game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: unblocked endpoint %s, advancing beam", pkey))
                     end
                     local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
                     node.is_endpoint = false
                     node.hit_receiver = nil
 
                     local owner_unit = node.beam_owner or node.unit_number
-                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
-                    if cb and cb.update_projector_flights then
-                        cb.update_projector_flights(owner_unit)
+                    if flow_kinetic.update_projector_flights then
+                        flow_kinetic.update_projector_flights(owner_unit)
                     end
                     node.is_prominent_kinetic = node_is_prom
                     node.is_beam_node = node_is_prom
@@ -573,6 +574,7 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                     if intersects then
                         local check_min = math.max(0, d_start - 1)
                         local check_max = math.min(max_reach, d_end + 1)
+                        game.print(string.format("[KINETIC-DEBUG] Triggering wake up (obstacle %s, removal=%s): projector %d dist %d..%d", entity.name, tostring(is_removal), unit_number, check_min, check_max))
 
                         for dist = check_min, check_max do
                             local pkey = (dist == 0)
@@ -594,9 +596,8 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                                 wake_port_fn(pkey)
                             end
                         end
-                        local cb = package.loaded["scripts.capsules.capsule-ballistics"]
-                        if cb and cb.update_projector_flights then
-                            cb.update_projector_flights(unit_number)
+                        if flow_kinetic.update_projector_flights then
+                            flow_kinetic.update_projector_flights(unit_number)
                         end
                     end
                 end
@@ -656,6 +657,7 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
             for pkey in pairs(ports) do
                 local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                 if b_node and b_node.is_kinetic and b_node.dir and b_node.dir.x == c.dx and b_node.dir.y == c.dy then
+                    game.print(string.format("[KINETIC-DEBUG] Triggering wake up (character %s): pointing node %s", is_evacuation and "evacuation" or "entry", pkey))
                     if is_evacuation and b_node.is_endpoint then
                         flow_kinetic.unregister_endpoint_remainder_in_bvh(b_node)
                         b_node.is_endpoint = false
@@ -668,9 +670,8 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
                     enqueue_port_fn(pkey)
                     wake_port_fn(pkey)
                     local b_owner = b_node.beam_owner or b_node.unit_number
-                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
-                    if b_owner and cb and cb.update_projector_flights then
-                        cb.update_projector_flights(b_owner)
+                    if b_owner and flow_kinetic.update_projector_flights then
+                        flow_kinetic.update_projector_flights(b_owner)
                     end
                 end
             end
@@ -723,12 +724,12 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                             for pkey in pairs(ports) do
                                 local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                                 if b_node and b_node.is_kinetic then
+                                    game.print(string.format("[KINETIC-DEBUG] Triggering wake up (character step): kinetic node %s", pkey))
                                     enqueue_port_fn(pkey)
                                     wake_port_fn(pkey)
                                     local b_owner = b_node.beam_owner or b_node.unit_number
-                                    local cb = package.loaded["scripts.capsules.capsule-ballistics"]
-                                    if b_owner and cb and cb.update_projector_flights then
-                                        cb.update_projector_flights(b_owner)
+                                    if b_owner and flow_kinetic.update_projector_flights then
+                                        flow_kinetic.update_projector_flights(b_owner)
                                     end
                                 end
                             end

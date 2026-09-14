@@ -527,15 +527,15 @@ function capsule_renderer.get_interpolated_position(bf, current_tick)
     local total_ticks = arrival_tick - start_tick
     if total_ticks <= 0 then total_ticks = 1 end
 
-    local progress = (current_tick - start_tick) / total_ticks
-    if progress < 0 then progress = 0 end
-    if progress > 1 then progress = 1 end
-
     local start_pos = bf.start_pos or bf.terminal_pos
     local term_pos = bf.terminal_pos or start_pos
+    local total_dist = math.abs(term_pos.x - start_pos.x) + math.abs(term_pos.y - start_pos.y)
+    local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
+    local dist_traveled = math.max(0, current_tick - start_tick) / tpt
 
-    local cur_x = start_pos.x + (term_pos.x - start_pos.x) * progress
-    local cur_y = start_pos.y + (term_pos.y - start_pos.y) * progress
+    local progress = (total_dist > 0) and math.min(1.0, dist_traveled / total_dist) or 1.0
+    local cur_x = (dist_traveled >= total_dist) and term_pos.x or (start_pos.x + (bf.dx or 0) * dist_traveled)
+    local cur_y = (dist_traveled >= total_dist) and term_pos.y or (start_pos.y + (bf.dy or 0) * dist_traveled)
 
     return { x = cur_x, y = cur_y }, progress
 end

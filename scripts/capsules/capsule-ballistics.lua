@@ -15,8 +15,16 @@ capsule_ballistics.USE_TIMED_ARRIVAL = USE_TIMED_ARRIVAL
 
 local MAX_BEAM_DISTANCE = 500
 local HOP_DISTANCE = 5
+-- SPEED TWEAK: Set to 6 for normal speed (50 tiles/sec).
+-- Set to 60 for 10x slow-mo, or 30 for 5x slow-mo!
+local TICKS_PER_HOP = 60
+local TICKS_PER_TILE = TICKS_PER_HOP / HOP_DISTANCE
+
 capsule_ballistics.MAX_BEAM_DISTANCE = MAX_BEAM_DISTANCE
 capsule_ballistics.HOP_DISTANCE = HOP_DISTANCE
+capsule_ballistics.TICKS_PER_HOP = TICKS_PER_HOP
+capsule_ballistics.TICKS_PER_TILE = TICKS_PER_TILE
+trajectory_bvh.TICKS_PER_TILE = TICKS_PER_TILE
 
 --------------------------------------------------------------------------------
 -- AUDIO & PARTICLE VISUAL EFFECTS
@@ -232,9 +240,19 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
     if not terminal_pos then
         terminal_pos = hop_positions[hop_count]
     end
+    if hit_receiver_unit and storage.active_projectors and storage.active_projectors[hit_receiver_unit] then
+        local r_ent = storage.active_projectors[hit_receiver_unit]
+        if r_ent and r_ent.valid then
+            terminal_pos = {
+                x = r_ent.position.x - dx * 1.5,
+                y = r_ent.position.y - dy * 1.5
+            }
+        end
+    end
 
     local current_tick = game.tick
-    local flight_ticks = math.max(6, hop_count * 6)
+    local total_dist = math.abs(terminal_pos.x - muzzle_node.pos.x) + math.abs(terminal_pos.y - muzzle_node.pos.y)
+    local flight_ticks = math.max(TICKS_PER_HOP, math.ceil(total_dist * TICKS_PER_TILE))
 
     if USE_TIMED_ARRIVAL and muzzle_node and terminal_pos then
         local surface = game.surfaces[muzzle_node.surface_name]
@@ -682,19 +700,27 @@ function capsule_ballistics.update_projector_flights(beam_owner)
 
         if cap and bf and bf.owner == beam_owner then
             local elapsed_ticks = math.max(0, current_tick - (bf.start_tick or current_tick))
-            local cur_dist = math.max(0, math.floor(elapsed_ticks / 1.2))
+            local cur_dist = math.max(0, math.floor(elapsed_ticks / TICKS_PER_TILE))
             local ep_key, ep_node = capsule_ballistics.get_beam_endpoint(beam_owner, bf.dx, bf.dy, cur_dist + 1)
             if ep_node and ep_node.pos then
                 local new_term = { x = ep_node.pos.x, y = ep_node.pos.y }
                 local new_receiver = ep_node.hit_receiver
+                if new_receiver and storage.active_projectors and storage.active_projectors[new_receiver] then
+                    local r_ent = storage.active_projectors[new_receiver]
+                    if r_ent and r_ent.valid then
+                        new_term = {
+                            x = r_ent.position.x - bf.dx * 1.5,
+                            y = r_ent.position.y - bf.dy * 1.5
+                        }
+                    end
+                end
                 local old_term = bf.terminal_pos
                 local pos_changed = (old_term == nil) or (old_term.x ~= new_term.x) or (old_term.y ~= new_term.y)
                 local receiver_changed = (bf.hit_receiver_unit ~= new_receiver)
 
                 if pos_changed or receiver_changed then
-                    local d = ep_node.dist or HOP_DISTANCE
-                    local new_hop_count = math.max(1, math.ceil(d / HOP_DISTANCE))
-                    local new_flight_ticks = math.max(6, new_hop_count * 6)
+                    local total_dist = math.abs(new_term.x - bf.start_pos.x) + math.abs(new_term.y - bf.start_pos.y)
+                    local new_flight_ticks = math.max(TICKS_PER_HOP, math.ceil(total_dist * TICKS_PER_TILE))
                     local new_arrival_tick = bf.start_tick + new_flight_ticks
                     if new_arrival_tick <= current_tick then
                         new_arrival_tick = current_tick

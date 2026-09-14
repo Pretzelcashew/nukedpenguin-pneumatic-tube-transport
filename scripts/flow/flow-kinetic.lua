@@ -360,14 +360,51 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 local occ = flow_kinetic.check_tile_obstruction(surface, nx, ny, owner_entity)
 
                 if occ.blocked then
-                    node.is_endpoint = true
-                    node.is_prominent_kinetic = true
-                    node.is_beam_node = true
-                    node.capsule_transmit = true
-                    node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
-                    flow_kinetic.register_endpoint_in_bvh(node)
-                    flow_renderer.update_kinetic_pos_render(pkey)
-                    wake_port_fn(pkey)
+                    if occ.is_receiver and occ.receiver then
+                        local next_dist = (node.dist or 0) + 1
+                        local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
+                        local next_pos_key = make_pos_key(node.surface_name, nx, ny)
+
+                        storage.flow_nodes[next_pkey] = {
+                            unit_number = node.beam_owner or node.unit_number,
+                            beam_owner = node.beam_owner or node.unit_number,
+                            port_index = 100 + next_dist,
+                            pos_key = next_pos_key,
+                            pos = {x = nx, y = ny},
+                            dir = {x = node.dir.x, y = node.dir.y},
+                            surface_name = node.surface_name,
+                            dist = next_dist,
+                            is_kinetic = true,
+                            is_beam_node = true,
+                            is_prominent_kinetic = true,
+                            capsule_transmit = true,
+                            pressure_transmit = false,
+                            sense_transmit = false,
+                            kinetic_transmit = true,
+                            cross_transit = false,
+                            q_level = node.q_level,
+                            is_endpoint = true,
+                            hit_receiver = occ.receiver.unit_number
+                        }
+
+                        flow_common.add_node_to_grid(next_pos_key, next_pkey)
+                        flow_common.link_ports(pkey, next_pkey)
+
+                        flow_kinetic.register_endpoint_in_bvh(storage.flow_nodes[next_pkey])
+                        flow_renderer.update_kinetic_pos_render(pkey)
+                        flow_renderer.update_kinetic_pos_render(next_pkey)
+                        wake_port_fn(pkey)
+                        wake_port_fn(next_pkey)
+                    else
+                        node.is_endpoint = true
+                        node.is_prominent_kinetic = true
+                        node.is_beam_node = true
+                        node.capsule_transmit = true
+                        node.hit_receiver = nil
+                        flow_kinetic.register_endpoint_in_bvh(node)
+                        flow_renderer.update_kinetic_pos_render(pkey)
+                        wake_port_fn(pkey)
+                    end
 
                     local owner_unit = node.beam_owner or node.unit_number
                     if flow_kinetic.update_projector_flights then

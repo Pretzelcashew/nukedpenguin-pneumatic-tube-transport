@@ -381,11 +381,12 @@ function trajectory_bvh.query_visible_flights(bvh, q_min_x, q_min_y, q_max_x, q_
         local leaf = hits[i]
         local proj_flights = active_flights[leaf.owner_id]
         if proj_flights then
+            local tpt = trajectory_bvh.TICKS_PER_TILE or TICKS_PER_TILE
             for f = 1, #proj_flights do
                 local flight = proj_flights[f]
                 local t_start = flight.start_tick or 0
-                local t_entry = t_start + math.floor((leaf.d_start or 0) * TICKS_PER_TILE)
-                local t_exit = t_start + math.ceil((leaf.d_end or 16) * TICKS_PER_TILE)
+                local t_entry = t_start + math.floor((leaf.d_start or 0) * tpt)
+                local t_exit = t_start + math.ceil((leaf.d_end or 16) * tpt)
 
                 if current_tick >= t_entry and current_tick <= t_exit then
                     out_capsules[flight.capsule_id] = flight
@@ -409,10 +410,11 @@ function trajectory_bvh.has_flight_in_leaf(leaf, active_flights, current_tick)
 
     local max_exit = 0
     local found = false
+    local tpt = trajectory_bvh.TICKS_PER_TILE or TICKS_PER_TILE
     for f = 1, #proj_flights do
         local flight = proj_flights[f]
         local t_start = flight.start_tick or 0
-        local t_exit = t_start + math.ceil((leaf.d_end or 16) * TICKS_PER_TILE)
+        local t_exit = t_start + math.ceil((leaf.d_end or 16) * tpt)
         if current_tick <= t_exit then
             found = true
             if t_exit > max_exit then

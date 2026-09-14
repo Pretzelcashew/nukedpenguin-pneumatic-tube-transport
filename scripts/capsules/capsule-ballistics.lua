@@ -733,12 +733,32 @@ function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
     end
 end
 
+local arrival_handlers = {}
+capsule_ballistics.arrival_handlers = arrival_handlers
+
+function capsule_ballistics.register_arrival_handler(kind, handler)
+    arrival_handlers[kind] = handler
+end
+
+function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner)
+    local flight = timed_motion.get_flight(flight_id)
+    local kind = (flight and flight.kind) or (storage.capsules and storage.capsules[flight_id] and "capsule")
+
+    if kind == "capsule" then
+        local capsule = storage.capsules and storage.capsules[flight_id]
+        if capsule and capsule.in_timed_flight then
+            capsule_ballistics.finalize_timed_arrival(capsule, flight_id, runner)
+        end
+    elseif flight and flight.on_arrival then
+        flight.on_arrival(flight_id, flight, current_tick, runner)
+    elseif kind and arrival_handlers[kind] then
+        arrival_handlers[kind](flight_id, flight, current_tick, runner)
+    end
+end
+
 function capsule_ballistics.step_timed_arrivals(current_tick, runner)
     timed_motion.step_arrivals(current_tick, function(top_id)
-        local capsule = storage.capsules and storage.capsules[top_id]
-        if capsule and capsule.in_timed_flight then
-            capsule_ballistics.finalize_timed_arrival(capsule, top_id, runner)
-        end
+        capsule_ballistics.handle_timed_arrival(top_id, current_tick, runner)
     end)
 end
 

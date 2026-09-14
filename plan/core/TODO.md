@@ -123,6 +123,22 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 ~expand the player kinetic port influence by 1 node so moving along a kinetic flow doesnt cause so many micro wakes from player kinetic dot staggered walk
 
 ~make it so that intercepted kinetic flows with a capsule schedule for crash, can have an opportunity to update the crash site if the occlusion updates before the crash occurs
+
+~fix that intercepting a capsule flight and then unblocking it would cause the capsule to skip entering the pneumatics of the reciever projector upon reaching the arrival target, and just launch right away rather than requiring to be cycled back out of it and back into it via pneumatics, this should be a required part so em projectors arent just lone infrastructure routers
+
+~fix that placing an entity at the end of the projector's termintor would not form a new endpoint
+
+~fix rotating an entity would cause a kinetic flow to lose its tip bvh node
+
+~fix occlusion no longer working for in flight kinetic capsules when the projector is gone, goes highlt against what ive strived to build, a clean separation so one isnt reliant on the other. so many reghressions fromt he last few refactors
+
+
+~fix capsules getting pressure trapped inside projectors again (i cant siphon it back out if i had just pushed it in? could it be erroneously not letting just entered with pressure capsules be siphoned back out with pressure?)
+
+~fix that deconstructing an em projector with a capsule that was captured via kinetics, would lag spike and cause the capsule to erroneously crash instead of just triggering the normal capsule spill procedure
+
+~remove the kinetic capule particle and sound sfx for the second time
+
 --------------------------------------------
 
 make it so capsule crashes with kinetic flows cause damage (look like the player sometimes recieves damage, but only if their collider was close); i think this is a result of the kinetic beam sometimes stopping before the occlusion port, so it looks both visually far and too far to damage when it does crash.
@@ -153,19 +169,4 @@ phase 7: ensure we cache lua render objects rather than creating and destroying 
 sort these in a more logical way of completion, and add a clause at the end about expecting zero brute force processes, since we're obviously going for efficiency here. 
 
 
-~fix that intercepting a capsule flight and then unblocking it would cause the capsule to skip entering the pneumatics of the reciever projector upon reaching the arrival target, and just launch right away rather than requiring to be cycled back out of it and back into it via pneumatics, this should be a required part so em projectors arent just lone infrastructure routers
 
-~fix that placing an entity at the end of the projector's termintor would not form a new endpoint
-
-~fix rotating an entity would cause a kinetic flow to lose its tip bvh node
-
-~fix occlusion no longer working for in flight kinetic capsules when the projector is gone, goes highlt against what ive strived to build, a clean separation so one isnt reliant on the other. so many reghressions fromt he last few refactors
-
-
-~fix capsules getting pressure trapped inside projectors again (i cant siphon it back out if i had just pushed it in? could it be erroneously not letting just entered with pressure capsules be siphoned back out with pressure?)
-
-~fix that deconstructing an em projector with a capsule that was captured via kinetics, would lag spike and cause the capsule to erroneously crash instead of just triggering the normal capsule spill procedure
-
-give em projectors a constant drain of energy
-
-remove the kinetic capule particle and sound sfx for the second time

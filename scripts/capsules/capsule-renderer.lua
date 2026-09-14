@@ -626,6 +626,57 @@ function capsule_renderer.clear_player_flight_renders(player_index)
 end
 
 --- Renders or mutates in-place flight visual handles for a single observing player
+function capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surface)
+    storage.player_flight_renders = storage.player_flight_renders or {}
+    local p_renders = storage.player_flight_renders[p_idx]
+    if not p_renders then
+        p_renders = {}
+        storage.player_flight_renders[p_idx] = p_renders
+    end
+
+    local existing = p_renders[f_id]
+    if existing and existing.objects and #existing.objects > 0 then
+        for i = 1, #existing.objects do
+            local obj = existing.objects[i]
+            if obj and obj.valid then
+                obj.target = curr_pos
+            end
+        end
+        return
+    end
+
+    local spec = flight_rec.render_spec or {}
+    local objects = {}
+
+    if spec.sprite then
+        local sp = render_pool.lease_sprite{
+            sprite = spec.sprite,
+            target = curr_pos,
+            surface = surface,
+            x_scale = spec.scale or 0.6,
+            y_scale = spec.scale or 0.6,
+            tint = spec.tint,
+            render_layer = "entity-info-icon-above",
+            players = { player }
+        }
+        if sp then objects[#objects + 1] = sp end
+    else
+        local circ = render_pool.lease_circle{
+            color = spec.color or { r = 0.2, g = 0.85, b = 1.0, a = 1.0 },
+            radius = spec.radius or 0.25,
+            filled = (spec.filled ~= false),
+            width = spec.width or 2,
+            target = curr_pos,
+            surface = surface,
+            render_layer = "entity-info-icon-above",
+            players = { player }
+        }
+        if circ then objects[#objects + 1] = circ end
+    end
+
+    p_renders[f_id] = { objects = objects }
+end
+
 function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, player, curr_pos, surface)
     storage.player_flight_renders = storage.player_flight_renders or {}
     local p_renders = storage.player_flight_renders[p_idx]
@@ -804,20 +855,19 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 
                 for f = 1, #owner_flights do
                     local flight = owner_flights[f]
-                    local cap_id = flight.capsule_id
+                    local f_id = flight.id or flight.capsule_id
                     local t_start = flight.start_tick or 0
                     local t_entry = t_start + math.floor(d_start * tpt)
                     local t_exit = t_start + math.ceil(d_end * tpt)
 
                     if current_tick >= t_entry and current_tick <= t_exit then
-                        local capsule = storage.capsules and storage.capsules[cap_id]
-                        if capsule and capsule.in_timed_flight and capsule.beam_flight then
-                            local bf = capsule.beam_flight
-                            local curr_pos, progress = capsule_renderer.get_interpolated_position(bf, current_tick)
-                            capsule.last_pos = curr_pos
-                            capsule.surface_name = surf.name
+                        local flight_rec = timed_motion.get_flight(f_id)
+                        local capsule = storage.capsules and storage.capsules[f_id]
+                        local bf = (capsule and capsule.beam_flight) or flight_rec
 
-                            local passenger = capsule.passenger
+                        if bf then
+                            local curr_pos, progress = timed_motion.get_interpolated_position(bf, current_tick)
+                            local passenger = capsule and capsule.passenger
                             local passenger_valid = passenger and passenger.valid
                             if passenger_valid and passenger.index == p_idx then
                                 passenger.teleport(curr_pos, surf)
@@ -828,8 +878,14 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                 curr_pos.y >= vp_entry.pad_min_y and curr_pos.y <= vp_entry.pad_max_y)
 
                             if is_on_screen then
-                                rendered_this_tick[cap_id] = true
-                                capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, player, curr_pos, surf)
+                                rendered_this_tick[f_id] = true
+                                if capsule and capsule.in_timed_flight then
+                                    capsule.last_pos = curr_pos
+                                    capsule.surface_name = surf.name
+                                    capsule_renderer.render_flight_for_player(capsule, f_id, p_idx, player, curr_pos, surf)
+                                elseif flight_rec then
+                                    capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
+                                end
                             end
                         end
                     end

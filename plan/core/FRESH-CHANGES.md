@@ -440,3 +440,12 @@
 1. **Ballistics Audio-Visual Purge (`scripts/capsules/capsule-ballistics.lua`):** Deleted `play_dispatch_effects`, `play_flight_effects`, and `play_catchment_effects` along with all internal `spark-explosion` entity creations and `wire_connect` sound triggers.
 2. **Motion Runner Dispatch Cleanups (`scripts/capsules/capsule-runner.lua`):** Stripped dispatch and hop effect invocations during prominent kinetic node and discrete step evaluations.
 3. **Viewport Render Particle Removal (`scripts/capsules/capsule-renderer.lua`):** Removed periodic 3-tick `spark-explosion` entity generation blocks from both legacy and sliding-scale per-player render dispatch paths.
+
+
+### Revision: Generalized Timed Motion Flights and Custom Render Pipeline
+**Date:** 2026-09-14 18:15 EDT
+**Context:** Decouples kinetic timed flight logic from strictly capsule entities, allowing arbitrary projectiles and entities to utilize timed ballistics, custom arrival callbacks, and viewport rendering.
+**Key Changes:**
+1. **Flight Record Registry (`scripts/utils/timed-motion.lua`):** Extended `create_record`, `schedule_flight`, and `remove_flight` to persist generic flight records in `storage.timed_flight_records` with support for custom `kind`, `render_spec`, `metadata`, and `on_arrival` callbacks.
+2. **Dynamic Arrival Dispatch (`scripts/capsules/capsule-ballistics.lua`):** Introduced `arrival_handlers` and `register_arrival_handler` to route timed arrivals to entity-specific handlers or per-flight callbacks while preserving standard capsule arrival flows.
+3. **Generic Flight Visuals (`scripts/capsules/capsule-renderer.lua`):** Added `render_custom_flight_for_player` using leased sprites and primitive circles, and updated `dispatch_player_renders` to interpolate and render non-capsule timed motion flights within viewport bounds.

@@ -72,8 +72,17 @@ function timed_motion.create_record(spec)
         hop_positions = spec.hop_positions,
         hit_receiver_unit = spec.hit_receiver_unit,
         q_level = spec.q_level or 0,
-        payload = spec.payload
+        payload = spec.payload,
+        kind = spec.kind or "capsule",
+        metadata = spec.metadata or {},
+        render_spec = spec.render_spec,
+        on_arrival = spec.on_arrival
     }
+end
+
+function timed_motion.get_flight(id)
+    if not id then return nil end
+    return storage.timed_flight_records and storage.timed_flight_records[id]
 end
 
 --------------------------------------------------------------------------------
@@ -89,6 +98,9 @@ function timed_motion.schedule_flight(record)
     record.id = cap_id
     record.capsule_id = cap_id
 
+    storage.timed_flight_records = storage.timed_flight_records or {}
+    storage.timed_flight_records[cap_id] = record
+
     local heap = timed_motion.get_arrival_heap()
     heap:push(cap_id, record.arrival_tick, cap_id)
 
@@ -100,7 +112,9 @@ function timed_motion.schedule_flight(record)
         storage.timed_flights[owner_id] = storage.timed_flights[owner_id] or {}
         local flights = storage.timed_flights[owner_id]
         flights[#flights + 1] = {
+            id = cap_id,
             capsule_id = cap_id,
+            kind = record.kind or "capsule",
             start_tick = record.start_tick,
             arrival_tick = record.arrival_tick,
             duration = record.flight_ticks
@@ -117,6 +131,9 @@ end
 --- @param owner_id number|nil
 function timed_motion.remove_flight(id, owner_id)
     if not id then return end
+    if storage.timed_flight_records then
+        storage.timed_flight_records[id] = nil
+    end
     local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
     if heap then
         binary_heap.attach(heap)
@@ -129,7 +146,7 @@ function timed_motion.remove_flight(id, owner_id)
     if owner_id and flights_store[owner_id] then
         local flights = flights_store[owner_id]
         for i = #flights, 1, -1 do
-            if flights[i].capsule_id == id then
+            if flights[i].capsule_id == id or flights[i].id == id then
                 table.remove(flights, i)
                 break
             end
@@ -141,7 +158,7 @@ function timed_motion.remove_flight(id, owner_id)
     else
         for o_id, flights in pairs(flights_store) do
             for i = #flights, 1, -1 do
-                if flights[i].capsule_id == id then
+                if flights[i].capsule_id == id or flights[i].id == id then
                     table.remove(flights, i)
                     break
                 end

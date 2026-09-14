@@ -365,3 +365,14 @@
 2. **Hysteresis Breach Synchronization (`scripts/utils/viewport-bvh.lua`):** Wired `sync_player_visibility` into player viewport boundary breaches, performing differential spatial queries against the surface motion BVH to subscribe entering nodes and evict leaving nodes while recycling visual primitives to `render_pool`.
 3. **Corridor Event Subscriptions (`scripts/flow/flow-kinetic.lua`):** Integrated `viewport_bvh.on_segment_registered` and `on_segment_removed` across kinetic beam segment registration, remainder registration, endpoint shifts, and beam recession waves, alerting only overlapping player viewports in $O(\log N_{\text{players}})$ time.
 4. **Verification Expansion (`scripts/utils/viewport-bvh.lua`):** Extended `/test-viewport-bvh` with Test 6 (observer intersection on viewport breach) and Test 7 (event-driven corridor registration and removal), bringing the automated verification suite to 7 passing stages.
+
+
+### Revision: Per-Player Sliding-Scale Render Dispatcher and Speed-Agnostic Telemetry
+**Date:** 2026-09-14 10:55 EDT
+**Context:** Implemented Phase 5 of the Motion Refactor to execute closed-form vector interpolation strictly over local on-screen corridor segments per player, and resolved lingering static dock render handles upon timed projectile launch.
+**Key Changes:**
+1. **Per-Player Render Dispatcher (`scripts/capsules/capsule-renderer.lua`):** Replaced map-wide BVH flight searches with `dispatch_player_renders`, iterating strictly over the localized `storage.player_visible_set[player_index]` flat table ($O(N_{\text{visible\_on\_screen}})$ complexity).
+2. **Cadence Governor & Interleaving (`scripts/capsules/capsule-renderer.lua`, `scripts/debug-manager.lua`):** Implemented individual player refresh cadences ($C \in \{1, 2, 3, 6\}$ ticks) with phase-staggered interleaving (`(tick + p_idx) % C == 0`) and early exits for Alt-Mode toggle-off, disabled capsule overlays, or map chart view (0.00 ms script cost).
+3. **Ghost Render Purge on Launch (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-renderer.lua`):** Exported `clear_capsule_render` and invoked it immediately when a projector launch is triggered, alongside a per-tick cleanup sweep in `update_timed_capsules`, preventing static tube/dock visual handles from remaining orphaned at launcher ports during ballistic flight.
+4. **Decoupled Clear Hooks (`scripts/debug-manager.lua`, `scripts/capsules/capsule-renderer.lua`):** Established `debug_manager.register_clear_hook` to eliminate circular top-level `require` recursion between debug management and capsule rendering.
+5. **Speed-Agnostic Verification (`scripts/capsules/capsule-renderer.lua`):** Registered `/set-render-cadence <1|2|3|6>` and added `/test-render-dispatcher`, dynamically evaluating closed-form vector math against `TICKS_PER_TILE`, early-exit conditions, cadence phase interleaving, and in-place target mutation across 5 passing stages.

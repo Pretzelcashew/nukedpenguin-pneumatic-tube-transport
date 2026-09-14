@@ -9,6 +9,12 @@ local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local debug_manager = {}
 debug_manager.binary_heap = binary_heap
+debug_manager.clear_hooks = {}
+
+function debug_manager.register_clear_hook(fn)
+    debug_manager.clear_hooks[#debug_manager.clear_hooks + 1] = fn
+end
+
 local PANEL_NAME = "pneumatic_debug_panel"
 
 local function get_debug(player_index)
@@ -42,6 +48,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].arrival_dots == nil then
             storage.debug[player_index].arrival_dots = true
+        end
+        if storage.debug[player_index].render_cadence == nil then
+            storage.debug[player_index].render_cadence = 1
         end
         if storage.debug[player_index].profiler == nil or storage.debug[player_index].profiler == true then
             storage.debug[player_index].profiler = false
@@ -625,6 +634,10 @@ local function clear_and_reconstruct_renders(player_index)
     render_pool.clear_player(player_index)
     viewport_bvh.clear_renders(player_index)
 
+    for i = 1, #debug_manager.clear_hooks do
+        pcall(debug_manager.clear_hooks[i], player_index)
+    end
+
     if is_debug_active("new_flow", player_index) then
         flow_engine.draw_flow(player_index)
     end
@@ -742,7 +755,36 @@ end)
 commands.add_command("pt-toggle-arrival-dots", "Toggle timed capsule arrival dot rendering (Alias)", function(cmd)
     if cmd.player_index then toggle_arrival_dots(cmd.player_index) end
 end)
-
+commands.add_command("set-render-cadence", "Set per-player render refresh cadence in ticks: 1 (60 FPS), 2 (30 FPS), 3 (20 FPS), 6 (10 FPS)", function(cmd)
+    local p_idx = cmd.player_index
+    if not p_idx then return end
+    local val = tonumber(cmd.parameter)
+    if val and (val == 1 or val == 2 or val == 3 or val == 6) then
+        local dbg = get_debug(p_idx)
+        dbg.render_cadence = val
+        local fps_map = { [1] = "60 FPS (1t continuous)", [2] = "30 FPS (2t interleaved)", [3] = "20 FPS (3t interleaved)", [6] = "10 FPS (6t power-saver)" }
+        local p = game.get_player(p_idx)
+        if p then p.print("[Debug] Render Cadence set to: " .. fps_map[val]) end
+    else
+        local p = game.get_player(p_idx)
+        if p then p.print("[Debug] Usage: /set-render-cadence <1|2|3|6>") end
+    end
+end)
+commands.add_command("pt-set-render-cadence", "Set per-player render refresh cadence (Alias)", function(cmd)
+    local p_idx = cmd.player_index
+    if not p_idx then return end
+    local val = tonumber(cmd.parameter)
+    if val and (val == 1 or val == 2 or val == 3 or val == 6) then
+        local dbg = get_debug(p_idx)
+        dbg.render_cadence = val
+        local fps_map = { [1] = "60 FPS (1t continuous)", [2] = "30 FPS (2t interleaved)", [3] = "20 FPS (3t interleaved)", [6] = "10 FPS (6t power-saver)" }
+        local p = game.get_player(p_idx)
+        if p then p.print("[Debug] Render Cadence set to: " .. fps_map[val]) end
+    else
+        local p = game.get_player(p_idx)
+        if p then p.print("[Debug] Usage: /pt-set-render-cadence <1|2|3|6>") end
+    end
+end)
 local function print_spoil_heap_status(player_index)
     local stats = capsule_lifecycle.get_heap_stats()
     local p = player_index and game.get_player(player_index)

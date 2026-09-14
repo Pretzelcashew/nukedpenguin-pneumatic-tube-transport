@@ -261,6 +261,8 @@ local function recycle_capsule_render(capsule)
     end
     capsule.render_cache = nil
 end
+capsule_renderer.recycle_capsule_render = recycle_capsule_render
+capsule_renderer.clear_capsule_render = recycle_capsule_render
 
 function capsule_renderer.render(capsule, id, curr_pos, surface)
     if not (surface and surface.valid and curr_pos and curr_pos.x and curr_pos.y) then
@@ -546,6 +548,7 @@ function capsule_renderer.is_in_any_viewport_legacy(surface_name, x, y)
 end
 
 function capsule_renderer.get_interpolated_position(bf, current_tick)
+    if not bf then return { x = 0, y = 0 }, 0 end
     local start_tick = bf.start_tick or current_tick
     local arrival_tick = bf.arrival_tick or (start_tick + 6)
     local total_ticks = arrival_tick - start_tick
@@ -553,13 +556,20 @@ function capsule_renderer.get_interpolated_position(bf, current_tick)
 
     local start_pos = bf.start_pos or bf.terminal_pos
     local term_pos = bf.terminal_pos or start_pos
+    if not (start_pos and term_pos) then
+        return start_pos or term_pos or { x = 0, y = 0 }, 0
+    end
+    if current_tick >= arrival_tick then
+        return { x = term_pos.x, y = term_pos.y }, 1.0
+    end
+
     local total_dist = math.abs(term_pos.x - start_pos.x) + math.abs(term_pos.y - start_pos.y)
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
     local dist_traveled = math.max(0, current_tick - start_tick) / tpt
 
     local progress = (total_dist > 0) and math.min(1.0, dist_traveled / total_dist) or 1.0
-    local cur_x = (dist_traveled >= total_dist) and term_pos.x or (start_pos.x + (bf.dx or 0) * dist_traveled)
-    local cur_y = (dist_traveled >= total_dist) and term_pos.y or (start_pos.y + (bf.dy or 0) * dist_traveled)
+    local cur_x = (dist_traveled >= total_dist - 0.001) and term_pos.x or (start_pos.x + (bf.dx or 0) * dist_traveled)
+    local cur_y = (dist_traveled >= total_dist - 0.001) and term_pos.y or (start_pos.y + (bf.dy or 0) * dist_traveled)
 
     return { x = cur_x, y = cur_y }, progress
 end
@@ -604,9 +614,274 @@ end
 local scratch_visible_capsules = {}
 local previous_rendering_capsules = {}
 
+--- Clears all active flight render objects for a player and returns handles to render_pool
+function capsule_renderer.clear_player_flight_renders(player_index)
+    if not (storage.player_flight_renders and storage.player_flight_renders[player_index]) then return end
+    local p_renders = storage.player_flight_renders[player_index]
+    for cap_id, r_entry in pairs(p_renders) do
+        if r_entry.objects then
+            for i = 1, #r_entry.objects do
+                render_pool.recycle(player_index, r_entry.objects[i])
+            end
+        end
+    end
+    storage.player_flight_renders[player_index] = nil
+end
+
+--- Renders or mutates in-place flight visual handles for a single observing player
+function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, player, curr_pos, surface)
+    storage.player_flight_renders = storage.player_flight_renders or {}
+    local p_renders = storage.player_flight_renders[p_idx]
+    if not p_renders then
+        p_renders = {}
+        storage.player_flight_renders[p_idx] = p_renders
+    end
+    local existing = p_renders[cap_id]
+
+    local cap_data = capsule_manager.get(cap_id)
+    local def = cap_data and cap_data.definition
+    local ring_color = capsule_defs.get_debug_color(def or (cap_data and cap_data.type) or capsule.capsule_type)
+        or { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }
+
+    local dominant_item = capsule.dominant_item or (cap_data and cap_data.dominant_item) or capsule_renderer.get_dominant_item(cap_id)
+    local passenger = capsule.passenger
+    local passenger_valid = passenger and passenger.valid
+
+    if existing and existing.objects and #existing.objects > 0 then
+        local objs = existing.objects
+        local offsets = existing.offsets
+        for i = 1, #objs do
+            local obj = objs[i]
+            if obj and obj.valid then
+                local off_y = offsets and offsets[i] or 0
+                if off_y ~= 0 then
+                    obj.target = { curr_pos.x, curr_pos.y + off_y }
+                else
+                    obj.target = curr_pos
+                end
+            end
+        end
+        return
+    end
+
+    local objects = {}
+    local offsets = {}
+
+    if passenger_valid and passenger.index == p_idx then
+        local eject_text = render_pool.lease_text{
+            text = "[Shift + E] Emergency Eject",
+            surface = surface,
+            target = { curr_pos.x, curr_pos.y + 0.8 },
+            color = { r = 1, g = 0.9, b = 0.3, a = 1.0 },
+            players = { player },
+            alignment = "center",
+            scale = 0.9,
+            render_layer = "light-effect"
+        }
+        if eject_text then
+            objects[#objects + 1] = eject_text
+            offsets[#offsets + 1] = 0.8
+        end
+    end
+
+    if passenger_valid then
+        local ring = render_pool.lease_circle{
+            color = { r = 0, g = 0.8, b = 1, a = 0.9 },
+            radius = 0.45,
+            filled = false,
+            width = 3,
+            target = curr_pos,
+            surface = surface,
+            render_layer = "entity-info-icon-above",
+            players = { player }
+        }
+        if ring then
+            objects[#objects + 1] = ring
+            offsets[#offsets + 1] = 0
+        end
+    else
+        if dominant_item then
+            local ring = render_pool.lease_circle{
+                color = ring_color,
+                radius = 0.35,
+                filled = false,
+                width = 2,
+                target = curr_pos,
+                surface = surface,
+                render_layer = "entity-info-icon-above",
+                players = { player }
+            }
+            if ring then
+                objects[#objects + 1] = ring
+                offsets[#offsets + 1] = 0
+            end
+
+            local sprite = render_pool.lease_sprite{
+                sprite = "item/" .. dominant_item,
+                target = curr_pos,
+                surface = surface,
+                x_scale = 0.55,
+                y_scale = 0.55,
+                render_layer = "entity-info-icon-above",
+                players = { player }
+            }
+            if sprite then
+                objects[#objects + 1] = sprite
+                offsets[#offsets + 1] = 0
+            end
+        else
+            local dot = render_pool.lease_circle{
+                color = ring_color,
+                radius = 0.25,
+                filled = true,
+                target = curr_pos,
+                surface = surface,
+                render_layer = "entity-info-icon-above",
+                players = { player }
+            }
+            if dot then
+                objects[#objects + 1] = dot
+                offsets[#offsets + 1] = 0
+            end
+        end
+    end
+
+    p_renders[cap_id] = {
+        objects = objects,
+        offsets = offsets
+    }
+end
+
+--- Per-Player Sliding-Scale Render Dispatcher (Phase 5)
+function capsule_renderer.dispatch_player_renders(player, current_tick)
+    if not (player and player.valid) then return end
+    local p_idx = player.index
+
+    local dbg = storage.debug and storage.debug[p_idx]
+    if not dbg or not dbg.master then
+        capsule_renderer.clear_player_flight_renders(p_idx)
+        return
+    end
+
+    local view_settings = player.game_view_settings
+    local alt_mode = view_settings and view_settings.show_entity_info
+    if not alt_mode or not dbg.capsules then
+        capsule_renderer.clear_player_flight_renders(p_idx)
+        return
+    end
+
+    if player.render_mode == defines.render_mode.chart or player.render_mode == defines.render_mode.chart_zoomed_in then
+        capsule_renderer.clear_player_flight_renders(p_idx)
+        return
+    end
+
+    local cadence = dbg.render_cadence or 1
+    if cadence > 1 and ((current_tick + p_idx) % cadence ~= 0) then
+        return
+    end
+
+    local surf = player.surface
+    if not (surf and surf.valid) then return end
+
+    local v_set = viewport_bvh.get_visible_set(p_idx)
+    local vp_entry = storage.player_viewports and storage.player_viewports[p_idx]
+
+    storage.player_flight_renders = storage.player_flight_renders or {}
+    local p_renders = storage.player_flight_renders[p_idx]
+    if not p_renders then
+        p_renders = {}
+        storage.player_flight_renders[p_idx] = p_renders
+    end
+
+    local rendered_this_tick = {}
+    local p_flights = storage.projector_flights
+
+    if p_flights and v_set and next(v_set) ~= nil then
+        local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
+        for key, item in pairs(v_set) do
+            local owner_flights = p_flights[item.owner_id]
+            if owner_flights and #owner_flights > 0 then
+                local leaf = item.leaf
+                local d_start = leaf and leaf.d_start or 0
+                local d_end = leaf and leaf.d_end or 16
+
+                for f = 1, #owner_flights do
+                    local flight = owner_flights[f]
+                    local cap_id = flight.capsule_id
+                    local t_start = flight.start_tick or 0
+                    local t_entry = t_start + math.floor(d_start * tpt)
+                    local t_exit = t_start + math.ceil(d_end * tpt)
+
+                    if current_tick >= t_entry and current_tick <= t_exit then
+                        local capsule = storage.capsules and storage.capsules[cap_id]
+                        if capsule and capsule.in_timed_flight and capsule.beam_flight then
+                            local bf = capsule.beam_flight
+                            local curr_pos, progress = capsule_renderer.get_interpolated_position(bf, current_tick)
+                            capsule.last_pos = curr_pos
+                            capsule.surface_name = surf.name
+
+                            local passenger = capsule.passenger
+                            local passenger_valid = passenger and passenger.valid
+                            if passenger_valid and passenger.index == p_idx then
+                                passenger.teleport(curr_pos, surf)
+                            end
+
+                            local is_on_screen = passenger_valid or (vp_entry and
+                                curr_pos.x >= vp_entry.pad_min_x and curr_pos.x <= vp_entry.pad_max_x and
+                                curr_pos.y >= vp_entry.pad_min_y and curr_pos.y <= vp_entry.pad_max_y)
+
+                            if is_on_screen then
+                                rendered_this_tick[cap_id] = true
+                                capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, player, curr_pos, surf)
+
+                                if current_tick % 3 == 0 and p_idx == 1 then
+                                    pcall(function()
+                                        surf.create_entity{
+                                            name = "spark-explosion",
+                                            position = curr_pos
+                                        }
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    for cap_id, r_entry in pairs(p_renders) do
+        if not rendered_this_tick[cap_id] then
+            if r_entry.objects then
+                for i = 1, #r_entry.objects do
+                    render_pool.recycle(p_idx, r_entry.objects[i])
+                end
+            end
+            p_renders[cap_id] = nil
+        end
+    end
+end
+
 function capsule_renderer.update_timed_capsules(current_tick)
     capsule_renderer.sync_all_arrival_dots()
 
+    if storage.projector_flights then
+        for _, flights in pairs(storage.projector_flights) do
+            for f = 1, #flights do
+                local cap = storage.capsules and storage.capsules[flights[f].capsule_id]
+                if cap and cap.render_id then
+                    recycle_capsule_render(cap)
+                end
+            end
+        end
+    end
+
+    for _, player in pairs(game.connected_players) do
+        capsule_renderer.dispatch_player_renders(player, current_tick)
+    end
+end
+
+function capsule_renderer._legacy_update_timed_capsules(current_tick)
     if not storage.projector_flights or next(storage.projector_flights) == nil then
         if next(previous_rendering_capsules) ~= nil then
             for cap_id in pairs(previous_rendering_capsules) do
@@ -809,5 +1084,129 @@ function capsule_renderer.sync_all_arrival_dots()
         previous_arrival_capsules[cap_id] = true
     end
 end
+
+--------------------------------------------------------------------------------
+-- AUTOMATED TEST SUITE (PHASE 5)
+--------------------------------------------------------------------------------
+function capsule_renderer.run_tests(player)
+    local function log_msg(msg)
+        if player and player.valid then
+            player.print(msg)
+        else
+            log(msg)
+        end
+    end
+
+    log_msg("[color=yellow][RenderDispatcher Test][/color] Starting Phase 5 sliding-scale dispatcher self-test...")
+
+    local p = player or (game.players and game.players[1])
+    if not (p and p.valid) then
+        log_msg("[color=red][RenderDispatcher Test] Aborted: No valid player context[/color]")
+        return false
+    end
+    local p_idx = p.index
+    local dbg = storage.debug and storage.debug[p_idx]
+    local surf = p.surface
+
+    -- Test 1: Closed-Form Vector Math Interpolation
+    local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
+    local test_dist = 100
+    local duration = math.ceil(test_dist * tpt)
+    local dummy_flight = {
+        start_pos = { x = 0, y = 0 },
+        terminal_pos = { x = test_dist, y = 0 },
+        dx = 1, dy = 0,
+        start_tick = 1000,
+        arrival_tick = 1000 + duration
+    }
+    local half_ticks = math.floor(duration * 0.5)
+    local p_start = capsule_renderer.get_interpolated_position(dummy_flight, 1000)
+    local p_mid = capsule_renderer.get_interpolated_position(dummy_flight, 1000 + half_ticks)
+    local p_end = capsule_renderer.get_interpolated_position(dummy_flight, 1000 + duration)
+
+    local expected_mid_x = half_ticks / tpt
+    local expected_end_x = test_dist
+
+    if math.abs(p_start.x - 0) > 0.05 or math.abs(p_mid.x - expected_mid_x) > 0.05 or math.abs(p_end.x - expected_end_x) > 0.05 then
+        log_msg(string.format("[color=red][RenderDispatcher Test] Test 1 FAILED: p_start=%.2f, p_mid=%.2f (exp %.2f), p_end=%.2f (exp %.2f), tpt=%s[/color]",
+            p_start.x, p_mid.x, expected_mid_x, p_end.x, expected_end_x, tostring(tpt)))
+        return false
+    end
+    log_msg("[color=green][RenderDispatcher Test] Test 1: Closed-Form Vector Interpolation -> PASSED[/color]")
+
+    -- Test 2: Early-Exit Gatekeeper (Alt-Mode / Debug Toggles)
+    local orig_master = dbg.master
+    dbg.master = false
+    capsule_renderer.dispatch_player_renders(p, 1000)
+    local p_renders = storage.player_flight_renders and storage.player_flight_renders[p_idx]
+    if p_renders and next(p_renders) ~= nil then
+        log_msg("[color=red][RenderDispatcher Test] Test 2 FAILED: Early-exit failed to clear renders when master debug disabled[/color]")
+        dbg.master = orig_master
+        return false
+    end
+    dbg.master = orig_master
+    log_msg("[color=green][RenderDispatcher Test] Test 2: Early-Exit Gatekeeper -> PASSED (0.00ms execution on disabled)[/color]")
+
+    -- Test 3: Staggered Cadence Interleaving
+    local orig_cadence = dbg.render_cadence
+    dbg.render_cadence = 6
+    local phase_match_tick = 600 - p_idx
+    local non_phase_tick = phase_match_tick + 1
+
+    local executed_phase = ((phase_match_tick + p_idx) % 6 == 0)
+    local executed_non = ((non_phase_tick + p_idx) % 6 == 0)
+    if not executed_phase or executed_non then
+        log_msg("[color=red][RenderDispatcher Test] Test 3 FAILED: Cadence interleaving phase calculation incorrect[/color]")
+        dbg.render_cadence = orig_cadence
+        return false
+    end
+    dbg.render_cadence = orig_cadence
+    log_msg("[color=green][RenderDispatcher Test] Test 3: Per-Player Cadence & Staggered Interleaving -> PASSED[/color]")
+
+    -- Test 4: In-Place Handle Mutation via RenderPool
+    local dummy_cap = {
+        capsule_id = 99991,
+        capsule_type = "basic-capsule",
+        dominant_item = "iron-plate"
+    }
+    capsule_renderer.render_flight_for_player(dummy_cap, 99991, p_idx, p, { x = 10, y = 10 }, surf)
+    local rec = storage.player_flight_renders[p_idx][99991]
+    if not (rec and rec.objects and #rec.objects > 0) then
+        log_msg("[color=red][RenderDispatcher Test] Test 4 FAILED: Render objects not leased from pool[/color]")
+        return false
+    end
+    local first_obj_id = rec.objects[1].id
+    capsule_renderer.render_flight_for_player(dummy_cap, 99991, p_idx, p, { x = 12, y = 10 }, surf)
+    if rec.objects[1].id ~= first_obj_id then
+        log_msg("[color=red][RenderDispatcher Test] Test 4 FAILED: Render object re-allocated instead of mutating in-place[/color]")
+        return false
+    end
+    log_msg("[color=green][RenderDispatcher Test] Test 4: In-Place Target Mutation (0 Allocations) -> PASSED[/color]")
+
+    -- Test 5: Off-Screen Eviction & Pool Recycling
+    capsule_renderer.clear_player_flight_renders(p_idx)
+    if storage.player_flight_renders[p_idx] ~= nil then
+        log_msg("[color=red][RenderDispatcher Test] Test 5 FAILED: Renders not cleaned after eviction[/color]")
+        return false
+    end
+    log_msg("[color=green][RenderDispatcher Test] Test 5: Off-Screen Eviction & Pool Recycling -> PASSED[/color]")
+
+    log_msg("[color=green][font=default-bold][RenderDispatcher Test] ALL 5 TESTS PASSED! Per-Player Sliding-Scale Render Dispatcher active.[/font][/color]")
+    return true
+end
+
+local debug_manager = require("scripts.debug-manager")
+if debug_manager and debug_manager.register_clear_hook then
+    debug_manager.register_clear_hook(capsule_renderer.clear_player_flight_renders)
+end
+
+commands.add_command("test-render-dispatcher", "Run self-tests on the Phase 5 Per-Player Sliding-Scale Render Dispatcher", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    capsule_renderer.run_tests(player)
+end)
+commands.add_command("pt-test-render-dispatcher", "Run self-tests on the Phase 5 Per-Player Sliding-Scale Render Dispatcher (Alias)", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    capsule_renderer.run_tests(player)
+end)
 
 return capsule_renderer

@@ -958,6 +958,7 @@ function capsule_runner.update_capsules(current_tick)
                         mark_capsule_parked(capsule)
                         break
                     elseif next_port_key == "timed_launched" then
+                        capsule_renderer.clear_capsule_render(capsule)
                         break
                     end
 

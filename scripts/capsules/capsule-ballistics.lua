@@ -912,13 +912,23 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                         if not is_removal then
                             local cur_term_dist = math.abs(bf.terminal_pos.x - sp.x) + math.abs(bf.terminal_pos.y - sp.y)
                             if obst_dist > cur_dist and obst_dist < cur_term_dist then
-                                local crash_dist = math.max(cur_dist + 0.5, obst_dist - 0.5)
-                                local new_term = {
-                                    x = sp.x + dx * crash_dist,
-                                    y = sp.y + dy * crash_dist
-                                }
+                                local is_receiver = (entity.name == "pneumatic-projector")
+                                local new_term
+                                if is_receiver then
+                                    new_term = {
+                                        x = entity.position.x - dx * 1.5,
+                                        y = entity.position.y - dy * 1.5
+                                    }
+                                    bf.hit_receiver_unit = entity.unit_number
+                                else
+                                    local crash_dist = math.max(cur_dist + 0.5, obst_dist - 0.5)
+                                    new_term = {
+                                        x = sp.x + dx * crash_dist,
+                                        y = sp.y + dy * crash_dist
+                                    }
+                                    bf.hit_receiver_unit = nil
+                                end
                                 timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
-                                bf.hit_receiver_unit = nil
                                 capsule_renderer.update_arrival_dots(cap, cap_id)
                             end
                         else

@@ -406,3 +406,11 @@
 1. **Pressure-Entry Launch Gatekeeping (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-ballistics.lua`):** Added the `entered_via_pressure` transit flag set strictly when a capsule hops across an external edge into a projector via pressure gradients, and gated `try_projector_launch` behind this flag so kinetically received capsules cannot immediately fire from the receiver.
 2. **Intake Dock Catchment & Snapping (`scripts/capsules/capsule-ballistics.lua`):** Corrected receiver endpoint fallback parking in `finalize_timed_arrival` to resolve non-muzzle passive intake sockets rather than defaulting to the launch muzzle (`r_ports[1]`), ensuring received capsules park cleanly until siphoned out by connected line vacuum.
 3. **Decoupled Motion Corridor Occlusion (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Linked `handle_obstacle_changed` and `step_character_colliders` to query `storage.motion_bvh` directly, enabling in-flight kinetic projectiles to detect newly placed, removed, or character obstacles and shift arrival horizons even after the origin projector has been deconstructed.
+
+
+### Revision: Enable Dynamic Projector Receiver Catchment for Mid-Flight Kinetic Corridors
+**Date:** 2026-09-14 12:45 EDT
+**Context:** Enabled newly constructed electromagnetic projectors intersecting active in-flight kinetic corridors to dynamically act as valid receivers rather than generic crash obstacles, snapping arrival horizons to perimeter intake sockets and catching payloads safely.
+**Key Changes:**
+1. **Dynamic Receiver Interception (`scripts/capsules/capsule-ballistics.lua`):** Refined `handle_motion_obstacle_changed` to inspect `entity.name == "pneumatic-projector"`, snapping terminal arrival coordinates directly to the projector's perimeter intake socket (`position - dir * 1.5`) and assigning `bf.hit_receiver_unit = entity.unit_number` for safe dock catchment, while preserving crash explosions and terminal spillage for non-projector structures.
+2. **Visual Reticle Dynamic State Sync (`scripts/capsules/capsule-ballistics.lua`):** Synchronized `capsule_renderer.update_arrival_dots` during obstacle evaluation so the scheduled reticle immediately transitions from an orange crash ring to a green receiver ring when intercepted by a newly placed projector.

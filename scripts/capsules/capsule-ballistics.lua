@@ -27,53 +27,6 @@ capsule_ballistics.TICKS_PER_HOP = TICKS_PER_HOP
 capsule_ballistics.TICKS_PER_TILE = TICKS_PER_TILE
 trajectory_bvh.TICKS_PER_TILE = TICKS_PER_TILE
 
---------------------------------------------------------------------------------
--- AUDIO & PARTICLE VISUAL EFFECTS
---------------------------------------------------------------------------------
-function capsule_ballistics.play_dispatch_effects(surface, pos)
-    if not (surface and surface.valid and pos) then return end
-    pcall(function()
-        surface.create_entity{
-            name = "spark-explosion",
-            position = pos
-        }
-    end)
-    pcall(function()
-        surface.play_sound{
-            path = "utility/wire_connect",
-            position = pos,
-            volume_modifier = 1.0
-        }
-    end)
-end
-
-function capsule_ballistics.play_flight_effects(surface, pos)
-    if not (surface and surface.valid and pos) then return end
-    pcall(function()
-        surface.create_entity{
-            name = "spark-explosion",
-            position = pos
-        }
-    end)
-end
-
-function capsule_ballistics.play_catchment_effects(surface, pos)
-    if not (surface and surface.valid and pos) then return end
-    pcall(function()
-        surface.create_entity{
-            name = "spark-explosion",
-            position = pos
-        }
-    end)
-    pcall(function()
-        surface.play_sound{
-            path = "utility/wire_connect",
-            position = pos,
-            volume_modifier = 0.9
-        }
-    end)
-end
-
 function capsule_ballistics.apply_crash_damage(surface, crash_pos, q_lvl, owner_unit, capsule)
     if not (surface and surface.valid and crash_pos) then return end
     local base_damage = projector_settings.PROJECTILE_DAMAGE or 250
@@ -356,7 +309,6 @@ function capsule_ballistics.catch_in_receiver(capsule, receiver_entity, runner)
         if sender_unit and sender_unit ~= r_unit then
             runner.wake_parked_capsules(sender_unit)
         end
-        capsule_ballistics.play_catchment_effects(receiver_entity.surface, receiver_entity.position)
         return true
     end
 
@@ -645,7 +597,6 @@ function capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_t
             end
         else
             capsule.last_pos = next_pos
-            capsule_ballistics.play_flight_effects(surface, next_pos)
 
             if surface and surface.valid and next_pos then
                 capsule_renderer.render(capsule, id, next_pos, surface)
@@ -679,8 +630,6 @@ function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_por
         timed_motion.schedule_flight(capsule.beam_flight)
     end
 
-    local surface = game.surfaces[muzzle_node.surface_name]
-    capsule_ballistics.play_dispatch_effects(surface, muzzle_node.pos)
     runner.wake_parked_capsules(from_port_key)
     capsule_renderer.update_arrival_dots(capsule, cap_id)
     return "timed_launched"

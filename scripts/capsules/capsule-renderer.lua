@@ -600,14 +600,6 @@ function capsule_renderer.render_timed_kinetic_capsule(capsule, id, current_tick
     local is_visible = passenger_valid or capsule_renderer.is_in_any_viewport(surface_name, curr_pos.x, curr_pos.y)
 
     if is_visible then
-        if current_tick % 3 == 0 then
-            pcall(function()
-                surface.create_entity{
-                    name = "spark-explosion",
-                    position = curr_pos
-                }
-            end)
-        end
         capsule_renderer.render(capsule, id, curr_pos, surface)
     else
         if capsule.render_id then
@@ -838,15 +830,6 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                             if is_on_screen then
                                 rendered_this_tick[cap_id] = true
                                 capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, player, curr_pos, surf)
-
-                                if current_tick % 3 == 0 and p_idx == 1 then
-                                    pcall(function()
-                                        surf.create_entity{
-                                            name = "spark-explosion",
-                                            position = curr_pos
-                                        }
-                                    end)
-                                end
                             end
                         end
                     end

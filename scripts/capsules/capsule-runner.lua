@@ -964,16 +964,6 @@ function capsule_runner.update_capsules(current_tick)
                         break
                     end
 
-                    local next_node = storage.flow_nodes and storage.flow_nodes[next_port_key]
-                    if next_node and (next_node.is_beam_node or next_node.is_prominent_kinetic) then
-                        local surface = game.surfaces[next_node.surface_name]
-                        if not (node.is_beam_node or node.is_prominent_kinetic) then
-                            capsule_ballistics.play_dispatch_effects(surface, node.pos)
-                        else
-                            capsule_ballistics.play_flight_effects(surface, next_node.pos)
-                        end
-                    end
-
                     mark_capsule_unparked(capsule)
                     local prev_key = capsule.from_port_key
                     capsule.last_port_key = prev_key

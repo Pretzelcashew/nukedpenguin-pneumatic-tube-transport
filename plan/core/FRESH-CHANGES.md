@@ -431,3 +431,12 @@
 **Key Changes:**
 1. **Receiver Arrival State Clearing (`scripts/capsules/capsule-ballistics.lua`):** Ensured `capsule.beam_flight = nil` is explicitly cleared upon contacting a valid receiver dock in `handle_endpoint_arrival` and `finalize_timed_arrival`, transitioning received capsules cleanly to stationary docked status.
 2. **Deconstruction Spill Normalization (`scripts/hubs/hub-spill.lua`):** Refined `handle_entity_destruction` to filter out only active mid-air capsules (`cap.in_timed_flight` or `node.is_beam_node`), allowing docked capsules inside mined projectors to immediately trigger standard peaceful item spilling rather than falling through to dead-node emergency crash damage routines.
+
+
+### Revision: Purge Kinetic Capsule Spark Particles and Audio Effects
+**Date:** 2026-09-14 14:25 EDT
+**Context:** Completely eliminated redundant mid-flight spark explosion particles and repetitive wire-connect audio triggers across the ballistics engine, motion runner, and renderer subsystems for clean and silent projectile flight.
+**Key Changes:**
+1. **Ballistics Audio-Visual Purge (`scripts/capsules/capsule-ballistics.lua`):** Deleted `play_dispatch_effects`, `play_flight_effects`, and `play_catchment_effects` along with all internal `spark-explosion` entity creations and `wire_connect` sound triggers.
+2. **Motion Runner Dispatch Cleanups (`scripts/capsules/capsule-runner.lua`):** Stripped dispatch and hop effect invocations during prominent kinetic node and discrete step evaluations.
+3. **Viewport Render Particle Removal (`scripts/capsules/capsule-renderer.lua`):** Removed periodic 3-tick `spark-explosion` entity generation blocks from both legacy and sliding-scale per-player render dispatch paths.

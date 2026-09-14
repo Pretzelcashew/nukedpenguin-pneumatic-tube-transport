@@ -155,3 +155,8 @@ sort these in a more logical way of completion, and add a clause at the end abou
 
 fix that intercepting a capsule flight and then unblocking it would cause the capsule to skip entering the pneumatics of the reciever projector upon reaching the arrival target, and just launch right away rather than requiring to be cycled back out of it and back into it via pneumatics, this should be a required part so em projectors arent just lone infrastructure routers
 
+fix that placing an entity at the end of the projector's termintor would not form a new endpoint
+
+fix rotating an entity would cause a kinetic flow to lose its tip bvh node
+
+fix occlusion no longer working for in flight kinetic capsules when the projector is gone, goes highlt against what ive strived to build, a clean separation so one isnt reliant on the other. so many reghressions fromt he last few refactors

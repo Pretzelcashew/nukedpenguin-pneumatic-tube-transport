@@ -309,6 +309,70 @@ local function compute_port_kinetic_level(node, pkey)
     end
 end
 
+local function dock_receiver_endpoint(node, pkey, nx, ny, receiver_ent, enqueue_port_fn, wake_port_fn)
+    if node.is_endpoint then
+        flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+    end
+    local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
+    node.is_endpoint = false
+    node.hit_receiver = nil
+    node.is_prominent_kinetic = node_is_prom
+    node.is_beam_node = node_is_prom
+    node.capsule_transmit = node_is_prom
+
+    local rx = receiver_ent.position.x - node.dir.x * 1.5
+    local ry = receiver_ent.position.y - node.dir.y * 1.5
+    local next_dist = (node.dist or 0) + 1
+    local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
+    local next_pos_key = make_pos_key(node.surface_name, rx, ry)
+
+    storage.flow_nodes[next_pkey] = {
+        unit_number = node.beam_owner or node.unit_number,
+        beam_owner = node.beam_owner or node.unit_number,
+        port_index = 100 + next_dist,
+        pos_key = next_pos_key,
+        pos = {x = rx, y = ry},
+        dir = {x = node.dir.x, y = node.dir.y},
+        surface_name = node.surface_name,
+        dist = next_dist,
+        is_kinetic = true,
+        is_beam_node = true,
+        is_prominent_kinetic = true,
+        capsule_transmit = true,
+        pressure_transmit = false,
+        sense_transmit = false,
+        kinetic_transmit = true,
+        cross_transit = false,
+        q_level = node.q_level,
+        is_endpoint = true,
+        hit_receiver = receiver_ent.unit_number
+    }
+
+    storage.kinetic_levels[next_pkey] = math.max(1, (storage.kinetic_levels[pkey] or 2) - 1)
+    flow_common.add_node_to_grid(next_pos_key, next_pkey)
+    flow_common.link_ports(pkey, next_pkey)
+
+    flow_kinetic.register_endpoint_in_bvh(storage.flow_nodes[next_pkey])
+    flow_renderer.update_kinetic_pos_render(pkey)
+    flow_renderer.update_kinetic_pos_render(next_pkey)
+    wake_port_fn(pkey)
+    wake_port_fn(next_pkey)
+
+    local owner_unit = node.beam_owner or node.unit_number
+    if flow_kinetic.update_projector_flights then
+        flow_kinetic.update_projector_flights(owner_unit)
+    end
+
+    local r_unit = receiver_ent.unit_number
+    local r_ports = storage.flow_unit_ports and storage.flow_unit_ports[r_unit]
+    if r_ports then
+        for _, rp in ipairs(r_ports) do
+            enqueue_port_fn(rp)
+            wake_port_fn(rp)
+        end
+    end
+end
+
 function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
     local target_kinetic = compute_port_kinetic_level(node, pkey)
     local current_kinetic = storage.kinetic_levels and storage.kinetic_levels[pkey] or 0
@@ -341,6 +405,14 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
 
         if not has_downstream and surface and surface.valid then
             if target_kinetic == 1 and not node.is_muzzle then
+                local nx = node.dir and (node.pos.x + node.dir.x)
+                local ny = node.dir and (node.pos.y + node.dir.y)
+                local owner_entity = storage.active_projectors and storage.active_projectors[node.beam_owner or node.unit_number]
+                local occ = (nx and ny) and flow_kinetic.check_tile_obstruction(surface, nx, ny, owner_entity) or { blocked = false, is_receiver = false }
+                if occ.blocked and occ.is_receiver and occ.receiver then
+                    dock_receiver_endpoint(node, pkey, nx, ny, occ.receiver, enqueue_port_fn, wake_port_fn)
+                    return kinetic_changed
+                end
                 node.is_endpoint = true
                 node.is_prominent_kinetic = true
                 node.is_beam_node = true
@@ -361,16 +433,23 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
 
                 if occ.blocked then
                     if occ.is_receiver and occ.receiver then
+                        if node.is_endpoint then
+                            flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
+                        end
+                        node.is_endpoint = false
+                        node.hit_receiver = nil
+                        local rx = occ.receiver.position.x - node.dir.x * 1.5
+                        local ry = occ.receiver.position.y - node.dir.y * 1.5
                         local next_dist = (node.dist or 0) + 1
                         local next_pkey = make_beam_port_key(node.beam_owner or node.unit_number, node.dir.x, node.dir.y, next_dist)
-                        local next_pos_key = make_pos_key(node.surface_name, nx, ny)
+                        local next_pos_key = make_pos_key(node.surface_name, rx, ry)
 
                         storage.flow_nodes[next_pkey] = {
                             unit_number = node.beam_owner or node.unit_number,
                             beam_owner = node.beam_owner or node.unit_number,
                             port_index = 100 + next_dist,
                             pos_key = next_pos_key,
-                            pos = {x = nx, y = ny},
+                            pos = {x = rx, y = ry},
                             dir = {x = node.dir.x, y = node.dir.y},
                             surface_name = node.surface_name,
                             dist = next_dist,
@@ -391,6 +470,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                         flow_common.link_ports(pkey, next_pkey)
 
                         flow_kinetic.register_endpoint_in_bvh(storage.flow_nodes[next_pkey])
+                        storage.kinetic_levels[next_pkey] = math.max(1, (storage.kinetic_levels[pkey] or 2) - 1)
                         flow_renderer.update_kinetic_pos_render(pkey)
                         flow_renderer.update_kinetic_pos_render(next_pkey)
                         wake_port_fn(pkey)
@@ -561,7 +641,7 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
     local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
     if not tree then return end
 
-    local MARGIN = 1.0
+    local MARGIN = 2.5
     local hits = {}
     tree:query_box(bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, hits)
     if #hits == 0 then return end
@@ -625,8 +705,8 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                     end
 
                     if intersects then
-                        local check_min = math.max(0, d_start - 1)
-                        local check_max = math.min(max_reach, d_end + 1)
+                        local check_min = math.max(0, d_start - 2)
+                        local check_max = math.min(max_reach, d_end + 2)
 
                         for dist = check_min, check_max do
                             local pkey = (dist == 0)

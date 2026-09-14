@@ -387,3 +387,13 @@
 3. **Corridor Lifecycle & Flight Pinning (`scripts/utils/timed-motion.lua`):** Implemented `ensure_corridor` and `remove_corridor` in `timed_motion` to partition flight paths into 16-tile static leaves, notify player viewports upon projectile dispatch, pin corridors in memory while flights remain active, and retire leaves only after the last capsule lands or impacts.
 4. **Maintenance Compaction & Decay Sync (`control.lua`):** Added `storage.motion_bvh` to save-file boundary pool compaction during `setup_storage` and low-frequency amortized free list decay on 120-tick maintenance cycles.
 5. **Comprehensive Verification:** Validated all 17 automated test stages across `/test-timed-motion` (5 stages), `/test-viewport-bvh` (7 stages), and `/test-render-dispatcher` (5 stages), confirming zero dropped frames during flight and clean observer set eviction.
+
+
+### Revision: Restore Receiver Target Ring Rendering and Perimeter Socket Snapping
+**Date:** 2026-09-14 11:59 EDT
+**Context:** Resolved missing kinetic target rings and socket alignment offsets on receiving projectors by assigning active kinetic levels to receiver terminal nodes and snapping endpoint positions directly to perimeter intake sockets.
+**Key Changes:**
+1. **Receiver Dock Kinetic Level Assignment (`scripts/flow/flow-kinetic.lua`):** Assigned `storage.kinetic_levels[next_pkey]` upon receiver detection so `flow_renderer.update_kinetic_pos_render` validates an active level (>0) and renders the cyan receiver target ring (`radius = 0.35`).
+2. **Perimeter Edge Socket Snapping (`scripts/flow/flow-kinetic.lua`):** Snapped receiver endpoint coordinates to the projector's perimeter edge socket (`cx - dir.x * 1.5, cy - dir.y * 1.5`), centering the visual target ring, arrival reticle dot, and ballistic landing coordinates directly on the intake dock socket.
+3. **Unified Reach Horizon Docking (`scripts/flow/flow-kinetic.lua`):** Unified receiver docking across both intermediate flight hops and maximum-reach terminations (`target_kinetic == 1`), ensuring beams reliably dock with projectors placed at terminal boundaries.
+4. **Preceding Endpoint Demotion (`scripts/flow/flow-kinetic.lua`):** Cleared `is_endpoint` and unregistered endpoint remainder segments from preceding nodes when advancing to a receiver dock, eliminating phantom duplicate rings.

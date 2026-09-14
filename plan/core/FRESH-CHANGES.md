@@ -376,3 +376,14 @@
 3. **Ghost Render Purge on Launch (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-renderer.lua`):** Exported `clear_capsule_render` and invoked it immediately when a projector launch is triggered, alongside a per-tick cleanup sweep in `update_timed_capsules`, preventing static tube/dock visual handles from remaining orphaned at launcher ports during ballistic flight.
 4. **Decoupled Clear Hooks (`scripts/debug-manager.lua`, `scripts/capsules/capsule-renderer.lua`):** Established `debug_manager.register_clear_hook` to eliminate circular top-level `require` recursion between debug management and capsule rendering.
 5. **Speed-Agnostic Verification (`scripts/capsules/capsule-renderer.lua`):** Registered `/set-render-cadence <1|2|3|6>` and added `/test-render-dispatcher`, dynamically evaluating closed-form vector math against `TICKS_PER_TILE`, early-exit conditions, cadence phase interleaving, and in-place target mutation across 5 passing stages.
+
+
+### Revision: Decouple Flight Corridor Motion BVH from Projector Beam Occlusion
+**Date:** 2026-09-14 11:35 EDT
+**Context:** Decoupled the observer flight corridor motion BVH from the projector's physical beam occlusion tree to prevent in-flight projectiles from prematurely losing visual rendering when launcher beams flicker, unpower, rotate, or recede.
+**Key Changes:**
+1. **Dedicated Flight Corridor Spatial Tree (`scripts/utils/viewport-bvh.lua`, `scripts/utils/timed-motion.lua`):** Broken the aliasing between `storage.surface_bvh` and `storage.motion_bvh`, formalizing `storage.motion_bvh[surface_index]` as an autonomous spatial tree dedicated strictly to in-flight projectile trajectories and observer viewport culling.
+2. **Projector Beam Decoupling (`scripts/flow/flow-kinetic.lua`):** Removed observer viewport registration and removal hooks (`viewport_bvh.on_segment_registered`, `viewport_bvh.on_segment_removed`) from kinetic beam step loops and recession handlers, reserving `storage.surface_bvh` exclusively for beam line-of-sight raycasting and Phase 7 beam dot virtualization.
+3. **Corridor Lifecycle & Flight Pinning (`scripts/utils/timed-motion.lua`):** Implemented `ensure_corridor` and `remove_corridor` in `timed_motion` to partition flight paths into 16-tile static leaves, notify player viewports upon projectile dispatch, pin corridors in memory while flights remain active, and retire leaves only after the last capsule lands or impacts.
+4. **Maintenance Compaction & Decay Sync (`control.lua`):** Added `storage.motion_bvh` to save-file boundary pool compaction during `setup_storage` and low-frequency amortized free list decay on 120-tick maintenance cycles.
+5. **Comprehensive Verification:** Validated all 17 automated test stages across `/test-timed-motion` (5 stages), `/test-viewport-bvh` (7 stages), and `/test-render-dispatcher` (5 stages), confirming zero dropped frames during flight and clean observer set eviction.

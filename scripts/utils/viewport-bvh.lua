@@ -311,6 +311,21 @@ function viewport_bvh.clear_player_visible_set(player_index)
     storage.player_visible_set[player_index] = nil
 end
 
+--- Fetches or creates the dedicated motion corridor BVH for a surface (Phase 6)
+--- @param surface_index number
+--- @return table tree
+function viewport_bvh.get_motion_tree(surface_index)
+    storage.motion_bvh = storage.motion_bvh or {}
+    local tree = storage.motion_bvh[surface_index]
+    if not tree then
+        tree = trajectory_bvh.new_tree(surface_index)
+        storage.motion_bvh[surface_index] = tree
+    else
+        trajectory_bvh.attach(tree)
+    end
+    return tree
+end
+
 --- Synchronizes a player's active visible set against the surface motion BVH on breach
 --- @param player_index number
 --- @param surface_index number
@@ -318,9 +333,7 @@ function viewport_bvh.sync_player_visibility(player_index, surface_index)
     local entry = storage.player_viewports and storage.player_viewports[player_index]
     if not entry then return end
 
-    storage.surface_bvh = storage.surface_bvh or {}
-    storage.motion_bvh = storage.surface_bvh
-    local motion_tree = storage.surface_bvh[surface_index]
+    local motion_tree = viewport_bvh.get_motion_tree(surface_index)
     if not (motion_tree and motion_tree.root) then
         viewport_bvh.clear_player_visible_set(player_index)
         return
@@ -601,7 +614,7 @@ function viewport_bvh.run_tests(player)
         owner_id = 8888, seg_key = "1,0:test",
         key = "8888:1,0:test", is_leaf = true
     }
-    local m_tree = trajectory_bvh.get_surface_tree(storage, p.surface.index)
+    local m_tree = viewport_bvh.get_motion_tree(p.surface.index)
     trajectory_bvh.insert(m_tree, dummy_leaf, dummy_leaf.key)
 
     viewport_bvh.sync_player_visibility(p.index, p.surface.index)

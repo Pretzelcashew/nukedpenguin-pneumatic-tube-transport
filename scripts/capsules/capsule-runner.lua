@@ -15,6 +15,7 @@ local debug_manager = require("scripts.debug-manager")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local capsule_transit = require("scripts.capsules.capsule-transit")
 local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
+local binary_heap = require("scripts.utils.binary-heap")
 
 local STAGGER_TICKS = 6
 local MAX_NODE_HOPS_PER_STEP = 3
@@ -232,8 +233,10 @@ function capsule_runner.remove_capsule(capsule_id)
     local capsule = storage.capsules and storage.capsules[capsule_id]
     if capsule then
         mark_capsule_unparked(capsule)
-        if storage.kinetic_arrival_heap then
-            storage.kinetic_arrival_heap:remove(capsule_id)
+        local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
+        if heap then
+            binary_heap.attach(heap)
+            heap:remove(capsule_id)
         end
         if capsule_ballistics.remove_flight then
             local bf = capsule.beam_flight

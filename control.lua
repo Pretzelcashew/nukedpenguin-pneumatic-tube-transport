@@ -25,6 +25,7 @@ local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local timed_motion = require("scripts.utils.timed-motion")
 
 proxy_manager.register_events()
 active_device_scanner.register_events()
@@ -65,6 +66,7 @@ local function setup_storage()
 
     flow_engine.init_storage()
     counter_range.init_storage()
+    timed_motion.init_storage()
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
 
@@ -74,11 +76,18 @@ local function setup_storage()
     if storage.spoil_heap then
         binary_heap.compact(storage.spoil_heap, 64)
     end
-    if storage.kinetic_arrival_heap then
+    if storage.timed_arrival_heap then
+        binary_heap.compact(storage.timed_arrival_heap, 64)
+    elseif storage.kinetic_arrival_heap then
         binary_heap.compact(storage.kinetic_arrival_heap, 64)
     end
     if storage.surface_bvh then
         for _, tree in pairs(storage.surface_bvh) do
+            trajectory_bvh.compact(tree, 64)
+        end
+    end
+    if storage.motion_bvh then
+        for _, tree in pairs(storage.motion_bvh) do
             trajectory_bvh.compact(tree, 64)
         end
     end
@@ -151,11 +160,18 @@ script.on_nth_tick(120, function()
     if storage.spoil_heap then
         binary_heap.step_decay(storage.spoil_heap, 8)
     end
-    if storage.kinetic_arrival_heap then
+    if storage.timed_arrival_heap then
+        binary_heap.step_decay(storage.timed_arrival_heap, 8)
+    elseif storage.kinetic_arrival_heap then
         binary_heap.step_decay(storage.kinetic_arrival_heap, 8)
     end
     if storage.surface_bvh then
         for _, tree in pairs(storage.surface_bvh) do
+            trajectory_bvh.step_decay(tree, 8)
+        end
+    end
+    if storage.motion_bvh then
+        for _, tree in pairs(storage.motion_bvh) do
             trajectory_bvh.step_decay(tree, 8)
         end
     end

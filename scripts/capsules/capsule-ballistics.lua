@@ -7,6 +7,7 @@ local hub_spill = require("scripts.hubs.hub-spill")
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local flow_kinetic = require("scripts.flow.flow-kinetic")
+local timed_motion = require("scripts.utils.timed-motion")
 
 local capsule_ballistics = {}
 
@@ -281,6 +282,12 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
         terminal_pos = terminal_pos,
         hit_receiver_unit = hit_receiver_unit,
         owner = beam_owner,
+        owner_id = beam_owner,
+        id = capsule.capsule_id or capsule.id,
+        capsule_id = capsule.capsule_id or capsule.id,
+        ticks_per_tile = TICKS_PER_TILE,
+        total_dist = total_dist,
+        dir = { x = dx, y = dy },
         q_level = muzzle_node.q_level or 0
     }
 end
@@ -644,12 +651,7 @@ end
 -- TIMED ARRIVAL SCHEDULER & STEPPER
 --------------------------------------------------------------------------------
 function capsule_ballistics.get_arrival_heap()
-    if not storage.kinetic_arrival_heap then
-        storage.kinetic_arrival_heap = binary_heap.new()
-    else
-        binary_heap.attach(storage.kinetic_arrival_heap)
-    end
-    return storage.kinetic_arrival_heap
+    return timed_motion.get_arrival_heap()
 end
 
 function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_port_key, runner)
@@ -660,21 +662,12 @@ function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_por
     capsule.to_port_key = nil
     runner.mark_capsule_unparked(capsule)
 
-    local heap = capsule_ballistics.get_arrival_heap()
-    local arrival_tick = capsule.beam_flight and capsule.beam_flight.arrival_tick or (game.tick + 6)
-    heap:push(cap_id, arrival_tick, cap_id)
-
-    local beam_owner = (capsule.beam_flight and capsule.beam_flight.owner) or muzzle_node.beam_owner or muzzle_node.unit_number
-    if beam_owner then
-        storage.projector_flights = storage.projector_flights or {}
-        storage.projector_flights[beam_owner] = storage.projector_flights[beam_owner] or {}
-        local p_flights = storage.projector_flights[beam_owner]
-        p_flights[#p_flights + 1] = {
-            capsule_id = cap_id,
-            start_tick = capsule.beam_flight and capsule.beam_flight.start_tick or game.tick,
-            arrival_tick = arrival_tick,
-            duration = capsule.beam_flight and capsule.beam_flight.flight_ticks or (arrival_tick - game.tick)
-        }
+    if capsule.beam_flight then
+        capsule.beam_flight.id = cap_id
+        capsule.beam_flight.capsule_id = cap_id
+        capsule.beam_flight.owner_id = (capsule.beam_flight and capsule.beam_flight.owner) or muzzle_node.beam_owner or muzzle_node.unit_number
+        capsule.beam_flight.owner = capsule.beam_flight.owner_id
+        timed_motion.schedule_flight(capsule.beam_flight)
     end
 
     local surface = game.surfaces[muzzle_node.surface_name]
@@ -719,26 +712,8 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                 local receiver_changed = (bf.hit_receiver_unit ~= new_receiver)
 
                 if pos_changed or receiver_changed then
-                    local total_dist = math.abs(new_term.x - bf.start_pos.x) + math.abs(new_term.y - bf.start_pos.y)
-                    local new_flight_ticks = math.max(TICKS_PER_HOP, math.ceil(total_dist * TICKS_PER_TILE))
-                    local new_arrival_tick = bf.start_tick + new_flight_ticks
-                    if new_arrival_tick <= current_tick then
-                        new_arrival_tick = current_tick
-                    end
-
-                    bf.terminal_pos = new_term
+                    timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
                     bf.hit_receiver_unit = new_receiver
-                    bf.total_hops = new_hop_count
-                    bf.flight_ticks = new_flight_ticks
-                    bf.arrival_tick = new_arrival_tick
-
-                    f_rec.arrival_tick = new_arrival_tick
-                    f_rec.duration = new_flight_ticks
-
-                    if cap.in_timed_flight and heap then
-                        heap:remove(cap_id)
-                        heap:push(cap_id, new_arrival_tick, cap_id)
-                    end
 
                     local surface = game.surfaces[bf.surface_name or "nauvis"]
                     if surface and surface.valid then
@@ -789,6 +764,15 @@ function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
 end
 
 function capsule_ballistics.step_timed_arrivals(current_tick, runner)
+    timed_motion.step_arrivals(current_tick, function(top_id)
+        local capsule = storage.capsules and storage.capsules[top_id]
+        if capsule and capsule.in_timed_flight then
+            capsule_ballistics.finalize_timed_arrival(capsule, top_id, runner)
+        end
+    end)
+end
+
+function capsule_ballistics._legacy_step_timed_arrivals(current_tick, runner)
     local heap = storage.kinetic_arrival_heap
     if not heap then return end
     binary_heap.attach(heap)
@@ -812,6 +796,7 @@ function capsule_ballistics.remove_flight(capsule_id, beam_owner)
     if capsule_id and storage.capsules and storage.capsules[capsule_id] then
         capsule_renderer.destroy_arrival_dot(storage.capsules[capsule_id])
     end
+    timed_motion.remove_flight(capsule_id, beam_owner)
     if not storage.projector_flights then return end
     if beam_owner and storage.projector_flights[beam_owner] then
         local p_flights = storage.projector_flights[beam_owner]

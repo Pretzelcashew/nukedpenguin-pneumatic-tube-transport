@@ -3,7 +3,6 @@ local flow_renderer = require("scripts.flow.flow-renderer")
 local port_defs = require("scripts.flow.port-defs")
 local projector_settings = require("scripts.projectors.projector-settings")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
-local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_kinetic = {}
 
@@ -78,11 +77,8 @@ function flow_kinetic.register_segment_in_bvh(surface, owner_unit, dir, d_start,
                 end
             end
         end
-        local leaf = tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, d_start, d_end, seg_idx)
+        tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, d_start, d_end, seg_idx)
         trajectory_bvh.refresh_active_renders()
-        if leaf then
-            viewport_bvh.on_segment_registered(surface.index, leaf)
-        end
     end
 end
 
@@ -107,11 +103,8 @@ function flow_kinetic.register_endpoint_in_bvh(node)
             local seg_key = string.format("%d,%d:rem:%d", node.dir.x, node.dir.y, cur_dist)
             local start_pos = { x = mx + node.dir.x * last_boundary, y = my + node.dir.y * last_boundary }
             local end_pos = { x = node.pos.x, y = node.pos.y }
-            local leaf = tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
+            tree:insert_segment(owner_unit, seg_key, start_pos, end_pos, last_boundary, cur_dist, seg_idx)
             trajectory_bvh.refresh_active_renders()
-            if leaf then
-                viewport_bvh.on_segment_registered(surface.index, leaf)
-            end
         end
     end
 end
@@ -137,7 +130,6 @@ function flow_kinetic.unregister_trajectory_in_bvh(owner_unit, surface_name, for
             tree:remove_trajectory(owner_unit)
         end
     end
-    viewport_bvh.on_segment_removed(nil, owner_unit, nil)
     trajectory_bvh.refresh_active_renders()
 end
 
@@ -176,7 +168,6 @@ function flow_kinetic.unregister_segment_in_bvh(node)
                 if to_remove then
                     for i = 1, #to_remove do
                         tree:remove_segment(owner_u, to_remove[i])
-                        viewport_bvh.on_segment_removed(surface.index, owner_u, to_remove[i])
                     end
                     trajectory_bvh.refresh_active_renders()
                 end
@@ -200,7 +191,6 @@ function flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
                 if owner_rec.segments[rem_key] then
                     tree:remove_segment(owner_u, rem_key)
                     trajectory_bvh.refresh_active_renders()
-                    viewport_bvh.on_segment_removed(surface.index, owner_u, rem_key)
                 end
             end
         end
@@ -846,7 +836,6 @@ function flow_kinetic.step_pending_bvh_segments(current_tick)
             if can_remove then
                 trajectory_bvh.attach(tree)
                 tree:remove_segment(item.owner_id, item.seg_key)
-                viewport_bvh.on_segment_removed(item.surface_index, item.owner_id, item.seg_key)
                 changed = true
             else
                 if write_idx ~= i then

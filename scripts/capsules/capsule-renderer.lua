@@ -4,6 +4,7 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
+local timed_motion = require("scripts.utils.timed-motion")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -548,6 +549,10 @@ function capsule_renderer.is_in_any_viewport_legacy(surface_name, x, y)
 end
 
 function capsule_renderer.get_interpolated_position(bf, current_tick)
+    return timed_motion.get_interpolated_position(bf, current_tick)
+end
+
+function capsule_renderer._legacy_get_interpolated_position(bf, current_tick)
     if not bf then return { x = 0, y = 0 }, 0 end
     local start_tick = bf.start_tick or current_tick
     local arrival_tick = bf.arrival_tick or (start_tick + 6)

@@ -355,3 +355,13 @@
    - *Outer Fat Shell (+24 tiles):* The spatial hysteresis shell. Camera motion within this boundary incurs 0 tree updates; only breaches trigger `trajectory_bvh.update`.
 3. **Logarithmic Viewport Queries (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Replaced linear per-player array scans in `capsule_renderer.is_in_any_viewport` with $O(\log N_{\text{players}})$ spatial BVH queries (`is_in_any_viewport`, `query_players_in_box`).
 4. **Debug & Visualizer Suite (`scripts/debug-manager.lua`, `scripts/utils/viewport-bvh.lua`):** Added the `/test-viewport-bvh` test suite validating initialization, intra-shell zero-update stability, boundary breach recentering, zoom-in contraction, and spatial hit-testing across 5 automated stages, alongside `/toggle-viewport-bvh` rendering concentric gold/green/cyan bounding boxes in Alt Mode.
+
+
+### Revision: Observer Intersection Engine and Active Visibility Sets
+**Date:** 2026-09-14 10:30 EDT
+**Context:** Implemented Phase 4 of the Motion Refactor to establish an event-driven notification bridge connecting observer viewports to motion corridors without polling whole maps or active capsules.
+**Key Changes:**
+1. **Active Visibility Sets (`scripts/utils/viewport-bvh.lua`):** Established `storage.player_visible_set[player_index]` to track on-screen motion corridors and spatial segments per player, formalizing `storage.motion_bvh` alongside `storage.surface_bvh`.
+2. **Hysteresis Breach Synchronization (`scripts/utils/viewport-bvh.lua`):** Wired `sync_player_visibility` into player viewport boundary breaches, performing differential spatial queries against the surface motion BVH to subscribe entering nodes and evict leaving nodes while recycling visual primitives to `render_pool`.
+3. **Corridor Event Subscriptions (`scripts/flow/flow-kinetic.lua`):** Integrated `viewport_bvh.on_segment_registered` and `on_segment_removed` across kinetic beam segment registration, remainder registration, endpoint shifts, and beam recession waves, alerting only overlapping player viewports in $O(\log N_{\text{players}})$ time.
+4. **Verification Expansion (`scripts/utils/viewport-bvh.lua`):** Extended `/test-viewport-bvh` with Test 6 (observer intersection on viewport breach) and Test 7 (event-driven corridor registration and removal), bringing the automated verification suite to 7 passing stages.

@@ -7,6 +7,7 @@
 --      causes 0 BVH updates. Only breaches re-index into storage.viewport_bvh[surface_index].
 
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local render_pool = require("scripts.utils.render-pool")
 
 local viewport_bvh = {}
 
@@ -133,6 +134,7 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
         }
         entry.leaf = trajectory_bvh.insert(tree, leaf, "player:" .. p_idx)
         storage.player_viewports[p_idx] = entry
+        viewport_bvh.sync_player_visibility(p_idx, s_idx)
         return entry
     end
 
@@ -175,6 +177,7 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
 
         local tree = viewport_bvh.get_tree(s_idx)
         trajectory_bvh.update(tree, entry.leaf, fat_min_x, fat_min_y, fat_max_x, fat_max_y)
+        viewport_bvh.sync_player_visibility(p_idx, s_idx)
     else
         entry.breached_this_tick = false
     end
@@ -202,6 +205,7 @@ function viewport_bvh.update_all_players()
                     trajectory_bvh.remove(tree, entry.leaf)
                 end
             end
+            viewport_bvh.clear_player_visible_set(p_idx)
             storage.player_viewports[p_idx] = nil
         end
     end
@@ -275,6 +279,143 @@ function viewport_bvh.get_active_viewports(surface_index)
         end
     end
     return results
+end
+
+--------------------------------------------------------------------------------
+-- ACTIVE VISIBILITY SETS & OBSERVER INTERSECTION (PHASE 4)
+--------------------------------------------------------------------------------
+--- Returns a player's active visible set dictionary
+--- @param player_index number
+--- @return table visible_set
+function viewport_bvh.get_visible_set(player_index)
+    storage.player_visible_set = storage.player_visible_set or {}
+    local set = storage.player_visible_set[player_index]
+    if not set then
+        set = {}
+        storage.player_visible_set[player_index] = set
+    end
+    return set
+end
+
+--- Clears all active visible nodes and recycles leased visual handles for a player
+--- @param player_index number
+function viewport_bvh.clear_player_visible_set(player_index)
+    if not (storage.player_visible_set and storage.player_visible_set[player_index]) then return end
+    local set = storage.player_visible_set[player_index]
+    for _, item in pairs(set) do
+        if item.render_objects then
+            render_pool.recycle_many(player_index, item.render_objects)
+            item.render_objects = nil
+        end
+    end
+    storage.player_visible_set[player_index] = nil
+end
+
+--- Synchronizes a player's active visible set against the surface motion BVH on breach
+--- @param player_index number
+--- @param surface_index number
+function viewport_bvh.sync_player_visibility(player_index, surface_index)
+    local entry = storage.player_viewports and storage.player_viewports[player_index]
+    if not entry then return end
+
+    storage.surface_bvh = storage.surface_bvh or {}
+    storage.motion_bvh = storage.surface_bvh
+    local motion_tree = storage.surface_bvh[surface_index]
+    if not (motion_tree and motion_tree.root) then
+        viewport_bvh.clear_player_visible_set(player_index)
+        return
+    end
+
+    local hits = {}
+    trajectory_bvh.query_box(motion_tree, entry.fat_min_x, entry.fat_min_y, entry.fat_max_x, entry.fat_max_y, hits)
+
+    local current_set = viewport_bvh.get_visible_set(player_index)
+    local new_set_keys = {}
+
+    for i = 1, #hits do
+        local leaf = hits[i]
+        local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+        new_set_keys[key] = leaf
+        if not current_set[key] then
+            current_set[key] = {
+                leaf = leaf,
+                key = key,
+                owner_id = leaf.owner_id,
+                seg_key = leaf.seg_key,
+                render_objects = nil
+            }
+        else
+            current_set[key].leaf = leaf
+        end
+    end
+
+    for key, item in pairs(current_set) do
+        if not new_set_keys[key] then
+            if item.render_objects then
+                render_pool.recycle_many(player_index, item.render_objects)
+                item.render_objects = nil
+            end
+            current_set[key] = nil
+        end
+    end
+end
+
+--- Event hook called when a motion corridor or entity is registered in the motion BVH
+--- @param surface_index number
+--- @param leaf table Leaf node in motion BVH
+function viewport_bvh.on_segment_registered(surface_index, leaf)
+    if not (surface_index and leaf) then return end
+    local observing = {}
+    viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
+    if #observing == 0 then return end
+
+    local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+    for i = 1, #observing do
+        local p_idx = observing[i]
+        local v_set = viewport_bvh.get_visible_set(p_idx)
+        if not v_set[key] then
+            v_set[key] = {
+                leaf = leaf,
+                key = key,
+                owner_id = leaf.owner_id,
+                seg_key = leaf.seg_key,
+                render_objects = nil
+            }
+        else
+            v_set[key].leaf = leaf
+        end
+    end
+end
+
+--- Event hook called when a motion corridor or entity is removed from the motion BVH
+--- @param surface_index number|nil
+--- @param owner_id number
+--- @param seg_key any|nil
+function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
+    if not (storage.player_visible_set and owner_id) then return end
+    local match_prefix = tostring(owner_id) .. ":"
+    local match_key = seg_key and (match_prefix .. tostring(seg_key))
+
+    for p_idx, v_set in pairs(storage.player_visible_set) do
+        if match_key then
+            local item = v_set[match_key]
+            if item then
+                if item.render_objects then
+                    render_pool.recycle_many(p_idx, item.render_objects)
+                end
+                v_set[match_key] = nil
+            end
+        else
+            for k, item in pairs(v_set) do
+                if item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix then
+                    if item.render_objects then
+                        render_pool.recycle_many(p_idx, item.render_objects)
+                    end
+                    v_set[k] = nil
+                end
+            end
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -453,7 +594,53 @@ function viewport_bvh.run_tests(player)
     end
     log_msg("[color=green][ViewportBVH Test] Test 5: Spatial Point & Observer Queries -> PASSED[/color]")
 
-    log_msg("[color=green][font=default-bold][ViewportBVH Test] ALL 5 TESTS PASSED! Viewport BVH and Concentric Hysteresis active.[/font][/color]")
+    -- Test 6: Observer Intersection on Viewport Breach
+    local dummy_leaf = {
+        min_x = p.position.x + 20, min_y = p.position.y - 1,
+        max_x = p.position.x + 36, max_y = p.position.y + 1,
+        owner_id = 8888, seg_key = "1,0:test",
+        key = "8888:1,0:test", is_leaf = true
+    }
+    local m_tree = trajectory_bvh.get_surface_tree(storage, p.surface.index)
+    trajectory_bvh.insert(m_tree, dummy_leaf, dummy_leaf.key)
+
+    viewport_bvh.sync_player_visibility(p.index, p.surface.index)
+    local v_set = viewport_bvh.get_visible_set(p.index)
+    if not v_set[dummy_leaf.key] then
+        log_msg("[color=red][ViewportBVH Test] Test 6 FAILED: Corridor not added to player_visible_set[/color]")
+        return false
+    end
+
+    viewport_bvh.update_player(p, { x = p.position.x + 500, y = p.position.y })
+    if v_set[dummy_leaf.key] ~= nil then
+        log_msg("[color=red][ViewportBVH Test] Test 6 FAILED: Corridor not evicted after viewport breach[/color]")
+        return false
+    end
+    viewport_bvh.update_player(p, orig_pos)
+    trajectory_bvh.remove(m_tree, dummy_leaf)
+    log_msg("[color=green][ViewportBVH Test] Test 6: Observer Intersection on Viewport Breach -> PASSED[/color]")
+
+    -- Test 7: Event-Driven Corridor Registration & Removal
+    local dummy_leaf2 = {
+        min_x = p.position.x - 5, min_y = p.position.y - 1,
+        max_x = p.position.x + 5, max_y = p.position.y + 1,
+        owner_id = 9999, seg_key = "0,1:event",
+        key = "9999:0,1:event", is_leaf = true
+    }
+    viewport_bvh.on_segment_registered(p.surface.index, dummy_leaf2)
+    if not v_set[dummy_leaf2.key] then
+        log_msg("[color=red][ViewportBVH Test] Test 7 FAILED: on_segment_registered did not subscribe observing player[/color]")
+        return false
+    end
+
+    viewport_bvh.on_segment_removed(p.surface.index, 9999, "0,1:event")
+    if v_set[dummy_leaf2.key] ~= nil then
+        log_msg("[color=red][ViewportBVH Test] Test 7 FAILED: on_segment_removed did not unsubscribe player[/color]")
+        return false
+    end
+    log_msg("[color=green][ViewportBVH Test] Test 7: Event-Driven Corridor Registration & Removal -> PASSED[/color]")
+
+    log_msg("[color=green][font=default-bold][ViewportBVH Test] ALL 7 TESTS PASSED! Observer Intersection Engine & Active Visibility Sets operational.[/font][/color]")
     return true
 end
 

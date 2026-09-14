@@ -268,8 +268,11 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
         end
     end
 
+    capsule.entered_via_pressure = false
     capsule.beam_flight = {
         start_pos = { x = muzzle_node.pos.x, y = muzzle_node.pos.y },
+        orig_terminal_pos = { x = terminal_pos.x, y = terminal_pos.y },
+        orig_receiver = hit_receiver_unit,
         start_tick = current_tick,
         arrival_tick = current_tick + flight_ticks,
         flight_ticks = flight_ticks,
@@ -316,7 +319,7 @@ function capsule_ballistics.catch_in_receiver(capsule, receiver_entity, runner)
                         if runner.has_capacity(r_pkey, ext_key) then
                             local ext_level = storage.flow_levels and storage.flow_levels[ext_key] or 0
                             local drop = -ext_level
-                            if drop >= 0 and drop > best_drop then
+                            if drop > 0 and drop > best_drop then
                                 best_drop = drop
                                 best_ext_key = ext_key
                                 best_r_pkey = r_pkey
@@ -335,6 +338,7 @@ function capsule_ballistics.catch_in_receiver(capsule, receiver_entity, runner)
         capsule.from_port_key = best_ext_key
         capsule.to_port_key = nil
         capsule.beam_flight = nil
+        capsule.entered_via_pressure = false
 
         local ext_node = storage.flow_nodes and storage.flow_nodes[best_ext_key]
         if ext_node and ext_node.pos then
@@ -440,6 +444,10 @@ end
 
 function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
     if not (storage.active_projectors and storage.active_projectors[unit_number]) then
+        return nil
+    end
+
+    if not capsule.entered_via_pressure then
         return nil
     end
 
@@ -657,6 +665,7 @@ end
 function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_port_key, runner)
     local cap_id = capsule.capsule_id or capsule.id
     capsule.in_timed_flight = true
+    capsule.entered_via_pressure = false
     capsule.from_port_key = nil
     capsule.last_port_key = from_port_key
     capsule.to_port_key = nil
@@ -750,13 +759,24 @@ function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
     if not handled or not arrived then
         local hit_receiver_unit = bf.hit_receiver_unit
         local r_ports = hit_receiver_unit and storage.flow_unit_ports and storage.flow_unit_ports[hit_receiver_unit]
-        local dock_port = r_ports and r_ports[1]
+        local dock_port = nil
+        if r_ports then
+            for _, rp in ipairs(r_ports) do
+                local rn = storage.flow_nodes and storage.flow_nodes[rp]
+                if rn and not (rn.is_muzzle or rn.kinetic_transmit) then
+                    dock_port = rp
+                    break
+                end
+            end
+        end
         if dock_port then
             capsule.from_port_key = dock_port
             capsule.last_pos = bf.terminal_pos
             capsule.surface_name = bf.surface_name
+            capsule.entered_via_pressure = false
             capsule_queries.update_capsule_occupancy(capsule)
             runner.mark_capsule_parked(capsule)
+            runner.wake_parked_capsules(dock_port)
         else
             runner.remove_capsule(id)
         end
@@ -835,6 +855,133 @@ function capsule_ballistics.remove_flight(capsule_id, beam_owner)
     flow_kinetic.step_pending_bvh_segments(game.tick)
 end
 
+function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
+    if not (surface and surface.valid and bb and motion_hits and #motion_hits > 0) then return end
+
+    local current_tick = game.tick
+    local affected_corridors = {}
+    for i = 1, #motion_hits do
+        local cid = motion_hits[i].owner_id
+        if cid and not affected_corridors[cid] then
+            affected_corridors[cid] = true
+        end
+    end
+
+    local flights_store = storage.timed_flights or storage.projector_flights
+    if not flights_store then return end
+
+    for cid in pairs(affected_corridors) do
+        local flights = flights_store[cid]
+        if flights and #flights > 0 then
+            for f = 1, #flights do
+                local f_rec = flights[f]
+                local cap_id = f_rec and f_rec.capsule_id
+                local cap = cap_id and storage.capsules and storage.capsules[cap_id]
+                local bf = cap and cap.beam_flight
+
+                if bf and cap.in_timed_flight then
+                    local dx = bf.dx or (bf.dir and bf.dir.x) or 0
+                    local dy = bf.dy or (bf.dir and bf.dir.y) or 0
+                    local sp = bf.start_pos
+
+                    bf.orig_terminal_pos = bf.orig_terminal_pos or { x = bf.terminal_pos.x, y = bf.terminal_pos.y }
+                    bf.orig_receiver = (bf.orig_receiver ~= nil and bf.orig_receiver) or bf.hit_receiver_unit
+
+                    local intersects = false
+                    local obst_dist = 0
+
+                    if dx ~= 0 and dy == 0 then
+                        if bb.left_top.y - 0.45 <= sp.y and sp.y <= bb.right_bottom.y + 0.45 then
+                            local entry_x = (dx > 0) and bb.left_top.x or bb.right_bottom.x
+                            obst_dist = (entry_x - sp.x) * dx
+                            intersects = true
+                        end
+                    elseif dy ~= 0 and dx == 0 then
+                        if bb.left_top.x - 0.45 <= sp.x and sp.x <= bb.right_bottom.x + 0.45 then
+                            local entry_y = (dy > 0) and bb.left_top.y or bb.right_bottom.y
+                            obst_dist = (entry_y - sp.y) * dy
+                            intersects = true
+                        end
+                    end
+
+                    if intersects then
+                        local elapsed_ticks = math.max(0, current_tick - (bf.start_tick or current_tick))
+                        local tpt = bf.ticks_per_tile or TICKS_PER_TILE
+                        local cur_dist = elapsed_ticks / tpt
+
+                        if not is_removal then
+                            local cur_term_dist = math.abs(bf.terminal_pos.x - sp.x) + math.abs(bf.terminal_pos.y - sp.y)
+                            if obst_dist > cur_dist and obst_dist < cur_term_dist then
+                                local crash_dist = math.max(cur_dist + 0.5, obst_dist - 0.5)
+                                local new_term = {
+                                    x = sp.x + dx * crash_dist,
+                                    y = sp.y + dy * crash_dist
+                                }
+                                timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
+                                bf.hit_receiver_unit = nil
+                                capsule_renderer.update_arrival_dots(cap, cap_id)
+                            end
+                        else
+                            local orig_term = bf.orig_terminal_pos
+                            local orig_dist = math.abs(orig_term.x - sp.x) + math.abs(orig_term.y - sp.y)
+                            if obst_dist > cur_dist then
+                                local sx = sp.x + dx * (cur_dist + 0.5)
+                                local sy = sp.y + dy * (cur_dist + 0.5)
+                                local ex = orig_term.x
+                                local ey = orig_term.y
+                                local area = {
+                                    { math.min(sx, ex) - 0.45, math.min(sy, ey) - 0.45 },
+                                    { math.max(sx, ex) + 0.45, math.max(sy, ey) + 0.45 }
+                                }
+                                local cands = surface.find_entities_filtered{ area = area }
+                                local closest_dist = orig_dist
+                                local closest_rec = bf.orig_receiver
+
+                                for _, cand in ipairs(cands) do
+                                    if cand.valid and cand ~= entity then
+                                        local is_ignorable = flow_kinetic.IGNORABLE_TYPES[cand.type] or flow_kinetic.PROXY_NAMES[cand.name]
+                                        if not is_ignorable and cand.type == "gate" then
+                                            if not (cand.is_closed and cand.is_closed()) then
+                                                is_ignorable = true
+                                            end
+                                        end
+                                        if not is_ignorable then
+                                            local cbb = cand.bounding_box
+                                            local d = (dx ~= 0) and (((dx > 0 and cbb.left_top.x or cbb.right_bottom.x) - sp.x) * dx)
+                                                                 or (((dy > 0 and cbb.left_top.y or cbb.right_bottom.y) - sp.y) * dy)
+                                            if d > cur_dist and d < closest_dist then
+                                                closest_dist = d
+                                                closest_rec = (cand.name == "pneumatic-projector") and cand.unit_number or nil
+                                            end
+                                        end
+                                    end
+                                end
+
+                                local new_term = nil
+                                if closest_dist >= orig_dist then
+                                    new_term = { x = orig_term.x, y = orig_term.y }
+                                    bf.hit_receiver_unit = bf.orig_receiver
+                                else
+                                    local crash_dist = math.max(cur_dist + 0.5, closest_dist - 0.5)
+                                    new_term = {
+                                        x = sp.x + dx * crash_dist,
+                                        y = sp.y + dy * crash_dist
+                                    }
+                                    bf.hit_receiver_unit = closest_rec
+                                end
+
+                                timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
+                                capsule_renderer.update_arrival_dots(cap, cap_id)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 flow_kinetic.update_projector_flights = capsule_ballistics.update_projector_flights
+flow_kinetic.handle_motion_obstacle_changed = capsule_ballistics.handle_motion_obstacle_changed
 
 return capsule_ballistics

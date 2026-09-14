@@ -813,7 +813,8 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         render_id = nil,
         render_cache = nil,
         source_hub = entity.unit_number,
-        passenger = passenger
+        passenger = passenger,
+        entered_via_pressure = false
     }
 
     storage.capsules = storage.capsules or {}
@@ -996,6 +997,11 @@ function capsule_runner.update_capsules(current_tick)
                     local prev_unit = capsule_queries.get_port_info(prev_key)
                     local new_unit = capsule_queries.get_port_info(next_port_key)
                     if prev_unit ~= new_unit then
+                        if new_unit and storage.active_projectors and storage.active_projectors[new_unit] then
+                            capsule.entered_via_pressure = true
+                        elseif prev_unit and storage.active_projectors and storage.active_projectors[prev_unit] then
+                            capsule.entered_via_pressure = false
+                        end
                         if capsule_runner.handle_arrival(capsule, id) then
                             break
                         end

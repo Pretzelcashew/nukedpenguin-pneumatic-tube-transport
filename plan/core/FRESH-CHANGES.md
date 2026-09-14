@@ -397,3 +397,12 @@
 2. **Perimeter Edge Socket Snapping (`scripts/flow/flow-kinetic.lua`):** Snapped receiver endpoint coordinates to the projector's perimeter edge socket (`cx - dir.x * 1.5, cy - dir.y * 1.5`), centering the visual target ring, arrival reticle dot, and ballistic landing coordinates directly on the intake dock socket.
 3. **Unified Reach Horizon Docking (`scripts/flow/flow-kinetic.lua`):** Unified receiver docking across both intermediate flight hops and maximum-reach terminations (`target_kinetic == 1`), ensuring beams reliably dock with projectors placed at terminal boundaries.
 4. **Preceding Endpoint Demotion (`scripts/flow/flow-kinetic.lua`):** Cleared `is_endpoint` and unregistered endpoint remainder segments from preceding nodes when advancing to a receiver dock, eliminating phantom duplicate rings.
+
+
+### Revision: Enforce Pressure-Entry Projector Gatekeeping and Motion BVH Occlusion
+**Date:** 2026-09-14 12:35 EDT
+**Context:** Resolved premature projectile launching at receiver docks by gating launch dispatch strictly behind pressure-driven intake entries, docked received capsules to passive intake sockets, and connected in-flight kinetic capsules to dynamic obstacle occlusion via the motion corridor BVH independently of projector entities.
+**Key Changes:**
+1. **Pressure-Entry Launch Gatekeeping (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-ballistics.lua`):** Added the `entered_via_pressure` transit flag set strictly when a capsule hops across an external edge into a projector via pressure gradients, and gated `try_projector_launch` behind this flag so kinetically received capsules cannot immediately fire from the receiver.
+2. **Intake Dock Catchment & Snapping (`scripts/capsules/capsule-ballistics.lua`):** Corrected receiver endpoint fallback parking in `finalize_timed_arrival` to resolve non-muzzle passive intake sockets rather than defaulting to the launch muzzle (`r_ports[1]`), ensuring received capsules park cleanly until siphoned out by connected line vacuum.
+3. **Decoupled Motion Corridor Occlusion (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Linked `handle_obstacle_changed` and `step_character_colliders` to query `storage.motion_bvh` directly, enabling in-flight kinetic projectiles to detect newly placed, removed, or character obstacles and shift arrival horizons even after the origin projector has been deconstructed.

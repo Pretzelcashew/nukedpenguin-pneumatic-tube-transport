@@ -628,7 +628,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
 end
 
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
-    if not (entity and entity.valid and entity.bounding_box and storage.active_projectors) then return end
+    if not (entity and entity.valid and entity.bounding_box) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
     local bb = entity.bounding_box
     local surface = entity.surface
@@ -638,10 +638,19 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
     enqueue_port_fn = enqueue_port_fn or enqueue_port
     wake_port_fn = wake_port_fn or wake_port_parked
 
-    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
-    if not tree then return end
-
     local MARGIN = 2.5
+    if flow_kinetic.handle_motion_obstacle_changed and storage.motion_bvh and storage.motion_bvh[surface.index] then
+        local motion_tree = storage.motion_bvh[surface.index]
+        local motion_hits = {}
+        trajectory_bvh.query_box(motion_tree, bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, motion_hits)
+        if #motion_hits > 0 then
+            flow_kinetic.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
+        end
+    end
+
+    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+    if not (tree and storage.active_projectors) then return end
+
     local hits = {}
     tree:query_box(bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, hits)
     if #hits == 0 then return end
@@ -836,6 +845,17 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                     if not new_keys[old_k] then
                         storage.character_colliders[old_k] = nil
                         wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
+                        if flow_kinetic.handle_motion_obstacle_changed and char.valid and char.surface then
+                            local c_bb = char.bounding_box
+                            local m_tree = storage.motion_bvh and storage.motion_bvh[char.surface.index]
+                            if m_tree then
+                                local m_hits = {}
+                                trajectory_bvh.query_box(m_tree, c_bb.left_top.x - 2.5, c_bb.left_top.y - 2.5, c_bb.right_bottom.x + 2.5, c_bb.right_bottom.y + 2.5, m_hits)
+                                if #m_hits > 0 then
+                                    flow_kinetic.handle_motion_obstacle_changed(char.surface, char, c_bb, true, m_hits)
+                                end
+                            end
+                        end
                     end
                 end
 
@@ -854,6 +874,17 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                             end
                         end
                         wake_beam_pointing_at(sname, new_p, false, enqueue_port_fn, wake_port_fn)
+                        if flow_kinetic.handle_motion_obstacle_changed and char.valid and char.surface then
+                            local c_bb = char.bounding_box
+                            local m_tree = storage.motion_bvh and storage.motion_bvh[char.surface.index]
+                            if m_tree then
+                                local m_hits = {}
+                                trajectory_bvh.query_box(m_tree, c_bb.left_top.x - 2.5, c_bb.left_top.y - 2.5, c_bb.right_bottom.x + 2.5, c_bb.right_bottom.y + 2.5, m_hits)
+                                if #m_hits > 0 then
+                                    flow_kinetic.handle_motion_obstacle_changed(char.surface, char, c_bb, false, m_hits)
+                                end
+                            end
+                        end
                     end
                 end
 

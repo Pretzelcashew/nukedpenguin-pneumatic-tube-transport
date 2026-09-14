@@ -342,3 +342,16 @@
 2. **Polymorphic Table Signatures (`scripts/utils/render-pool.lua`):** Implemented `normalize_lease_args` supporting both single-table call syntax (`lease_circle{...}`) matching Factorio's native `rendering.draw_*` API and multi-argument signatures (`lease_circle(player_index, surface, options)`).
 3. **Capsule Flight & Arrival Dot Integration (`scripts/capsules/capsule-renderer.lua`):** Replaced direct engine calls with `render_pool.lease_*` for passenger eject alerts, status rings, dominant cargo icons, fallback dots, and timed arrival reticles. Replaced object destruction on viewport exit with `recycle_capsule_render`.
 4. **Debug & Diagnostic Suite (`scripts/debug-manager.lua`, `scripts/utils/render-pool.lua`):** Added the `/test-render-pool` command verifying leasing, recycling, zero-allocation handle reuse (0 C++ object churn), property updates, and clean pool destruction across 6 automated stages, and linked pool clearing into `/clear-renders`.
+
+
+### Revision: Player Viewport Spatial BVH and Concentric Hysteresis Caching
+**Date:** 2026-09-14 10:25 EDT
+**Context:** Implemented Phase 3 of the Motion Refactor to decouple observer tracking from runtime game polling and establish a surface-partitioned spatial index of player screens.
+**Key Changes:**
+1. **Viewport Spatial Tree Engine (`scripts/utils/viewport-bvh.lua`):** Created dedicated surface trees in `storage.viewport_bvh[surface_index]` indexing player viewports as dynamic leaves via `trajectory_bvh`.
+2. **Concentric Hysteresis Bounds (`scripts/utils/viewport-bvh.lua`):** Formulated a 3-tier bounding model per player:
+   - *Inner Shrunk AABB (0.5× width/height):* Detects zoom-in contraction to shrink oversized shells.
+   - *Padded Viewport AABB (+12 tiles):* The active culling boundary preventing pop-in during high-speed transit.
+   - *Outer Fat Shell (+24 tiles):* The spatial hysteresis shell. Camera motion within this boundary incurs 0 tree updates; only breaches trigger `trajectory_bvh.update`.
+3. **Logarithmic Viewport Queries (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Replaced linear per-player array scans in `capsule_renderer.is_in_any_viewport` with $O(\log N_{\text{players}})$ spatial BVH queries (`is_in_any_viewport`, `query_players_in_box`).
+4. **Debug & Visualizer Suite (`scripts/debug-manager.lua`, `scripts/utils/viewport-bvh.lua`):** Added the `/test-viewport-bvh` test suite validating initialization, intra-shell zero-update stability, boundary breach recentering, zoom-in contraction, and spatial hit-testing across 5 automated stages, alongside `/toggle-viewport-bvh` rendering concentric gold/green/cyan bounding boxes in Alt Mode.

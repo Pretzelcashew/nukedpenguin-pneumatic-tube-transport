@@ -152,3 +152,6 @@ phase 7: ensure we cache lua render objects rather than creating and destroying 
 
 sort these in a more logical way of completion, and add a clause at the end about expecting zero brute force processes, since we're obviously going for efficiency here. 
 
+
+fix that intercepting a capsule flight and then unblocking it would cause the capsule to skip entering the pneumatics of the reciever projector upon reaching the arrival target, and just launch right away rather than requiring to be cycled back out of it and back into it via pneumatics, this should be a required part so em projectors arent just lone infrastructure routers
+

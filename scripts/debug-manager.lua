@@ -5,6 +5,7 @@ local binary_heap = require("scripts.utils.binary-heap")
 local capsule_lifecycle = require("scripts.capsules.capsule-lifecycle")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local debug_manager = {}
 debug_manager.binary_heap = binary_heap
@@ -622,6 +623,7 @@ local function clear_and_reconstruct_renders(player_index)
     flow_engine.clear_all_renders(player_index)
     trajectory_bvh.clear_renders(player_index)
     render_pool.clear_player(player_index)
+    viewport_bvh.clear_renders(player_index)
 
     if is_debug_active("new_flow", player_index) then
         flow_engine.draw_flow(player_index)
@@ -713,6 +715,20 @@ end)
 commands.add_command("test-render-pool", "Run self-tests on the LuaRenderObject cache and pool (Alias)", function(cmd)
     local player = cmd.player_index and game.get_player(cmd.player_index)
     render_pool.run_tests(player)
+end)
+commands.add_command("pt-test-viewport-bvh", "Run self-tests on the Player Viewport BVH and hysteresis caching", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    viewport_bvh.run_tests(player)
+end)
+commands.add_command("test-viewport-bvh", "Run self-tests on the Player Viewport BVH and hysteresis caching (Alias)", function(cmd)
+    local player = cmd.player_index and game.get_player(cmd.player_index)
+    viewport_bvh.run_tests(player)
+end)
+commands.add_command("toggle-viewport-bvh", "Toggle concentric hysteresis viewport overlays (Alt Mode)", function(cmd)
+    if cmd.player_index then viewport_bvh.toggle_debug_overlay(cmd.player_index) end
+end)
+commands.add_command("pt-toggle-viewport-bvh", "Toggle concentric hysteresis viewport overlays (Alias)", function(cmd)
+    if cmd.player_index then viewport_bvh.toggle_debug_overlay(cmd.player_index) end
 end)
 commands.add_command("toggle-bvh", "Toggle Trajectory BVH partition bounding box overlays", function(cmd)
     if cmd.player_index then toggle_bvh(cmd.player_index) end

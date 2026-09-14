@@ -3,6 +3,7 @@ local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -44,6 +45,7 @@ function capsule_renderer.prepare_frame()
     end
     last_prepared_tick = current_tick
 
+    viewport_bvh.update_all_players()
     active_debug_count = 0
     active_viewport_count = 0
 
@@ -523,6 +525,12 @@ end
 -- VIEWPORT INTERPOLATION & TIMED ARRIVAL RENDERING
 --------------------------------------------------------------------------------
 function capsule_renderer.is_in_any_viewport(surface_name, x, y)
+    local surf = surface_name and game.surfaces[surface_name]
+    if not (surf and surf.valid and x and y) then return false end
+    return viewport_bvh.is_in_any_viewport(surf.index, x, y)
+end
+
+function capsule_renderer.is_in_any_viewport_legacy(surface_name, x, y)
     if active_viewport_count == 0 or not surface_name or not x or not y then
         return false
     end

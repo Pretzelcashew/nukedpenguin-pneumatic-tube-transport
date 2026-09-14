@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-13 22:10:37  
-**Total Scope:** 22 directories, 100 files  
-**Total Workspace Size:** 1.71 MB | **Total Text Lines:** 29,389  
+**Last Generated:** 2026-09-13 23:57:46  
+**Total Scope:** 22 directories, 102 files  
+**Total Workspace Size:** 1.72 MB | **Total Text Lines:** 29,496  
 
 ---
 
@@ -16,9 +16,9 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/capsules/capsule-runner.lua` | 1,062 | 41.0 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-lifecycle.lua` | 971 | 42.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/debug-manager.lua` | 848 | 34.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/capsules/capsule-ballistics.lua` | 845 | 35.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/capsules/capsule-ballistics.lua` | 824 | 34.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-kinetic.lua` | 818 | 35.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-kinetic.lua` | 819 | 35.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 791 | 29.0 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `aggregator_patcher.py` | 756 | 26.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/diverters/diverter-gui.lua` | 746 | 29.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
@@ -59,11 +59,13 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── archive/
 │   │   ├── ARCHITECTURE.md                     [830 lines | 120.9 KB]
 │   │   ├── CHANGES_0.3.23.md                   [28 lines | 3.9 KB]
+│   │   ├── FLIGHT-OCCLUSION.md                 [44 lines | 3.8 KB]
+│   │   ├── SCRATCH-B.md                        [31 lines | 2.8 KB]
 │   │   └── SCRATCH.md                          [26 lines | 2.5 KB]
 │   └── core/
 │       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [272 lines | 44.9 KB]
+│       ├── FRESH-CHANGES.md                    [282 lines | 46.7 KB]
 │       ├── HELPERS.md                          [92 lines | 4.3 KB]
 │       ├── MANIFEST.md                         [101 lines | 15.9 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
@@ -90,7 +92,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── technology.lua                      [304 lines | 9.0 KB]
 ├── scripts/
 │   ├── capsules/
-│   │   ├── capsule-ballistics.lua              [824 lines | 34.2 KB]
+│   │   ├── capsule-ballistics.lua              [845 lines | 35.9 KB]
 │   │   ├── capsule-definitions.lua             [393 lines | 16.3 KB]
 │   │   ├── capsule-inputs.lua                  [9 lines | 324 B]
 │   │   ├── capsule-lifecycle.lua               [971 lines | 42.4 KB]
@@ -115,7 +117,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── flow-common.lua                     [150 lines | 5.8 KB]
 │   │   ├── flow-engine.lua                     [1,083 lines | 46.8 KB]
 │   │   ├── flow-gate-interop.lua               [517 lines | 22.9 KB]
-│   │   ├── flow-kinetic.lua                    [818 lines | 35.2 KB]
+│   │   ├── flow-kinetic.lua                    [819 lines | 35.8 KB]
 │   │   ├── flow-renderer.lua                   [707 lines | 27.0 KB]
 │   │   └── port-defs.lua                       [370 lines | 35.6 KB]
 │   ├── hubs/

@@ -669,14 +669,8 @@ end
 function capsule_ballistics.update_projector_flights(beam_owner)
     if not beam_owner then return end
     local p_flights = storage.projector_flights and storage.projector_flights[beam_owner]
-    local flight_count = p_flights and #p_flights or 0
-    game.print(string.format("[KINETIC-DEBUG] update_projector_flights called for owner %s (active flights: %d)", tostring(beam_owner), flight_count))
-    if flight_count == 0 and storage.projector_flights and next(storage.projector_flights) then
-        for k, v in pairs(storage.projector_flights) do
-            game.print(string.format("[KINETIC-DEBUG] Note: projector_flights has key %s (type=%s, count=%d)", tostring(k), type(k), #v))
-        end
-    end
     if not (p_flights and #p_flights > 0) then return end
+    game.print(string.format("[KINETIC-DEBUG] update_projector_flights called for owner %s (active flights: %d)", tostring(beam_owner), #p_flights))
 
     local current_tick = game.tick
     local heap = capsule_ballistics.get_arrival_heap()

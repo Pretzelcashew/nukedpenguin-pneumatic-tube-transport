@@ -350,6 +350,10 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 flow_kinetic.register_endpoint_in_bvh(node)
                 flow_renderer.update_kinetic_pos_render(pkey)
                 wake_port_fn(pkey)
+                local owner_unit = node.beam_owner or node.unit_number
+                if flow_kinetic.update_projector_flights then
+                    flow_kinetic.update_projector_flights(owner_unit)
+                end
             elseif target_kinetic > 1 and node.dir then
                 local nx = node.pos.x + node.dir.x
                 local ny = node.pos.y + node.dir.y
@@ -398,11 +402,6 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
                     node.is_endpoint = false
                     node.hit_receiver = nil
-
-                    local owner_unit = node.beam_owner or node.unit_number
-                    if flow_kinetic.update_projector_flights then
-                        flow_kinetic.update_projector_flights(owner_unit)
-                    end
                     node.is_prominent_kinetic = node_is_prom
                     node.is_beam_node = node_is_prom
                     node.capsule_transmit = node_is_prom
@@ -518,12 +517,32 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
     if not (entity and entity.valid and entity.bounding_box and storage.active_projectors) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
     local bb = entity.bounding_box
-    local surf_name = entity.surface.name
+    local surface = entity.surface
+    if not (surface and surface.valid) then return end
+    local surf_name = surface.name
 
     enqueue_port_fn = enqueue_port_fn or enqueue_port
     wake_port_fn = wake_port_fn or wake_port_parked
 
-    for unit_number, proj in pairs(storage.active_projectors) do
+    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+    if not tree then return end
+
+    local MARGIN = 1.0
+    local hits = {}
+    tree:query_box(bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, hits)
+    if #hits == 0 then return end
+
+    local affected_owners = {}
+    for i = 1, #hits do
+        local leaf = hits[i]
+        local owner_id = leaf.owner_id
+        if owner_id and not affected_owners[owner_id] then
+            affected_owners[owner_id] = true
+        end
+    end
+
+    for unit_number in pairs(affected_owners) do
+        local proj = storage.active_projectors[unit_number]
         if proj and proj.valid and proj.surface.name == surf_name and proj ~= entity then
             local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
             local muzzle_node = nil
@@ -596,9 +615,6 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                                 wake_port_fn(pkey)
                             end
                         end
-                        if flow_kinetic.update_projector_flights then
-                            flow_kinetic.update_projector_flights(unit_number)
-                        end
                     end
                 end
             end
@@ -669,10 +685,6 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
                     end
                     enqueue_port_fn(pkey)
                     wake_port_fn(pkey)
-                    local b_owner = b_node.beam_owner or b_node.unit_number
-                    if b_owner and flow_kinetic.update_projector_flights then
-                        flow_kinetic.update_projector_flights(b_owner)
-                    end
                 end
             end
         end
@@ -727,10 +739,6 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                                     game.print(string.format("[KINETIC-DEBUG] Triggering wake up (character step): kinetic node %s", pkey))
                                     enqueue_port_fn(pkey)
                                     wake_port_fn(pkey)
-                                    local b_owner = b_node.beam_owner or b_node.unit_number
-                                    if b_owner and flow_kinetic.update_projector_flights then
-                                        flow_kinetic.update_projector_flights(b_owner)
-                                    end
                                 end
                             end
                         end

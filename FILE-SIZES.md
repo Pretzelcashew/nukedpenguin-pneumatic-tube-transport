@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-13 23:57:46  
+**Last Generated:** 2026-09-14 00:54:24  
 **Total Scope:** 22 directories, 102 files  
-**Total Workspace Size:** 1.72 MB | **Total Text Lines:** 29,496  
+**Total Workspace Size:** 1.72 MB | **Total Text Lines:** 29,499  
 
 ---
 
@@ -12,17 +12,17 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
 | `plan/core/CHANGELOG.md` | 2,225 | 357.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-engine.lua` | 1,083 | 46.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-engine.lua` | 1,081 | 46.7 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-runner.lua` | 1,062 | 41.0 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-lifecycle.lua` | 971 | 42.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/debug-manager.lua` | 848 | 34.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/capsules/capsule-ballistics.lua` | 845 | 35.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-kinetic.lua` | 819 | 35.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/capsules/capsule-ballistics.lua` | 829 | 34.6 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-kinetic.lua` | 821 | 34.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 791 | 29.0 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `aggregator_patcher.py` | 756 | 26.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/diverters/diverter-gui.lua` | 746 | 29.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
-| `scripts/flow/flow-renderer.lua` | 707 | 27.0 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
+| `scripts/flow/flow-renderer.lua` | 706 | 27.0 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/proxy-manager.lua` | 660 | 22.8 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/utils/trajectory-bvh.lua` | 631 | 23.4 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/utils/gui-components.lua` | 627 | 23.7 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
@@ -65,7 +65,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── core/
 │       ├── CHANGELOG.md                        [2,225 lines | 357.5 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [282 lines | 46.7 KB]
+│       ├── FRESH-CHANGES.md                    [302 lines | 50.2 KB]
 │       ├── HELPERS.md                          [92 lines | 4.3 KB]
 │       ├── MANIFEST.md                         [101 lines | 15.9 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
@@ -92,7 +92,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── technology.lua                      [304 lines | 9.0 KB]
 ├── scripts/
 │   ├── capsules/
-│   │   ├── capsule-ballistics.lua              [845 lines | 35.9 KB]
+│   │   ├── capsule-ballistics.lua              [829 lines | 34.6 KB]
 │   │   ├── capsule-definitions.lua             [393 lines | 16.3 KB]
 │   │   ├── capsule-inputs.lua                  [9 lines | 324 B]
 │   │   ├── capsule-lifecycle.lua               [971 lines | 42.4 KB]
@@ -115,10 +115,10 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   └── diverter-slot-modal.lua             [278 lines | 10.5 KB]
 │   ├── flow/
 │   │   ├── flow-common.lua                     [150 lines | 5.8 KB]
-│   │   ├── flow-engine.lua                     [1,083 lines | 46.8 KB]
+│   │   ├── flow-engine.lua                     [1,081 lines | 46.7 KB]
 │   │   ├── flow-gate-interop.lua               [517 lines | 22.9 KB]
-│   │   ├── flow-kinetic.lua                    [819 lines | 35.8 KB]
-│   │   ├── flow-renderer.lua                   [707 lines | 27.0 KB]
+│   │   ├── flow-kinetic.lua                    [821 lines | 34.8 KB]
+│   │   ├── flow-renderer.lua                   [706 lines | 27.0 KB]
 │   │   └── port-defs.lua                       [370 lines | 35.6 KB]
 │   ├── hubs/
 │   │   ├── packing/

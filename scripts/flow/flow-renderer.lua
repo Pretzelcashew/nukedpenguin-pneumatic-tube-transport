@@ -586,8 +586,8 @@ function flow_renderer.destroy_character_renders(player_index)
 end
 
 function flow_renderer.update_character_renders(target_player_index)
-    storage.character_renders = storage.character_renders or {}
-
+    flow_renderer.destroy_character_renders()
+    do return end
     local function update_for_player(player)
         local p_idx = player.index
         if not check_debug("new_flow", p_idx) then
@@ -696,7 +696,6 @@ function flow_renderer.draw_flow(player_index)
             flow_renderer.update_kinetic_pos_render(pkey, player_index)
         end
     end
-    flow_renderer.update_character_renders(player_index)
 end
 
 function flow_renderer.draw_all(player_index)

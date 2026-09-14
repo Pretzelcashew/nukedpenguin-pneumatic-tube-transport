@@ -346,7 +346,6 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 node.is_beam_node = true
                 node.capsule_transmit = true
                 node.hit_receiver = nil
-                game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: reached max range endpoint at %s (dist=%s)", pkey, tostring(node.dist)))
                 flow_kinetic.register_endpoint_in_bvh(node)
                 flow_renderer.update_kinetic_pos_render(pkey)
                 wake_port_fn(pkey)
@@ -366,7 +365,6 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                     node.is_beam_node = true
                     node.capsule_transmit = true
                     node.hit_receiver = occ.is_receiver and occ.receiver and occ.receiver.unit_number or nil
-                    game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: established endpoint at %s (dist=%s, receiver=%s)", pkey, tostring(node.dist), tostring(node.hit_receiver)))
                     flow_kinetic.register_endpoint_in_bvh(node)
                     flow_renderer.update_kinetic_pos_render(pkey)
                     wake_port_fn(pkey)
@@ -397,7 +395,6 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
                 else
                     if node.is_endpoint then
                         flow_kinetic.unregister_endpoint_remainder_in_bvh(node)
-                        game.print(string.format("[KINETIC-DEBUG] Kinetic node woken up: unblocked endpoint %s, advancing beam", pkey))
                     end
                     local node_is_prom = (not node.is_muzzle) and ((node.dist or 0) > 0) and ((node.dist or 0) % HOP_DISTANCE == 0)
                     node.is_endpoint = false
@@ -593,7 +590,6 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                     if intersects then
                         local check_min = math.max(0, d_start - 1)
                         local check_max = math.min(max_reach, d_end + 1)
-                        game.print(string.format("[KINETIC-DEBUG] Triggering wake up (obstacle %s, removal=%s): projector %d dist %d..%d", entity.name, tostring(is_removal), unit_number, check_min, check_max))
 
                         for dist = check_min, check_max do
                             local pkey = (dist == 0)
@@ -673,7 +669,6 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
             for pkey in pairs(ports) do
                 local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                 if b_node and b_node.is_kinetic and b_node.dir and b_node.dir.x == c.dx and b_node.dir.y == c.dy then
-                    game.print(string.format("[KINETIC-DEBUG] Triggering wake up (character %s): pointing node %s", is_evacuation and "evacuation" or "entry", pkey))
                     if is_evacuation and b_node.is_endpoint then
                         flow_kinetic.unregister_endpoint_remainder_in_bvh(b_node)
                         b_node.is_endpoint = false
@@ -736,7 +731,6 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                             for pkey in pairs(ports) do
                                 local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
                                 if b_node and b_node.is_kinetic then
-                                    game.print(string.format("[KINETIC-DEBUG] Triggering wake up (character step): kinetic node %s", pkey))
                                     enqueue_port_fn(pkey)
                                     wake_port_fn(pkey)
                                 end

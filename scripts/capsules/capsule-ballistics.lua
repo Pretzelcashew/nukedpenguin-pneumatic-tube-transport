@@ -670,7 +670,6 @@ function capsule_ballistics.update_projector_flights(beam_owner)
     if not beam_owner then return end
     local p_flights = storage.projector_flights and storage.projector_flights[beam_owner]
     if not (p_flights and #p_flights > 0) then return end
-    game.print(string.format("[KINETIC-DEBUG] update_projector_flights called for owner %s (active flights: %d)", tostring(beam_owner), #p_flights))
 
     local current_tick = game.tick
     local heap = capsule_ballistics.get_arrival_heap()
@@ -691,7 +690,6 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                 local old_term = bf.terminal_pos
                 local pos_changed = (old_term == nil) or (old_term.x ~= new_term.x) or (old_term.y ~= new_term.y)
                 local receiver_changed = (bf.hit_receiver_unit ~= new_receiver)
-                game.print(string.format("[KINETIC-DEBUG] Flight cap %s (cur_dist=%d): ep=%s, pos_changed=%s, rec_changed=%s", tostring(cap_id), cur_dist, tostring(ep_key), tostring(pos_changed), tostring(receiver_changed)))
 
                 if pos_changed or receiver_changed then
                     local d = ep_node.dist or HOP_DISTANCE
@@ -726,15 +724,7 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                     end
 
                     capsule_renderer.update_arrival_dots(cap, cap_id)
-                    game.print(string.format("[KINETIC-DEBUG] Capsule %s timed arrival target CHANGED in flight: (%.1f, %.1f) -> (%.1f, %.1f) [arrival_tick=%d, receiver=%s]",
-                        tostring(cap_id),
-                        old_term and old_term.x or 0, old_term and old_term.y or 0,
-                        new_term.x, new_term.y,
-                        new_arrival_tick,
-                        tostring(new_receiver)))
                 end
-            else
-                game.print(string.format("[KINETIC-DEBUG] Flight cap %s: get_beam_endpoint returned NIL endpoint!", tostring(cap_id)))
             end
         end
     end

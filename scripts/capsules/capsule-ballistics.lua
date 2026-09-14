@@ -65,6 +65,76 @@ function capsule_ballistics.play_catchment_effects(surface, pos)
     end)
 end
 
+function capsule_ballistics.apply_crash_damage(surface, crash_pos, q_lvl, owner_unit, capsule)
+    if not (surface and surface.valid and crash_pos) then return end
+    local base_damage = projector_settings.PROJECTILE_DAMAGE or 250
+    local q_multiplier = 1 + 0.3 * (q_lvl or 0)
+    local full_damage = math.floor(base_damage * q_multiplier)
+
+    local proj_entity = owner_unit and storage.active_projectors and storage.active_projectors[owner_unit]
+    local p_force = (proj_entity and proj_entity.valid and proj_entity.force) or "neutral"
+
+    pcall(function()
+        surface.create_entity{
+            name = "explosion",
+            position = crash_pos
+        }
+        surface.play_sound{
+            path = "utility/explosion",
+            position = crash_pos,
+            volume_modifier = 0.8
+        }
+    end)
+
+    local CRASH_RADIUS = 3.5
+    local targets = surface.find_entities_filtered{
+        position = crash_pos,
+        radius = CRASH_RADIUS
+    }
+
+    local damaged_units = {}
+
+    for _, target in ipairs(targets) do
+        if target.valid and target.health and target.destructible ~= false then
+            local t_name = target.name
+            local t_type = target.type
+            local is_spill_holder = (t_name == "visible-capsule-holder" or t_name == "spilled-capsule-holder")
+            local is_immune = flow_kinetic.PROXY_NAMES[t_name] or is_spill_holder
+                or t_type == "resource" or t_type == "entity-ghost" or t_type == "tile-ghost"
+                or t_type == "item-entity" or t_type == "corpse" or t_type == "character-corpse"
+                or t_type == "flying-robot" or t_type == "logistic-robot" or t_type == "construction-robot"
+
+            if not is_immune then
+                damaged_units[target.unit_number or target] = true
+                local dist = math.sqrt((target.position.x - crash_pos.x)^2 + (target.position.y - crash_pos.y)^2)
+                local dmg = full_damage
+                if dist > 1.5 then
+                    local ratio = math.min(1.0, (dist - 1.5) / (CRASH_RADIUS - 1.5))
+                    dmg = math.max(1, math.floor(full_damage * (1 - 0.7 * ratio)))
+                end
+                target.damage(dmg, p_force, "impact")
+            end
+        end
+    end
+
+    for _, player in pairs(game.connected_players) do
+        local char = player.character
+        if char and char.valid and char.surface == surface and not damaged_units[char.unit_number or char] then
+            local cpos = char.position
+            local dist = math.sqrt((cpos.x - crash_pos.x)^2 + (cpos.y - crash_pos.y)^2)
+            if dist <= CRASH_RADIUS then
+                damaged_units[char.unit_number or char] = true
+                local dmg = full_damage
+                if dist > 1.5 then
+                    local ratio = math.min(1.0, (dist - 1.5) / (CRASH_RADIUS - 1.5))
+                    dmg = math.max(1, math.floor(full_damage * (1 - 0.7 * ratio)))
+                end
+                char.damage(dmg, p_force, "impact")
+            end
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- BEAM PORT KEYS & ENDPOINT RESOLUTION
 --------------------------------------------------------------------------------
@@ -191,7 +261,8 @@ function capsule_ballistics.init_capsule_beam_flight(capsule, muzzle_node)
         hop_positions = hop_positions,
         terminal_pos = terminal_pos,
         hit_receiver_unit = hit_receiver_unit,
-        owner = beam_owner
+        owner = beam_owner,
+        q_level = muzzle_node.q_level or 0
     }
 end
 
@@ -321,12 +392,8 @@ function capsule_ballistics.advance_kinetic_trajectory(capsule, current_node, un
     end
 
     if found_obstacle and obstacle_pos and surface and surface.valid then
-        if hit_player_entity and hit_player_entity.valid then
-            local q_lvl = (current_node and current_node.q_level) or 0
-            local dmg = math.floor((projector_settings.PROJECTILE_DAMAGE or 250) * (1 + 0.3 * q_lvl))
-            local p_force = (owner_entity and owner_entity.valid and owner_entity.force) or (hit_player_entity.force) or "neutral"
-            hit_player_entity.damage(dmg, p_force, "impact")
-        end
+        local q_lvl = (current_node and current_node.q_level) or 0
+        capsule_ballistics.apply_crash_damage(surface, obstacle_pos, q_lvl, beam_owner, capsule)
         runner.mark_capsule_unparked(capsule)
         local crash_port_key = capsule.from_port_key
         capsule_ballistics.remove_flight(cap_id, beam_owner)
@@ -417,9 +484,7 @@ function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
                         end
 
                         local q_lvl = muzzle_node.q_level or 0
-                        local dmg = math.floor((projector_settings.PROJECTILE_DAMAGE or 250) * (1 + 0.3 * q_lvl))
-                        local p_force = (proj_entity and proj_entity.valid and proj_entity.force) or (player_target.force) or "neutral"
-                        player_target.damage(dmg, p_force, "impact")
+                        capsule_ballistics.apply_crash_damage(surface, { x = tx, y = ty }, q_lvl, unit_number, capsule)
                         runner.mark_capsule_unparked(capsule)
                         hub_spill.spill_capsule(cap_id, surface, { x = tx, y = ty }, nil, true)
                         runner.wake_parked_capsules(from_port_key)
@@ -486,12 +551,9 @@ function capsule_ballistics.handle_endpoint_arrival(capsule, id, node, bf, runne
     else
         capsule.beam_flight = nil
         if surface and surface.valid and term_pos then
-            local player_target = capsule_transit.check_player_collision(surface, term_pos.x, term_pos.y, capsule)
-            if player_target and player_target.valid then
-                local dmg = projector_settings.PROJECTILE_DAMAGE or 250
-                local p_force = (player_target.force) or "neutral"
-                player_target.damage(dmg, p_force, "impact")
-            end
+            local q_lvl = (node and node.q_level) or (bf and bf.q_level) or 0
+            local owner_unit = (node and (node.beam_owner or node.unit_number)) or (bf and bf.owner)
+            capsule_ballistics.apply_crash_damage(surface, term_pos, q_lvl, owner_unit, capsule)
             hub_spill.spill_capsule(id, surface, term_pos, nil, true)
         else
             runner.remove_capsule(id)
@@ -538,11 +600,8 @@ function capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_t
         end
 
         if obstructed and obst_pos and surface and surface.valid then
-            if hit_player_entity and hit_player_entity.valid then
-                local dmg = projector_settings.PROJECTILE_DAMAGE or 250
-                local p_force = (hit_player_entity.force) or "neutral"
-                hit_player_entity.damage(dmg, p_force, "impact")
-            end
+            local q_lvl = bf.q_level or 0
+            capsule_ballistics.apply_crash_damage(surface, obst_pos, q_lvl, bf.owner, capsule)
             runner.mark_capsule_unparked(capsule)
             local dead_port_key = capsule.from_port_key
             capsule_ballistics.remove_flight(id, bf.owner)
@@ -610,7 +669,6 @@ function capsule_ballistics.update_projector_flights(beam_owner)
     local p_flights = storage.projector_flights and storage.projector_flights[beam_owner]
     if not (p_flights and #p_flights > 0) then return end
 
-    local proj_entity = storage.active_projectors and storage.active_projectors[beam_owner]
     local current_tick = game.tick
     local heap = capsule_ballistics.get_arrival_heap()
 
@@ -621,79 +679,26 @@ function capsule_ballistics.update_projector_flights(beam_owner)
         local bf = cap and cap.beam_flight
 
         if cap and bf and bf.owner == beam_owner then
-            local surface = game.surfaces[bf.surface_name or (proj_entity and proj_entity.valid and proj_entity.surface.name) or "nauvis"]
-            if surface and surface.valid then
-                local mx = bf.start_pos.x
-                local my = bf.start_pos.y
-                local dx = bf.dx
-                local dy = bf.dy
-
-                local max_reach = flow_kinetic.get_node_kinetic_emitter and flow_kinetic.get_node_kinetic_emitter({
-                    unit_number = beam_owner,
-                    is_muzzle = true,
-                    kinetic_transmit = true
-                }) or 50
-                if max_reach <= 0 then
-                    local q_lvl = (proj_entity and proj_entity.valid and proj_entity.quality and proj_entity.quality.level) or 0
-                    max_reach = math.floor(50 * (1 + 0.3 * q_lvl))
-                end
-
-                local elapsed = math.max(0, current_tick - bf.start_tick)
-                local cur_dist = elapsed / 1.2
-
-                local found_d = max_reach
-                local found_pos = { x = mx + dx * max_reach, y = my + dy * max_reach }
-                local found_receiver = nil
-                local is_blocked = false
-
-                for d = 1, max_reach do
-                    local tx = mx + dx * d
-                    local ty = my + dy * d
-                    local occ = flow_engine.check_tile_obstruction(surface, tx, ty, proj_entity)
-                    if occ.blocked then
-                        if d >= math.floor(cur_dist) then
-                            is_blocked = true
-                            found_d = d
-                            found_pos = { x = tx, y = ty }
-                            if occ.is_receiver and occ.receiver and occ.receiver.valid then
-                                found_receiver = occ.receiver.unit_number
-                            end
-                            break
-                        end
-                    end
-                end
-
+            local ep_key, ep_node = capsule_ballistics.get_beam_endpoint(beam_owner, bf.dx, bf.dy)
+            if ep_node and ep_node.pos then
+                local new_term = { x = ep_node.pos.x, y = ep_node.pos.y }
+                local new_receiver = ep_node.hit_receiver
                 local old_term = bf.terminal_pos
-                local pos_changed = (old_term == nil) or (old_term.x ~= found_pos.x) or (old_term.y ~= found_pos.y)
-                local receiver_changed = (bf.hit_receiver_unit ~= found_receiver)
+                local pos_changed = (old_term == nil) or (old_term.x ~= new_term.x) or (old_term.y ~= new_term.y)
+                local receiver_changed = (bf.hit_receiver_unit ~= new_receiver)
 
                 if pos_changed or receiver_changed then
-                    local new_hop_count = math.max(1, math.ceil(found_d / HOP_DISTANCE))
+                    local d = ep_node.dist or HOP_DISTANCE
+                    local new_hop_count = math.max(1, math.ceil(d / HOP_DISTANCE))
                     local new_flight_ticks = math.max(6, new_hop_count * 6)
                     local new_arrival_tick = bf.start_tick + new_flight_ticks
                     if new_arrival_tick <= current_tick then
                         new_arrival_tick = current_tick
                     end
 
-                    local hop_positions = {}
-                    local hop_count = 0
-                    for d = HOP_DISTANCE, found_d, HOP_DISTANCE do
-                        hop_count = hop_count + 1
-                        hop_positions[hop_count] = { x = mx + dx * d, y = my + dy * d }
-                    end
-                    if found_d % HOP_DISTANCE ~= 0 then
-                        hop_count = hop_count + 1
-                        hop_positions[hop_count] = { x = found_pos.x, y = found_pos.y }
-                    end
-                    if hop_count == 0 then
-                        hop_count = 1
-                        hop_positions[1] = found_pos
-                    end
-
-                    bf.terminal_pos = found_pos
-                    bf.hit_receiver_unit = found_receiver
-                    bf.total_hops = hop_count
-                    bf.hop_positions = hop_positions
+                    bf.terminal_pos = new_term
+                    bf.hit_receiver_unit = new_receiver
+                    bf.total_hops = new_hop_count
                     bf.flight_ticks = new_flight_ticks
                     bf.arrival_tick = new_arrival_tick
 
@@ -705,10 +710,13 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                         heap:push(cap_id, new_arrival_tick, cap_id)
                     end
 
-                    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
-                    if tree then
-                        tree:insert_trajectory(beam_owner, bf.start_pos, found_pos)
-                        trajectory_bvh.refresh_active_renders()
+                    local surface = game.surfaces[bf.surface_name or "nauvis"]
+                    if surface and surface.valid then
+                        local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+                        if tree then
+                            tree:insert_trajectory(beam_owner, bf.start_pos, new_term)
+                            trajectory_bvh.refresh_active_renders()
+                        end
                     end
                 end
             end
@@ -726,22 +734,6 @@ function capsule_ballistics.finalize_timed_arrival(capsule, id, runner)
     end
 
     local beam_owner = bf.owner
-
-    if bf.hit_receiver_unit == nil then
-        local surface = game.surfaces[bf.surface_name or "nauvis"]
-        local proj_entity = storage.active_projectors and storage.active_projectors[beam_owner]
-        if surface and surface.valid and bf.terminal_pos then
-            local occ = flow_engine.check_tile_obstruction(surface, bf.terminal_pos.x, bf.terminal_pos.y, proj_entity)
-            if not occ.blocked or occ.is_receiver then
-                capsule_ballistics.update_projector_flights(beam_owner)
-                bf = capsule.beam_flight
-                if bf and bf.arrival_tick and bf.arrival_tick > game.tick then
-                    return
-                end
-            end
-        end
-    end
-
     capsule.in_timed_flight = nil
     capsule_ballistics.remove_flight(id, beam_owner)
 

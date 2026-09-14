@@ -342,19 +342,9 @@ function port_defs.get_character_influence_positions(pos, direction)
     local primary, alignment, secondary = port_defs.get_character_port_pos(pos, direction)
     if not primary then return nil end
 
-    local positions = {
-        primary,
-        {x = primary.x + 1, y = primary.y},
-        {x = primary.x - 1, y = primary.y},
-        {x = primary.x, y = primary.y + 1},
-        {x = primary.x, y = primary.y - 1}
-    }
+    local positions = { primary }
     if secondary then
         positions[#positions + 1] = secondary
-        positions[#positions + 1] = {x = secondary.x + 1, y = secondary.y}
-        positions[#positions + 1] = {x = secondary.x - 1, y = secondary.y}
-        positions[#positions + 1] = {x = secondary.x, y = secondary.y + 1}
-        positions[#positions + 1] = {x = secondary.x, y = secondary.y - 1}
     end
     return positions, primary
 end

@@ -2,6 +2,7 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local render_pool = require("scripts.utils.render-pool")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -244,9 +245,24 @@ function capsule_renderer.get_dominant_item(capsule_id, force_refresh)
     return dominant_item
 end
 
+local function recycle_capsule_render(capsule)
+    local render_id = capsule.render_id
+    if render_id then
+        if type(render_id) == "table" then
+            for i = 1, #render_id do
+                render_pool.recycle(nil, render_id[i])
+            end
+        elseif render_id.valid then
+            render_pool.recycle(nil, render_id)
+        end
+        capsule.render_id = nil
+    end
+    capsule.render_cache = nil
+end
+
 function capsule_renderer.render(capsule, id, curr_pos, surface)
     if not (surface and surface.valid and curr_pos and curr_pos.x and curr_pos.y) then
-        capsule_queries.clear_capsule_render(capsule)
+        recycle_capsule_render(capsule)
         return
     end
 
@@ -388,8 +404,8 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         return
     end
 
-    -- Case 3: State changed, spoilage refreshed, or handles invalid -> Destroy old render objects and re-create
-    capsule_queries.clear_capsule_render(capsule)
+    -- Case 3: State changed, spoilage refreshed, or handles invalid -> Recycle old render objects into pool
+    recycle_capsule_render(capsule)
 
     if debug_key ~= 0 and debug_key ~= "" and not passenger_valid and dominant_item == nil then
         dominant_item = capsule_renderer.get_dominant_item(cap_id)
@@ -399,7 +415,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     local target_offsets = {}
 
     if passenger_valid then
-        local eject_text = rendering.draw_text{
+        local eject_text = render_pool.lease_text{
             text = "[Shift + E] Emergency Eject",
             surface = surface,
             target = { curr_pos.x, curr_pos.y + 0.8 },
@@ -416,7 +432,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
     for i = 1, debug_player_count do
         local player = scratch_debug_players[i]
         if passenger_valid then
-            local ring = rendering.draw_circle{
+            local ring = render_pool.lease_circle{
                 color = { r = 0, g = 0.8, b = 1, a = 0.9 },
                 radius = 0.45,
                 filled = false,
@@ -430,7 +446,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
             table.insert(target_offsets, 0)
         else
             if dominant_item then
-                local ring = rendering.draw_circle{
+                local ring = render_pool.lease_circle{
                     color = ring_color,
                     radius = 0.35,
                     filled = false,
@@ -443,7 +459,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(render_objects, ring)
                 table.insert(target_offsets, 0)
 
-                local sprite = rendering.draw_sprite{
+                local sprite = render_pool.lease_sprite{
                     sprite = "item/" .. dominant_item,
                     target = curr_pos,
                     surface = surface,
@@ -455,7 +471,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(render_objects, sprite)
                 table.insert(target_offsets, 0)
             else
-                local dot = rendering.draw_circle{
+                local dot = render_pool.lease_circle{
                     color = ring_color,
                     radius = 0.25,
                     filled = true,
@@ -572,7 +588,7 @@ function capsule_renderer.render_timed_kinetic_capsule(capsule, id, current_tick
         capsule_renderer.render(capsule, id, curr_pos, surface)
     else
         if capsule.render_id then
-            capsule_queries.clear_capsule_render(capsule)
+            recycle_capsule_render(capsule)
         end
     end
 end
@@ -588,7 +604,7 @@ function capsule_renderer.update_timed_capsules(current_tick)
             for cap_id in pairs(previous_rendering_capsules) do
                 local cap = storage.capsules and storage.capsules[cap_id]
                 if cap and cap.render_id then
-                    capsule_queries.clear_capsule_render(cap)
+                    recycle_capsule_render(cap)
                 end
                 previous_rendering_capsules[cap_id] = nil
             end
@@ -626,7 +642,7 @@ function capsule_renderer.update_timed_capsules(current_tick)
         if not scratch_visible_capsules[cap_id] then
             local cap = storage.capsules and storage.capsules[cap_id]
             if cap and cap.render_id then
-                capsule_queries.clear_capsule_render(cap)
+                recycle_capsule_render(cap)
             end
             previous_rendering_capsules[cap_id] = nil
         end
@@ -643,11 +659,10 @@ local function destroy_arrival_dot_for_player(cap, p_idx)
     if p_entry then
         if type(p_entry) == "table" then
             for i = 1, #p_entry do
-                local o = p_entry[i]
-                if o and o.valid then o.destroy() end
+                render_pool.recycle(p_idx, p_entry[i])
             end
         elseif p_entry.valid then
-            p_entry.destroy()
+            render_pool.recycle(p_idx, p_entry)
         end
         cap.arrival_render_objects[p_idx] = nil
     end
@@ -658,11 +673,10 @@ function capsule_renderer.destroy_arrival_dot(cap)
     for p_idx, p_entry in pairs(cap.arrival_render_objects) do
         if type(p_entry) == "table" then
             for i = 1, #p_entry do
-                local o = p_entry[i]
-                if o and o.valid then o.destroy() end
+                render_pool.recycle(p_idx, p_entry[i])
             end
         elseif p_entry and p_entry.valid then
-            p_entry.destroy()
+            render_pool.recycle(p_idx, p_entry)
         end
     end
     cap.arrival_render_objects = nil
@@ -714,7 +728,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
 
     destroy_arrival_dot_for_player(capsule, p_idx)
 
-    local dot = rendering.draw_circle{
+    local dot = render_pool.lease_circle{
         color = cap_color,
         radius = 0.2,
         filled = true,
@@ -724,7 +738,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         players = { player }
     }
 
-    local ring = rendering.draw_circle{
+    local ring = render_pool.lease_circle{
         color = ring_color,
         radius = 0.4,
         width = 2,

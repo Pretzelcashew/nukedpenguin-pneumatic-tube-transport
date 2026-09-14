@@ -332,3 +332,13 @@
 3. **Save-File Boundary Compaction (`control.lua`):** Clamped cold buffers for `storage.spoil_heap`, `storage.kinetic_arrival_heap`, and all trees in `storage.surface_bvh` and `storage.viewport_bvh` to 64 safety items during `setup_storage` (`on_init` and `on_configuration_changed`), preventing deconstructed megabases from inflating save files or autosave times.
 4. **Low-Frequency Maintenance Cadence (`control.lua`):** Registered a 120-tick maintenance cycle via `script.on_nth_tick(120)` to bleed down surplus pooling buffers smoothly over 10–30 seconds.
 5. **Automated Verification Suites (`scripts/utils/binary-heap.lua`, `scripts/utils/trajectory-bvh.lua`):** Extended `/test-heap` with Test 8 and `/test-bvh` with Test 7, validating working-set limits, step-by-step evictions, and compaction boundaries.
+
+
+### Revision: Native LuaRenderObject Cache and Zero-Allocation Recycling Pool
+**Date:** 2026-09-14 10:15 EDT
+**Context:** Implemented Phase 2 of the Motion Refactor to eliminate LuaRenderObject allocation and destruction churn during runtime capsule flight, timed arrival tracking, and viewport culling.
+**Key Changes:**
+1. **Centralized Render Pool Engine (`scripts/utils/render-pool.lua`):** Created a high-throughput cache for native Factorio 2.0 `LuaRenderObject` instances partitioned by player, surface, and visual archetype (`circle`, `sprite`, `text`, `line`). Leased handles mutate properties in-place while recycled objects toggle `visible = false` into player free lists with a 128-object per-archetype high-water mark ceiling.
+2. **Polymorphic Table Signatures (`scripts/utils/render-pool.lua`):** Implemented `normalize_lease_args` supporting both single-table call syntax (`lease_circle{...}`) matching Factorio's native `rendering.draw_*` API and multi-argument signatures (`lease_circle(player_index, surface, options)`).
+3. **Capsule Flight & Arrival Dot Integration (`scripts/capsules/capsule-renderer.lua`):** Replaced direct engine calls with `render_pool.lease_*` for passenger eject alerts, status rings, dominant cargo icons, fallback dots, and timed arrival reticles. Replaced object destruction on viewport exit with `recycle_capsule_render`.
+4. **Debug & Diagnostic Suite (`scripts/debug-manager.lua`, `scripts/utils/render-pool.lua`):** Added the `/test-render-pool` command verifying leasing, recycling, zero-allocation handle reuse (0 C++ object churn), property updates, and clean pool destruction across 6 automated stages, and linked pool clearing into `/clear-renders`.

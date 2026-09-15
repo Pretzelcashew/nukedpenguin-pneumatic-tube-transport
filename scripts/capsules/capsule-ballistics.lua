@@ -635,6 +635,47 @@ function capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_por
     return "timed_launched"
 end
 
+function capsule_ballistics.launch_timed_flight(spec)
+    if not spec then return nil end
+    local owner_id = spec.owner_id
+    local surface_name = spec.surface_name or "nauvis"
+    local start_pos = spec.start_pos
+    local terminal_pos = spec.terminal_pos
+    local dir = spec.dir or { x = 0, y = 0 }
+    local surface = game.surfaces[surface_name]
+    if not (surface and surface.valid and start_pos and terminal_pos) then return nil end
+
+    local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+    if tree then
+        local owner_rec = tree.trajectories and tree.trajectories[owner_id]
+        if not (owner_rec and owner_rec.segments and next(owner_rec.segments)) then
+            tree:insert_trajectory(owner_id, start_pos, terminal_pos)
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
+
+    local total_dist = math.abs(terminal_pos.x - start_pos.x) + math.abs(terminal_pos.y - start_pos.y)
+    local flight_ticks = math.max(TICKS_PER_HOP, math.ceil(total_dist * TICKS_PER_TILE))
+
+    local record = timed_motion.create_record{
+        id = spec.id,
+        owner_id = owner_id,
+        surface_name = surface_name,
+        surface_index = surface.index,
+        start_pos = start_pos,
+        terminal_pos = terminal_pos,
+        dir = dir,
+        start_tick = game.tick,
+        ticks_per_tile = TICKS_PER_TILE,
+        flight_ticks = flight_ticks,
+        kind = spec.kind or "projectile",
+        render_spec = spec.render_spec,
+        on_arrival = spec.on_arrival
+    }
+
+    return timed_motion.schedule_flight(record)
+end
+
 function capsule_ballistics.update_projector_flights(beam_owner)
     if not beam_owner then return end
     local p_flights = storage.projector_flights and storage.projector_flights[beam_owner]
@@ -963,5 +1004,6 @@ end
 
 flow_kinetic.update_projector_flights = capsule_ballistics.update_projector_flights
 flow_kinetic.handle_motion_obstacle_changed = capsule_ballistics.handle_motion_obstacle_changed
+flow_kinetic.launch_timed_flight = capsule_ballistics.launch_timed_flight
 
 return capsule_ballistics

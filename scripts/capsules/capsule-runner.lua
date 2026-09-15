@@ -901,15 +901,16 @@ local function _unused_handle_liminal_entity_spawn(entity)
 end
 
 function capsule_runner.update_capsules(current_tick)
-    if not storage.capsules then return end
-
     capsule_renderer.prepare_frame()
-    capsule_transit.prepare_player_targets()
-    capsule_lifecycle.step_spoil_heap(current_tick)
+
     if capsule_ballistics.USE_TIMED_ARRIVAL then
         capsule_ballistics.step_timed_arrivals(current_tick, capsule_runner)
         capsule_renderer.update_timed_capsules(current_tick)
     end
+
+    if not storage.capsules or next(storage.capsules) == nil then return end
+    capsule_transit.prepare_player_targets()
+    capsule_lifecycle.step_spoil_heap(current_tick)
 
     for id, capsule in pairs(storage.capsules) do
         if not capsule.in_timed_flight then

@@ -3,11 +3,80 @@ local flow_renderer = require("scripts.flow.flow-renderer")
 local port_defs = require("scripts.flow.port-defs")
 local projector_settings = require("scripts.projectors.projector-settings")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local timed_motion = require("scripts.utils.timed-motion")
 
 local flow_kinetic = {}
 
 local BASE_PROJECTOR_RANGE = 50
 local HOP_DISTANCE = 5
+
+local ENABLE_KINETIC_FLOW_PROPAGATION = false
+flow_kinetic.ENABLE_KINETIC_FLOW_PROPAGATION = ENABLE_KINETIC_FLOW_PROPAGATION
+
+function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kinetic_changed)
+    if not (node and node.is_muzzle and node.dir and node.pos and node.surface_name) then return end
+    local owner_id = node.beam_owner or node.unit_number
+    if not owner_id then return end
+
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local active_flights = flights_store and flights_store[owner_id]
+    if active_flights and #active_flights > 0 then
+        return
+    end
+
+    local dx = node.dir.x
+    local dy = node.dir.y
+    local start_pos = { x = node.pos.x, y = node.pos.y }
+    local terminal_pos = { x = node.pos.x + dx * 16, y = node.pos.y + dy * 16 }
+
+    storage.ballistic_probe_seq = (storage.ballistic_probe_seq or 0) + 1
+    local flight_id = (owner_id * 100000) + (storage.ballistic_probe_seq % 99999)
+
+    flow_kinetic.launch_timed_flight{
+        id = flight_id,
+        owner_id = owner_id,
+        surface_name = node.surface_name,
+        start_pos = start_pos,
+        terminal_pos = terminal_pos,
+        dir = { x = dx, y = dy },
+        kind = "muzzle_probe",
+        render_spec = {
+            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+            radius = 0.24,
+            has_ring = true,
+            ring_radius = 0.42,
+            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+            ring_width = 2
+        },
+        on_arrival = function(f_id, f_rec, current_tick, runner)
+            timed_motion.remove_flight(f_id, owner_id)
+            local m_node = storage.flow_nodes and storage.flow_nodes[pkey]
+            if m_node and m_node.is_muzzle then
+                local reach = flow_kinetic.get_node_kinetic_emitter(m_node)
+                if reach > 0 then
+                    flow_kinetic.on_muzzle_want_emission(m_node, pkey, reach, false)
+                end
+            end
+        end
+    }
+end
+
+function flow_kinetic.on_muzzle_stop_emission(node, pkey)
+    local owner_id = node and (node.beam_owner or node.unit_number)
+    if owner_id then
+        local surf = node.surface_name and game.surfaces[node.surface_name]
+        local s_idx = (surf and surf.valid and surf.index) or 1
+        flow_kinetic.unregister_trajectory_in_bvh(owner_id, node.surface_name, true)
+        timed_motion.remove_corridor(s_idx, owner_id)
+        local flights_store = storage.timed_flights or storage.projector_flights
+        local active_flights = flights_store and flights_store[owner_id]
+        if active_flights then
+            for i = #active_flights, 1, -1 do
+                timed_motion.remove_flight(active_flights[i].id or active_flights[i].capsule_id, owner_id)
+            end
+        end
+    end
+end
 
 local PROXY_NAMES = {
     ["pneumatic-pump-circuit-proxy"] = true,
@@ -274,6 +343,8 @@ local function compute_port_kinetic_level(node, pkey)
         return flow_kinetic.get_node_kinetic_emitter(node)
     end
 
+    if not ENABLE_KINETIC_FLOW_PROPAGATION then return 0 end
+
     if not node.is_kinetic then return 0 end
 
     local surface = game.surfaces[node.surface_name]
@@ -387,6 +458,14 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
             if node.is_muzzle then
                 flow_renderer.update_pos_render(node.pos_key)
             end
+        end
+
+        if node.is_muzzle and flow_kinetic.on_muzzle_want_emission then
+            flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kinetic_changed)
+        end
+
+        if not ENABLE_KINETIC_FLOW_PROPAGATION then
+            return kinetic_changed
         end
 
         local surface = game.surfaces[node.surface_name]
@@ -593,6 +672,10 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
         if kinetic_changed then
             storage.kinetic_levels[pkey] = nil
             flow_renderer.destroy_kinetic_pos_render(pkey)
+
+            if node.is_muzzle and flow_kinetic.on_muzzle_stop_emission then
+                flow_kinetic.on_muzzle_stop_emission(node, pkey)
+            end
 
             if not node.is_muzzle then
                 flow_kinetic.unregister_segment_in_bvh(node)

@@ -660,15 +660,29 @@ function capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_id
             players = { player }
         }
         if sp then objects[#objects + 1] = sp end
-    else
+    end
+
+    if spec.has_ring or spec.ring_radius then
+        local ring = render_pool.lease_circle{
+            color = spec.ring_color or spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+            radius = spec.ring_radius or 0.42,
+            filled = false,
+            width = spec.ring_width or 2,
+            target = curr_pos,
+            surface = surface,
+            players = { player }
+        }
+        if ring then objects[#objects + 1] = ring end
+    end
+
+    if not spec.sprite or spec.radius then
         local circ = render_pool.lease_circle{
-            color = spec.color or { r = 0.2, g = 0.85, b = 1.0, a = 1.0 },
-            radius = spec.radius or 0.25,
+            color = spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+            radius = spec.radius or 0.24,
             filled = (spec.filled ~= false),
             width = spec.width or 2,
             target = curr_pos,
             surface = surface,
-            render_layer = "entity-info-icon-above",
             players = { player }
         }
         if circ then objects[#objects + 1] = circ end
@@ -805,15 +819,32 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if not (player and player.valid) then return end
     local p_idx = player.index
 
-    local dbg = storage.debug and storage.debug[p_idx]
-    if not dbg or not dbg.master then
-        capsule_renderer.clear_player_flight_renders(p_idx)
-        return
+    if current_tick % 60 == 0 then
+        local v_set = viewport_bvh.get_visible_set(p_idx)
+        local v_count = v_set and table_size(v_set) or 0
+        local t_count = storage.timed_flights and table_size(storage.timed_flights) or 0
+        local p_count = storage.projector_flights and table_size(storage.projector_flights) or 0
+        game.print(string.format("[LOG %d] v_set=%d | timed_flights=%d | proj_flights=%d", current_tick, v_count, t_count, p_count))
+        if storage.timed_flights then
+            for o_id, flist in pairs(storage.timed_flights) do
+                for _, f in ipairs(flist) do
+                    game.print(string.format("  -> timed_flight: owner=%s id=%s start=%d arrive=%d", tostring(o_id), tostring(f.id), f.start_tick or 0, f.arrival_tick or 0))
+                end
+            end
+        end
+        if storage.projector_flights then
+            for o_id, flist in pairs(storage.projector_flights) do
+                for _, f in ipairs(flist) do
+                    game.print(string.format("  -> proj_flight: owner=%s id=%s start=%d arrive=%d", tostring(o_id), tostring(f.id), f.start_tick or 0, f.arrival_tick or 0))
+                end
+            end
+        end
     end
 
+    local dbg = storage.debug and storage.debug[p_idx]
     local view_settings = player.game_view_settings
     local alt_mode = view_settings and view_settings.show_entity_info
-    if not alt_mode or not dbg.capsules then
+    if not alt_mode then
         capsule_renderer.clear_player_flight_renders(p_idx)
         return
     end
@@ -842,12 +873,13 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     end
 
     local rendered_this_tick = {}
-    local p_flights = storage.projector_flights
+    local flights_store = storage.timed_flights or storage.projector_flights
 
-    if p_flights and v_set and next(v_set) ~= nil then
+    if flights_store and v_set and next(v_set) ~= nil then
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
-            local owner_flights = p_flights[item.owner_id]
+            local owner_flights = (storage.timed_flights and storage.timed_flights[item.owner_id])
+                or (storage.projector_flights and storage.projector_flights[item.owner_id])
             if owner_flights and #owner_flights > 0 then
                 local leaf = item.leaf
                 local d_start = leaf and leaf.d_start or 0
@@ -880,9 +912,11 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                             if is_on_screen then
                                 rendered_this_tick[f_id] = true
                                 if capsule and capsule.in_timed_flight then
-                                    capsule.last_pos = curr_pos
-                                    capsule.surface_name = surf.name
-                                    capsule_renderer.render_flight_for_player(capsule, f_id, p_idx, player, curr_pos, surf)
+                                    if dbg.capsules then
+                                        capsule.last_pos = curr_pos
+                                        capsule.surface_name = surf.name
+                                        capsule_renderer.render_flight_for_player(capsule, f_id, p_idx, player, curr_pos, surf)
+                                    end
                                 elseif flight_rec then
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
                                 end
@@ -907,6 +941,9 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 end
 
 function capsule_renderer.update_timed_capsules(current_tick)
+    if current_tick % 60 == 0 then
+        game.print(string.format("[TICK-LOOP %d] update_timed_capsules running!", current_tick))
+    end
     capsule_renderer.sync_all_arrival_dots()
 
     if storage.projector_flights then

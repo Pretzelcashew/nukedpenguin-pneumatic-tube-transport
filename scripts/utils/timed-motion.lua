@@ -153,7 +153,11 @@ function timed_motion.remove_flight(id, owner_id)
         end
         if #flights == 0 then
             flights_store[owner_id] = nil
-            timed_motion.remove_corridor(nil, owner_id)
+            local is_pinned = (storage.pinned_corridors and storage.pinned_corridors[owner_id])
+                or (storage.active_projectors and storage.active_projectors[owner_id])
+            if not is_pinned then
+                timed_motion.remove_corridor(nil, owner_id)
+            end
         end
     else
         for o_id, flights in pairs(flights_store) do

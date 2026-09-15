@@ -18,19 +18,30 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local owner_id = node.beam_owner or node.unit_number
     if not owner_id then return end
 
-    local flights_store = storage.timed_flights or storage.projector_flights
-    local active_flights = flights_store and flights_store[owner_id]
-    if active_flights and #active_flights > 0 then
-        return
+    storage.projector_scope = storage.projector_scope or {}
+    local scope = storage.projector_scope[owner_id]
+    if scope then
+        if type(scope) == "table" and scope.status == "endpoint" then
+            return
+        elseif type(scope) == "number" and timed_motion.get_flight(scope) then
+            return
+        else
+            storage.projector_scope[owner_id] = nil
+        end
     end
+
+    local max_range = target_kinetic or flow_kinetic.get_node_kinetic_emitter(node)
+    if not max_range or max_range <= 0 then return end
 
     local dx = node.dir.x
     local dy = node.dir.y
+    local step = math.min(16, max_range)
     local start_pos = { x = node.pos.x, y = node.pos.y }
-    local terminal_pos = { x = node.pos.x + dx * 16, y = node.pos.y + dy * 16 }
+    local terminal_pos = { x = node.pos.x + dx * step, y = node.pos.y + dy * step }
 
     storage.ballistic_probe_seq = (storage.ballistic_probe_seq or 0) + 1
     local flight_id = (owner_id * 100000) + (storage.ballistic_probe_seq % 99999)
+    storage.projector_scope[owner_id] = flight_id
 
     flow_kinetic.launch_timed_flight{
         id = flight_id,
@@ -39,7 +50,11 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         start_pos = start_pos,
         terminal_pos = terminal_pos,
         dir = { x = dx, y = dy },
-        kind = "muzzle_probe",
+        kind = "projector_scope",
+        on_arrival = "projector_scope",
+        remaining_distance = max_range,
+        max_distance = max_range,
+        seg_idx = 1,
         render_spec = {
             color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
             radius = 0.24,
@@ -48,16 +63,6 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
             ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
             ring_width = 2
         },
-        on_arrival = function(f_id, f_rec, current_tick, runner)
-            timed_motion.remove_flight(f_id, owner_id)
-            local m_node = storage.flow_nodes and storage.flow_nodes[pkey]
-            if m_node and m_node.is_muzzle then
-                local reach = flow_kinetic.get_node_kinetic_emitter(m_node)
-                if reach > 0 then
-                    flow_kinetic.on_muzzle_want_emission(m_node, pkey, reach, false)
-                end
-            end
-        end
     }
 end
 
@@ -68,6 +73,9 @@ function flow_kinetic.on_muzzle_stop_emission(node, pkey)
         local s_idx = (surf and surf.valid and surf.index) or 1
         flow_kinetic.unregister_trajectory_in_bvh(owner_id, node.surface_name, true)
         timed_motion.remove_corridor(s_idx, owner_id)
+        if storage.projector_scope then
+            storage.projector_scope[owner_id] = nil
+        end
         local flights_store = storage.timed_flights or storage.projector_flights
         local active_flights = flights_store and flights_store[owner_id]
         if active_flights then

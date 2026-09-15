@@ -106,6 +106,7 @@ projector_manager.spec = {
         if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end
         if storage.projector_ready_states then storage.projector_ready_states[unit_number] = nil end
         if storage.projector_last_fired then storage.projector_last_fired[unit_number] = nil end
+        if storage.projector_scope then storage.projector_scope[unit_number] = nil end
     end
 }
 

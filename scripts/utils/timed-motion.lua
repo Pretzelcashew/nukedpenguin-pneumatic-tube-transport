@@ -76,7 +76,10 @@ function timed_motion.create_record(spec)
         kind = spec.kind or "capsule",
         metadata = spec.metadata or {},
         render_spec = spec.render_spec,
-        on_arrival = (type(spec.on_arrival) == "string") and spec.on_arrival or nil
+        on_arrival = (type(spec.on_arrival) == "string") and spec.on_arrival or nil,
+        remaining_distance = spec.remaining_distance,
+        max_distance = spec.max_distance,
+        seg_idx = spec.seg_idx or 1
     }
 end
 

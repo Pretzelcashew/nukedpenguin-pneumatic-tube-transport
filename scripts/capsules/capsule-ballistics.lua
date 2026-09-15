@@ -6,6 +6,7 @@ local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local hub_spill = require("scripts.hubs.hub-spill")
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 local flow_kinetic = require("scripts.flow.flow-kinetic")
 local timed_motion = require("scripts.utils.timed-motion")
 
@@ -670,7 +671,10 @@ function capsule_ballistics.launch_timed_flight(spec)
         flight_ticks = flight_ticks,
         kind = spec.kind or "projectile",
         render_spec = spec.render_spec,
-        on_arrival = spec.on_arrival
+        on_arrival = spec.on_arrival,
+        remaining_distance = spec.remaining_distance,
+        max_distance = spec.max_distance,
+        seg_idx = spec.seg_idx or 1
     }
 
     return timed_motion.schedule_flight(record)
@@ -780,6 +784,124 @@ capsule_ballistics.arrival_handlers = arrival_handlers
 function capsule_ballistics.register_arrival_handler(kind, handler)
     arrival_handlers[kind] = handler
 end
+
+function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, current_tick, runner)
+    if not flight then return end
+
+    local owner_id = flight.owner_id
+    local sp = flight.start_pos
+    local tp = flight.terminal_pos
+    local leaf_dist = math.abs(tp.x - sp.x) + math.abs(tp.y - sp.y)
+
+    local rem = (flight.remaining_distance or 0) - leaf_dist
+    flight.remaining_distance = rem
+
+    if rem > 0 then
+        local next_step = math.min(16, rem)
+        local dx = (flight.dir and flight.dir.x) or flight.dx or 0
+        local dy = (flight.dir and flight.dir.y) or flight.dy or 0
+        local next_start = { x = tp.x, y = tp.y }
+        local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
+
+        local next_seg = (flight.seg_idx or 1) + 1
+        flight.seg_idx = next_seg
+        local d_start = (next_seg - 1) * 16
+        local d_end = d_start + next_step
+        local seg_key = string.format("%d,%d:%d", dx, dy, next_seg)
+
+        local surface = game.surfaces[flight.surface_name or "nauvis"]
+        if surface and surface.valid then
+            local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
+            if tree then
+                tree:insert_segment(owner_id, seg_key, next_start, next_term, d_start, d_end, next_seg)
+                trajectory_bvh.refresh_active_renders()
+            end
+            local motion_tree = timed_motion.get_motion_tree(surface.index)
+            if motion_tree then
+                local leaf = motion_tree:insert_segment(owner_id, seg_key, next_start, next_term, d_start, d_end, next_seg)
+                if leaf then
+                    viewport_bvh.on_segment_registered(surface.index, leaf)
+                end
+            end
+        end
+
+        flight.start_pos = next_start
+        flight.terminal_pos = next_term
+        flight.total_dist = next_step
+        local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
+        local flight_ticks = math.max(1, math.ceil(next_step * tpt))
+        flight.start_tick = current_tick
+        flight.arrival_tick = current_tick + flight_ticks
+        flight.flight_ticks = flight_ticks
+
+        local surface = game.surfaces[flight.surface_name or "nauvis"]
+        if surface and surface.valid then
+            local motion_tree = timed_motion.get_motion_tree(surface.index)
+            if motion_tree then
+                local owner_rec = motion_tree.trajectories and motion_tree.trajectories[owner_id]
+                local leaf = owner_rec and owner_rec.segments and owner_rec.segments[string.format("%d,%d:%d", dx, dy, flight.seg_idx - 1)]
+                if leaf then
+                    leaf.has_trail = true
+                    leaf.dir = { x = dx, y = dy }
+                    leaf.q_level = flight.q_level or 0
+                    leaf.trail_count = leaf_dist
+                    viewport_bvh.on_leaf_static_changed(surface.index, leaf)
+                end
+            end
+        end
+
+        local flights_store = storage.timed_flights or storage.projector_flights
+        if flights_store and owner_id and flights_store[owner_id] then
+            local flights = flights_store[owner_id]
+            for i = 1, #flights do
+                if flights[i].id == flight_id or flights[i].capsule_id == flight_id then
+                    flights[i].start_tick = current_tick
+                    flights[i].arrival_tick = flight.arrival_tick
+                    flights[i].duration = flight_ticks
+                    break
+                end
+            end
+        end
+
+        local heap = timed_motion.get_arrival_heap()
+        heap:push(flight_id, flight.arrival_tick, flight_id)
+    else
+        local surface = game.surfaces[flight.surface_name or "nauvis"]
+        if surface and surface.valid then
+            local motion_tree = timed_motion.get_motion_tree(surface.index)
+            if motion_tree then
+                local dx = (flight.dir and flight.dir.x) or flight.dx or 0
+                local dy = (flight.dir and flight.dir.y) or flight.dy or 0
+                local cur_seg = flight.seg_idx or 1
+                local seg_key = string.format("%d,%d:%d", dx, dy, cur_seg)
+                local owner_rec = motion_tree.trajectories and motion_tree.trajectories[owner_id]
+                local leaf = owner_rec and owner_rec.segments and owner_rec.segments[seg_key]
+                if leaf then
+                    leaf.has_trail = true
+                    leaf.dir = { x = dx, y = dy }
+                    leaf.q_level = flight.q_level or 0
+                    leaf.trail_count = leaf_dist
+                    leaf.static_render_spec = flight.render_spec
+                    leaf.static_pos = { x = tp.x, y = tp.y }
+                    viewport_bvh.on_leaf_static_changed(surface.index, leaf)
+                end
+            end
+        end
+
+        timed_motion.remove_flight(flight_id, owner_id)
+        if storage.projector_scope then
+            storage.projector_scope[owner_id] = {
+                status = "endpoint",
+                endpoint_pos = { x = tp.x, y = tp.y },
+                surface_name = flight.surface_name,
+                seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
+            }
+        end
+    end
+end
+
+capsule_ballistics.register_arrival_handler("projector_scope", capsule_ballistics.handle_projector_scope_arrival)
+capsule_ballistics.register_arrival_handler("muzzle_probe", capsule_ballistics.handle_projector_scope_arrival)
 
 function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner)
     local flight = timed_motion.get_flight(flight_id)

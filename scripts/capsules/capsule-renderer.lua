@@ -9,6 +9,16 @@ require("scripts.debug-manager")
 
 local capsule_renderer = {}
 
+local QUALITY_BEAM_PALETTE = {
+    [0] = { core = {r = 1.00, g = 0.60, b = 0.90, a = 0.95} },
+    [1] = { core = {r = 1.00, g = 0.70, b = 0.95, a = 0.95} },
+    [2] = { core = {r = 1.00, g = 0.80, b = 1.00, a = 0.98} },
+    [3] = { core = {r = 1.00, g = 0.90, b = 1.00, a = 0.98} },
+    [4] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} },
+    [5] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} }
+}
+local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
+
 -- Module-scoped per-frame player viewport cache & scratch structures
 local last_prepared_tick = -1
 local active_debug_players = {}
@@ -820,7 +830,28 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     local p_idx = player.index
     local dbg = storage.debug and storage.debug[p_idx]
     local view_settings = player.game_view_settings
-    local alt_mode = view_settings and view_settings.show_entity_info
+    local alt_mode = (view_settings and view_settings.show_entity_info) == true
+    storage.player_last_alt_mode = storage.player_last_alt_mode or {}
+    local prev_alt = storage.player_last_alt_mode[p_idx]
+    if alt_mode ~= prev_alt then
+        storage.player_last_alt_mode[p_idx] = alt_mode
+        local v_set = viewport_bvh.get_visible_set(p_idx)
+        if not alt_mode then
+            for _, item in pairs(v_set) do
+                viewport_bvh.detach_static_render(p_idx, item)
+            end
+        else
+            local surf = player.surface
+            if surf and surf.valid then
+                for _, item in pairs(v_set) do
+                    if item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail) then
+                        viewport_bvh.attach_static_render(p_idx, item, surf)
+                    end
+                end
+            end
+        end
+    end
+
     if not alt_mode then
         capsule_renderer.clear_player_flight_renders(p_idx)
         return
@@ -865,8 +896,24 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                     local flight = owner_flights[f]
                     local f_id = flight.id or flight.capsule_id
                     local t_start = flight.start_tick or 0
-                    local t_entry = t_start + math.floor(d_start * tpt)
-                    local t_exit = t_start + math.ceil(d_end * tpt)
+                    local flight_rec = timed_motion.get_flight(f_id)
+                    local is_scope = (flight.kind == "projector_scope") or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope"))
+
+                    local t_entry, t_exit
+                    if is_scope then
+                        local f_seg = flight_rec and flight_rec.seg_idx or 1
+                        local l_seg = leaf and leaf.seg_idx or 1
+                        if f_seg == l_seg then
+                            t_entry = flight.start_tick or 0
+                            t_exit = flight.arrival_tick or (t_entry + math.ceil((d_end - d_start) * tpt))
+                        else
+                            t_entry = -1
+                            t_exit = -1
+                        end
+                    else
+                        t_entry = t_start + math.floor(d_start * tpt)
+                        t_exit = t_start + math.ceil(d_end * tpt)
+                    end
 
                     if current_tick >= t_entry and current_tick <= t_exit then
                         local flight_rec = timed_motion.get_flight(f_id)
@@ -890,6 +937,48 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                     end
                                 elseif flight_rec then
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
+                                    if leaf and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope") then
+                                        local elapsed_t = math.max(0, current_tick - t_entry)
+                                        local dist_in_leaf = math.min(d_end - d_start, math.floor(elapsed_t / tpt))
+                                        local cur_dots = item.trail_dots_count or 0
+                                        if dist_in_leaf > cur_dots then
+                                            item.render_objects = item.render_objects or {}
+                                            local sp = leaf.start_pos or bf.start_pos
+                                            local dx = (leaf.dir and leaf.dir.x) or (bf.dir and bf.dir.x) or bf.dx or 0
+                                            local dy = (leaf.dir and leaf.dir.y) or (bf.dir and bf.dir.y) or bf.dy or 0
+                                            local q_lvl = flight_rec.q_level or 0
+                                            local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
+
+                                            for step_i = cur_dots + 1, dist_in_leaf do
+                                                local global_d = d_start + step_i
+                                                local dot_p = { x = sp.x + dx * step_i, y = sp.y + dy * step_i }
+                                                local dot_obj
+                                                if global_d % 5 == 0 then
+                                                    dot_obj = render_pool.lease_circle{
+                                                        color = pal.core,
+                                                        radius = 0.16,
+                                                        filled = true,
+                                                        target = dot_p,
+                                                        surface = surf,
+                                                        players = { player }
+                                                    }
+                                                else
+                                                    dot_obj = render_pool.lease_circle{
+                                                        color = MINOR_DOT_COLOR,
+                                                        radius = 0.08,
+                                                        filled = true,
+                                                        target = dot_p,
+                                                        surface = surf,
+                                                        players = { player }
+                                                    }
+                                                end
+                                                if dot_obj then
+                                                    item.render_objects[#item.render_objects + 1] = dot_obj
+                                                end
+                                            end
+                                            item.trail_dots_count = dist_in_leaf
+                                        end
+                                    end
                                 end
                         end
                     end

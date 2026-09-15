@@ -19,6 +19,17 @@ local PAD_TILES = 12       -- Padding beyond visible screen edge to prevent pop-
 local SHELL_TILES = 16     -- Fixed hysteresis margin (exactly 1 BVH corridor leaf = 16 tiles)
 local SHRINK_THRESHOLD = 0.75 -- Trigger fat AABB resize/recenter if viewport scales 25% smaller
 
+local QUALITY_BEAM_PALETTE = {
+    [0] = { core = {r = 1.00, g = 0.60, b = 0.90, a = 0.95} },
+    [1] = { core = {r = 1.00, g = 0.70, b = 0.95, a = 0.95} },
+    [2] = { core = {r = 1.00, g = 0.80, b = 1.00, a = 0.98} },
+    [3] = { core = {r = 1.00, g = 0.90, b = 1.00, a = 0.98} },
+    [4] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} },
+    [5] = { core = {r = 1.00, g = 1.00, b = 1.00, a = 1.00} }
+}
+
+local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
+
 --- Fetches or creates the dedicated viewport BVH for a surface
 --- @param surface_index number
 --- @return table tree
@@ -313,6 +324,165 @@ function viewport_bvh.clear_player_visible_set(player_index)
     storage.player_visible_set[player_index] = nil
 end
 
+--- Attaches and leases static render objects for a leaf in a player's visible set
+--- @param player_index number
+--- @param item table Visible set entry
+--- @param surface LuaSurface
+function viewport_bvh.attach_static_render(player_index, item, surface)
+    if not (item and item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail)) then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local leaf = item.leaf
+    item.render_objects = item.render_objects or {}
+    local objects = item.render_objects
+
+    if leaf.has_trail and not item.trail_attached then
+        item.trail_attached = true
+        local cur_d = item.trail_dots_count or 0
+        local q_level = leaf.q_level or 0
+        local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
+        local dx = (leaf.dir and leaf.dir.x) or 0
+        local dy = (leaf.dir and leaf.dir.y) or 0
+        local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
+        local d_base = leaf.d_start or 0
+        local sp = leaf.start_pos
+
+        if sp and (dx ~= 0 or dy ~= 0) then
+            for i = cur_d + 1, count do
+                local d = d_base + i
+                local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
+                if d % 5 == 0 then
+                    local prom = render_pool.lease_circle{
+                        color = palette.core,
+                        radius = 0.16,
+                        filled = true,
+                        target = dot_pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    if prom then objects[#objects + 1] = prom end
+                else
+                    local min_dot = render_pool.lease_circle{
+                        color = MINOR_DOT_COLOR,
+                        radius = 0.08,
+                        filled = true,
+                        target = dot_pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    if min_dot then objects[#objects + 1] = min_dot end
+                end
+            end
+        end
+    end
+
+    local spec = leaf.static_render_spec
+    local pos = leaf.static_pos
+
+    if spec and pos and not item.endpoint_attached then
+        item.endpoint_attached = true
+        if spec.sprite then
+        local sp = render_pool.lease_sprite{
+            sprite = spec.sprite,
+            target = pos,
+            surface = surface,
+            x_scale = spec.scale or 0.6,
+            y_scale = spec.scale or 0.6,
+            tint = spec.tint,
+            render_layer = "entity-info-icon-above",
+            players = { player }
+        }
+        if sp then objects[#objects + 1] = sp end
+    end
+
+    if spec.has_ring or spec.ring_radius then
+        local ring = render_pool.lease_circle{
+            color = spec.ring_color or spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+            radius = spec.ring_radius or 0.42,
+            filled = false,
+            width = spec.ring_width or 2,
+            target = pos,
+            surface = surface,
+            players = { player }
+        }
+        if ring then objects[#objects + 1] = ring end
+    end
+
+    if not spec.sprite or spec.radius then
+        local circ = render_pool.lease_circle{
+            color = spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+            radius = spec.radius or 0.24,
+            filled = (spec.filled ~= false),
+            width = spec.width or 2,
+            target = pos,
+            surface = surface,
+            players = { player }
+        }
+        if circ then objects[#objects + 1] = circ end
+    end
+    end
+
+    if #objects > 0 then
+        item.render_objects = objects
+    end
+end
+
+--- Detaches and recycles static render objects for a leaf in a player's visible set
+--- @param player_index number
+--- @param item table Visible set entry
+function viewport_bvh.detach_static_render(player_index, item)
+    if item and item.render_objects then
+        render_pool.recycle_many(player_index, item.render_objects)
+        item.render_objects = nil
+    end
+    if item then
+        item.trail_attached = nil
+        item.endpoint_attached = nil
+        item.trail_dots_count = nil
+    end
+end
+
+--- Notifies observers that a leaf's static render specification has changed
+--- @param surface_index number
+--- @param leaf table
+function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
+    if not (surface_index and leaf) then return end
+    local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+    local observing = {}
+    viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
+    local surf = game.surfaces[surface_index]
+    if not (surf and surf.valid) then return end
+
+    for i = 1, #observing do
+        local p_idx = observing[i]
+        local player = game.get_player(p_idx)
+        local view_settings = player and player.valid and player.game_view_settings
+        local alt_mode = view_settings and view_settings.show_entity_info
+
+        local v_set = viewport_bvh.get_visible_set(p_idx)
+        local item = v_set[key]
+        if not item then
+            item = {
+                leaf = leaf,
+                key = key,
+                owner_id = leaf.owner_id,
+                seg_key = leaf.seg_key,
+                render_objects = nil
+            }
+            v_set[key] = item
+        else
+            item.leaf = leaf
+        end
+
+        if alt_mode then
+            viewport_bvh.attach_static_render(p_idx, item, surf)
+        else
+            viewport_bvh.detach_static_render(p_idx, item)
+        end
+    end
+end
+
 --- Fetches or creates the dedicated motion corridor BVH for a surface (Phase 6)
 --- @param surface_index number
 --- @return table tree
@@ -347,20 +517,33 @@ function viewport_bvh.sync_player_visibility(player_index, surface_index)
     local current_set = viewport_bvh.get_visible_set(player_index)
     local new_set_keys = {}
 
+    local player = game.get_player(player_index)
+    local view_settings = player and player.valid and player.game_view_settings
+    local alt_mode = view_settings and view_settings.show_entity_info
+    local surf = player and player.valid and player.surface
+
     for i = 1, #hits do
         local leaf = hits[i]
         local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
         new_set_keys[key] = leaf
-        if not current_set[key] then
-            current_set[key] = {
+        local item = current_set[key]
+        if not item then
+            item = {
                 leaf = leaf,
                 key = key,
                 owner_id = leaf.owner_id,
                 seg_key = leaf.seg_key,
                 render_objects = nil
             }
+            current_set[key] = item
+            if alt_mode and (leaf.static_render_spec or leaf.has_trail) and surf then
+                viewport_bvh.attach_static_render(player_index, item, surf)
+            end
         else
-            current_set[key].leaf = leaf
+            item.leaf = leaf
+            if alt_mode and (leaf.static_render_spec or leaf.has_trail) and not item.render_objects and surf then
+                viewport_bvh.attach_static_render(player_index, item, surf)
+            end
         end
     end
 
@@ -385,19 +568,30 @@ function viewport_bvh.on_segment_registered(surface_index, leaf)
     if #observing == 0 then return end
 
     local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+    local surf = game.surfaces[surface_index]
     for i = 1, #observing do
         local p_idx = observing[i]
+        local player = game.get_player(p_idx)
+        local view_settings = player and player.valid and player.game_view_settings
+        local alt_mode = view_settings and view_settings.show_entity_info
+
         local v_set = viewport_bvh.get_visible_set(p_idx)
-        if not v_set[key] then
-            v_set[key] = {
+        local item = v_set[key]
+        if not item then
+            item = {
                 leaf = leaf,
                 key = key,
                 owner_id = leaf.owner_id,
                 seg_key = leaf.seg_key,
                 render_objects = nil
             }
+            v_set[key] = item
         else
-            v_set[key].leaf = leaf
+            item.leaf = leaf
+        end
+
+        if alt_mode and (leaf.static_render_spec or leaf.has_trail) and surf and surf.valid then
+            viewport_bvh.attach_static_render(p_idx, item, surf)
         end
     end
 end

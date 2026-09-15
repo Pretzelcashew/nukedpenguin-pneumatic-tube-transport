@@ -447,7 +447,7 @@ function active_device_scanner.register_events()
         defines.events.on_player_mined_entity,
         defines.events.on_robot_mined_entity,
         defines.events.on_entity_died,
-        defines.script_raised_destroy,
+        defines.events.script_raised_destroy,
         defines.events.on_space_platform_mined_entity
     }
     for _, id in ipairs(destroy_events) do

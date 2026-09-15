@@ -50,3 +50,12 @@
 2. **Wake-Boundary Dot Suppression (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Gated runtime and static dot spawning behind `min_allowed` (`dist_cleared`), preventing advancing heads and static changed hooks from resurrecting dots behind the retreating wake.
 3. **Endpoint Primitive Namespacing (`scripts/utils/viewport-bvh.lua`):** Migrated static endpoint sprites, rings, and circles from numeric indices to dedicated string keys (`"endpoint_ring"`, `"endpoint_circ"`, `"endpoint_sprite"`), shielding endpoint indicators from the numeric dot clearing loop.
 4. **Observer Viewport Segment Pruning (`scripts/capsules/capsule-ballistics.lua`):** Connected `viewport_bvh.on_segment_removed` to both intermediate 16-tile hops and terminal arrivals in `handle_anti_reticle_arrival`, immediately pruning dead corridor segments from `storage.player_visible_set`.
+
+
+### Revision: Deconstruction & Script-Raised Destruction Projector Reticle Orphaning
+**Date:** 2026-09-15 09:42 EDT
+**Context:** In sandbox and map editor modes, deconstructing or instant-deleting projectors failed to orphan their reticles because `script_raised_destroy` was improperly referenced in `active-device-scanner.lua` and the engine's generic `on_object_destroyed` handler omitted projector destruction notifications. This session corrected the event reference and wired projector destruction hooks across both object destruction and removal pipelines.
+**Key Changes:**
+1. **Event Reference Correction (`scripts/active-device-scanner.lua`):** Corrected `defines.script_raised_destroy` to `defines.events.script_raised_destroy`, ensuring script, editor, and sandbox deconstruction events register properly.
+2. **Object Destruction Lifecycle Hook (`scripts/flow/flow-engine.lua`):** Invoked `flow_kinetic.handle_projector_destroyed(unit_number)` inside `flow_engine.handle_object_destroyed`, guaranteeing instant deconstructions orphan active reticles.
+3. **Entity Removal Dispatch (`scripts/flow/flow-engine.lua`):** Added projector destruction notifications inside the `removal_events` handler so robot deconstruction and entity mining reliably trigger reticle wake reeling.

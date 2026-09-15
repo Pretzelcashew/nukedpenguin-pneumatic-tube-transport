@@ -848,6 +848,7 @@ function flow_engine.handle_object_destroyed(unit_number)
 
     if storage.active_projectors and storage.active_projectors[unit_number] then
         flow_kinetic.clear_receiver_references(unit_number, flow_engine.enqueue_port, wake_port_parked)
+        flow_kinetic.handle_projector_destroyed(unit_number)
     end
 
     if storage.soft_interop_registry then
@@ -1040,6 +1041,7 @@ function flow_engine.register_events()
                 local u_num = entity.unit_number
                 if u_num and (entity.name == "pneumatic-projector" or (storage.active_projectors and storage.active_projectors[u_num])) then
                     flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
+                    flow_kinetic.handle_projector_destroyed(u_num)
                 end
 
                 flow_engine.disconnect_entity(entity)

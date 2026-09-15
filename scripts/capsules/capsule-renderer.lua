@@ -818,29 +818,6 @@ end
 function capsule_renderer.dispatch_player_renders(player, current_tick)
     if not (player and player.valid) then return end
     local p_idx = player.index
-
-    if current_tick % 60 == 0 then
-        local v_set = viewport_bvh.get_visible_set(p_idx)
-        local v_count = v_set and table_size(v_set) or 0
-        local t_count = storage.timed_flights and table_size(storage.timed_flights) or 0
-        local p_count = storage.projector_flights and table_size(storage.projector_flights) or 0
-        game.print(string.format("[LOG %d] v_set=%d | timed_flights=%d | proj_flights=%d", current_tick, v_count, t_count, p_count))
-        if storage.timed_flights then
-            for o_id, flist in pairs(storage.timed_flights) do
-                for _, f in ipairs(flist) do
-                    game.print(string.format("  -> timed_flight: owner=%s id=%s start=%d arrive=%d", tostring(o_id), tostring(f.id), f.start_tick or 0, f.arrival_tick or 0))
-                end
-            end
-        end
-        if storage.projector_flights then
-            for o_id, flist in pairs(storage.projector_flights) do
-                for _, f in ipairs(flist) do
-                    game.print(string.format("  -> proj_flight: owner=%s id=%s start=%d arrive=%d", tostring(o_id), tostring(f.id), f.start_tick or 0, f.arrival_tick or 0))
-                end
-            end
-        end
-    end
-
     local dbg = storage.debug and storage.debug[p_idx]
     local view_settings = player.game_view_settings
     local alt_mode = view_settings and view_settings.show_entity_info
@@ -863,7 +840,6 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if not (surf and surf.valid) then return end
 
     local v_set = viewport_bvh.get_visible_set(p_idx)
-    local vp_entry = storage.player_viewports and storage.player_viewports[p_idx]
 
     storage.player_flight_renders = storage.player_flight_renders or {}
     local p_renders = storage.player_flight_renders[p_idx]
@@ -905,13 +881,8 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                 passenger.teleport(curr_pos, surf)
                             end
 
-                            local is_on_screen = passenger_valid or (vp_entry and
-                                curr_pos.x >= vp_entry.pad_min_x and curr_pos.x <= vp_entry.pad_max_x and
-                                curr_pos.y >= vp_entry.pad_min_y and curr_pos.y <= vp_entry.pad_max_y)
-
-                            if is_on_screen then
-                                rendered_this_tick[f_id] = true
-                                if capsule and capsule.in_timed_flight then
+                            rendered_this_tick[f_id] = true
+                            if capsule and capsule.in_timed_flight then
                                     if dbg.capsules then
                                         capsule.last_pos = curr_pos
                                         capsule.surface_name = surf.name
@@ -920,7 +891,6 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                 elseif flight_rec then
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
                                 end
-                            end
                         end
                     end
                 end
@@ -941,9 +911,6 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 end
 
 function capsule_renderer.update_timed_capsules(current_tick)
-    if current_tick % 60 == 0 then
-        game.print(string.format("[TICK-LOOP %d] update_timed_capsules running!", current_tick))
-    end
     capsule_renderer.sync_all_arrival_dots()
 
     if storage.projector_flights then

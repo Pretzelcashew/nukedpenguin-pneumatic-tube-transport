@@ -11,9 +11,13 @@ local render_pool = require("scripts.utils.render-pool")
 
 local viewport_bvh = {}
 
+-- Top script bool for Viewport BVH culling effectiveness testing
+local DEBUG_RENDER_VIEWPORTS = false
+local DEBUG_VIEWPORT_SCALE = 0.5
+
 local PAD_TILES = 12       -- Padding beyond visible screen edge to prevent pop-in during fast travel
-local SHELL_TILES = 24     -- Outer hysteresis shell margin beyond padded viewport
-local SHRINK_RATIO = 0.5   -- Zoom-in contraction threshold ratio
+local SHELL_TILES = 16     -- Fixed hysteresis margin (exactly 1 BVH corridor leaf = 16 tiles)
+local SHRINK_THRESHOLD = 0.75 -- Trigger fat AABB resize/recenter if viewport scales 25% smaller
 
 --- Fetches or creates the dedicated viewport BVH for a surface
 --- @param surface_index number
@@ -42,11 +46,9 @@ function viewport_bvh.get_player_frustum_radii(player)
     local scale = player.display_scale or 1.0
     if scale <= 0 then scale = 1.0 end
 
-    local tile_w = (w / scale) / (32 * zoom)
-    local tile_h = (h / scale) / (32 * zoom)
-    local hw = math.min(150, tile_w * 0.5)
-    local hh = math.min(150, tile_h * 0.5)
-    return hw, hh
+    local f_hw = (w * 0.5) / (32 * zoom)
+    local f_hh = (h * 0.5) / (32 * zoom)
+    return f_hw, f_hh
 end
 
 --- Updates or initializes a single player's concentric hysteresis viewports
@@ -69,8 +71,17 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     else
         f_hw, f_hh = viewport_bvh.get_player_frustum_radii(player)
     end
-    local pad_hw = f_hw + PAD_TILES
-    local pad_hh = f_hh + PAD_TILES
+
+    local pad_hw, pad_hh
+    if DEBUG_RENDER_VIEWPORTS and not override_radii then
+        pad_hw = f_hw * DEBUG_VIEWPORT_SCALE
+        pad_hh = f_hh * DEBUG_VIEWPORT_SCALE
+    else
+        pad_hw = f_hw + PAD_TILES
+        pad_hh = f_hh + PAD_TILES
+    end
+    local fat_hw = pad_hw + SHELL_TILES
+    local fat_hh = pad_hh + SHELL_TILES
     local pad_min_x = cx - pad_hw
     local pad_max_x = cx + pad_hw
     local pad_min_y = cy - pad_hh
@@ -87,19 +98,10 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
             end
         end
 
-        local fat_hw = pad_hw + SHELL_TILES
-        local fat_hh = pad_hh + SHELL_TILES
         local fat_min_x = cx - fat_hw
         local fat_max_x = cx + fat_hw
         local fat_min_y = cy - fat_hh
         local fat_max_y = cy + fat_hh
-
-        local inner_hw = fat_hw * SHRINK_RATIO
-        local inner_hh = fat_hh * SHRINK_RATIO
-        local inner_min_x = cx - inner_hw
-        local inner_max_x = cx + inner_hw
-        local inner_min_y = cy - inner_hh
-        local inner_max_y = cy + inner_hh
 
         entry = {
             player_index = p_idx,
@@ -112,10 +114,8 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
             fat_max_x = fat_max_x,
             fat_min_y = fat_min_y,
             fat_max_y = fat_max_y,
-            inner_min_x = inner_min_x,
-            inner_max_x = inner_max_x,
-            inner_min_y = inner_min_y,
-            inner_max_y = inner_max_y,
+            baseline_pad_hw = pad_hw,
+            baseline_pad_hh = pad_hh,
             center_x = cx,
             center_y = cy,
             breached_this_tick = true,
@@ -145,31 +145,21 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     entry.pad_max_y = pad_max_y
 
     local breached_outer = (pad_min_x < entry.fat_min_x or pad_max_x > entry.fat_max_x or pad_min_y < entry.fat_min_y or pad_max_y > entry.fat_max_y)
-    local breached_inner = (pad_min_x > entry.inner_min_x and pad_max_x < entry.inner_max_x and pad_min_y > entry.inner_min_y and pad_max_y < entry.inner_max_y)
+    local breached_inner = (pad_hw < (entry.baseline_pad_hw or pad_hw) * SHRINK_THRESHOLD
+        or pad_hh < (entry.baseline_pad_hh or pad_hh) * SHRINK_THRESHOLD)
 
     if breached_outer or breached_inner then
-        local fat_hw = pad_hw + SHELL_TILES
-        local fat_hh = pad_hh + SHELL_TILES
         local fat_min_x = cx - fat_hw
         local fat_max_x = cx + fat_hw
         local fat_min_y = cy - fat_hh
         local fat_max_y = cy + fat_hh
 
-        local inner_hw = fat_hw * SHRINK_RATIO
-        local inner_hh = fat_hh * SHRINK_RATIO
-        local inner_min_x = cx - inner_hw
-        local inner_max_x = cx + inner_hw
-        local inner_min_y = cy - inner_hh
-        local inner_max_y = cy + inner_hh
-
         entry.fat_min_x = fat_min_x
         entry.fat_max_x = fat_max_x
         entry.fat_min_y = fat_min_y
         entry.fat_max_y = fat_max_y
-        entry.inner_min_x = inner_min_x
-        entry.inner_max_x = inner_max_x
-        entry.inner_min_y = inner_min_y
-        entry.inner_max_y = inner_max_y
+        entry.baseline_pad_hw = pad_hw
+        entry.baseline_pad_hh = pad_hh
         entry.center_x = cx
         entry.center_y = cy
         entry.breached_this_tick = true
@@ -180,6 +170,17 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
         viewport_bvh.sync_player_visibility(p_idx, s_idx)
     else
         entry.breached_this_tick = false
+    end
+
+    local dbg = storage.debug and storage.debug[p_idx]
+    if not DEBUG_RENDER_VIEWPORTS and dbg then
+        dbg.viewport_bvh = false
+    end
+    local wants_overlay = DEBUG_RENDER_VIEWPORTS or (dbg and dbg.master and dbg.viewport_bvh)
+    if wants_overlay then
+        viewport_bvh.draw_for_player(p_idx)
+    elseif storage.viewport_renders and storage.viewport_renders[p_idx] then
+        viewport_bvh.clear_renders(p_idx)
     end
 
     return entry
@@ -206,6 +207,7 @@ function viewport_bvh.update_all_players()
                 end
             end
             viewport_bvh.clear_player_visible_set(p_idx)
+            viewport_bvh.clear_renders(p_idx)
             storage.player_viewports[p_idx] = nil
         end
     end
@@ -447,7 +449,6 @@ function viewport_bvh.clear_renders(player_index)
 end
 
 function viewport_bvh.draw_for_player(player_index)
-    viewport_bvh.clear_renders(player_index)
     local player = game.get_player(player_index)
     if not (player and player.valid) then return end
     local surf = player.surface
@@ -457,20 +458,32 @@ function viewport_bvh.draw_for_player(player_index)
     if not entry then return end
 
     storage.viewport_renders = storage.viewport_renders or {}
+    local renders = storage.viewport_renders[player_index]
+
+    if renders and #renders >= 2 and renders[1].valid and renders[2].valid then
+        local ok = pcall(function()
+            renders[1].set_corners({ entry.pad_min_x, entry.pad_min_y }, { entry.pad_max_x, entry.pad_max_y })
+            renders[2].set_corners({ entry.fat_min_x, entry.fat_min_y }, { entry.fat_max_x, entry.fat_max_y })
+        end)
+        if not ok then
+            pcall(function()
+                renders[1].left_top = { entry.pad_min_x, entry.pad_min_y }
+                renders[1].right_bottom = { entry.pad_max_x, entry.pad_max_y }
+                renders[2].left_top = { entry.fat_min_x, entry.fat_min_y }
+                renders[2].right_bottom = { entry.fat_max_x, entry.fat_max_y }
+            end)
+        end
+        if renders[3] and renders[3].valid then
+            renders[3].target = { entry.center_x or player.position.x, entry.fat_min_y + 1 }
+            renders[3].text = string.format("Player #%d Viewport [Green: Viewport | Cyan: Fat Shell | Updates: %d]", player_index, entry.updates_count or 1)
+        end
+        return
+    end
+
+    viewport_bvh.clear_renders(player_index)
     local renders = {}
     storage.viewport_renders[player_index] = renders
 
-    -- Box 1: Inner Shrunk AABB (Gold)
-    local r1 = rendering.draw_rectangle{
-        color = { r = 1.0, g = 0.8, b = 0.2, a = 0.5 },
-        width = 1,
-        filled = false,
-        left_top = { entry.inner_min_x, entry.inner_min_y },
-        right_bottom = { entry.inner_max_x, entry.inner_max_y },
-        surface = surf,
-        players = { player }
-    }
-    renders[#renders + 1] = r1
 
     -- Box 2: Padded Viewport AABB (Green)
     local r2 = rendering.draw_rectangle{
@@ -486,7 +499,7 @@ function viewport_bvh.draw_for_player(player_index)
 
     -- Box 3: Outer Fat AABB (Cyan)
     local r3 = rendering.draw_rectangle{
-        color = { r = 0.1, g = 0.6, b = 1.0, a = 0.4 },
+        color = { r = 0.1, g = 0.65, b = 1.0, a = 0.8 },
         width = 2,
         filled = false,
         left_top = { entry.fat_min_x, entry.fat_min_y },
@@ -497,7 +510,7 @@ function viewport_bvh.draw_for_player(player_index)
     renders[#renders + 1] = r3
 
     local txt = rendering.draw_text{
-        text = string.format("Player #%d Viewport [Hysteresis Shell | Updates: %d]", player_index, entry.updates_count or 1),
+        text = string.format("Player #%d Viewport [Green: Viewport | Cyan: Fat Shell | Updates: %d]", player_index, entry.updates_count or 1),
         surface = surf,
         target = { entry.center_x or player.position.x, entry.fat_min_y + 1 },
         color = { r = 0.8, g = 1.0, b = 1.0, a = 0.9 },
@@ -580,17 +593,17 @@ function viewport_bvh.run_tests(player)
     viewport_bvh.update_player(p, orig_pos)
     log_msg("[color=green][ViewportBVH Test] Test 3: Outer Boundary Breach & Recentering -> PASSED[/color]")
 
-    -- Test 4: Inner Shrunk AABB Contraction (Zoom-In Recenter)
+    -- Test 4: 25% Scale Contraction (Zoom-In Recenter)
     local expanded_fat_hw = entry.fat_max_x - entry.center_x
     local zoomed_radii = { hw = 4, hh = 3 }
     viewport_bvh.update_player(p, orig_pos, zoomed_radii)
     local contracted_fat_hw = entry.fat_max_x - entry.center_x
     if not entry.breached_this_tick or contracted_fat_hw >= expanded_fat_hw then
-        log_msg("[color=red][ViewportBVH Test] Test 4 FAILED: Inner zoom-in contraction breach did not shrink fat shell[/color]")
+        log_msg("[color=red][ViewportBVH Test] Test 4 FAILED: Zoom-in contraction breach did not shrink fat shell[/color]")
         return false
     end
     viewport_bvh.update_player(p, orig_pos)
-    log_msg("[color=green][ViewportBVH Test] Test 4: Inner Shrunk AABB Contraction (Zoom-In Recenter) -> PASSED[/color]")
+    log_msg("[color=green][ViewportBVH Test] Test 4: 25% Scale Contraction (Zoom-In Recenter) -> PASSED[/color]")
 
     -- Test 5: Spatial Hit-Testing & Observer Queries
     local hit = viewport_bvh.is_in_any_viewport(p.surface.index, p.position.x, p.position.y)

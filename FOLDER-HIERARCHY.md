@@ -1,6 +1,6 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-14 21:11:52  
+**Last Generated:** 2026-09-14 22:38:35  
 **Scope:** 22 directories, 108 files  
 
 ```text

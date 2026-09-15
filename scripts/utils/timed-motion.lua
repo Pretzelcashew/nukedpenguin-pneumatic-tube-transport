@@ -314,6 +314,11 @@ function timed_motion.ensure_corridor(surface_index, corridor_id, start_pos, ter
 
             local leaf = tree:insert_segment(corridor_id, seg_key, s_pos, e_pos, d_start, d_end, s)
             if leaf then
+                leaf.has_trail = nil
+                leaf.trail_count = nil
+                leaf.static_render_spec = nil
+                leaf.static_pos = nil
+                leaf.dir = { x = d_x, y = d_y }
                 viewport_bvh.on_segment_registered(surface_index, leaf)
             end
         end

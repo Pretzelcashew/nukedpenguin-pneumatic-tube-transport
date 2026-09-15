@@ -885,6 +885,39 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if flights_store and v_set and next(v_set) ~= nil then
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
+            local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
+            if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+                local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
+                local dist_cleared = math.floor(elapsed_retreat / tpt)
+                local leaf = item.leaf
+                local d_start = leaf and leaf.d_start or 0
+                local d_end = leaf and leaf.d_end or 16
+
+                if dist_cleared >= d_start and item.render_objects then
+                    local dots_to_clear = math.min(d_end - d_start, dist_cleared - d_start)
+                    local cur_cleared = item.cleared_dots_count or 0
+                    if dots_to_clear > cur_cleared then
+                        for step_i = cur_cleared + 1, dots_to_clear do
+                            local obj = item.render_objects[step_i]
+                            if obj then
+                                render_pool.recycle(p_idx, obj)
+                                item.render_objects[step_i] = nil
+                            end
+                        end
+                        item.cleared_dots_count = dots_to_clear
+                    end
+                end
+
+                if dist_cleared >= (reticle.total_dist or 0) and item.render_objects then
+                    for idx, obj in pairs(item.render_objects) do
+                        if obj then
+                            render_pool.recycle(p_idx, obj)
+                            item.render_objects[idx] = nil
+                        end
+                    end
+                end
+            end
+
             local owner_flights = (storage.timed_flights and storage.timed_flights[item.owner_id])
                 or (storage.projector_flights and storage.projector_flights[item.owner_id])
             if owner_flights and #owner_flights > 0 then
@@ -898,9 +931,10 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                     local t_start = flight.start_tick or 0
                     local flight_rec = timed_motion.get_flight(f_id)
                     local is_scope = (flight.kind == "projector_scope") or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope"))
+                    local is_anti = (flight.kind == "anti_reticle") or (flight_rec and (flight_rec.kind == "anti_reticle" or flight_rec.on_arrival == "anti_reticle"))
 
                     local t_entry, t_exit
-                    if is_scope then
+                    if is_scope or is_anti then
                         local f_seg = flight_rec and flight_rec.seg_idx or 1
                         local l_seg = leaf and leaf.seg_idx or 1
                         if f_seg == l_seg then
@@ -935,7 +969,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                         capsule.surface_name = surf.name
                                         capsule_renderer.render_flight_for_player(capsule, f_id, p_idx, player, curr_pos, surf)
                                     end
-                                elseif flight_rec then
+                                elseif flight_rec and not is_anti then
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
                                     if leaf and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope") then
                                         local elapsed_t = math.max(0, current_tick - t_entry)
@@ -944,8 +978,19 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                         if dist_in_leaf > cur_dots then
                                             item.render_objects = item.render_objects or {}
                                             local sp = leaf.start_pos or bf.start_pos
-                                            local dx = (leaf.dir and leaf.dir.x) or (bf.dir and bf.dir.x) or bf.dx or 0
-                                            local dy = (leaf.dir and leaf.dir.y) or (bf.dir and bf.dir.y) or bf.dy or 0
+                                            local ep = leaf.end_pos or bf.terminal_pos
+                                            local dx = 0
+                                            local dy = 0
+                                            if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
+                                                if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
+                                                if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
+                                            elseif bf and bf.dir then
+                                                dx = bf.dir.x or 0
+                                                dy = bf.dir.y or 0
+                                            elseif leaf and leaf.dir then
+                                                dx = leaf.dir.x or 0
+                                                dy = leaf.dir.y or 0
+                                            end
                                             local q_lvl = flight_rec.q_level or 0
                                             local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
 

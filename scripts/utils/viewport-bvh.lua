@@ -342,11 +342,19 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         local cur_d = item.trail_dots_count or 0
         local q_level = leaf.q_level or 0
         local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
-        local dx = (leaf.dir and leaf.dir.x) or 0
-        local dy = (leaf.dir and leaf.dir.y) or 0
+        local sp = leaf.start_pos
+        local ep = leaf.end_pos
+        local dx = 0
+        local dy = 0
+        if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
+            if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
+            if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
+        elseif leaf.dir then
+            dx = leaf.dir.x or 0
+            dy = leaf.dir.y or 0
+        end
         local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
         local d_base = leaf.d_start or 0
-        local sp = leaf.start_pos
 
         if sp and (dx ~= 0 or dy ~= 0) then
             for i = cur_d + 1, count do
@@ -448,7 +456,7 @@ end
 --- @param leaf table
 function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
     if not (surface_index and leaf) then return end
-    local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+    local key = tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key)
     local observing = {}
     viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
     local surf = game.surfaces[surface_index]
@@ -524,7 +532,7 @@ function viewport_bvh.sync_player_visibility(player_index, surface_index)
 
     for i = 1, #hits do
         local leaf = hits[i]
-        local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+        local key = tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key)
         new_set_keys[key] = leaf
         local item = current_set[key]
         if not item then
@@ -567,7 +575,7 @@ function viewport_bvh.on_segment_registered(surface_index, leaf)
     viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
     if #observing == 0 then return end
 
-    local key = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+    local key = tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key)
     local surf = game.surfaces[surface_index]
     for i = 1, #observing do
         local p_idx = observing[i]

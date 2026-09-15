@@ -820,6 +820,11 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             if motion_tree then
                 local leaf = motion_tree:insert_segment(owner_id, seg_key, next_start, next_term, d_start, d_end, next_seg)
                 if leaf then
+                    leaf.has_trail = nil
+                    leaf.trail_count = nil
+                    leaf.static_render_spec = nil
+                    leaf.static_pos = nil
+                    leaf.dir = { x = dx, y = dy }
                     viewport_bvh.on_segment_registered(surface.index, leaf)
                 end
             end
@@ -889,18 +894,109 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         end
 
         timed_motion.remove_flight(flight_id, owner_id)
-        if storage.projector_scope then
-            storage.projector_scope[owner_id] = {
-                status = "endpoint",
-                endpoint_pos = { x = tp.x, y = tp.y },
-                surface_name = flight.surface_name,
-                seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
-            }
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if reticle then
+            if reticle.status ~= "retreating" then
+                reticle.status = "stationary"
+            end
+            reticle.head_flight_id = nil
+            reticle.terminal_pos = { x = tp.x, y = tp.y }
+            reticle.endpoint_pos = { x = tp.x, y = tp.y }
+            reticle.seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
+            if reticle.projector_unit and storage.projector_scope then
+                storage.projector_scope[reticle.projector_unit] = {
+                    reticle_id = reticle_id,
+                    status = "endpoint",
+                    endpoint_pos = { x = tp.x, y = tp.y },
+                    surface_name = flight.surface_name,
+                    seg_key = reticle.seg_key
+                }
+            end
+        end
+    end
+end
+
+function capsule_ballistics.handle_anti_reticle_arrival(flight_id, flight, current_tick, runner)
+    if not flight then return end
+
+    local owner_id = flight.owner_id
+    local reticle_id = flight.reticle_id or owner_id
+    local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+
+    local dx = (flight.dir and flight.dir.x) or flight.dx or 0
+    local dy = (flight.dir and flight.dir.y) or flight.dy or 0
+    local cur_seg = flight.seg_idx or 1
+    local seg_key = string.format("%d,%d:%d", dx, dy, cur_seg)
+
+    local surface = game.surfaces[flight.surface_name or "nauvis"]
+    local s_idx = (surface and surface.valid and surface.index) or 1
+
+    if surface and surface.valid then
+        local motion_tree = timed_motion.get_motion_tree(s_idx)
+        if motion_tree then
+            motion_tree:remove_segment(owner_id, seg_key)
+        end
+        local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+        if traj_tree then
+            traj_tree:remove_segment(owner_id, seg_key)
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
+
+    local sp = flight.start_pos
+    local tp = flight.terminal_pos
+    local step_dist = math.abs(tp.x - sp.x) + math.abs(tp.y - sp.y)
+    local rem = (flight.remaining_distance or 0) - step_dist
+    flight.remaining_distance = rem
+
+    if rem > 0 then
+        local next_step = math.min(16, rem)
+        local next_start = { x = tp.x, y = tp.y }
+        local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
+        local next_seg = cur_seg + 1
+
+        flight.start_pos = next_start
+        flight.terminal_pos = next_term
+        flight.seg_idx = next_seg
+        flight.total_dist = next_step
+        local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
+        local flight_ticks = math.max(1, math.ceil(next_step * tpt))
+        flight.start_tick = current_tick
+        flight.arrival_tick = current_tick + flight_ticks
+        flight.flight_ticks = flight_ticks
+
+        local flights_store = storage.timed_flights or storage.projector_flights
+        if flights_store and owner_id and flights_store[owner_id] then
+            local flights = flights_store[owner_id]
+            for i = 1, #flights do
+                if flights[i].id == flight_id then
+                    flights[i].start_tick = current_tick
+                    flights[i].arrival_tick = flight.arrival_tick
+                    flights[i].duration = flight_ticks
+                    break
+                end
+            end
+        end
+
+        local heap = timed_motion.get_arrival_heap()
+        heap:push(flight_id, flight.arrival_tick, flight_id)
+    else
+        if storage.pinned_corridors then
+            storage.pinned_corridors[owner_id] = nil
+        end
+        timed_motion.remove_corridor(s_idx, owner_id)
+        flow_kinetic.unregister_trajectory_in_bvh(owner_id, flight.surface_name, true)
+        timed_motion.remove_flight(flight_id, owner_id)
+
+        if storage.projector_reticles then
+            storage.projector_reticles[reticle_id] = nil
         end
     end
 end
 
 capsule_ballistics.register_arrival_handler("projector_scope", capsule_ballistics.handle_projector_scope_arrival)
+capsule_ballistics.register_arrival_handler("anti_reticle", capsule_ballistics.handle_anti_reticle_arrival)
 capsule_ballistics.register_arrival_handler("muzzle_probe", capsule_ballistics.handle_projector_scope_arrival)
 
 function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner)

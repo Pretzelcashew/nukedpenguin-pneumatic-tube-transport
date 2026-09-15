@@ -1,6 +1,7 @@
 local flow_engine = require("scripts.flow.flow-engine")
 local capsule_runner = require("scripts.capsules.capsule-runner")
 local projector_settings = require("scripts.projectors.projector-settings")
+local flow_kinetic = require("scripts.flow.flow-kinetic")
 
 local projector_manager = {}
 
@@ -42,10 +43,15 @@ projector_manager.spec = {
         if event.previous_direction ~= nil then
             projector_settings.rotate_muzzle(dev_id, event.previous_direction, entity.direction)
         end
+        flow_kinetic.orphan_reticle(entity.unit_number, "rotated")
     end,
 
     on_rotate_delta = function(dev_id, old_dir, new_dir)
         projector_settings.rotate_muzzle(dev_id, old_dir, new_dir)
+        local u_num = tonumber(dev_id) or (type(dev_id) == "table" and dev_id.unit_number)
+        if u_num then
+            flow_kinetic.orphan_reticle(u_num, "rotated")
+        end
     end,
 
     check_and_update_state = function(entity, forced)
@@ -77,6 +83,10 @@ projector_manager.spec = {
             storage.projector_muzzle_states[unit_number] = current_muzzle
             storage.projector_ready_states[unit_number] = is_ready
 
+            if muzzle_changed or not (is_powered and is_enabled) then
+                flow_kinetic.orphan_reticle(unit_number, muzzle_changed and "muzzle_changed" or "power_loss")
+            end
+
             if muzzle_changed and entity.valid and not (entity.name == "entity-ghost") then
                 flow_engine.notify_beam_obstruction_changed(entity, true)
 
@@ -101,6 +111,7 @@ projector_manager.spec = {
     end,
 
     on_unregister = function(entity, unit_number)
+        flow_kinetic.orphan_reticle(unit_number, "unregistered")
         if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
         if storage.projector_enabled_states then storage.projector_enabled_states[unit_number] = nil end
         if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end

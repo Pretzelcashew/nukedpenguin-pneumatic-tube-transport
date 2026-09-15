@@ -172,6 +172,7 @@ end
 --- @param render_obj LuaRenderObject
 function render_pool.recycle(player_index, render_obj)
     if not (render_obj and render_obj.valid) then return end
+    if render_obj.visible == false then return end
     render_obj.visible = false
 
     local archetype = render_obj.type

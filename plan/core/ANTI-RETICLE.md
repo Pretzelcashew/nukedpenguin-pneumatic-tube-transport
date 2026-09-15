@@ -1,0 +1,11 @@
+target task: we need an anti projector reticle that basically does the same thing the reticle does but in reverse, essentially cleaning up the reticle's wake. but with all of the same efficiencies like when not observing, no sub-event dot updates. 
+
+this anti reticle will not be seen, it doesnt have a render object but it is a projectile which will time slice a clear in anti fashion of the reticle.
+
+when do we spawn these anti reticles? when rotating the projector, losing power, deconstruction, removal, obstruction. the anti reticle only cares about cleaning up the one-upstream reticle, and doesnt affect other reticles spawned by other projectors. basically the anti reticle can only care about one reticle. 
+
+we already have the events for the update state of the projector, its just hooked into the old kinetic flow system we have suppressed right now, which i dont want to remove yet until im certain this new system works flawlessly. but we can use our hooks while the suppression bool is in effect.
+
+this will be the 2nd attempt on this task, the previous gemini failed miserably. so the other approach i want to try to acomplish this, some sort of temporal reeling of the wake tail of the reticle over time, using the same time slicing we used while the projectile was airborne. i feel like all these modes it has, the growth, the full stationary tail after growth, the wake trail slinking back toward the reticle, can be treated with pure temporal math, and the sub-events while theres an observer.
+
+when this reticle retreat mode, is when it comes orphaned from the em projector, and the em projector also orphans it, this is because we will allow the em projector to want to emit a reticle again. but orphaning the reticle doesnt mean delete the reticle. the reticle will subside completely once the temporal reatreat is finished, and then be culled. i think the reticle needs to own its bvh nodes. the em projector owns a reticle. the em projector can orphan a reticle, the em projector does not own those reticle bvh nodes.

@@ -13,15 +13,63 @@ local HOP_DISTANCE = 5
 local ENABLE_KINETIC_FLOW_PROPAGATION = false
 flow_kinetic.ENABLE_KINETIC_FLOW_PROPAGATION = ENABLE_KINETIC_FLOW_PROPAGATION
 
+function flow_kinetic.orphan_reticle(owner_unit, reason)
+    if not owner_unit then return end
+    storage.projector_reticles = storage.projector_reticles or {}
+    storage.projector_scope = storage.projector_scope or {}
+
+    local scope = storage.projector_scope[owner_unit]
+    if not scope then return end
+
+    local reticle_id = (type(scope) == "table" and scope.reticle_id) or (type(scope) == "number" and scope)
+    storage.projector_scope[owner_unit] = nil
+
+    if not reticle_id then return end
+    local reticle = storage.projector_reticles[reticle_id]
+    if not reticle or reticle.status == "retreating" then return end
+
+    reticle.projector_unit = nil
+    reticle.status = "retreating"
+    local current_tick = game.tick
+    reticle.retreat_tick = current_tick
+
+    local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
+    local anti_flight_id = "anti:" .. tostring(reticle_id)
+    reticle.anti_flight_id = anti_flight_id
+
+    local first_step = math.min(16, reticle.total_dist)
+    local next_term = {
+        x = reticle.start_pos.x + reticle.dir.x * first_step,
+        y = reticle.start_pos.y + reticle.dir.y * first_step
+    }
+
+    flow_kinetic.launch_timed_flight{
+        id = anti_flight_id,
+        owner_id = reticle_id,
+        surface_name = reticle.surface_name,
+        start_pos = { x = reticle.start_pos.x, y = reticle.start_pos.y },
+        terminal_pos = next_term,
+        dir = { x = reticle.dir.x, y = reticle.dir.y },
+        kind = "anti_reticle",
+        on_arrival = "anti_reticle",
+        remaining_distance = reticle.total_dist,
+        max_distance = reticle.total_dist,
+        seg_idx = 1,
+        reticle_id = reticle_id,
+        ticks_per_tile = tpt
+    }
+end
+
 function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kinetic_changed)
     if not (node and node.is_muzzle and node.dir and node.pos and node.surface_name) then return end
     local owner_id = node.beam_owner or node.unit_number
     if not owner_id then return end
 
     storage.projector_scope = storage.projector_scope or {}
+    storage.projector_reticles = storage.projector_reticles or {}
     local scope = storage.projector_scope[owner_id]
     if scope then
-        if type(scope) == "table" and scope.status == "endpoint" then
+        if type(scope) == "table" and (scope.status == "endpoint" or scope.status == "traveling") then
             return
         elseif type(scope) == "number" and timed_motion.get_flight(scope) then
             return
@@ -39,13 +87,37 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local start_pos = { x = node.pos.x, y = node.pos.y }
     local terminal_pos = { x = node.pos.x + dx * step, y = node.pos.y + dy * step }
 
-    storage.ballistic_probe_seq = (storage.ballistic_probe_seq or 0) + 1
-    local flight_id = (owner_id * 100000) + (storage.ballistic_probe_seq % 99999)
-    storage.projector_scope[owner_id] = flight_id
+    storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
+    local reticle_id = storage.next_reticle_id
+    storage.projector_scope[owner_id] = {
+        reticle_id = reticle_id,
+        flight_id = reticle_id,
+        status = "traveling"
+    }
+    storage.pinned_corridors = storage.pinned_corridors or {}
+    storage.pinned_corridors[reticle_id] = true
+
+    local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
+    storage.projector_reticles[reticle_id] = {
+        id = reticle_id,
+        projector_unit = owner_id,
+        surface_name = node.surface_name,
+        surface_index = (game.surfaces[node.surface_name] and game.surfaces[node.surface_name].index) or 1,
+        start_pos = { x = node.pos.x, y = node.pos.y },
+        terminal_pos = { x = node.pos.x + dx * max_range, y = node.pos.y + dy * max_range },
+        dir = { x = dx, y = dy },
+        q_level = node.q_level or 0,
+        max_range = max_range,
+        total_dist = max_range,
+        status = "growing",
+        start_tick = game.tick,
+        ticks_per_tile = tpt,
+        head_flight_id = reticle_id
+    }
 
     flow_kinetic.launch_timed_flight{
-        id = flight_id,
-        owner_id = owner_id,
+        id = reticle_id,
+        owner_id = reticle_id,
         surface_name = node.surface_name,
         start_pos = start_pos,
         terminal_pos = terminal_pos,
@@ -55,6 +127,9 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         remaining_distance = max_range,
         max_distance = max_range,
         seg_idx = 1,
+        reticle_id = reticle_id,
+        projector_unit = owner_id,
+        q_level = node.q_level or 0,
         render_spec = {
             color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
             radius = 0.24,
@@ -67,6 +142,13 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
 end
 
 function flow_kinetic.on_muzzle_stop_emission(node, pkey)
+    local owner_id = node and (node.beam_owner or node.unit_number)
+    if owner_id then
+        flow_kinetic.orphan_reticle(owner_id, "stop_emission")
+    end
+end
+
+function flow_kinetic._legacy_on_muzzle_stop_emission(node, pkey)
     local owner_id = node and (node.beam_owner or node.unit_number)
     if owner_id then
         local surf = node.surface_name and game.surfaces[node.surface_name]
@@ -750,8 +832,13 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
     for i = 1, #hits do
         local leaf = hits[i]
         local owner_id = leaf.owner_id
-        if owner_id and not affected_owners[owner_id] then
-            affected_owners[owner_id] = true
+        if owner_id then
+            local ret = storage.projector_reticles and storage.projector_reticles[owner_id]
+            if ret and ret.projector_unit then
+                affected_owners[ret.projector_unit] = true
+            elseif not affected_owners[owner_id] then
+                affected_owners[owner_id] = true
+            end
         end
     end
 
@@ -860,11 +947,11 @@ function flow_kinetic.clear_receiver_references(receiver_unit, enqueue_port_fn, 
 end
 
 function flow_kinetic.handle_projector_destroyed(unit_number)
-    -- Queue-driven recession handles beam nodes and BVH segments naturally
+    flow_kinetic.orphan_reticle(unit_number, "destroyed")
 end
 
 function flow_kinetic.handle_projector_rotated(unit_number)
-    -- Queue-driven recession handles beam nodes and BVH segments naturally
+    flow_kinetic.orphan_reticle(unit_number, "rotated")
 end
 
 local CARDINALS = {

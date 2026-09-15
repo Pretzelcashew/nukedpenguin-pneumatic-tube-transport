@@ -59,3 +59,14 @@
 1. **Event Reference Correction (`scripts/active-device-scanner.lua`):** Corrected `defines.script_raised_destroy` to `defines.events.script_raised_destroy`, ensuring script, editor, and sandbox deconstruction events register properly.
 2. **Object Destruction Lifecycle Hook (`scripts/flow/flow-engine.lua`):** Invoked `flow_kinetic.handle_projector_destroyed(unit_number)` inside `flow_engine.handle_object_destroyed`, guaranteeing instant deconstructions orphan active reticles.
 3. **Entity Removal Dispatch (`scripts/flow/flow-engine.lua`):** Added projector destruction notifications inside the `removal_events` handler so robot deconstruction and entity mining reliably trigger reticle wake reeling.
+
+
+### Revision: Leaf-Scoped Spatial Obstacle Interception and Reticle Corridor Truncation
+**Date:** 2026-09-15 16:14 EDT
+**Context:** Implemented the foundational spatial collision pipeline for Projector Refactor Task 1, replacing global raycasts with single-pass 16-tile leaf-scoped area queries timed with probe arrivals and enabling logarithmic corridor truncation on entity placement, gate closure, and character movement.
+**Key Changes:**
+1. **Observer Viewport Attachment (`scripts/flow/flow-kinetic.lua`):** Imported `viewport_bvh` at the top level to resolve nil global runtime exceptions during reticle segment removal and static leaf synchronization.
+2. **Leaf-Scoped Spatial Hit Detection (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.scan_leaf_rect` to execute a single spatial query bounded strictly to each 16-tile BVH leaf rectangle during generation, calculating on-axis leading face distances and shielding the emitter chassis from self-collision.
+3. **Spatiotemporal Probe Sweep Gating (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Integrated leaf rect obstacle checks into `on_muzzle_want_emission` for segment 1 and `handle_projector_scope_arrival` for segments 2+, clamping forward probe flights to the collision face and suppressing downstream leaf creation.
+4. **On-Axis Reticle Corridor Truncation (`scripts/flow/flow-kinetic.lua`):** Created `flow_kinetic.truncate_reticle` to clamp live corridors and decaying wakes squarely at collision faces, updating terminal segment bounds, conditionally attaching obstacle hazard rings on live emitters, and recycling downstream leaf visuals via `viewport_bvh.on_segment_removed`.
+5. **Logarithmic Reactive Interception (`scripts/flow/flow-kinetic.lua`):** Wired entity placement, defensive gate transitions, and character steps to query `motion_bvh` in $O(\log N)$ time, reclassified physical characters and vehicles as blocking obstacles in `IGNORABLE_TYPES`, and dispatched instant cardinal truncation.

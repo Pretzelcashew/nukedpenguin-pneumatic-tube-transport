@@ -4,6 +4,7 @@ local port_defs = require("scripts.flow.port-defs")
 local projector_settings = require("scripts.projectors.projector-settings")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_kinetic = {}
 
@@ -84,6 +85,14 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local dx = node.dir.x
     local dy = node.dir.y
     local step = math.min(16, max_range)
+
+    local surface = game.surfaces[node.surface_name]
+    local obst = flow_kinetic.scan_leaf_rect(surface, node.pos, node.dir, step, owner_id)
+    if obst and obst.dist then
+        step = math.max(0.1, obst.dist)
+        max_range = step
+    end
+
     local start_pos = { x = node.pos.x, y = node.pos.y }
     local terminal_pos = { x = node.pos.x + dx * step, y = node.pos.y + dy * step }
 
@@ -181,10 +190,6 @@ local IGNORABLE_TYPES = {
     ["resource"] = true,
     ["entity-ghost"] = true,
     ["tile-ghost"] = true,
-    ["character"] = true,
-    ["car"] = true,
-    ["spider-vehicle"] = true,
-    ["unit"] = true,
     ["fish"] = true,
     ["item-entity"] = true,
     ["flying-robot"] = true,
@@ -800,6 +805,186 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
     return kinetic_changed
 end
 
+function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_unit)
+    if not (surface and surface.valid and start_pos and dir and step_dist and step_dist > 0) then return nil end
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+    if dx == 0 and dy == 0 then return nil end
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(start_pos.x, start_pos.x + dx * step_dist)
+        max_x = math.max(start_pos.x, start_pos.x + dx * step_dist)
+        min_y = start_pos.y - 0.45
+        max_y = start_pos.y + 0.45
+    else
+        min_x = start_pos.x - 0.45
+        max_x = start_pos.x + 0.45
+        min_y = math.min(start_pos.y, start_pos.y + dy * step_dist)
+        max_y = math.max(start_pos.y, start_pos.y + dy * step_dist)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local closest_dist = step_dist
+    local closest_entity = nil
+
+    for _, cand in ipairs(candidates) do
+        local is_self = (cand.unit_number and sender_unit and cand.unit_number == sender_unit)
+        if cand.valid and not is_self then
+            local c_type = cand.type
+            local c_name = cand.name
+            local is_ignorable = (IGNORABLE_TYPES[c_type] == true) or (PROXY_NAMES[c_name] == true)
+            if not is_ignorable and c_type == "gate" then
+                if not (cand.is_closed and cand.is_closed()) then
+                    is_ignorable = true
+                end
+            end
+
+            if not is_ignorable then
+                local cbb = cand.bounding_box
+                local d = nil
+                local on_axis = false
+
+                if dx > 0 then
+                    on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
+                    d = cbb.left_top.x - start_pos.x
+                elseif dx < 0 then
+                    on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
+                    d = start_pos.x - cbb.right_bottom.x
+                elseif dy > 0 then
+                    on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
+                    d = cbb.left_top.y - start_pos.y
+                elseif dy < 0 then
+                    on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
+                    d = start_pos.y - cbb.right_bottom.y
+                end
+
+                if on_axis and d and d > 0.05 and d < closest_dist then
+                    closest_dist = d
+                    closest_entity = cand
+                end
+            end
+        end
+    end
+
+    if closest_entity then
+        return {
+            dist = closest_dist,
+            entity = closest_entity
+        }
+    end
+    return nil
+end
+
+function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
+    if not (reticle and obst_dist) then return end
+    if obst_dist >= (reticle.total_dist or reticle.max_range or 50) then return end
+
+    local s_idx = reticle.surface_index or 1
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    local reticle_id = reticle.id
+
+    local dx = reticle.dir.x
+    local dy = reticle.dir.y
+    local sp = reticle.start_pos
+    local collision_pos = {
+        x = sp.x + dx * obst_dist,
+        y = sp.y + dy * obst_dist
+    }
+
+    local is_live = false
+    if reticle.projector_unit and reticle.status ~= "retreating" then
+        local proj = storage.active_projectors and storage.active_projectors[reticle.projector_unit]
+        if proj and proj.valid and projector_settings.is_powered(proj) and projector_settings.is_projector_enabled(proj) then
+            is_live = true
+        end
+    end
+
+    local hazard_spec = nil
+    if is_live then
+        hazard_spec = {
+            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+            radius = 0.24,
+            has_ring = true,
+            ring_radius = 0.42,
+            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+            ring_width = 2
+        }
+    end
+
+    reticle.total_dist = obst_dist
+    reticle.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
+    reticle.endpoint_pos = { x = collision_pos.x, y = collision_pos.y }
+
+    if reticle.head_flight_id then
+        timed_motion.remove_flight(reticle.head_flight_id, reticle_id)
+        reticle.head_flight_id = nil
+        if reticle.status == "growing" then
+            reticle.status = "stationary"
+        end
+    end
+
+    if reticle.anti_flight_id then
+        local anti = timed_motion.get_flight(reticle.anti_flight_id)
+        if anti and (anti.remaining_distance or 0) > obst_dist then
+            anti.remaining_distance = obst_dist
+        end
+    end
+
+    local target_seg_idx = math.max(1, math.floor(obst_dist / 16) + 1)
+    reticle.seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+
+    if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle_id] then
+        local owner_rec = motion_tree.trajectories[reticle_id]
+        if owner_rec.segments then
+            local to_remove = {}
+            for seg_key, leaf in pairs(owner_rec.segments) do
+                local s_idx_num = leaf.seg_idx or tonumber(seg_key:match(":(%d+)$")) or 1
+                if s_idx_num > target_seg_idx then
+                    to_remove[#to_remove + 1] = seg_key
+                elseif s_idx_num == target_seg_idx then
+                    leaf.d_end = obst_dist
+                    leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
+                    leaf.trail_count = math.max(0, math.floor(obst_dist - leaf.d_start))
+                    leaf.static_pos = { x = collision_pos.x, y = collision_pos.y }
+                    leaf.static_render_spec = hazard_spec
+                    leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
+                    leaf.max_x = math.max(leaf.start_pos.x, collision_pos.x) + 0.45
+                    leaf.min_y = math.min(leaf.start_pos.y, collision_pos.y) - 0.45
+                    leaf.max_y = math.max(leaf.start_pos.y, collision_pos.y) + 0.45
+                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                else
+                    leaf.static_pos = nil
+                    leaf.static_render_spec = nil
+                end
+            end
+
+            for i = 1, #to_remove do
+                local r_key = to_remove[i]
+                motion_tree:remove_segment(reticle_id, r_key)
+                if traj_tree then
+                    traj_tree:remove_segment(reticle_id, r_key)
+                end
+                viewport_bvh.on_segment_removed(s_idx, reticle_id, r_key)
+            end
+        end
+    end
+
+    if reticle.projector_unit and storage.projector_scope then
+        storage.projector_scope[reticle.projector_unit] = {
+            reticle_id = reticle_id,
+            status = "endpoint",
+            endpoint_pos = { x = collision_pos.x, y = collision_pos.y },
+            surface_name = reticle.surface_name,
+            seg_key = reticle.seg_key
+        }
+    end
+end
+
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
     if not (entity and entity.valid and entity.bounding_box) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
@@ -812,12 +997,55 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
     wake_port_fn = wake_port_fn or wake_port_parked
 
     local MARGIN = 2.5
-    if flow_kinetic.handle_motion_obstacle_changed and storage.motion_bvh and storage.motion_bvh[surface.index] then
+    if storage.motion_bvh and storage.motion_bvh[surface.index] then
         local motion_tree = storage.motion_bvh[surface.index]
         local motion_hits = {}
         trajectory_bvh.query_box(motion_tree, bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, motion_hits)
         if #motion_hits > 0 then
-            flow_kinetic.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
+            if flow_kinetic.handle_motion_obstacle_changed then
+                flow_kinetic.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
+            end
+
+            if not is_removal and storage.projector_reticles then
+                local checked_owners = {}
+                for i = 1, #motion_hits do
+                    local hit_leaf = motion_hits[i]
+                    local r_id = hit_leaf.owner_id
+                    if r_id and not checked_owners[r_id] then
+                        checked_owners[r_id] = true
+                        local ret = storage.projector_reticles[r_id]
+                        if ret then
+                            local is_self = ret.projector_unit and (entity.unit_number == ret.projector_unit
+                                or (storage.active_projectors and storage.active_projectors[ret.projector_unit] == entity))
+                            if not is_self then
+                                local r_dx = ret.dir.x
+                                local r_dy = ret.dir.y
+                                local r_sp = ret.start_pos
+                                local o_dist = nil
+                                local on_axis = false
+
+                                if r_dx > 0 then
+                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                                    o_dist = bb.left_top.x - r_sp.x
+                                elseif r_dx < 0 then
+                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                                    o_dist = r_sp.x - bb.right_bottom.x
+                                elseif r_dy > 0 then
+                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                                    o_dist = bb.left_top.y - r_sp.y
+                                elseif r_dy < 0 then
+                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                                    o_dist = r_sp.y - bb.right_bottom.y
+                                end
+
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < (ret.total_dist or ret.max_range or 50) then
+                                    flow_kinetic.truncate_reticle(ret, o_dist, entity)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
     end
 
@@ -1041,6 +1269,7 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                 for new_k, new_p in pairs(new_keys) do
                     storage.character_colliders[new_k] = char
                     if not old_keys[new_k] then
+                        flow_kinetic.handle_obstacle_changed(char, false, enqueue_port_fn, wake_port_fn)
                         local ports = storage.flow_grid and storage.flow_grid[new_k]
                         if ports then
                             for pkey in pairs(ports) do

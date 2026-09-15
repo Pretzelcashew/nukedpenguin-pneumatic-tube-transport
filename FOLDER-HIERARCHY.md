@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-15 09:09:03  
-**Scope:** 22 directories, 117 files  
+**Last Generated:** 2026-09-15 15:44:58  
+**Scope:** 22 directories, 110 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -34,6 +34,7 @@ nukedpenguin-pneumatic-tube-transport/
 │       ├── MANIFEST.md
 │       ├── MOD-DESCRIPTION.md
 │       ├── package.py
+│       ├── PROJECTOR-REFACTOR.md
 │       ├── PROMPT-AG-DIFF.md
 │       ├── PROMPT-DOC-SYNC.md
 │       ├── PROMPT-REVISION-LOG.md
@@ -57,14 +58,12 @@ nukedpenguin-pneumatic-tube-transport/
 ├── scripts/
 │   ├── capsules/
 │   │   ├── capsule-ballistics.lua
-│   │   ├── capsule-ballistics.lua.bak
 │   │   ├── capsule-definitions.lua
 │   │   ├── capsule-inputs.lua
 │   │   ├── capsule-lifecycle.lua
 │   │   ├── capsule-manager.lua
 │   │   ├── capsule-queries.lua
 │   │   ├── capsule-renderer.lua
-│   │   ├── capsule-renderer.lua.bak
 │   │   ├── capsule-runner.lua
 │   │   └── capsule-transit.lua
 │   ├── counters/
@@ -84,7 +83,6 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── flow-engine.lua
 │   │   ├── flow-gate-interop.lua
 │   │   ├── flow-kinetic.lua
-│   │   ├── flow-kinetic.lua.bak
 │   │   ├── flow-renderer.lua
 │   │   └── port-defs.lua
 │   ├── hubs/
@@ -101,7 +99,6 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   └── hub-unpacking.lua
 │   ├── projectors/
 │   │   ├── projector-manager.lua
-│   │   ├── projector-manager.lua.bak
 │   │   └── projector-settings.lua
 │   ├── pumps/
 │   │   ├── pump-gui.lua
@@ -119,12 +116,9 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── item-transfer-handler.lua
 │   │   ├── profiler.lua
 │   │   ├── render-pool.lua
-│   │   ├── render-pool.lua.bak
 │   │   ├── timed-motion.lua
-│   │   ├── timed-motion.lua.bak
 │   │   ├── trajectory-bvh.lua
-│   │   ├── viewport-bvh.lua
-│   │   └── viewport-bvh.lua.bak
+│   │   └── viewport-bvh.lua
 │   ├── active-device-scanner.lua
 │   ├── debug-manager.lua
 │   ├── device-settings-copier.lua
@@ -132,7 +126,6 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── events.lua
 │   └── proxy-manager.lua
 ├── .gitignore
-├── aggregate.txt
 ├── aggregator_patcher.py
 ├── changelog.txt
 ├── control.lua

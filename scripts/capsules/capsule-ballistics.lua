@@ -801,6 +801,15 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         local dx = (flight.dir and flight.dir.x) or flight.dx or 0
         local dy = (flight.dir and flight.dir.y) or flight.dy or 0
         local next_start = { x = tp.x, y = tp.y }
+
+        local surface = game.surfaces[flight.surface_name or "nauvis"]
+        local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, flight.projector_unit)
+        if obst and obst.dist then
+            next_step = math.max(0.1, obst.dist)
+            rem = next_step
+            flight.remaining_distance = rem
+        end
+
         local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
 
         local next_seg = (flight.seg_idx or 1) + 1

@@ -72,14 +72,24 @@ local function setup_storage()
 
     proxy_manager.purge_orphans()
 
-    -- Save-file boundary pool compaction (Phase 1.5)
+    -- Clean legacy functions from storage before saving/compacting
     if storage.spoil_heap then
+        storage.spoil_heap.comparator = nil
         binary_heap.compact(storage.spoil_heap, 64)
     end
     if storage.timed_arrival_heap then
+        storage.timed_arrival_heap.comparator = nil
         binary_heap.compact(storage.timed_arrival_heap, 64)
     elseif storage.kinetic_arrival_heap then
+        storage.kinetic_arrival_heap.comparator = nil
         binary_heap.compact(storage.kinetic_arrival_heap, 64)
+    end
+    if storage.timed_flight_records then
+        for _, rec in pairs(storage.timed_flight_records) do
+            if type(rec.on_arrival) == "function" then
+                rec.on_arrival = nil
+            end
+        end
     end
     if storage.surface_bvh then
         for _, tree in pairs(storage.surface_bvh) do

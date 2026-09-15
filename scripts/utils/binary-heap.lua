@@ -27,8 +27,11 @@ end
 --- @param heap table
 --- @return table heap
 function binary_heap.attach(heap)
-    if heap and not getmetatable(heap) then
-        setmetatable(heap, heap_mt)
+    if heap then
+        heap.comparator = nil
+        if not getmetatable(heap) then
+            setmetatable(heap, heap_mt)
+        end
     end
     return heap
 end

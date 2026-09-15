@@ -790,7 +790,9 @@ function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner
         if capsule and capsule.in_timed_flight then
             capsule_ballistics.finalize_timed_arrival(capsule, flight_id, runner)
         end
-    elseif flight and flight.on_arrival then
+    elseif flight and type(flight.on_arrival) == "string" and arrival_handlers[flight.on_arrival] then
+        arrival_handlers[flight.on_arrival](flight_id, flight, current_tick, runner)
+    elseif flight and type(flight.on_arrival) == "function" then
         flight.on_arrival(flight_id, flight, current_tick, runner)
     elseif kind and arrival_handlers[kind] then
         arrival_handlers[kind](flight_id, flight, current_tick, runner)

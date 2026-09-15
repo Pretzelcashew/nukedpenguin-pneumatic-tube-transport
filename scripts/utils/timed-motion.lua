@@ -76,7 +76,7 @@ function timed_motion.create_record(spec)
         kind = spec.kind or "capsule",
         metadata = spec.metadata or {},
         render_spec = spec.render_spec,
-        on_arrival = spec.on_arrival
+        on_arrival = (type(spec.on_arrival) == "string") and spec.on_arrival or nil
     }
 end
 

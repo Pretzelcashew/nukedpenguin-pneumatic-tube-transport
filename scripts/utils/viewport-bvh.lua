@@ -345,10 +345,21 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         min_allowed = math.floor(elapsed_retreat / tpt)
     end
 
-    if leaf.has_trail and not item.trail_attached then
-        item.trail_attached = true
+    if leaf.has_trail then
+        local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
         local cur_d = item.trail_dots_count or 0
-        local q_level = leaf.q_level or 0
+
+        if cur_d > count then
+            for i = count + 1, cur_d do
+                if objects[i] then
+                    render_pool.recycle(player_index, objects[i])
+                    objects[i] = nil
+                end
+            end
+            item.trail_dots_count = count
+        elseif cur_d < count or not item.trail_attached then
+            item.trail_attached = true
+            local q_level = leaf.q_level or 0
         local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
         local sp = leaf.start_pos
         local ep = leaf.end_pos
@@ -361,7 +372,6 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             dx = leaf.dir.x or 0
             dy = leaf.dir.y or 0
         end
-        local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
         local d_base = leaf.d_start or 0
 
         if sp and (dx ~= 0 or dy ~= 0) then
@@ -394,15 +404,37 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             end
             item.trail_dots_count = count
         end
+        end
     end
 
     local spec = leaf.static_render_spec
     local pos = leaf.static_pos
 
     local total_d = (reticle and reticle.total_dist) or (leaf.d_end or 50)
-    if spec and pos and not item.endpoint_attached and min_allowed < total_d then
-        item.endpoint_attached = true
-        if spec.sprite then
+    if not (spec and pos and min_allowed < total_d) then
+        if item.endpoint_attached then
+            if objects["endpoint_sprite"] then render_pool.recycle(player_index, objects["endpoint_sprite"]) objects["endpoint_sprite"] = nil end
+            if objects["endpoint_ring"] then render_pool.recycle(player_index, objects["endpoint_ring"]) objects["endpoint_ring"] = nil end
+            if objects["endpoint_circ"] then render_pool.recycle(player_index, objects["endpoint_circ"]) objects["endpoint_circ"] = nil end
+            item.endpoint_attached = nil
+            item.last_endpoint_pos = nil
+            item.last_endpoint_spec = nil
+        end
+    else
+        local pos_changed = not item.last_endpoint_pos or (item.last_endpoint_pos.x ~= pos.x or item.last_endpoint_pos.y ~= pos.y)
+        local spec_changed = (item.last_endpoint_spec ~= spec)
+        if item.endpoint_attached and (pos_changed or spec_changed) then
+            if objects["endpoint_sprite"] then render_pool.recycle(player_index, objects["endpoint_sprite"]) objects["endpoint_sprite"] = nil end
+            if objects["endpoint_ring"] then render_pool.recycle(player_index, objects["endpoint_ring"]) objects["endpoint_ring"] = nil end
+            if objects["endpoint_circ"] then render_pool.recycle(player_index, objects["endpoint_circ"]) objects["endpoint_circ"] = nil end
+            item.endpoint_attached = nil
+        end
+
+        if not item.endpoint_attached then
+            item.endpoint_attached = true
+            item.last_endpoint_pos = { x = pos.x, y = pos.y }
+            item.last_endpoint_spec = spec
+            if spec.sprite then
         local sp = render_pool.lease_sprite{
             sprite = spec.sprite,
             target = pos,
@@ -441,6 +473,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         }
         if circ then objects["endpoint_circ"] = circ end
     end
+        end
     end
 
     item.render_objects = objects
@@ -458,6 +491,8 @@ function viewport_bvh.detach_static_render(player_index, item)
         item.trail_attached = nil
         item.endpoint_attached = nil
         item.trail_dots_count = nil
+        item.last_endpoint_pos = nil
+        item.last_endpoint_spec = nil
     end
 end
 

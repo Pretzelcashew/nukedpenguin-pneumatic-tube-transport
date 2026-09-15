@@ -70,3 +70,11 @@
 3. **Spatiotemporal Probe Sweep Gating (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Integrated leaf rect obstacle checks into `on_muzzle_want_emission` for segment 1 and `handle_projector_scope_arrival` for segments 2+, clamping forward probe flights to the collision face and suppressing downstream leaf creation.
 4. **On-Axis Reticle Corridor Truncation (`scripts/flow/flow-kinetic.lua`):** Created `flow_kinetic.truncate_reticle` to clamp live corridors and decaying wakes squarely at collision faces, updating terminal segment bounds, conditionally attaching obstacle hazard rings on live emitters, and recycling downstream leaf visuals via `viewport_bvh.on_segment_removed`.
 5. **Logarithmic Reactive Interception (`scripts/flow/flow-kinetic.lua`):** Wired entity placement, defensive gate transitions, and character steps to query `motion_bvh` in $O(\log N)$ time, reclassified physical characters and vehicles as blocking obstacles in `IGNORABLE_TYPES`, and dispatched instant cardinal truncation.
+
+
+### Revision: Pass Player Index to Viewport Render Pool Recycling
+**Date:** 2026-09-15 16:30 EDT
+**Context:** Intra-leaf trail dots and endpoint visual indicators were being orphaned in Factorio's native rendering engine upon corridor truncation because render_pool.recycle was invoked without the required player_index parameter, silently failing to return handles to the player free list.
+**Key Changes:**
+1. **Trail Dot Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Passed `player_index` into `render_pool.recycle(player_index, objects[i])` during intra-leaf dot pruning, ensuring culled dots beyond the obstacle face properly hide and return to the player render pool.
+2. **Endpoint Indicator Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Added `player_index` to all `render_pool.recycle` invocations for `endpoint_sprite`, `endpoint_ring`, and `endpoint_circ`, preventing orphaned endpoint indicators during corridor truncation and position relocation.

@@ -942,6 +942,7 @@ function capsule_ballistics.handle_anti_reticle_arrival(flight_id, flight, curre
             traj_tree:remove_segment(owner_id, seg_key)
             trajectory_bvh.refresh_active_renders()
         end
+        viewport_bvh.on_segment_removed(s_idx, owner_id, seg_key)
     end
 
     local sp = flight.start_pos
@@ -992,6 +993,7 @@ function capsule_ballistics.handle_anti_reticle_arrival(flight_id, flight, curre
         if storage.projector_reticles then
             storage.projector_reticles[reticle_id] = nil
         end
+        viewport_bvh.on_segment_removed(s_idx, owner_id)
     end
 end
 

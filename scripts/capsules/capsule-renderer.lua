@@ -908,6 +908,16 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                     end
                 end
 
+                if dist_cleared >= d_end and item.render_objects then
+                    for idx = 1, (d_end - d_start) do
+                        local obj = item.render_objects[idx]
+                        if obj then
+                            render_pool.recycle(p_idx, obj)
+                            item.render_objects[idx] = nil
+                        end
+                    end
+                end
+
                 if dist_cleared >= (reticle.total_dist or 0) and item.render_objects then
                     for idx, obj in pairs(item.render_objects) do
                         if obj then
@@ -994,8 +1004,15 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                             local q_lvl = flight_rec.q_level or 0
                                             local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
 
+                                            local min_allowed = 0
+                                            if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+                                                local el_ret = math.max(0, current_tick - reticle.retreat_tick)
+                                                min_allowed = math.floor(el_ret / tpt)
+                                            end
+
                                             for step_i = cur_dots + 1, dist_in_leaf do
                                                 local global_d = d_start + step_i
+                                                if global_d > min_allowed then
                                                 local dot_p = { x = sp.x + dx * step_i, y = sp.y + dy * step_i }
                                                 local dot_obj
                                                 if global_d % 5 == 0 then
@@ -1018,7 +1035,8 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                                     }
                                                 end
                                                 if dot_obj then
-                                                    item.render_objects[#item.render_objects + 1] = dot_obj
+                                                    item.render_objects[step_i] = dot_obj
+                                                end
                                                 end
                                             end
                                             item.trail_dots_count = dist_in_leaf

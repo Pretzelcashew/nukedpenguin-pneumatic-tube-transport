@@ -337,6 +337,14 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
     item.render_objects = item.render_objects or {}
     local objects = item.render_objects
 
+    local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
+    local min_allowed = -1
+    if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+        local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
+        local elapsed_retreat = math.max(0, game.tick - reticle.retreat_tick)
+        min_allowed = math.floor(elapsed_retreat / tpt)
+    end
+
     if leaf.has_trail and not item.trail_attached then
         item.trail_attached = true
         local cur_d = item.trail_dots_count or 0
@@ -359,6 +367,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         if sp and (dx ~= 0 or dy ~= 0) then
             for i = cur_d + 1, count do
                 local d = d_base + i
+                if d > min_allowed then
                 local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
                 if d % 5 == 0 then
                     local prom = render_pool.lease_circle{
@@ -369,7 +378,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
                         surface = surface,
                         players = { player }
                     }
-                    if prom then objects[#objects + 1] = prom end
+                    if prom then objects[i] = prom end
                 else
                     local min_dot = render_pool.lease_circle{
                         color = MINOR_DOT_COLOR,
@@ -379,16 +388,19 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
                         surface = surface,
                         players = { player }
                     }
-                    if min_dot then objects[#objects + 1] = min_dot end
+                    if min_dot then objects[i] = min_dot end
+                end
                 end
             end
+            item.trail_dots_count = count
         end
     end
 
     local spec = leaf.static_render_spec
     local pos = leaf.static_pos
 
-    if spec and pos and not item.endpoint_attached then
+    local total_d = (reticle and reticle.total_dist) or (leaf.d_end or 50)
+    if spec and pos and not item.endpoint_attached and min_allowed < total_d then
         item.endpoint_attached = true
         if spec.sprite then
         local sp = render_pool.lease_sprite{
@@ -401,7 +413,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             render_layer = "entity-info-icon-above",
             players = { player }
         }
-        if sp then objects[#objects + 1] = sp end
+        if sp then objects["endpoint_sprite"] = sp end
     end
 
     if spec.has_ring or spec.ring_radius then
@@ -414,7 +426,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             surface = surface,
             players = { player }
         }
-        if ring then objects[#objects + 1] = ring end
+        if ring then objects["endpoint_ring"] = ring end
     end
 
     if not spec.sprite or spec.radius then
@@ -427,13 +439,11 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             surface = surface,
             players = { player }
         }
-        if circ then objects[#objects + 1] = circ end
+        if circ then objects["endpoint_circ"] = circ end
     end
     end
 
-    if #objects > 0 then
-        item.render_objects = objects
-    end
+    item.render_objects = objects
 end
 
 --- Detaches and recycles static render objects for a leaf in a player's visible set

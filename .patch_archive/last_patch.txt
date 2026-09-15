@@ -1,0 +1,214 @@
+FILE: scripts/flow/flow-kinetic.lua
+<<< FIND
+    if reticle.projector_unit and storage.projector_scope then
+        storage.projector_scope[reticle.projector_unit] = {
+            reticle_id = reticle_id,
+            status = "endpoint",
+            endpoint_pos = { x = collision_pos.x, y = collision_pos.y },
+            surface_name = reticle.surface_name,
+            seg_key = reticle.seg_key
+        }
+    end
+end
+
+function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
+=== REPLACE ===
+    if reticle.projector_unit and storage.projector_scope then
+        storage.projector_scope[reticle.projector_unit] = {
+            reticle_id = reticle_id,
+            status = "endpoint",
+            endpoint_pos = { x = collision_pos.x, y = collision_pos.y },
+            surface_name = reticle.surface_name,
+            seg_key = reticle.seg_key
+        }
+    end
+end
+
+function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity, flight)
+    if not (reticle and obst_dist and obst_dist > 0) then return end
+    flight = flight or (reticle.head_flight_id and timed_motion.get_flight(reticle.head_flight_id))
+    if not flight then return end
+
+    local r_dx = reticle.dir.x
+    local r_dy = reticle.dir.y
+    local r_sp = reticle.start_pos
+    local s_idx = reticle.surface_index or 1
+
+    -- Clamp reticle maximum reach and target endpoint
+    reticle.total_dist = obst_dist
+    reticle.max_range = obst_dist
+    local collision_pos = {
+        x = r_sp.x + r_dx * obst_dist,
+        y = r_sp.y + r_dy * obst_dist
+    }
+    reticle.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
+    reticle.endpoint_pos = { x = collision_pos.x, y = collision_pos.y }
+
+    local flight_sp = flight.start_pos
+    local flight_tp = flight.terminal_pos
+    local flight_start_dist = math.abs(flight_sp.x - r_sp.x) + math.abs(flight_sp.y - r_sp.y)
+    local flight_end_dist = math.abs(flight_tp.x - r_sp.x) + math.abs(flight_tp.y - r_sp.y)
+
+    if obst_dist <= (flight_end_dist + 0.001) then
+        -- Obstacle lies within current flight segment: clamp this segment's target & arrival
+        local seg_dist = obst_dist - flight_start_dist
+        flight.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
+        flight.total_dist = seg_dist
+        flight.remaining_distance = seg_dist
+
+        local tpt = flight.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+        local new_flight_ticks = math.max(1, math.ceil(seg_dist * tpt))
+        local current_tick = game.tick
+        local new_arrival_tick = flight.start_tick + new_flight_ticks
+        if new_arrival_tick <= current_tick then
+            new_arrival_tick = current_tick + 1
+        end
+
+        flight.flight_ticks = new_flight_ticks
+        flight.arrival_tick = new_arrival_tick
+
+        -- Update in active flights store
+        local flights_store = storage.timed_flights or storage.projector_flights
+        if flights_store and flight.owner_id and flights_store[flight.owner_id] then
+            local flights = flights_store[flight.owner_id]
+            for f = 1, #flights do
+                if flights[f].id == flight.id or flights[f].capsule_id == flight.id then
+                    flights[f].arrival_tick = new_arrival_tick
+                    flights[f].duration = new_flight_ticks
+                    break
+                end
+            end
+        end
+
+        -- Re-balance binary arrival heap
+        local heap = timed_motion.get_arrival_heap()
+        if heap then
+            heap:remove(flight.id)
+            heap:push(flight.id, new_arrival_tick, flight.id)
+        end
+
+        -- Update leaf geometry in motion and trajectory BVH
+        local seg_key = string.format("%d,%d:%d", r_dx, r_dy, flight.seg_idx or 1)
+        local motion_tree = timed_motion.get_motion_tree(s_idx)
+        if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle.id] then
+            local owner_rec = motion_tree.trajectories[reticle.id]
+            local leaf = owner_rec and owner_rec.segments and owner_rec.segments[seg_key]
+            if leaf then
+                leaf.d_end = obst_dist
+                leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
+                leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
+                leaf.max_x = math.max(leaf.start_pos.x, collision_pos.x) + 0.45
+                leaf.min_y = math.min(leaf.start_pos.y, collision_pos.y) - 0.45
+                leaf.max_y = math.max(leaf.start_pos.y, collision_pos.y) + 0.45
+            end
+        end
+        local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+        if traj_tree and traj_tree.trajectories and traj_tree.trajectories[reticle.id] then
+            local owner_rec = traj_tree.trajectories[reticle.id]
+            local leaf = owner_rec and owner_rec.segments and owner_rec.segments[seg_key]
+            if leaf then
+                leaf.d_end = obst_dist
+                leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
+                leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
+                leaf.max_x = math.max(leaf.start_pos.x, collision_pos.x) + 0.45
+                leaf.min_y = math.min(leaf.start_pos.y, collision_pos.y) - 0.45
+                leaf.max_y = math.max(leaf.start_pos.y, collision_pos.y) + 0.45
+            end
+        end
+    else
+        -- Obstacle lies in a downstream segment: clamp flight's total remaining distance
+        flight.remaining_distance = obst_dist - flight_start_dist
+    end
+
+    -- Prune any pre-existing segments beyond obst_dist
+    local target_seg_idx = math.max(1, math.floor(obst_dist / 16) + 1)
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle.id] then
+        local owner_rec = motion_tree.trajectories[reticle.id]
+        if owner_rec.segments then
+            local to_remove = {}
+            for k, leaf in pairs(owner_rec.segments) do
+                local s_num = leaf.seg_idx or tonumber(k:match(":(%d+)$")) or 1
+                if s_num > target_seg_idx then
+                    to_remove[#to_remove + 1] = k
+                end
+            end
+            for i = 1, #to_remove do
+                local r_key = to_remove[i]
+                motion_tree:remove_segment(reticle.id, r_key)
+                if traj_tree then
+                    traj_tree:remove_segment(reticle.id, r_key)
+                end
+                viewport_bvh.on_segment_removed(s_idx, reticle.id, r_key)
+            end
+        end
+    end
+end
+
+function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
+>>>
+FILE: scripts/flow/flow-kinetic.lua
+<<< FIND
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < (ret.total_dist or ret.max_range or 50) then
+                                    flow_kinetic.truncate_reticle(ret, o_dist, entity)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+=== REPLACE ===
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < (ret.total_dist or ret.max_range or 50) then
+                                    local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+                                    local is_growing = (ret.status == "growing" and cur_flight ~= nil)
+                                    local cur_head_dist = ret.total_dist or ret.max_range or 50
+
+                                    if is_growing then
+                                        local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+                                        cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
+                                    end
+
+                                    if not is_growing or o_dist <= (cur_head_dist + 0.05) then
+                                        flow_kinetic.truncate_reticle(ret, o_dist, entity)
+                                    else
+                                        flow_kinetic.update_reticle_horizon(ret, o_dist, entity, cur_flight)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+>>>
+FILE: scripts/capsules/capsule-ballistics.lua
+<<< FIND
+        timed_motion.remove_flight(flight_id, owner_id)
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if reticle then
+            if reticle.status ~= "retreating" then
+                reticle.status = "stationary"
+            end
+            reticle.head_flight_id = nil
+            reticle.terminal_pos = { x = tp.x, y = tp.y }
+            reticle.endpoint_pos = { x = tp.x, y = tp.y }
+            reticle.seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
+=== REPLACE ===
+        timed_motion.remove_flight(flight_id, owner_id)
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if reticle then
+            if reticle.status ~= "retreating" then
+                reticle.status = "stationary"
+            end
+            reticle.head_flight_id = nil
+            reticle.terminal_pos = { x = tp.x, y = tp.y }
+            reticle.endpoint_pos = { x = tp.x, y = tp.y }
+            reticle.total_dist = math.abs(tp.x - reticle.start_pos.x) + math.abs(tp.y - reticle.start_pos.y)
+            reticle.seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
+>>>

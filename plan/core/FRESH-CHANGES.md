@@ -78,3 +78,13 @@
 **Key Changes:**
 1. **Trail Dot Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Passed `player_index` into `render_pool.recycle(player_index, objects[i])` during intra-leaf dot pruning, ensuring culled dots beyond the obstacle face properly hide and return to the player render pool.
 2. **Endpoint Indicator Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Added `player_index` to all `render_pool.recycle` invocations for `endpoint_sprite`, `endpoint_ring`, and `endpoint_circ`, preventing orphaned endpoint indicators during corridor truncation and position relocation.
+
+
+### Revision: Dynamic Horizon Rescheduling and Forward Reticle Snap Suppression
+**Date:** 2026-09-15 19:10 EDT
+**Context:** Placing an entity or moving an obstacle into an advancing projector corridor was previously executing an unconditional `truncate_reticle` pass. While correct for cuts behind or directly at the advancing head, obstacles placed forward along the probe's remaining path caused the visual reticle to instantly teleport forward to the collision face ahead of schedule. This session decoupled forward obstacle detection from backward truncation, preserving backward cutoffs while updating flight records and rescheduling the binary arrival heap for smooth in-flight termination.
+**Key Changes:**
+1. **Real-Time Head Interpolation (`scripts/flow/flow-kinetic.lua`):** Integrated `timed_motion.get_interpolated_position` into `flow_kinetic.handle_obstacle_changed` to compute the advancing probe head's exact real-time cardinal distance (`cur_head_dist`) from the launch muzzle.
+2. **Directional Interception Partitioning (`scripts/flow/flow-kinetic.lua`):** Gated `flow_kinetic.truncate_reticle` strictly to obstacles appearing at or behind the current head (`o_dist <= cur_head_dist + 0.05`), ensuring corridors snap backward immediately on upstream cuts.
+3. **Dynamic Flight Horizon Rescheduling (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.update_reticle_horizon` for forward obstacles (`o_dist > cur_head_dist`), clamping `terminal_pos`, resizing active BVH leaf bounds in-place, recalculating arrival ticks at constant velocity, and rebalancing the binary arrival heap without visual pop.
+4. **Scope Arrival Total Distance Synchronization (`scripts/capsules/capsule-ballistics.lua`):** Synchronized `reticle.total_dist` to the exact endpoint distance upon terminal arrival in `handle_projector_scope_arrival`.

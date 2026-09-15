@@ -912,6 +912,7 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             reticle.head_flight_id = nil
             reticle.terminal_pos = { x = tp.x, y = tp.y }
             reticle.endpoint_pos = { x = tp.x, y = tp.y }
+            reticle.total_dist = math.abs(tp.x - reticle.start_pos.x) + math.abs(tp.y - reticle.start_pos.y)
             reticle.seg_key = string.format("%d,%d:%d", (flight.dir and flight.dir.x) or flight.dx or 0, (flight.dir and flight.dir.y) or flight.dy or 0, flight.seg_idx or 1)
             if reticle.projector_unit and storage.projector_scope then
                 storage.projector_scope[reticle.projector_unit] = {

@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-15 15:44:58  
-**Scope:** 22 directories, 110 files  
+**Last Generated:** 2026-09-15 18:52:58  
+**Scope:** 22 directories, 112 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -134,6 +134,8 @@ nukedpenguin-pneumatic-tube-transport/
 ├── info.json
 ├── LICENSE
 ├── patch.txt
+├── require_graph.md
+├── require_hierarchy.py
 ├── settings.lua
 ├── thumbnail.png
 └── update_file_sizes.py

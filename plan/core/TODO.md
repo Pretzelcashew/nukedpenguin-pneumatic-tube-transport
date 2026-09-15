@@ -139,6 +139,10 @@ crafted using 75 superconductor 2 LDS and 25 scrap. dont forget all tech and loc
 
 ~remove the kinetic capule particle and sound sfx for the second time
 
+~docs: make a undo in the patcher, it will ask me which file to undo, and give me number options, and i can type for example 1,2,5 to undo the last patcher action by doing a reverse find and replace for each diff command in the last patch in memory (a backup version of patch.txt in case i had cleared or overwrote the patch.txt file). 0 means none, -1 means all, and numbers separated by commas pick the listed files from the list to reverse once with the last patch archive entry that had been run. (appgregate_patcher.py)
+
+~docs: make a scanner for my factorio mod code base, to build a require() hirearchy, it might do good to make it run a bit asynchronously in case it takes a while so its not freezing up the command prompt (require_hirearchy.py)
+
 --------------------------------------------
 
 make it so capsule crashes with kinetic flows cause damage (look like the player sometimes recieves damage, but only if their collider was close); i think this is a result of the kinetic beam sometimes stopping before the occlusion port, so it looks both visually far and too far to damage when it does crash.
@@ -167,6 +171,5 @@ phase 6: address how to reviatialize the kinetic flow beam generation to use a s
 phase 7: ensure we cache lua render objects rather than creating and destroying them constantly (but so we can simply move them where applicable and not see them when not needed), i hope this is possible lol
 
 sort these in a more logical way of completion, and add a clause at the end about expecting zero brute force processes, since we're obviously going for efficiency here. 
-
 
 

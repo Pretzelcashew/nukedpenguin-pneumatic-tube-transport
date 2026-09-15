@@ -3,6 +3,37 @@ import os
 from pathlib import Path
 import re
 import sys
+from datetime import datetime
+
+# ==============================================================================
+# GLOBAL IN-MEMORY PATCH ARCHIVE & LOGGING
+# ==============================================================================
+
+LAST_PATCH_DATA: dict = {
+    "text": None,
+    "patches": None,
+    "source": None,
+    "timestamp": None,
+}
+
+
+def get_archive_dir(base_dir: Path) -> Path:
+    archive_dir = base_dir / ".patch_archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    return archive_dir
+
+
+def append_patch_log(base_dir: Path, message: str):
+    """Writes a timestamped record to the patcher's dedicated audit log."""
+    try:
+        archive_dir = get_archive_dir(base_dir)
+        log_file = archive_dir / "patch_history.log"
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"[{now_str}] {message}\n")
+    except Exception:
+        pass
+
 
 # ==============================================================================
 # AGGREGATOR MODULE
@@ -70,7 +101,7 @@ def run_aggregator(start_dir: Path):
     seen_paths = set()
 
     for root, dirs, files in os.walk(start_dir):
-        dirs[:] = [d for d in dirs if d.lower() != ".git"]
+        dirs[:] = [d for d in dirs if d.lower() != ".git" and d.lower() != ".patch_archive"]
 
         for file_name in files:
             for pat in patterns:
@@ -79,7 +110,6 @@ def run_aggregator(start_dir: Path):
                     if (
                         full_path == script_path
                         or full_path.name.startswith("aggregate")
-                        or full_path.name.endswith(".bak")
                     ):
                         continue
                     if full_path not in seen_paths:
@@ -97,7 +127,7 @@ def run_aggregator(start_dir: Path):
 
     output_path = get_next_aggregate_filepath(start_dir)
     mode_desc = "with line numbers" if include_line_numbers else "clean raw code"
-    print(f"\nWriting {len(matched_files)} files ({mode_desc}) to {output_path.name} and establishing baseline backups...")
+    print(f"\nWriting {len(matched_files)} files ({mode_desc}) to {output_path.name}...")
 
     files_written = 0
     with open(output_path, "w", encoding="utf-8") as out:
@@ -107,14 +137,6 @@ def run_aggregator(start_dir: Path):
             lines = read_file_lines(file_path)
             if lines is None:
                 continue
-
-            # Form baseline .bak at aggregation time so session start is preserved
-            bak_path = file_path.with_name(file_path.name + ".bak")
-            try:
-                with open(bak_path, "w", encoding="utf-8") as bak:
-                    bak.writelines(lines)
-            except Exception as e:
-                print(f"Warning: Could not create baseline backup for {file_path.name}: {e}")
 
             out.write("\n\n")
             out.write("=" * 80 + "\n")
@@ -207,7 +229,6 @@ def parse_line_operations(body_text: str) -> list[PatchOperation]:
     for match in find_replace_pattern.finditer(body_text):
         raw_matches.append((match.start(), "FIND_REPLACE", match))
 
-    # Sort matches by appearance in the text
     raw_matches.sort(key=lambda x: x[0])
 
     ops = []
@@ -372,7 +393,7 @@ def find_occurrences(file_lines: list[str], find_lines: list[str]) -> list[int]:
     if matches:
         return matches
 
-    # Pass 2: Trailing whitespace tolerance (ignores trailing spaces on lines)
+    # Pass 2: Trailing whitespace tolerance
     target = [l.rstrip() for l in find_lines]
     source = [l.rstrip() for l in file_lines]
     matches = [i for i in range(len(source) - m + 1) if source[i : i + m] == target]
@@ -388,15 +409,6 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
     if orig_lines is None:
         print(f"\nError: Could not read file encoding: {target_path}")
         return False
-
-    # NEVER overwrite an existing baseline backup
-    bak_path = target_path.with_name(target_path.name + ".bak")
-    if not bak_path.exists():
-        try:
-            with open(bak_path, "w", encoding="utf-8") as bak:
-                bak.writelines(orig_lines)
-        except Exception as e:
-            print(f"Warning: Could not create backup file: {e}")
 
     # Detect file newline convention
     has_crlf = any("\r\n" in l for l in orig_lines[:50])
@@ -422,7 +434,7 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
                 end_line = occurrences[0] + len(op.find_lines)
                 clean_lines = [l.rstrip("\r\n") + newline for l in op.lines]
                 resolved_ops.append(
-                    PatchOperation("REPLACE", start_line, end_line, clean_lines)
+                    PatchOperation("REPLACE", start_line, end_line, clean_lines, find_lines=op.find_lines)
                 )
 
             else:
@@ -445,7 +457,7 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
                         start_line = idx + 1
                         end_line = idx + len(op.find_lines)
                         resolved_ops.append(
-                            PatchOperation("REPLACE", start_line, end_line, clean_lines)
+                            PatchOperation("REPLACE", start_line, end_line, clean_lines, find_lines=op.find_lines)
                         )
                 else:
                     print(f"Aborted ambiguous operation in {target_path.name}.")
@@ -453,7 +465,7 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
         else:
             clean_lines = [l.rstrip("\r\n") + newline for l in op.lines]
             resolved_ops.append(
-                PatchOperation(op.op_type, op.start_line, op.end_line, clean_lines)
+                PatchOperation(op.op_type, op.start_line, op.end_line, clean_lines, find_lines=op.find_lines)
             )
 
     # Sort descending so modifications at the bottom don't alter earlier line numbers
@@ -478,6 +490,8 @@ def apply_line_ops(target_path: Path, ops: list[PatchOperation]) -> bool:
             if start_idx > len(modified_lines):
                 print(f"Warning: Line {op.start_line} is out of range for {target_path.name}")
                 continue
+            # Store original lines in the operation object for reversible in-memory undo
+            op.find_lines = modified_lines[start_idx:end_idx]
             modified_lines[start_idx:end_idx] = op.lines
 
         elif op.op_type == "INSERT_AFTER":
@@ -500,14 +514,12 @@ def apply_patch(patch: FilePatch) -> bool:
             print("SKIPPED (File does not exist)")
             return True
         try:
-            bak_path = patch.target_path.with_name(patch.target_path.name + ".bak")
-            if not bak_path.exists():
-                orig_lines = read_file_lines(patch.target_path)
-                if orig_lines:
-                    with open(bak_path, "w", encoding="utf-8") as bak:
-                        bak.writelines(orig_lines)
+            # Capture file content before deleting so undo can cleanly recreate it
+            orig_lines = read_file_lines(patch.target_path)
+            if orig_lines:
+                patch.create_content = orig_lines
             patch.target_path.unlink()
-            print("DELETED (Backup preserved)")
+            print("DELETED")
             return True
         except Exception as e:
             print(f"FAILED ({e})")
@@ -558,64 +570,322 @@ def apply_patch(patch: FilePatch) -> bool:
     return False
 
 
-def run_restore(start_dir: Path):
-    print("\n--- RESTORE FROM BACKUPS (.bak) ---")
-    bak_files = [b for b in start_dir.rglob("*.bak") if ".git" not in b.parts]
+# ==============================================================================
+# ARCHIVE & UNDO MODULE
+# ==============================================================================
 
-    if not bak_files:
-        print("No .bak backup files found.")
-        return
 
-    print(f"Found {len(bak_files)} backup file(s):")
-    for b in bak_files:
-        target = b.parent / b.name[:-4]
-        print(f"  • {b.name} -> {target.name}")
+def save_patch_archive(
+    base_dir: Path,
+    patch_text: str,
+    patches: list[FilePatch],
+    source_name: str = "patch.txt",
+):
+    """Saves the executed patch to memory and the dedicated .patch_archive directory."""
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    confirm = input("\nRestore all files from baseline backups? (y/n): ").strip().lower()
-    if confirm != "y":
-        print("Aborted.")
-        return
+    LAST_PATCH_DATA["text"] = patch_text
+    LAST_PATCH_DATA["patches"] = patches
+    LAST_PATCH_DATA["source"] = source_name
+    LAST_PATCH_DATA["timestamp"] = now_str
 
-    restored = 0
-    for b in bak_files:
-        target = b.parent / b.name[:-4]
+    try:
+        archive_dir = get_archive_dir(base_dir)
+
+        archive_file = archive_dir / f"patch_{now_str}.txt"
+        with open(archive_file, "w", encoding="utf-8") as f:
+            f.write(patch_text)
+
+        last_file = archive_dir / "last_patch.txt"
+        with open(last_file, "w", encoding="utf-8") as f:
+            f.write(patch_text)
+
+        # Log action to dedicated audit log
+        file_summaries = [f"{p.action}: {p.target_path.name}" for p in patches]
+        append_patch_log(
+            base_dir,
+            f"APPLIED {source_name} ({len(patches)} file(s)): {', '.join(file_summaries)}",
+        )
+    except Exception as e:
+        print(f"Warning: Could not save patch archive to disk: {e}")
+
+
+def load_last_patch_archive(
+    base_dir: Path,
+) -> tuple[str | None, list[FilePatch] | None, str | None]:
+    """Loads the last applied patch from memory, falling back to disk archive if cleared or restarted."""
+    # 1. In-memory store
+    if LAST_PATCH_DATA.get("patches"):
+        return (
+            LAST_PATCH_DATA["text"],
+            LAST_PATCH_DATA["patches"],
+            LAST_PATCH_DATA.get("source") or "memory",
+        )
+
+    # 2. Disk archive directory (.patch_archive)
+    archive_dir = base_dir / ".patch_archive"
+    if archive_dir.exists():
+        entries = sorted(
+            [f for f in archive_dir.glob("patch_*.txt") if f.is_file()],
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        target_file = (
+            entries[0]
+            if entries
+            else (archive_dir / "last_patch.txt" if (archive_dir / "last_patch.txt").exists() else None)
+        )
+        if target_file and target_file.exists():
+            try:
+                with open(target_file, "r", encoding="utf-8") as f:
+                    text = f.read()
+                patches = parse_patch_file(text, base_dir=base_dir)
+                if patches:
+                    LAST_PATCH_DATA["text"] = text
+                    LAST_PATCH_DATA["patches"] = patches
+                    LAST_PATCH_DATA["source"] = target_file.name
+                    return text, patches, target_file.name
+            except Exception as e:
+                print(f"Error loading archive {target_file.name}: {e}")
+
+    # 3. Check for standalone patch_archive*.txt in root directory
+    root_archives = sorted(
+        [f for f in base_dir.glob("*patch_archive*.txt") if f.is_file() and ".git" not in f.parts],
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    if root_archives:
         try:
-            lines = read_file_lines(b)
-            if lines is not None:
-                with open(target, "w", encoding="utf-8") as f:
-                    f.writelines(lines)
-                restored += 1
-        except Exception as e:
-            print(f"Error restoring {target.name}: {e}")
+            with open(root_archives[0], "r", encoding="utf-8") as f:
+                text = f.read()
+            patches = parse_patch_file(text, base_dir=base_dir)
+            if patches:
+                LAST_PATCH_DATA["text"] = text
+                LAST_PATCH_DATA["patches"] = patches
+                LAST_PATCH_DATA["source"] = root_archives[0].name
+                return text, patches, root_archives[0].name
+        except Exception:
+            pass
 
-    print(f"\nDone. Successfully restored {restored}/{len(bak_files)} file(s) to baseline.")
+    return None, None, None
+
+
+def create_reverse_ops(ops: list[PatchOperation]) -> list[PatchOperation]:
+    """Inverts diff operations so each operation performs a reverse find-and-replace."""
+    rev_ops: list[PatchOperation] = []
+
+    for op in reversed(ops):
+        if op.op_type == "FIND_REPLACE":
+            rev_ops.append(
+                PatchOperation("FIND_REPLACE", lines=op.find_lines, find_lines=op.lines)
+            )
+        elif op.op_type in ("INSERT_AFTER", "INSERT_BEFORE"):
+            rev_ops.append(
+                PatchOperation("FIND_REPLACE", lines=[], find_lines=op.lines)
+            )
+        elif op.op_type == "REPLACE":
+            if op.find_lines:
+                rev_ops.append(
+                    PatchOperation("FIND_REPLACE", lines=op.find_lines, find_lines=op.lines)
+                )
+            else:
+                print(f"Warning: Line-based replace without original lines cannot be reversed.")
+        elif op.op_type == "DELETE":
+            if op.find_lines:
+                rev_ops.append(
+                    PatchOperation("FIND_REPLACE", lines=op.find_lines, find_lines=[])
+                )
+
+    return rev_ops
+
+
+def undo_patch(patch: FilePatch) -> bool:
+    """Reverses the action of a single FilePatch entry."""
+    if patch.action == "CREATE":
+        if not patch.target_path.exists():
+            print("SKIPPED (File does not exist)")
+            return True
+        try:
+            patch.target_path.unlink()
+            print("DELETED (Created file removed)")
+            return True
+        except Exception as e:
+            print(f"FAILED ({e})")
+            return False
+
+    elif patch.action == "DELETE":
+        if patch.create_content:
+            try:
+                patch.target_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(patch.target_path, "w", encoding="utf-8") as f:
+                    f.writelines(patch.create_content)
+                print("RESTORED DELETED FILE")
+                return True
+            except Exception as e:
+                print(f"FAILED ({e})")
+                return False
+        print("FAILED (Original content was not captured at patch time)")
+        return False
+
+    elif patch.action == "MOVE":
+        if not patch.dest_path or not patch.dest_path.exists():
+            print(f"FAILED (Destination does not exist: {patch.dest_path})")
+            return False
+        try:
+            if patch.ops:
+                rev_ops = create_reverse_ops(patch.ops)
+                if not apply_line_ops(patch.dest_path, rev_ops):
+                    print("FAILED (Reverse line patch failed on destination)")
+                    return False
+            patch.target_path.parent.mkdir(parents=True, exist_ok=True)
+            patch.dest_path.rename(patch.target_path)
+            print("MOVED BACK")
+            return True
+        except Exception as e:
+            print(f"FAILED ({e})")
+            return False
+
+    elif patch.action == "MODIFY":
+        if not patch.target_path.exists():
+            print(f"FAILED (Target file does not exist: {patch.target_path.name})")
+            return False
+        rev_ops = create_reverse_ops(patch.ops)
+        if not rev_ops:
+            print("FAILED (No reversible operations found)")
+            return False
+        if apply_line_ops(patch.target_path, rev_ops):
+            print("OK (Reversed)")
+            return True
+        else:
+            print("FAILED")
+            return False
+
+    return False
+
+
+def run_undo(start_dir: Path):
+    """Interactive selective undo based on the last patch archive entry."""
+    print("\n--- UNDO LAST PATCH (REVERSE FIND & REPLACE) ---")
+    _, patches, source_name = load_last_patch_archive(start_dir)
+
+    if not patches:
+        print("No patch history found in memory or archives to undo.")
+        return
+
+    print(f"Last patch archive: {source_name} ({len(patches)} file(s) affected)\n")
+    print("Files available to undo:")
+    for idx, p in enumerate(patches, start=1):
+        if p.action == "CREATE":
+            desc = f"[CREATE] {p.target_path.name}"
+        elif p.action == "DELETE":
+            desc = f"[DELETE] {p.target_path.name}"
+        elif p.action == "MOVE":
+            dest_name = p.dest_path.name if p.dest_path else "?"
+            desc = f"[MOVE]   {p.target_path.name} -> {dest_name}"
+        elif p.action == "MODIFY":
+            num_find = sum(1 for op in p.ops if op.op_type == "FIND_REPLACE")
+            num_line = len(p.ops) - num_find
+            details = []
+            if num_find:
+                details.append(f"{num_find} find-replace")
+            if num_line:
+                details.append(f"{num_line} line-based")
+            desc = f"[MODIFY] {p.target_path.name} ({', '.join(details)} op(s))"
+        print(f"  [{idx}] {desc}")
+
+    prompt_msg = (
+        "\nEnter file number(s) to undo (e.g. 1,2,5 | -1 for all | 0 to cancel) [default: 0]: "
+    )
+    user_choice = input(prompt_msg).strip()
+
+    if not user_choice or user_choice == "0":
+        print("Undo cancelled.")
+        return
+
+    selected_indices: list[int] = []
+
+    if user_choice == "-1":
+        selected_indices = list(range(len(patches)))
+    else:
+        tokens = [t.strip() for t in user_choice.split(",") if t.strip()]
+        for tok in tokens:
+            try:
+                num = int(tok)
+                if num == -1:
+                    selected_indices = list(range(len(patches)))
+                    break
+                elif num == 0:
+                    print("Undo cancelled.")
+                    return
+                elif 1 <= num <= len(patches):
+                    idx = num - 1
+                    if idx not in selected_indices:
+                        selected_indices.append(idx)
+                else:
+                    print(f"Warning: Option '{num}' is out of range (1-{len(patches)}). Ignored.")
+            except ValueError:
+                print(f"Warning: Invalid token '{tok}'. Ignored.")
+
+    if not selected_indices:
+        print("No valid files selected for undo.")
+        return
+
+    print(f"\nReversing patch operations on {len(selected_indices)} file(s)...")
+    undone_count = 0
+    undone_names = []
+    for idx in selected_indices:
+        p = patches[idx]
+        desc = p.target_path.name if p.action != "MOVE" else f"{p.target_path.name} <- {p.dest_path.name if p.dest_path else '?'}"
+        print(f"Reversing: {desc} ... ", end="")
+        if undo_patch(p):
+            undone_count += 1
+            undone_names.append(p.target_path.name)
+
+    # Log undo action
+    append_patch_log(
+        start_dir,
+        f"UNDONE {undone_count}/{len(selected_indices)} file(s) from {source_name}: {', '.join(undone_names)}",
+    )
+
+    print(f"\nCompleted undo. Successfully reversed {undone_count}/{len(selected_indices)} file(s).")
+
+
+# ==============================================================================
+# CLEANUP MODULE
+# ==============================================================================
 
 
 def run_cleanup(start_dir: Path):
     print("\n--- CLEANUP WORKSPACE ---")
 
+    # Clean only aggregate files created by this tool
     agg_files = [
         f for f in start_dir.rglob("aggregate*.txt")
-        if ".git" not in f.parts
+        if ".git" not in f.parts and ".patch_archive" not in f.parts
     ]
 
-    bak_files = [
-        b for b in start_dir.rglob("*.bak")
-        if ".git" not in b.parts
-    ]
+    # Clean only patch archives created by this tool
+    archive_dir = start_dir / ".patch_archive"
+    archive_files = []
+    if archive_dir.exists():
+        archive_files.extend([f for f in archive_dir.rglob("*") if f.is_file()])
+    archive_files.extend(
+        [f for f in start_dir.glob("*patch_archive*.txt") if f.is_file() and ".git" not in f.parts]
+    )
+    archive_files = list(set(archive_files))
 
     patch_file = start_dir / "patch.txt"
-    has_patch = patch_file.exists()
+    has_patch = patch_file.exists() and patch_file.stat().st_size > 0
 
-    if not agg_files and not bak_files and not has_patch:
+    if not agg_files and not archive_files and not has_patch:
         print("Nothing to clean up.")
         return
 
-    print("Items found to clean:")
+    print("Items found to clean (safe patcher files only; your backups are never touched):")
     if agg_files:
         print(f"  • {len(agg_files)} aggregate file(s) to delete")
-    if bak_files:
-        print(f"  • {len(bak_files)} backup (.bak) file(s) to delete")
+    if archive_files:
+        print(f"  • {len(archive_files)} patch archive / log file(s) to delete")
     if has_patch:
         print("  • patch.txt to be cleared (will leave an empty file)")
 
@@ -632,25 +902,39 @@ def run_cleanup(start_dir: Path):
         except Exception as e:
             print(f"Error deleting {f.name}: {e}")
 
-    deleted_baks = 0
-    for b in bak_files:
+    deleted_archives = 0
+    for a in archive_files:
         try:
-            b.unlink()
-            deleted_baks += 1
+            a.unlink()
+            deleted_archives += 1
         except Exception as e:
-            print(f"Error deleting {b.name}: {e}")
+            print(f"Error deleting archive {a.name}: {e}")
+
+    if archive_dir.exists():
+        try:
+            if not any(archive_dir.iterdir()):
+                archive_dir.rmdir()
+        except Exception:
+            pass
+
+    # Clear in-memory archive
+    LAST_PATCH_DATA["text"] = None
+    LAST_PATCH_DATA["patches"] = None
+    LAST_PATCH_DATA["source"] = None
+    LAST_PATCH_DATA["timestamp"] = None
 
     cleared_patch = False
-    try:
-        with open(patch_file, "w", encoding="utf-8") as f:
-            pass
-        cleared_patch = True
-    except Exception as e:
-        print(f"Error clearing {patch_file.name}: {e}")
+    if patch_file.exists():
+        try:
+            with open(patch_file, "w", encoding="utf-8") as f:
+                pass
+            cleared_patch = True
+        except Exception as e:
+            print(f"Error clearing {patch_file.name}: {e}")
 
     print("\nCleanup finished:")
     print(f"  • Deleted {deleted_aggs} aggregate file(s).")
-    print(f"  • Deleted {deleted_baks} backup file(s).")
+    print(f"  • Deleted {deleted_archives} patch archive file(s).")
     if cleared_patch:
         print("  • Cleared patch.txt.")
 
@@ -704,6 +988,9 @@ def run_patcher(start_dir: Path):
         print("Aborted.")
         return
 
+    # Archive the patch before applying
+    save_patch_archive(start_dir, content, patches, source_name=patch_file_path.name)
+
     success_count = 0
     for p in patches:
         desc = p.target_path.name if p.action != "MOVE" else f"{p.target_path.name} -> {p.dest_path.name}"
@@ -728,8 +1015,8 @@ def main():
         print("=" * 60)
         print(" [1] Aggregate files into aggregate_N.txt")
         print(" [2] Apply AI patch/diffs (from patch.txt)")
-        print(" [3] Undo / Restore files from .bak backups")
-        print(" [4] Clean up (aggregates, *.bak, clear patch.txt)")
+        print(" [3] Undo last patch (reverse find/replace)")
+        print(" [4] Clean up (aggregates, patch archives, clear patch.txt)")
         print(" [0] Exit")
         choice = input("\nSelect an option [0-4]: ").strip()
 
@@ -738,7 +1025,7 @@ def main():
         elif choice == "2":
             run_patcher(start_dir)
         elif choice == "3":
-            run_restore(start_dir)
+            run_undo(start_dir)
         elif choice == "4":
             run_cleanup(start_dir)
         elif choice == "0":

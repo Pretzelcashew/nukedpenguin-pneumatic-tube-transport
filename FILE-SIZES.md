@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-16 08:53:27  
+**Last Generated:** 2026-09-16 10:21:02  
 **Total Scope:** 22 directories, 115 files  
-**Total Workspace Size:** 8.58 MB | **Total Text Lines:** 36,620  
+**Total Workspace Size:** 8.61 MB | **Total Text Lines:** 37,103  
 
 ---
 
@@ -12,7 +12,7 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
 | `plan/core/CHANGELOG.md` | 2,685 | 433.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-kinetic.lua` | 1,932 | 85.1 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-kinetic.lua` | 2,377 | 102.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 1,412 | 57.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-ballistics.lua` | 1,282 | 57.0 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/flow/flow-engine.lua` | 1,120 | 48.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
@@ -70,9 +70,9 @@ nukedpenguin-pneumatic-tube-transport/
 │   └── core/
 │       ├── ANTI-RETICLE.md                     [179 lines | 15.9 KB]
 │       ├── CHANGELOG.md                        [2,685 lines | 433.8 KB]
-│       ├── CURRENT-TASK.md                     [2 lines | 734 B]
+│       ├── CURRENT-TASK.md                     [8 lines | 715 B]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [140 lines | 24.0 KB]
+│       ├── FRESH-CHANGES.md                    [170 lines | 29.3 KB]
 │       ├── HELPERS.md                          [92 lines | 4.3 KB]
 │       ├── MANIFEST.md                         [126 lines | 24.0 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
@@ -125,7 +125,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── flow-common.lua                     [150 lines | 5.8 KB]
 │   │   ├── flow-engine.lua                     [1,120 lines | 48.4 KB]
 │   │   ├── flow-gate-interop.lua               [517 lines | 22.9 KB]
-│   │   ├── flow-kinetic.lua                    [1,932 lines | 85.1 KB]
+│   │   ├── flow-kinetic.lua                    [2,377 lines | 102.8 KB]
 │   │   ├── flow-renderer.lua                   [706 lines | 27.0 KB]
 │   │   └── port-defs.lua                       [370 lines | 35.6 KB]
 │   ├── hubs/
@@ -168,7 +168,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── event-logger.lua                    [35 lines | 899 B]
 │   ├── events.lua                          [38 lines | 1.2 KB]
 │   └── proxy-manager.lua                   [660 lines | 22.8 KB]
-├── .gitignore                          [13 lines | 204 B]
+├── .gitignore                          [15 lines | 271 B]
 ├── aggregator_patcher.py               [1,043 lines | 37.7 KB]
 ├── changelog.txt                       [178 lines | 19.3 KB]
 ├── control.lua                         [193 lines | 7.6 KB]

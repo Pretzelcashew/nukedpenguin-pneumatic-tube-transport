@@ -886,43 +886,44 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
-            if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+            if reticle and reticle.retreat_tick then
                 local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
                 local dist_cleared = math.floor(elapsed_retreat / tpt)
                 local leaf = item.leaf
                 local d_start = leaf and leaf.d_start or 0
                 local d_end = leaf and leaf.d_end or 16
+                local objs = item.render_objects or item.objects
 
-                if dist_cleared >= d_start and item.render_objects then
+                if dist_cleared >= d_start and objs then
                     local dots_to_clear = math.min(d_end - d_start, dist_cleared - d_start)
                     local cur_cleared = item.cleared_dots_count or 0
                     if dots_to_clear > cur_cleared then
                         for step_i = cur_cleared + 1, dots_to_clear do
-                            local obj = item.render_objects[step_i]
+                            local obj = objs[step_i]
                             if obj then
                                 render_pool.recycle(p_idx, obj)
-                                item.render_objects[step_i] = nil
+                                objs[step_i] = nil
                             end
                         end
                         item.cleared_dots_count = dots_to_clear
                     end
                 end
 
-                if dist_cleared >= d_end and item.render_objects then
+                if dist_cleared >= d_end and objs then
                     for idx = 1, (d_end - d_start) do
-                        local obj = item.render_objects[idx]
+                        local obj = objs[idx]
                         if obj then
                             render_pool.recycle(p_idx, obj)
-                            item.render_objects[idx] = nil
+                            objs[idx] = nil
                         end
                     end
                 end
 
-                if dist_cleared >= (reticle.total_dist or 0) and item.render_objects then
-                    for idx, obj in pairs(item.render_objects) do
+                if dist_cleared >= (reticle.total_dist or 0) and objs then
+                    for idx, obj in pairs(objs) do
                         if obj then
                             render_pool.recycle(p_idx, obj)
-                            item.render_objects[idx] = nil
+                            objs[idx] = nil
                         end
                     end
                 end
@@ -1005,7 +1006,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                             local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
 
                                             local min_allowed = 0
-                                            if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+                                            if reticle and reticle.retreat_tick then
                                                 local el_ret = math.max(0, current_tick - reticle.retreat_tick)
                                                 min_allowed = math.floor(el_ret / tpt)
                                             end

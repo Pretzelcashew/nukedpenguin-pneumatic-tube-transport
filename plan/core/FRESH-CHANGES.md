@@ -168,3 +168,13 @@
 2. **Slow-Mo Cadence Synchronization (`scripts/flow/flow-kinetic.lua`):** Anchored `tpt` directly to `trajectory_bvh.TICKS_PER_TILE` across wake creation and horizon calculation, eliminating the 10x timing mismatch with `capsule-renderer.lua` and restoring smooth tick-by-tick progressive dot reeling.
 3. **Contiguous Obstacle Chain Bounds (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.get_obstacle_chain_bounds` to compute the full entry and exit boundaries (`entry_dist`, `exit_dist`) across adjacent blocking entities, clamping the live beam at the near face while clearing matter footprints in one pass.
 4. **Decaying Wake Child & Hazard Suppression (`scripts/flow/flow-kinetic.lua`):** Enforced that decaying wakes clamp at obstacles without active machine hazard rings and never spawn child reticles, preventing visual ring stacking when placing lines of entities.
+
+
+### Revision: Severed Reticle Flight Path Adoption and Incremental Wake Reeling
+**Date:** 2026-09-16 12:14 EDT
+**Context:** Severing an active beam mid-corridor previously froze the forward head in mid-air due to premature flight destruction, while trailing wakes popped away in sudden 16-tile chunks because the per-tick dot-clearing loop was only checking item.render_objects instead of static leaf item.objects. This session enabled severed downstream slices to adopt active head flights and restored progressive tick-by-tick dot recycling across all wake types.
+**Key Changes:**
+1. **Progressive Wake Dot Recycling (`scripts/capsules/capsule-renderer.lua`):** Added `item.objects` fallback to `item.render_objects` in `dispatch_player_renders`, allowing the incremental wake-reeling loop to recycle dots from static BVH leaves tick-by-tick and eliminating 16-tile visual chunk pops.
+2. **Concurrent Wake Reeling Gating (`scripts/capsules/capsule-renderer.lua`):** Gated wake dot clearance and suppression behind `reticle.retreat_tick` instead of requiring `status == "retreating"`, enabling tandem wake reeling behind advancing severed heads.
+3. **Autonomous Severed Flight Adoption (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` to detect when a severed beam's head is still in flight (`head_was_severed`), re-homing the active `cur_flight` onto the downstream orphan (`down_id`) so the head continues traveling forward to full reach without freezing in mid-air.
+4. **Stationary Severed State Retention (`scripts/flow/flow-kinetic.lua`):** Ensured beams that were already stopped at maximum reach or obstacles remain stationary when sliced, preserving static endpoints and launching tail-only anti-reticle reeling.

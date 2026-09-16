@@ -395,7 +395,171 @@ function capsule_ballistics.advance_kinetic_trajectory(capsule, current_node, un
     return nil
 end
 
+function capsule_ballistics.count_receiver_capsules(receiver_unit)
+    local count = 0
+    if receiver_unit then
+        count = count + capsule_queries.get_capsule_count_at_entity(receiver_unit)
+        if storage.capsules then
+            for _, cap in pairs(storage.capsules) do
+                if cap.beam_flight and cap.beam_flight.hit_receiver_unit == receiver_unit then
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count
+end
+
+function capsule_ballistics.init_reticle_beam_flight(capsule, muzzle_node, reticle)
+    if not (capsule and muzzle_node and reticle) then return end
+    local beam_owner = muzzle_node.beam_owner or muzzle_node.unit_number
+    local dx = reticle.dir.x
+    local dy = reticle.dir.y
+    local surface_name = reticle.surface_name or muzzle_node.surface_name or "nauvis"
+
+    local terminal_pos = { x = reticle.terminal_pos.x, y = reticle.terminal_pos.y }
+    local hit_receiver_unit = reticle.hit_receiver
+
+    local total_dist = reticle.total_dist or (math.abs(terminal_pos.x - muzzle_node.pos.x) + math.abs(terminal_pos.y - muzzle_node.pos.y))
+    local hop_count = math.max(1, math.ceil(total_dist / HOP_DISTANCE))
+    local hop_positions = {}
+    for h = 1, hop_count - 1 do
+        hop_positions[h] = {
+            x = muzzle_node.pos.x + dx * (h * HOP_DISTANCE),
+            y = muzzle_node.pos.y + dy * (h * HOP_DISTANCE)
+        }
+    end
+    hop_positions[hop_count] = { x = terminal_pos.x, y = terminal_pos.y }
+
+    local current_tick = game.tick
+    local tpt = reticle.ticks_per_tile or TICKS_PER_TILE
+    local flight_ticks = math.max(TICKS_PER_HOP, math.ceil(total_dist * tpt))
+
+    capsule.entered_via_pressure = false
+    capsule.beam_flight = {
+        start_pos = { x = muzzle_node.pos.x, y = muzzle_node.pos.y },
+        orig_terminal_pos = { x = terminal_pos.x, y = terminal_pos.y },
+        orig_receiver = hit_receiver_unit,
+        start_tick = current_tick,
+        arrival_tick = current_tick + flight_ticks,
+        flight_ticks = flight_ticks,
+        surface_name = surface_name,
+        dx = dx,
+        dy = dy,
+        current_hop = 1,
+        total_hops = hop_count,
+        hop_positions = hop_positions,
+        terminal_pos = terminal_pos,
+        hit_receiver_unit = hit_receiver_unit,
+        owner = beam_owner,
+        owner_id = beam_owner,
+        reticle_id = reticle.id,
+        id = capsule.capsule_id or capsule.id,
+        capsule_id = capsule.capsule_id or capsule.id,
+        ticks_per_tile = tpt,
+        total_dist = total_dist,
+        dir = { x = dx, y = dy },
+        q_level = reticle.q_level or muzzle_node.q_level or 0
+    }
+end
+
+function capsule_ballistics.launch_projector_capsule(capsule, unit_number, runner)
+    if not (storage.active_projectors and storage.active_projectors[unit_number]) then
+        return nil
+    end
+
+    if not capsule.entered_via_pressure then
+        return nil
+    end
+
+    if not capsule_transit.is_electromagnetic_capsule(capsule) then
+        return nil
+    end
+
+    local proj_entity = storage.active_projectors[unit_number]
+    if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
+        return nil
+    end
+    if not projector_settings.can_fire(proj_entity) then
+        return nil
+    end
+
+    local scope = storage.projector_scope and storage.projector_scope[unit_number]
+    if not scope then
+        return nil
+    end
+
+    local reticle_id = (type(scope) == "table" and scope.reticle_id) or (type(scope) == "number" and scope)
+    local reticle = reticle_id and storage.projector_reticles and storage.projector_reticles[reticle_id]
+    if not reticle or reticle.status ~= "stationary" then
+        return nil
+    end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    local muzzle_node = nil
+    if unit_ports then
+        for i = 1, #unit_ports do
+            local pkey = unit_ports[i]
+            local pnode = storage.flow_nodes and storage.flow_nodes[pkey]
+            if pnode and (pnode.is_muzzle or pnode.kinetic_transmit) then
+                muzzle_node = pnode
+                break
+            end
+        end
+    end
+
+    if not (muzzle_node and muzzle_node.dir) then
+        return nil
+    end
+
+    local max_cap = projector_settings.MAX_ENDPOINT_CAPSULES or 2
+    local hit_receiver_unit = reticle.hit_receiver
+    if hit_receiver_unit then
+        local receiver_ent = storage.active_projectors and storage.active_projectors[hit_receiver_unit]
+        if not (receiver_ent and receiver_ent.valid) then
+            return nil
+        end
+        local current_count = capsule_ballistics.count_receiver_capsules(hit_receiver_unit)
+        if current_count >= max_cap then
+            return nil
+        end
+    else
+        local in_flight_count = 0
+        if storage.capsules then
+            for _, cap in pairs(storage.capsules) do
+                if cap.beam_flight and cap.beam_flight.owner == unit_number then
+                    in_flight_count = in_flight_count + 1
+                end
+            end
+        end
+        if in_flight_count >= max_cap then
+            return nil
+        end
+    end
+
+    local cap_id = capsule.capsule_id or capsule.id
+    local from_port_key = capsule.from_port_key
+
+    local launch_cost = projector_settings.get_launch_energy(proj_entity)
+    proj_entity.energy = math.max(0, proj_entity.energy - launch_cost)
+    storage.projector_last_fired = storage.projector_last_fired or {}
+    storage.projector_last_fired[unit_number] = game.tick
+    if storage.projector_ready_states then
+        storage.projector_ready_states[unit_number] = false
+    end
+
+    capsule_ballistics.init_reticle_beam_flight(capsule, muzzle_node, reticle)
+    if capsule_ballistics.USE_TIMED_ARRIVAL then
+        return capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_port_key, runner)
+    end
+    return "timed_launched"
+end
+
 function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
+    return capsule_ballistics.launch_projector_capsule(capsule, unit_number, runner)
+end
+
+function capsule_ballistics._legacy_try_projector_launch(capsule, unit_number, runner)
     if not (storage.active_projectors and storage.active_projectors[unit_number]) then
         return nil
     end
@@ -1202,6 +1366,10 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
 
     for cid in pairs(affected_corridors) do
         local flights = flights_store[cid]
+        if not flights and storage.projector_reticles and storage.projector_reticles[cid] then
+            local p_unit = storage.projector_reticles[cid].projector_unit
+            flights = p_unit and flights_store[p_unit]
+        end
         if flights and #flights > 0 then
             for f = 1, #flights do
                 local f_rec = flights[f]

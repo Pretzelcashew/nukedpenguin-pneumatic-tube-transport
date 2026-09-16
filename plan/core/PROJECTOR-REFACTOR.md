@@ -60,7 +60,7 @@
   * Decouple capsule launch pathfinding from `surface_bvh` and legacy `flow_nodes` queries.
   * Once a reticle establishes a stable corridor, reuse that verified corridor path and endpoint receiver data to configure the capsule's timed flight record.
   * Keep in-flight capsule records fully autonomous from the reticle's live lifecycle: if the firing projector rotates or its reticle is orphaned while a capsule is in mid-air, the capsule continues along its existing flight corridor to its destination.
-* **Edge Cases:** Ensure receiver capacity accounting counts both docked capsules and active in-flight capsules before committing to launch.
+* **Edge Cases:** Ensure receiver capacity accounting counts both docked capsules and active in-flight capsules before committing to launch. (accounts for all docked or in flight capsules to the receiver projector)
 
 ---
 

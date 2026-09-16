@@ -100,3 +100,11 @@
 4. **Offset-Aware Flight Dot Progression (`scripts/capsules/capsule-renderer.lua`):** Updated `dispatch_player_renders` to compute in-flight dot progress relative to `flight_start_dist` (`start_offset + math.floor(elapsed_t / tpt)`), ensuring resumed flights starting mid-segment spawn dots immediately from the collision face rather than lagging at segment origin.
 5. **Cumulative Leaf Trail Sync (`scripts/capsules/capsule-ballistics.lua`):** Updated `handle_projector_scope_arrival` to compute `leaf.trail_count` cumulatively from canonical segment origins (`total_leaf_dist`), synchronize `reticle.total_dist` across segment chains, and soft-register newly encountered downstream obstacles.
 6. **Unconditional Viewport Dot Recycling (`scripts/utils/viewport-bvh.lua`):** Enhanced `attach_static_render` to unconditionally prune and recycle all numeric dot handles $> \text{count}$ back into the player render pool, and updated `on_leaf_static_changed` to broadcast truncation updates across all active subscribers in `storage.player_visible_set`, permanently eliminating lingering ghost dots downstream of obstructions.
+
+
+### Revision: Projector Scope Stepping and Dynamic Reticle Obstacle Clearance
+**Date:** 2026-09-15 21:14 (EDT)
+**Context:** Resolves trajectory misalignment and boundary errors during mid-segment projector scope propagation, and ensures growing reticles correctly adjust distances when encountering or clearing obstacles mid-flight.
+**Key Changes:**
+1. **Scope Step & Trajectory Segmentation (`scripts/capsules/capsule-ballistics.lua`):** Added mid-segment boundary detection to preserve segment indexing and start offsets during sub-segment steps, clamped remaining distance to zero on obstacle impact, and bypassed premature trail finalization on partial chunks.
+2. **Dynamic Obstacle Clearance & Reach Checks (`scripts/flow/flow-kinetic.lua`):** Enabled in-flight reticles to dynamically restore remaining flight distance when obstacles clear during growth, and updated obstacle collision scanning to check against full potential reach rather than truncated intermediate distances.

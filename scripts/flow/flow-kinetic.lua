@@ -1092,7 +1092,19 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
         local rid = to_wake[i]
         local ret = storage.projector_reticles[rid]
         if ret then
-            flow_kinetic.resume_reticle_probing(ret)
+            local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+            local is_flying = (ret.status == "growing" and cur_flight ~= nil)
+
+            if is_flying then
+                flow_kinetic.unregister_reticle_obstacle(rid)
+                local full_reach = ret.max_reach or 50
+                ret.max_range = full_reach
+                ret.total_dist = full_reach
+                local flight_start = cur_flight.flight_start_dist or (((cur_flight.seg_idx or 1) - 1) * 16)
+                cur_flight.remaining_distance = math.max(0, full_reach - flight_start)
+            else
+                flow_kinetic.resume_reticle_probing(ret)
+            end
         end
     end
 end
@@ -1429,10 +1441,12 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                                     o_dist = r_sp.y - bb.right_bottom.y
                                 end
 
-                                if on_axis and o_dist and o_dist > 0.05 and o_dist < (ret.total_dist or ret.max_range or 50) then
+                                local full_reach = ret.max_reach or 50
+                                local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach then
                                     local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
                                     local is_growing = (ret.status == "growing" and cur_flight ~= nil)
-                                    local cur_head_dist = ret.total_dist or ret.max_range or 50
+                                    local cur_head_dist = ret.total_dist or ret.max_range or full_reach
 
                                     if is_growing then
                                         local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)

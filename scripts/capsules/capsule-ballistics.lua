@@ -800,40 +800,61 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
     flight.remaining_distance = rem
 
     if rem > 0 then
-        local next_step = math.min(16, rem)
         local dx = (flight.dir and flight.dir.x) or flight.dx or 0
         local dy = (flight.dir and flight.dir.y) or flight.dy or 0
         local next_start = { x = tp.x, y = tp.y }
+
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        local r_sp = reticle and reticle.start_pos or sp
+        local cur_dist = math.abs(tp.x - r_sp.x) + math.abs(tp.y - r_sp.y)
+        local cur_seg = flight.seg_idx or 1
+        local dist_to_boundary = (cur_seg * 16) - cur_dist
+
+        local next_step
+        local next_seg
+        local d_start
+        local d_end
+        local is_mid_segment = false
+
+        if dist_to_boundary > 0.05 then
+            is_mid_segment = true
+            next_seg = cur_seg
+            next_step = math.min(dist_to_boundary, rem)
+            d_start = (cur_seg - 1) * 16
+            d_end = cur_dist + next_step
+        else
+            next_seg = cur_seg + 1
+            next_step = math.min(16, rem)
+            d_start = (next_seg - 1) * 16
+            d_end = d_start + next_step
+        end
 
         local surface = game.surfaces[flight.surface_name or "nauvis"]
         local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, flight.projector_unit)
         if obst and obst.dist then
             next_step = math.max(0.1, obst.dist)
-            rem = next_step
-            flight.remaining_distance = rem
+            rem = 0
+            flight.remaining_distance = 0
             if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
                 flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
             end
         end
 
         local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
-
-        local next_seg = (flight.seg_idx or 1) + 1
-        flight.seg_idx = next_seg
-        local d_start = (next_seg - 1) * 16
-        local d_end = d_start + next_step
         local seg_key = string.format("%d,%d:%d", dx, dy, next_seg)
+        local seg_start = is_mid_segment and { x = r_sp.x + dx * d_start, y = r_sp.y + dy * d_start } or next_start
 
         local surface = game.surfaces[flight.surface_name or "nauvis"]
         if surface and surface.valid then
             local tree = trajectory_bvh.get_surface_tree(storage, surface.index)
             if tree then
-                tree:insert_segment(owner_id, seg_key, next_start, next_term, d_start, d_end, next_seg)
+                tree:insert_segment(owner_id, seg_key, seg_start, next_term, d_start, d_end, next_seg)
                 trajectory_bvh.refresh_active_renders()
             end
             local motion_tree = timed_motion.get_motion_tree(surface.index)
             if motion_tree then
-                local leaf = motion_tree:insert_segment(owner_id, seg_key, next_start, next_term, d_start, d_end, next_seg)
+                local leaf = motion_tree:insert_segment(owner_id, seg_key, seg_start, next_term, d_start, d_end, next_seg)
                 if leaf then
                     leaf.has_trail = nil
                     leaf.trail_count = nil
@@ -848,7 +869,8 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         flight.start_pos = next_start
         flight.terminal_pos = next_term
         flight.total_dist = next_step
-        flight.flight_start_dist = nil
+        flight.seg_idx = next_seg
+        flight.flight_start_dist = is_mid_segment and cur_dist or nil
         local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
         local flight_ticks = math.max(1, math.ceil(next_step * tpt))
         flight.start_tick = current_tick
@@ -864,12 +886,11 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             reticle.seg_key = seg_key
         end
 
-        local surface = game.surfaces[flight.surface_name or "nauvis"]
-        if surface and surface.valid then
+        if not is_mid_segment and surface and surface.valid then
             local motion_tree = timed_motion.get_motion_tree(surface.index)
             if motion_tree then
                 local owner_rec = motion_tree.trajectories and motion_tree.trajectories[owner_id]
-                local prev_seg_key = string.format("%d,%d:%d", dx, dy, flight.seg_idx - 1)
+                local prev_seg_key = string.format("%d,%d:%d", dx, dy, cur_seg)
                 local leaf = owner_rec and owner_rec.segments and owner_rec.segments[prev_seg_key]
                 if leaf then
                     local total_leaf_dist = math.abs(leaf.end_pos.x - leaf.start_pos.x) + math.abs(leaf.end_pos.y - leaf.start_pos.y)

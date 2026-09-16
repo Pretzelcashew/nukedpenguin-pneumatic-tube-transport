@@ -873,7 +873,7 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
         area = {{min_x, min_y}, {max_x, max_y}}
     }
 
-    local closest_dist = step_dist
+    local closest_dist = step_dist + 0.05
     local closest_entity = nil
 
     for _, cand in ipairs(candidates) do
@@ -919,7 +919,7 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
                     d = (cbb.left_top.y + 0.05 < start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05) and 0.1 or (start_pos.y - cbb.right_bottom.y)
                 end
 
-                if on_axis and d and d > 0.05 and d < closest_dist then
+                if on_axis and d and d > 0.05 and d <= closest_dist then
                     closest_dist = d
                     closest_entity = cand
                 end
@@ -1165,6 +1165,8 @@ function flow_kinetic.resume_reticle_probing(reticle)
 
     if next_obst_entity then
         flow_kinetic.register_reticle_obstacle(reticle_id, next_obst_entity)
+        local is_receiver = (proj_unit ~= nil) and next_obst_entity.valid and (next_obst_entity.name == "pneumatic-projector")
+        reticle.pending_receiver = is_receiver and next_obst_entity.unit_number or nil
     end
 
     local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
@@ -1780,6 +1782,8 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     reticle.hit_receiver = nil
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
     flight.render_spec = DEFAULT_HEAD_SPEC
+    flight.projector_unit = flight.projector_unit or reticle.projector_unit
+    flight.reticle_id = flight.reticle_id or reticle.id
 
     if obstacle_entity and obstacle_entity.valid then
         flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)

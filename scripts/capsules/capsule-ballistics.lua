@@ -678,6 +678,9 @@ function capsule_ballistics.launch_timed_flight(spec)
     }
     if record then
         record.flight_start_dist = spec.flight_start_dist
+        record.projector_unit = spec.projector_unit
+        record.reticle_id = spec.reticle_id
+        record.q_level = spec.q_level
     end
 
     return timed_motion.schedule_flight(record)
@@ -831,16 +834,17 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         end
 
         local surface = game.surfaces[flight.surface_name or "nauvis"]
-        local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, flight.projector_unit)
+        local proj_unit = flight.projector_unit or (reticle and reticle.projector_unit)
+        local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, proj_unit, reticle_id)
         if obst and obst.dist then
             next_step = math.max(0.1, obst.dist)
             rem = 0
             flight.remaining_distance = 0
             d_end = (is_mid_segment and cur_dist or d_start) + next_step
             if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
-                flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
+                flow_kinetic.register_reticle_obstacle(reticle_id, obst.entity)
             end
-            local is_receiver = (flight.projector_unit ~= nil) and obst.entity and obst.entity.valid and (obst.entity.name == "pneumatic-projector")
+            local is_receiver = (proj_unit ~= nil) and obst.entity and obst.entity.valid and (obst.entity.name == "pneumatic-projector")
             flight.render_spec = flow_kinetic.DEFAULT_HEAD_SPEC
             if reticle then
                 reticle.pending_receiver = is_receiver and obst.entity.unit_number or nil
@@ -879,6 +883,8 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         flight.total_dist = next_step
         flight.seg_idx = next_seg
         flight.flight_start_dist = is_mid_segment and cur_dist or nil
+        flight.projector_unit = proj_unit
+        flight.reticle_id = reticle_id
         local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
         local flight_ticks = math.max(1, math.ceil(next_step * tpt))
         flight.start_tick = current_tick
@@ -929,8 +935,9 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
     else
         local reticle_id = flight.reticle_id or owner_id
         local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
-        local is_receiver = (reticle and reticle.projector_unit ~= nil and reticle.pending_receiver ~= nil)
-        local hit_receiver_unit = is_receiver and reticle.pending_receiver or nil
+        local proj_unit = (reticle and reticle.projector_unit) or flight.projector_unit
+        local is_receiver = (proj_unit ~= nil and reticle and (reticle.pending_receiver ~= nil or reticle.hit_receiver ~= nil))
+        local hit_receiver_unit = is_receiver and (reticle.pending_receiver or reticle.hit_receiver) or nil
         local final_head_spec = is_receiver and flow_kinetic.RECEIVER_HEAD_SPEC or flow_kinetic.DEFAULT_HEAD_SPEC
 
         if reticle then

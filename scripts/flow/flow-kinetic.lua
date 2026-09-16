@@ -87,9 +87,12 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local dy = node.dir.y
     local step = math.min(16, max_range)
 
+    storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
+    local reticle_id = storage.next_reticle_id
+
     local full_reach = max_range
     local surface = game.surfaces[node.surface_name]
-    local obst = flow_kinetic.scan_leaf_rect(surface, node.pos, node.dir, step, owner_id)
+    local obst = flow_kinetic.scan_leaf_rect(surface, node.pos, node.dir, step, owner_id, reticle_id)
     local initial_obstacle = nil
     if obst and obst.dist then
         step = math.max(0.1, obst.dist)
@@ -100,8 +103,6 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local start_pos = { x = node.pos.x, y = node.pos.y }
     local terminal_pos = { x = node.pos.x + dx * step, y = node.pos.y + dy * step }
 
-    storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
-    local reticle_id = storage.next_reticle_id
     storage.projector_scope[owner_id] = {
         reticle_id = reticle_id,
         flight_id = reticle_id,
@@ -814,7 +815,7 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
     return kinetic_changed
 end
 
-function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_unit)
+function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_unit, reticle_id)
     if not (surface and surface.valid and start_pos and dir and step_dist and step_dist > 0) then return nil end
     local dx = dir.x or 0
     local dy = dir.y or 0
@@ -849,6 +850,18 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
             if not is_ignorable and c_type == "gate" then
                 if not (cand.is_closed and cand.is_closed()) then
                     is_ignorable = true
+                    if reticle_id and cand.unit_number then
+                        local ret = storage.projector_reticles and storage.projector_reticles[reticle_id]
+                        if ret and ret.start_pos then
+                            local cbb = cand.bounding_box
+                            local abs_dist = (ret.dir.x > 0 and (cbb.left_top.x - ret.start_pos.x))
+                                or (ret.dir.x < 0 and (ret.start_pos.x - cbb.right_bottom.x))
+                                or (ret.dir.y > 0 and (cbb.left_top.y - ret.start_pos.y))
+                                or (ret.dir.y < 0 and (ret.start_pos.y - cbb.right_bottom.y))
+                                or (step_dist or 1)
+                            flow_kinetic.register_corridor_gate(reticle_id, cand, abs_dist, false)
+                        end
+                    end
                 end
             end
 
@@ -917,6 +930,72 @@ function flow_kinetic.register_reticle_obstacle(reticle_id, obstacle_entity)
         unit_number = u_num,
         reg_id = reg_id
     }
+
+    if obstacle_entity.type == "gate" and u_num then
+        local ret = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if ret and ret.start_pos then
+            local cbb = obstacle_entity.bounding_box
+            local abs_dist = (ret.dir.x > 0 and (cbb.left_top.x - ret.start_pos.x))
+                or (ret.dir.x < 0 and (ret.start_pos.x - cbb.right_bottom.x))
+                or (ret.dir.y > 0 and (cbb.left_top.y - ret.start_pos.y))
+                or (ret.dir.y < 0 and (ret.start_pos.y - cbb.right_bottom.y))
+                or (ret.total_dist or 1)
+            flow_kinetic.register_corridor_gate(reticle_id, obstacle_entity, abs_dist, true)
+        end
+    end
+end
+
+function flow_kinetic.register_corridor_gate(reticle_id, gate_entity, dist, is_closed)
+    if not (reticle_id and gate_entity and gate_entity.valid and gate_entity.unit_number) then return end
+    storage.reticle_gates = storage.reticle_gates or {}
+    storage.reticle_gates[reticle_id] = storage.reticle_gates[reticle_id] or {}
+    storage.reticle_gates[reticle_id][gate_entity.unit_number] = {
+        entity = gate_entity,
+        unit_number = gate_entity.unit_number,
+        dist = dist,
+        state = is_closed and "closed" or "open"
+    }
+end
+
+function flow_kinetic.step_reticle_obstacles()
+    if not (storage.reticle_gates and next(storage.reticle_gates) ~= nil) then return end
+
+    local current_tick = game.tick
+    for reticle_id, gates in pairs(storage.reticle_gates) do
+        local ret = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if not ret then
+            storage.reticle_gates[reticle_id] = nil
+        else
+            local is_retreating = (ret.status == "retreating")
+            local tpt = ret.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+            local dist_cleared = (is_retreating and ret.retreat_tick) and ((current_tick - ret.retreat_tick) / tpt) or 0
+
+            for u_num, gate_data in pairs(gates) do
+                local gate = gate_data.entity
+                if not (gate and gate.valid) then
+                    gates[u_num] = nil
+                elseif is_retreating and dist_cleared >= (gate_data.dist - 0.05) then
+                    gates[u_num] = nil
+                elseif not is_retreating and ret.total_dist and ret.total_dist < (gate_data.dist - 0.5) then
+                    gates[u_num] = nil
+                else
+                    local is_closed = not (gate.is_closed and not gate.is_closed())
+                    local prev_state = gate_data.state
+
+                    if prev_state == "closed" and not is_closed then
+                        gate_data.state = "open"
+                        flow_kinetic.handle_reticle_obstacle_cleared(gate)
+                    elseif prev_state == "open" and is_closed then
+                        gate_data.state = "closed"
+                        flow_kinetic.truncate_reticle(ret, gate_data.dist, gate)
+                    end
+                end
+            end
+            if next(gates) == nil then
+                storage.reticle_gates[reticle_id] = nil
+            end
+        end
+    end
 end
 
 function flow_kinetic.unregister_reticle_obstacle(reticle_id)
@@ -988,7 +1067,7 @@ function flow_kinetic.resume_reticle_probing(reticle)
     end
 
     local cur_pos = { x = reticle.terminal_pos.x, y = reticle.terminal_pos.y }
-    local obst = flow_kinetic.scan_leaf_rect(surface, cur_pos, reticle.dir, step, proj_unit)
+    local obst = flow_kinetic.scan_leaf_rect(surface, cur_pos, reticle.dir, step, proj_unit, reticle_id)
     local next_obst_entity = nil
     if obst and obst.dist then
         step = math.max(0.1, obst.dist)
@@ -1015,6 +1094,7 @@ function flow_kinetic.resume_reticle_probing(reticle)
         if leaf then
             leaf.static_pos = nil
             leaf.static_render_spec = nil
+            leaf.has_trail = nil
             leaf.dir = { x = dx, y = dy }
             leaf.q_level = reticle.q_level or 0
             leaf.trail_count = math.max(0, math.floor(cur_dist - d_start))

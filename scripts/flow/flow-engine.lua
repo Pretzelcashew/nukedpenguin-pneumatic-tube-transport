@@ -140,6 +140,7 @@ function flow_engine.init_storage()
     storage.blocked_reticles = storage.blocked_reticles or {}
     storage.blocked_reticles_by_reg = storage.blocked_reticles_by_reg or {}
     storage.reticle_blocked_by = storage.reticle_blocked_by or {}
+    storage.reticle_gates = storage.reticle_gates or {}
     if storage.flow_nodes then
         for pkey, node in pairs(storage.flow_nodes) do
             if node and node.is_kinetic and node.is_endpoint then
@@ -484,6 +485,7 @@ function flow_engine.step(tick)
     flow_gate_interop.step_gates(flow_kinetic.handle_obstacle_changed, flow_engine.enqueue_unit_ports)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
     flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
+    flow_kinetic.step_reticle_obstacles()
 
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 

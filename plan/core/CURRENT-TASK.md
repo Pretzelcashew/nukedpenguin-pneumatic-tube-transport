@@ -1,9 +1,2 @@
-Target Task: Projector Refactor Task 3 — Obstacle Clearance & Corridor Regrowth
-Pacing: Break this into phases: patch 1 file at a time and wait for me to say "next".
-Current Working Baseline:
-Clean commit fix(projector): suppress forward reticle snap and reschedule probe arrival on obstacle interception.
-Backward truncation on direct/rear obstacles is verified working.
-Forward obstacles smoothly update flight horizon without snapping.
-Immediate Goal for This Chat:
-When an obstruction clears (mined/removed, gate opened, or character moves), wake up the blocked reticle so it resumes probing forward from its collision face to its original intended reach (max_reach), drawing the remaining trail dots cleanly without resetting or flickering the existing upstream trail.
-Please output Query 1 for aggregator_patcher.py.
+
+task 3: we already soft register the obstactles in the way of our projector reticle, some of those can be obstacles that change collision state with the beam, like the vanilla gate, we want to listen to this open and close state change while its registered as an obstacle of a reticle, so we can notify the reticle and either wake up the reticle as cleared and continue flight, or issue a block if it closes back up. also we have to be sure to unregister any obstacles that dont pose any blocking to the reticle anymore (not sure in what case that would happen, can you think of any besides removal or moving?, im just picturing an obstacle that is behind the wake tale of the reticle i guess, maybe we already handle this case idk)

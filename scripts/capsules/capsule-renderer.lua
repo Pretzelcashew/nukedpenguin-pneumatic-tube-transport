@@ -982,26 +982,25 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                 elseif flight_rec and not is_anti then
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
                                     if leaf and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope") then
-                                        local elapsed_t = math.max(0, current_tick - t_entry)
-                                        local start_offset = math.max(0, (flight_rec.flight_start_dist or d_start) - d_start)
-                                        local dist_in_leaf = math.min(d_end - d_start, start_offset + math.floor(elapsed_t / tpt))
+                                        local r_sp = reticle and reticle.start_pos or bf.start_pos
+                                        local head_dist = math.abs(curr_pos.x - r_sp.x) + math.abs(curr_pos.y - r_sp.y)
+                                        local max_allowed_in_leaf = math.max(0, math.floor(head_dist - d_start))
+                                        local dist_in_leaf = math.min(d_end - d_start, max_allowed_in_leaf)
                                         local cur_dots = item.trail_dots_count or 0
                                         if dist_in_leaf > cur_dots then
                                             item.render_objects = item.render_objects or {}
-                                            local sp = leaf.start_pos or bf.start_pos
-                                            local ep = leaf.end_pos or bf.terminal_pos
-                                            local dx = 0
-                                            local dy = 0
-                                            if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
-                                                if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
-                                                if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
-                                            elseif bf and bf.dir then
-                                                dx = bf.dir.x or 0
-                                                dy = bf.dir.y or 0
-                                            elseif leaf and leaf.dir then
-                                                dx = leaf.dir.x or 0
-                                                dy = leaf.dir.y or 0
+                                            local r_sp = reticle and reticle.start_pos
+                                            local dx = (reticle and reticle.dir and reticle.dir.x) or (bf and bf.dir and bf.dir.x) or (leaf and leaf.dir and leaf.dir.x) or 0
+                                            local dy = (reticle and reticle.dir and reticle.dir.y) or (bf and bf.dir and bf.dir.y) or (leaf and leaf.dir and leaf.dir.y) or 0
+                                            if dx == 0 and dy == 0 then
+                                                local ep = leaf and leaf.end_pos or bf and bf.terminal_pos
+                                                local sp = leaf and leaf.start_pos or bf and bf.start_pos
+                                                if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
+                                                    if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
+                                                    if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
+                                                end
                                             end
+                                            local sp = r_sp and { x = r_sp.x + dx * d_start, y = r_sp.y + dy * d_start } or (leaf and leaf.start_pos) or (bf and bf.start_pos)
                                             local q_lvl = flight_rec.q_level or 0
                                             local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
 

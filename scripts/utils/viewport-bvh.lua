@@ -329,7 +329,7 @@ end
 --- @param item table Visible set entry
 --- @param surface LuaSurface
 function viewport_bvh.attach_static_render(player_index, item, surface)
-    if not (item and item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail)) then return end
+    if not (item and item.leaf) then return end
     local player = game.get_player(player_index)
     if not (player and player.valid) then return end
 
@@ -345,7 +345,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         min_allowed = math.floor(elapsed_retreat / tpt)
     end
 
-    local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
+    local count = leaf.trail_count or (leaf.has_trail and leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
     for idx, obj in pairs(objects) do
         if type(idx) == "number" and idx > count then
             render_pool.recycle(player_index, obj)
@@ -366,18 +366,19 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
             item.trail_attached = true
             local q_level = leaf.q_level or 0
         local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
-        local sp = leaf.start_pos
-        local ep = leaf.end_pos
-        local dx = 0
-        local dy = 0
-        if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
-            if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
-            if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
-        elseif leaf.dir then
-            dx = leaf.dir.x or 0
-            dy = leaf.dir.y or 0
-        end
         local d_base = leaf.d_start or 0
+        local dx = (reticle and reticle.dir and reticle.dir.x) or (leaf.dir and leaf.dir.x) or 0
+        local dy = (reticle and reticle.dir and reticle.dir.y) or (leaf.dir and leaf.dir.y) or 0
+        if dx == 0 and dy == 0 then
+            local ep = leaf.end_pos
+            local sp_raw = leaf.start_pos
+            if ep and sp_raw and (ep.x ~= sp_raw.x or ep.y ~= sp_raw.y) then
+                if ep.x > sp_raw.x then dx = 1 elseif ep.x < sp_raw.x then dx = -1 end
+                if ep.y > sp_raw.y then dy = 1 elseif ep.y < sp_raw.y then dy = -1 end
+            end
+        end
+        local r_sp = reticle and reticle.start_pos
+        local sp = r_sp and { x = r_sp.x + dx * d_base, y = r_sp.y + dy * d_base } or leaf.start_pos
 
         if sp and (dx ~= 0 or dy ~= 0) then
             for i = cur_d + 1, count do

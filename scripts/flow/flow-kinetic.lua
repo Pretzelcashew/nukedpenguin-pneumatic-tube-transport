@@ -1234,6 +1234,38 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         }
     end
 
+    local old_total_dist = reticle.total_dist or reticle.max_range or 50
+    local cur_flight = reticle.head_flight_id and timed_motion.get_flight(reticle.head_flight_id)
+    if reticle.status == "growing" and cur_flight then
+        local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+        local cur_h_dist = cur_pos and (math.abs(cur_pos.x - sp.x) + math.abs(cur_pos.y - sp.y))
+        if cur_h_dist and cur_h_dist < old_total_dist then
+            old_total_dist = cur_h_dist
+        end
+    end
+
+    local old_endpoint_spec = nil
+    local old_endpoint_pos = nil
+    if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle_id] then
+        local o_rec = motion_tree.trajectories[reticle_id]
+        if o_rec.segments then
+            for _, l in pairs(o_rec.segments) do
+                if l.static_render_spec then
+                    old_endpoint_spec = l.static_render_spec
+                    old_endpoint_pos = l.static_pos
+                    break
+                end
+            end
+        end
+    end
+    if not old_endpoint_spec and cur_flight and cur_flight.render_spec then
+        old_endpoint_spec = cur_flight.render_spec
+        old_endpoint_pos = { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
+    end
+
+    local downstream_dist = old_total_dist - obst_dist
+    local should_spawn_downstream = (downstream_dist > 0.2)
+
     reticle.total_dist = obst_dist
     reticle.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
     reticle.endpoint_pos = { x = collision_pos.x, y = collision_pos.y }
@@ -1323,6 +1355,115 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             endpoint_pos = { x = collision_pos.x, y = collision_pos.y },
             surface_name = reticle.surface_name,
             seg_key = reticle.seg_key
+        }
+    end
+
+    if should_spawn_downstream then
+        storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
+        local down_id = storage.next_reticle_id
+        local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+
+        local down_term = old_endpoint_pos or { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
+        storage.projector_reticles[down_id] = {
+            id = down_id,
+            projector_unit = nil,
+            surface_name = reticle.surface_name,
+            surface_index = s_idx,
+            start_pos = { x = sp.x, y = sp.y },
+            terminal_pos = { x = down_term.x, y = down_term.y },
+            endpoint_pos = { x = down_term.x, y = down_term.y },
+            dir = { x = dx, y = dy },
+            q_level = reticle.q_level or 0,
+            max_reach = old_total_dist,
+            max_range = old_total_dist,
+            total_dist = old_total_dist,
+            status = "retreating",
+            start_tick = reticle.start_tick or game.tick,
+            retreat_tick = game.tick - math.floor(obst_dist * tpt),
+            ticks_per_tile = tpt,
+            seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+        }
+
+        storage.pinned_corridors = storage.pinned_corridors or {}
+        storage.pinned_corridors[down_id] = true
+
+        local cur_seg_idx = target_seg_idx
+        local max_seg_idx = math.max(1, math.floor(old_total_dist / 16) + 1)
+        local seg_boundary = cur_seg_idx * 16
+        local dist_to_boundary = seg_boundary - obst_dist
+
+        for s = cur_seg_idx, max_seg_idx do
+            local s_start = (s - 1) * 16
+            local s_end = math.min(s * 16, old_total_dist)
+
+            if s_end > (s_start + 0.05) and (s > cur_seg_idx or dist_to_boundary > 0.05) then
+                local s_key = string.format("%d,%d:%d", dx, dy, s)
+                local seg_start_pos = { x = sp.x + dx * s_start, y = sp.y + dy * s_start }
+                local seg_end_pos = { x = sp.x + dx * s_end, y = sp.y + dy * s_end }
+                local is_last_seg = (s == max_seg_idx or s_end >= old_total_dist - 0.05)
+
+                if traj_tree then
+                    traj_tree:insert_segment(down_id, s_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
+                end
+
+                if motion_tree then
+                    local leaf = motion_tree:insert_segment(down_id, s_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
+                    if leaf then
+                        leaf.has_trail = true
+                        leaf.trail_count = math.max(0, math.floor(s_end - s_start))
+                        leaf.dir = { x = dx, y = dy }
+                        leaf.q_level = reticle.q_level or 0
+                        if is_last_seg and old_endpoint_spec then
+                            leaf.static_render_spec = old_endpoint_spec
+                            leaf.static_pos = { x = down_term.x, y = down_term.y }
+                        else
+                            leaf.static_render_spec = nil
+                            leaf.static_pos = nil
+                        end
+                        viewport_bvh.on_segment_registered(s_idx, leaf)
+                    end
+                end
+            end
+        end
+
+        if traj_tree then
+            trajectory_bvh.refresh_active_renders()
+        end
+
+        local rem_dist = old_total_dist - obst_dist
+        local anti_seg_idx = cur_seg_idx
+        local anti_start = { x = collision_pos.x, y = collision_pos.y }
+        local first_step = math.min(dist_to_boundary, rem_dist)
+
+        if dist_to_boundary <= 0.05 and rem_dist > dist_to_boundary then
+            anti_seg_idx = cur_seg_idx + 1
+            anti_start = { x = sp.x + dx * seg_boundary, y = sp.y + dy * seg_boundary }
+            rem_dist = rem_dist - dist_to_boundary
+            first_step = math.min(16, rem_dist)
+        end
+
+        local anti_flight_id = "anti:" .. tostring(down_id)
+        storage.projector_reticles[down_id].anti_flight_id = anti_flight_id
+
+        local anti_next_term = {
+            x = anti_start.x + dx * first_step,
+            y = anti_start.y + dy * first_step
+        }
+
+        flow_kinetic.launch_timed_flight{
+            id = anti_flight_id,
+            owner_id = down_id,
+            surface_name = reticle.surface_name,
+            start_pos = anti_start,
+            terminal_pos = anti_next_term,
+            dir = { x = dx, y = dy },
+            kind = "anti_reticle",
+            on_arrival = "anti_reticle",
+            remaining_distance = rem_dist,
+            max_distance = rem_dist,
+            seg_idx = anti_seg_idx,
+            reticle_id = down_id,
+            ticks_per_tile = tpt
         }
     end
 end
@@ -1527,7 +1668,18 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
 
                                 local full_reach = ret.max_reach or 50
                                 local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
-                                if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach then
+
+                                local is_retreating = (ret.status == "retreating")
+                                local is_behind_wake = false
+                                if is_retreating and ret.retreat_tick then
+                                    local el_ret = math.max(0, game.tick - ret.retreat_tick)
+                                    local d_cleared = math.floor(el_ret / (ret.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE))
+                                    if o_dist and o_dist <= (d_cleared + 0.05) then
+                                        is_behind_wake = true
+                                    end
+                                end
+
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach and not is_behind_wake then
                                     local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
                                     local is_growing = (ret.status == "growing" and cur_flight ~= nil)
                                     local cur_head_dist = ret.total_dist or ret.max_range or full_reach

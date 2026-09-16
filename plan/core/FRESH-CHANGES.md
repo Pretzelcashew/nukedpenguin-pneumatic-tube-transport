@@ -138,3 +138,13 @@
 1. **Discrete Tile Evacuation Hook (`scripts/flow/flow-kinetic.lua`):** Flagged `evacuated_any` during discrete tile departures in `step_character_colliders` to gate reticle evaluation strictly to grid-tile boundary transitions without sub-pixel polling.
 2. **On-Axis Directional Motion Resolution (`scripts/flow/flow-kinetic.lua`):** Evaluated character position changes against registered reticles upon tile evacuation: waking and regrowing beams when the player steps off-axis or walks downstream, and immediately applying `truncate_reticle` when the player steps upstream closer to the emitter.
 3. **Character Disconnect & Death Lifecycle Clearing (`scripts/flow/flow-kinetic.lua`):** Connected the dead/disconnected character cleanup pass in `step_character_colliders` to `handle_reticle_obstacle_cleared`, ensuring abandoned beams resume forward probing automatically.
+
+
+### Revision: Mid-Corridor Beam Severing and Autonomous Downstream Wake Reeling
+**Date:** 2026-09-16 09:36 EDT
+**Context:** Truncating an active or decaying projector corridor previously wiped all downstream segments instantly, causing harsh visual popping and leaving the truncated end feeling abrupt. This session implemented the core corridor severing pipeline for Projector Refactor Task 2, preserving the downstream beam as an autonomous retreating wake that reels away smoothly from the cut point.
+**Key Changes:**
+1. **Autonomous Downstream Slice Generation (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` to calculate downstream remaining distance (`old_total_dist - obst_dist`) and instantiate a new autonomous reticle ID (`down_id`) carrying over the original trail dots, total distance, and static endpoint indicator.
+2. **Pre-Calibrated Wake Reeling (`scripts/flow/flow-kinetic.lua`):** Initialized the downstream slice with `status = "retreating"` and a back-calculated `retreat_tick` matching the obstacle distance, allowing observer viewport culling to hide upstream dots while preserving downstream dots.
+3. **Discrete Anti-Reticle Flight Launch (`scripts/flow/flow-kinetic.lua`):** Scheduled an `anti_reticle` flight starting squarely at the collision boundary (`collision_pos`) to hop through downstream 16-tile segments, progressively reeling in dots and recycling BVH leaves upon reaching the old endpoint.
+4. **Trailing Wake Boundary Guard (`scripts/flow/flow-kinetic.lua`):** Added `is_behind_wake` filtering to `handle_obstacle_changed`, preventing obstacles built behind an already-retreating wake from triggering redundant or out-of-order truncations.

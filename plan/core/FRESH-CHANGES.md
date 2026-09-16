@@ -158,3 +158,13 @@
 2. **Solid Footprint Wake Suppression (`scripts/flow/flow-kinetic.lua`):** Calibrated the downstream reticle's `retreat_tick` directly to `game.tick - math.floor(exit_dist * tpt)`, preventing trail dots within the solid obstacle body ($d \le \text{exit\_dist}$) from ever spawning into observer viewports.
 3. **Eclipsed Segment Culling (`scripts/flow/flow-kinetic.lua`):** Filtered out BVH leaf segments that lie entirely within the obstacle footprint ($s_{\text{end}} \le \text{exit\_dist}$), inserting only surviving open-air segments into `motion_tree` and `traj_tree`.
 4. **Exit-Face Anti-Reticle Spawning (`scripts/flow/flow-kinetic.lua`):** Repositioned the downstream `anti_reticle` flight origin directly to the obstacle's exit boundary (`sp + dir * exit_dist`), cleanly reeling in only the surviving open-air wake toward the original terminal endpoint.
+
+
+### Revision: Severed Reticle Head Preservation, Cadence Sync, and Chain Bounds
+**Date:** 2026-09-16 10:19 EDT
+**Context:** Placing multi-tile structures across an active beam previously created fragmented slices, stripped the front reticle head leaving headless tails, and caused trail dots to freeze before popping away in one frame due to a time-per-tile constant mismatch during slow-mo testing. This session stabilized the corridor severing pipeline by preserving the reticle head on severed wakes, synchronizing time-to-tile speeds across renderers, and resolving contiguous obstacle chains in a single spatial pass.
+**Key Changes:**
+1. **Reticle Head & Formed Tail Preservation (`scripts/flow/flow-kinetic.lua`):** Tracked `head_render_spec` across reticle lifecycles and attached the visual head indicator to the downstream slice's terminal leaf, ensuring severed wakes retain their full projectile identity with a visible head and trailing dots.
+2. **Slow-Mo Cadence Synchronization (`scripts/flow/flow-kinetic.lua`):** Anchored `tpt` directly to `trajectory_bvh.TICKS_PER_TILE` across wake creation and horizon calculation, eliminating the 10x timing mismatch with `capsule-renderer.lua` and restoring smooth tick-by-tick progressive dot reeling.
+3. **Contiguous Obstacle Chain Bounds (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.get_obstacle_chain_bounds` to compute the full entry and exit boundaries (`entry_dist`, `exit_dist`) across adjacent blocking entities, clamping the live beam at the near face while clearing matter footprints in one pass.
+4. **Decaying Wake Child & Hazard Suppression (`scripts/flow/flow-kinetic.lua`):** Enforced that decaying wakes clamp at obstacles without active machine hazard rings and never spawn child reticles, preventing visual ring stacking when placing lines of entities.

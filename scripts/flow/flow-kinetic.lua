@@ -112,6 +112,14 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     storage.pinned_corridors[reticle_id] = true
 
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
+    local head_render_spec = {
+        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+        radius = 0.24,
+        has_ring = true,
+        ring_radius = 0.42,
+        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+        ring_width = 2
+    }
     storage.projector_reticles[reticle_id] = {
         id = reticle_id,
         projector_unit = owner_id,
@@ -127,7 +135,8 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         status = "growing",
         start_tick = game.tick,
         ticks_per_tile = tpt,
-        head_flight_id = reticle_id
+        head_flight_id = reticle_id,
+        head_render_spec = head_render_spec
     }
 
     if initial_obstacle then
@@ -1193,6 +1202,132 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
     end
 end
 
+function flow_kinetic.purge_retreating_reticle(reticle_id)
+    local ret = storage.projector_reticles and storage.projector_reticles[reticle_id]
+    if not ret then return end
+
+    if ret.anti_flight_id then
+        timed_motion.remove_flight(ret.anti_flight_id, reticle_id)
+    end
+    if ret.head_flight_id then
+        timed_motion.remove_flight(ret.head_flight_id, reticle_id)
+    end
+
+    local s_idx = reticle.surface_index or 1
+    if storage.pinned_corridors then
+        storage.pinned_corridors[reticle_id] = nil
+    end
+
+    timed_motion.remove_corridor(s_idx, reticle_id)
+    flow_kinetic.unregister_trajectory_in_bvh(reticle_id, ret.surface_name, true)
+    viewport_bvh.on_segment_removed(s_idx, reticle_id)
+    storage.projector_reticles[reticle_id] = nil
+end
+
+function flow_kinetic.get_obstacle_chain_bounds(surface, sp, dir, hit_entity, min_dist, max_dist)
+    if not (surface and surface.valid and sp and dir and hit_entity and hit_entity.valid) then
+        return nil, nil
+    end
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+    if dx == 0 and dy == 0 then return nil, nil end
+
+    local function get_bounds(ent)
+        if not (ent and ent.valid and ent.bounding_box) then return nil, nil end
+        local cbb = ent.bounding_box
+        local on_axis = false
+        local c_entry = nil
+        local c_exit = nil
+
+        if dx > 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = cbb.left_top.x - sp.x
+            c_exit = cbb.right_bottom.x - sp.x
+        elseif dx < 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = sp.x - cbb.right_bottom.x
+            c_exit = sp.x - cbb.left_top.x
+        elseif dy > 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = cbb.left_top.y - sp.y
+            c_exit = cbb.right_bottom.y - sp.y
+        elseif dy < 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = sp.y - cbb.right_bottom.y
+            c_exit = sp.y - cbb.left_top.y
+        end
+
+        if on_axis and c_entry and c_exit then
+            return c_entry, c_exit
+        end
+        return nil, nil
+    end
+
+    local e_entry, e_exit = get_bounds(hit_entity)
+    if not (e_entry and e_exit) then return nil, nil end
+
+    local cur_entry = e_entry
+    local cur_exit = e_exit
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(sp.x + dx * min_dist, sp.x + dx * max_dist)
+        max_x = math.max(sp.x + dx * min_dist, sp.x + dx * max_dist)
+        min_y = sp.y - 0.45
+        max_y = sp.y + 0.45
+    else
+        min_x = sp.x - 0.45
+        max_x = sp.x + 0.45
+        min_y = math.min(sp.y + dy * min_dist, sp.y + dy * max_dist)
+        max_y = math.max(sp.y + dy * min_dist, sp.y + dy * max_dist)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local intervals = {}
+    for _, cand in ipairs(candidates) do
+        if cand.valid and not (IGNORABLE_TYPES[cand.type] or PROXY_NAMES[cand.name]) then
+            local is_ignorable = false
+            if cand.type == "gate" and not (cand.is_closed and cand.is_closed()) then
+                is_ignorable = true
+            end
+            if not is_ignorable then
+                local c_en, c_ex = get_bounds(cand)
+                if c_en and c_ex then
+                    intervals[#intervals + 1] = { entry = c_en, exit = c_ex }
+                end
+            end
+        end
+    end
+
+    local changed = true
+    while changed do
+        changed = false
+        for i = 1, #intervals do
+            local inv = intervals[i]
+            if not inv.used then
+                if inv.entry <= (cur_exit + 0.05) and inv.exit >= (cur_entry - 0.05) then
+                    if inv.entry < cur_entry then
+                        cur_entry = inv.entry
+                        changed = true
+                    end
+                    if inv.exit > cur_exit then
+                        cur_exit = inv.exit
+                        changed = true
+                    end
+                    inv.used = true
+                end
+            end
+        end
+    end
+
+    cur_entry = math.max(min_dist, cur_entry)
+    cur_exit = math.min(max_dist, cur_exit)
+    return cur_entry, cur_exit
+end
+
 function flow_kinetic.find_obstacle_chain_exit(surface, sp, dir, entry_dist, max_dist, initial_entity)
     local cur_exit = entry_dist
     local dx = dir.x or 0
@@ -1296,23 +1431,73 @@ end
 
 function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     if not (reticle and obst_dist) then return end
-    if obst_dist >= (reticle.total_dist or reticle.max_range or 50) then return end
-
-    if obstacle_entity and obstacle_entity.valid then
-        flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
-    end
+    local max_dist = reticle.max_reach or reticle.total_dist or reticle.max_range or 50
+    if obst_dist >= max_dist then return end
 
     local s_idx = reticle.surface_index or 1
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
     local reticle_id = reticle.id
-
     local dx = reticle.dir.x
     local dy = reticle.dir.y
     local sp = reticle.start_pos
+    local surface = game.surfaces[reticle.surface_name or "nauvis"]
+
+    local chain_entry, chain_exit = flow_kinetic.get_obstacle_chain_bounds(surface, sp, reticle.dir, obstacle_entity, 0, max_dist)
+    local entry_dist = chain_entry or obst_dist
+    local exit_dist = chain_exit or obst_dist
+
+    -- Decaying wakes never render active hazard rings and never spawn child wakes
+    if reticle.status == "retreating" then
+        reticle.total_dist = entry_dist
+        local collision_pos = { x = sp.x + dx * entry_dist, y = sp.y + dy * entry_dist }
+        reticle.terminal_pos = collision_pos
+        reticle.endpoint_pos = collision_pos
+
+        if reticle.anti_flight_id then
+            local anti = timed_motion.get_flight(reticle.anti_flight_id)
+            if anti and (anti.remaining_distance or 0) > entry_dist then
+                anti.remaining_distance = entry_dist
+            end
+        end
+
+        local target_seg_idx = math.max(1, math.floor(entry_dist / 16) + 1)
+        reticle.seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+
+        if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle_id] then
+            local owner_rec = motion_tree.trajectories[reticle_id]
+            if owner_rec.segments then
+                local to_remove = {}
+                for seg_key, leaf in pairs(owner_rec.segments) do
+                    local s_num = leaf.seg_idx or tonumber(seg_key:match(":(%d+)$")) or 1
+                    if s_num > target_seg_idx then
+                        to_remove[#to_remove + 1] = seg_key
+                    elseif s_num == target_seg_idx then
+                        leaf.d_end = entry_dist
+                        leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
+                        leaf.trail_count = math.max(0, math.floor(entry_dist - leaf.d_start))
+                        leaf.static_pos = nil
+                        leaf.static_render_spec = nil
+                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                    end
+                end
+                for i = 1, #to_remove do
+                    motion_tree:remove_segment(reticle_id, to_remove[i])
+                    if traj_tree then traj_tree:remove_segment(reticle_id, to_remove[i]) end
+                    viewport_bvh.on_segment_removed(s_idx, reticle_id, to_remove[i])
+                end
+            end
+        end
+        return
+    end
+
+    if obstacle_entity and obstacle_entity.valid then
+        flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
+    end
+
     local collision_pos = {
-        x = sp.x + dx * obst_dist,
-        y = sp.y + dy * obst_dist
+        x = sp.x + dx * entry_dist,
+        y = sp.y + dy * entry_dist
     }
 
     local is_live = false
@@ -1345,31 +1530,17 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         end
     end
 
-    local old_endpoint_spec = nil
-    local old_endpoint_pos = nil
-    if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle_id] then
-        local o_rec = motion_tree.trajectories[reticle_id]
-        if o_rec.segments then
-            for _, l in pairs(o_rec.segments) do
-                if l.static_render_spec then
-                    old_endpoint_spec = l.static_render_spec
-                    old_endpoint_pos = l.static_pos
-                    break
-                end
-            end
-        end
-    end
-    if not old_endpoint_spec and cur_flight and cur_flight.render_spec then
-        old_endpoint_spec = cur_flight.render_spec
-        old_endpoint_pos = { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
-    end
+    local head_spec = reticle.head_render_spec or (cur_flight and cur_flight.render_spec) or {
+        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+        radius = 0.24,
+        has_ring = true,
+        ring_radius = 0.42,
+        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+        ring_width = 2
+    }
+    local head_pos = { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
 
-    local surface = game.surfaces[reticle.surface_name or "nauvis"]
-    local exit_dist = flow_kinetic.find_obstacle_chain_exit(surface, sp, reticle.dir, obst_dist, old_total_dist, obstacle_entity)
-    local downstream_dist = old_total_dist - exit_dist
-    local should_spawn_downstream = (downstream_dist > 0.2)
-
-    reticle.total_dist = obst_dist
+    reticle.total_dist = entry_dist
     reticle.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
     reticle.endpoint_pos = { x = collision_pos.x, y = collision_pos.y }
 
@@ -1400,9 +1571,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
                 if s_idx_num > target_seg_idx then
                     to_remove[#to_remove + 1] = seg_key
                 elseif s_idx_num == target_seg_idx then
-                    leaf.d_end = obst_dist
+                    leaf.d_end = entry_dist
                     leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
-                    leaf.trail_count = math.max(0, math.floor(obst_dist - leaf.d_start))
+                    leaf.trail_count = math.max(0, math.floor(entry_dist - leaf.d_start))
                     leaf.static_pos = { x = collision_pos.x, y = collision_pos.y }
                     leaf.static_render_spec = hazard_spec
                     leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
@@ -1436,7 +1607,7 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
                 if s_idx_num > target_seg_idx then
                     to_remove_traj[#to_remove_traj + 1] = seg_key
                 elseif s_idx_num == target_seg_idx then
-                    leaf.d_end = obst_dist
+                    leaf.d_end = entry_dist
                     leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
                     leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
                     leaf.max_x = math.max(leaf.start_pos.x, collision_pos.x) + 0.45
@@ -1461,12 +1632,30 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         }
     end
 
-    if should_spawn_downstream then
+    local existing_down_id = reticle.downstream_reticle_id
+    local downstream_dist = old_total_dist - exit_dist
+
+    -- If obstacle swallowed the entire remaining beam, purge existing wake
+    if downstream_dist <= 0.2 then
+        if existing_down_id then
+            flow_kinetic.purge_retreating_reticle(existing_down_id)
+            reticle.downstream_reticle_id = nil
+        end
+        return
+    end
+
+    -- If downstream wake already exists for this beam, don't spawn duplicate reticles
+    if existing_down_id and storage.projector_reticles and storage.projector_reticles[existing_down_id] then
+        return
+    end
+
+    if downstream_dist > 0.2 then
         storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
         local down_id = storage.next_reticle_id
-        local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+        reticle.downstream_reticle_id = down_id
 
-        local down_term = old_endpoint_pos or { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
+        local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+        local down_term = head_pos
         storage.projector_reticles[down_id] = {
             id = down_id,
             projector_unit = nil,
@@ -1484,7 +1673,8 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             start_tick = reticle.start_tick or game.tick,
             retreat_tick = game.tick - math.floor(exit_dist * tpt),
             ticks_per_tile = tpt,
-            seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+            seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx),
+            head_render_spec = head_spec
         }
 
         storage.pinned_corridors = storage.pinned_corridors or {}
@@ -1516,8 +1706,8 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
                         leaf.trail_count = math.max(0, math.floor(s_end - s_start))
                         leaf.dir = { x = dx, y = dy }
                         leaf.q_level = reticle.q_level or 0
-                        if is_last_seg and old_endpoint_spec then
-                            leaf.static_render_spec = old_endpoint_spec
+                        if is_last_seg and head_spec then
+                            leaf.static_render_spec = head_spec
                             leaf.static_pos = { x = down_term.x, y = down_term.y }
                         else
                             leaf.static_render_spec = nil
@@ -1539,7 +1729,7 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         local first_step = math.min(dist_to_boundary, rem_dist)
 
         if dist_to_boundary <= 0.05 and rem_dist > dist_to_boundary then
-            anti_seg_idx = cur_seg_idx + 1
+            anti_seg_idx = exit_seg_idx + 1
             anti_start = { x = sp.x + dx * seg_boundary, y = sp.y + dy * seg_boundary }
             rem_dist = rem_dist - dist_to_boundary
             first_step = math.min(16, rem_dist)

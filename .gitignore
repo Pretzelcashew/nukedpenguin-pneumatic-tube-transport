@@ -11,3 +11,5 @@ aggregate*.txt
 
 # Build safety net
 *.zip
+.patch_archive/last_patch.txt
+.patch_archive/patch_history.log

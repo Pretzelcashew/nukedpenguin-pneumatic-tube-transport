@@ -42,11 +42,6 @@ function capsule_ballistics.apply_crash_damage(surface, crash_pos, q_lvl, owner_
             name = "explosion",
             position = crash_pos
         }
-        surface.play_sound{
-            path = "utility/explosion",
-            position = crash_pos,
-            volume_modifier = 0.8
-        }
     end)
 
     local CRASH_RADIUS = 3.5

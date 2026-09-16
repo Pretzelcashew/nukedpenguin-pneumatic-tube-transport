@@ -958,6 +958,12 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                     else
                         t_entry = t_start + math.floor(d_start * tpt)
                         t_exit = t_start + math.ceil(d_end * tpt)
+                        if flight.arrival_tick and current_tick <= flight.arrival_tick then
+                            local total_d = (flight_rec and flight_rec.total_dist) or (leaf and leaf.d_end)
+                            if total_d and d_end >= total_d - 0.05 then
+                                t_exit = math.max(t_exit, flight.arrival_tick)
+                            end
+                        end
                     end
 
                     if current_tick >= t_entry and current_tick <= t_exit then

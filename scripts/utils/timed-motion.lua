@@ -231,7 +231,6 @@ function timed_motion.shift_horizon(record, new_terminal_pos, current_tick, min_
 
     local surf = record.surface_name and game.surfaces[record.surface_name]
     local s_idx = (surf and surf.valid and surf.index) or (record.surface_index or 1)
-    timed_motion.remove_corridor(s_idx, record.owner_id)
     timed_motion.ensure_corridor(s_idx, record.owner_id, record.start_pos, new_terminal_pos)
 
     return true
@@ -291,26 +290,29 @@ function timed_motion.ensure_corridor(surface_index, corridor_id, start_pos, ter
     local tree = viewport_bvh.get_motion_tree(surface_index)
     if not tree then return nil end
 
-    local owner_rec = tree.trajectories and tree.trajectories[corridor_id]
-    if not (owner_rec and owner_rec.segments and next(owner_rec.segments)) then
-        local dx = terminal_pos.x - start_pos.x
-        local dy = terminal_pos.y - start_pos.y
-        local dist = math.sqrt(dx * dx + dy * dy)
-        if dist < 0.001 then dist = 1.0 end
+    local dx = terminal_pos.x - start_pos.x
+    local dy = terminal_pos.y - start_pos.y
+    local dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 0.001 then dist = 1.0 end
 
-        local MAX_LEAF = 16
-        local num_segs = math.max(1, math.ceil(dist / MAX_LEAF))
-        local d_x = (dx > 0 and 1) or (dx < 0 and -1) or 0
-        local d_y = (dy > 0 and 1) or (dy < 0 and -1) or 0
-        for s = 1, num_segs do
-            local d_start = (s - 1) * MAX_LEAF
-            local d_end = math.min(dist, s * MAX_LEAF)
+    local MAX_LEAF = 16
+    local num_segs = math.max(1, math.ceil(dist / MAX_LEAF))
+    local d_x = (dx > 0 and 1) or (dx < 0 and -1) or 0
+    local d_y = (dy > 0 and 1) or (dy < 0 and -1) or 0
+    local owner_rec = tree.trajectories and tree.trajectories[corridor_id]
+
+    for s = 1, num_segs do
+        local seg_key = string.format("%d,%d:%d", d_x, d_y, s)
+        local existing = owner_rec and owner_rec.segments and owner_rec.segments[seg_key]
+        local d_start = (s - 1) * MAX_LEAF
+        local d_end = math.min(dist, s * MAX_LEAF)
+
+        if not existing or (s == num_segs and existing.d_end < d_end) then
             local p_start = d_start / dist
             local p_end = d_end / dist
 
             local s_pos = { x = start_pos.x + dx * p_start, y = start_pos.y + dy * p_start }
             local e_pos = { x = start_pos.x + dx * p_end, y = start_pos.y + dy * p_end }
-            local seg_key = string.format("%d,%d:%d", d_x, d_y, s)
 
             local leaf = tree:insert_segment(corridor_id, seg_key, s_pos, e_pos, d_start, d_end, s)
             if leaf then

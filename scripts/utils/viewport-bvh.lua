@@ -339,7 +339,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
 
     local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
     local min_allowed = -1
-    if reticle and reticle.status == "retreating" and reticle.retreat_tick then
+    if reticle and reticle.retreat_tick then
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         local elapsed_retreat = math.max(0, game.tick - reticle.retreat_tick)
         min_allowed = math.floor(elapsed_retreat / tpt)

@@ -1,0 +1,1 @@
+make it so the reticles obstruction will create a new orphaned reticle, even if the downstream reticle has reached its max distance, and theres no such thing as a headless reticle, i dont know where ai every got that idea. make sure every reticle has a head. 

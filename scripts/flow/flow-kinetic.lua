@@ -1308,7 +1308,7 @@ function flow_kinetic.get_obstacle_chain_bounds(surface, sp, dir, hit_entity, mi
         for i = 1, #intervals do
             local inv = intervals[i]
             if not inv.used then
-                if inv.entry <= (cur_exit + 0.05) and inv.exit >= (cur_entry - 0.05) then
+                if inv.entry <= (cur_exit + 0.75) and inv.exit >= (cur_entry - 0.75) then
                     if inv.entry < cur_entry then
                         cur_entry = inv.entry
                         changed = true
@@ -1416,7 +1416,7 @@ function flow_kinetic.find_obstacle_chain_exit(surface, sp, dir, entry_dist, max
         extended = false
         for i = 1, #intervals do
             local inv = intervals[i]
-            if inv.entry <= (cur_exit + 0.05) and inv.exit > cur_exit then
+            if inv.entry <= (cur_exit + 0.75) and inv.exit > cur_exit then
                 cur_exit = inv.exit
                 extended = true
                 if cur_exit >= max_dist then
@@ -1447,51 +1447,7 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     local entry_dist = chain_entry or obst_dist
     local exit_dist = chain_exit or obst_dist
 
-    -- Decaying wakes never render active hazard rings and never spawn child wakes
-    if reticle.status == "retreating" then
-        reticle.total_dist = entry_dist
-        local collision_pos = { x = sp.x + dx * entry_dist, y = sp.y + dy * entry_dist }
-        reticle.terminal_pos = collision_pos
-        reticle.endpoint_pos = collision_pos
-
-        if reticle.anti_flight_id then
-            local anti = timed_motion.get_flight(reticle.anti_flight_id)
-            if anti and (anti.remaining_distance or 0) > entry_dist then
-                anti.remaining_distance = entry_dist
-            end
-        end
-
-        local target_seg_idx = math.max(1, math.floor(entry_dist / 16) + 1)
-        reticle.seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
-
-        if motion_tree and motion_tree.trajectories and motion_tree.trajectories[reticle_id] then
-            local owner_rec = motion_tree.trajectories[reticle_id]
-            if owner_rec.segments then
-                local to_remove = {}
-                for seg_key, leaf in pairs(owner_rec.segments) do
-                    local s_num = leaf.seg_idx or tonumber(seg_key:match(":(%d+)$")) or 1
-                    if s_num > target_seg_idx then
-                        to_remove[#to_remove + 1] = seg_key
-                    elseif s_num == target_seg_idx then
-                        leaf.d_end = entry_dist
-                        leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
-                        leaf.trail_count = math.max(0, math.floor(entry_dist - leaf.d_start))
-                        leaf.static_pos = nil
-                        leaf.static_render_spec = nil
-                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
-                    end
-                end
-                for i = 1, #to_remove do
-                    motion_tree:remove_segment(reticle_id, to_remove[i])
-                    if traj_tree then traj_tree:remove_segment(reticle_id, to_remove[i]) end
-                    viewport_bvh.on_segment_removed(s_idx, reticle_id, to_remove[i])
-                end
-            end
-        end
-        return
-    end
-
-    if obstacle_entity and obstacle_entity.valid then
+    if obstacle_entity and obstacle_entity.valid and reticle.projector_unit then
         flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
     end
 
@@ -1508,7 +1464,16 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         end
     end
 
-    local hazard_spec = nil
+    local head_spec = reticle.head_render_spec or {
+        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+        radius = 0.24,
+        has_ring = true,
+        ring_radius = 0.42,
+        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+        ring_width = 2
+    }
+
+    local hazard_spec = head_spec
     if is_live then
         hazard_spec = {
             color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
@@ -1537,14 +1502,6 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         old_total_dist = cur_h_dist
     end
 
-    local head_spec = reticle.head_render_spec or (cur_flight and cur_flight.render_spec) or {
-        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-        radius = 0.24,
-        has_ring = true,
-        ring_radius = 0.42,
-        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-        ring_width = 2
-    }
     local head_pos = { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
 
     reticle.total_dist = entry_dist
@@ -1639,23 +1596,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         }
     end
 
-    local existing_down_id = reticle.downstream_reticle_id
     local downstream_dist = (head_was_severed and (full_reach - exit_dist)) or (old_total_dist - exit_dist)
 
-    -- If obstacle swallowed the entire remaining beam, purge existing wake
     if downstream_dist <= 0.2 then
-        if head_was_severed and cur_flight then
-            timed_motion.remove_flight(cur_flight.id, reticle_id)
-        end
-        if existing_down_id then
-            flow_kinetic.purge_retreating_reticle(existing_down_id)
-            reticle.downstream_reticle_id = nil
-        end
-        return
-    end
-
-    -- If downstream wake already exists for this beam, don't spawn duplicate reticles
-    if existing_down_id and storage.projector_reticles and storage.projector_reticles[existing_down_id] then
         if head_was_severed and cur_flight then
             timed_motion.remove_flight(cur_flight.id, reticle_id)
         end
@@ -1951,7 +1894,312 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     end
 end
 
+function flow_kinetic.queue_reticle_obstacle(r_id, entity, o_dist)
+    if not (r_id and entity and entity.valid) then return end
+    storage.pending_reticle_obstacles = storage.pending_reticle_obstacles or {}
+    local r_queue = storage.pending_reticle_obstacles[r_id]
+    if not r_queue then
+        r_queue = {}
+        storage.pending_reticle_obstacles[r_id] = r_queue
+    end
+    r_queue[#r_queue + 1] = {
+        entity = entity,
+        o_dist = o_dist
+    }
+end
+
+function flow_kinetic.flush_pending_reticle_obstacles()
+    local pending = storage.pending_reticle_obstacles
+    if not (pending and next(pending) ~= nil) then return end
+    storage.pending_reticle_obstacles = nil
+
+    for r_id, queue in pairs(pending) do
+        local ret = storage.projector_reticles and storage.projector_reticles[r_id]
+        if ret then
+            local r_dx = ret.dir.x
+            local r_dy = ret.dir.y
+            local r_sp = ret.start_pos
+            local full_reach = ret.max_reach or 50
+            local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
+
+            local closest_dist = math.huge
+            local closest_entity = nil
+
+            for i = 1, #queue do
+                local item = queue[i]
+                local ent = item.entity
+                if ent and ent.valid then
+                    local bb = ent.bounding_box
+                    local o_dist = nil
+                    local on_axis = false
+
+                    if r_dx > 0 then
+                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                        o_dist = bb.left_top.x - r_sp.x
+                    elseif r_dx < 0 then
+                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                        o_dist = r_sp.x - bb.right_bottom.x
+                    elseif r_dy > 0 then
+                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                        o_dist = bb.left_top.y - r_sp.y
+                    elseif r_dy < 0 then
+                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                        o_dist = r_sp.y - bb.right_bottom.y
+                    end
+
+                    local is_retreating = (ret.status == "retreating")
+                    local is_behind_wake = false
+                    if is_retreating and ret.retreat_tick then
+                        local el_ret = math.max(0, game.tick - ret.retreat_tick)
+                        local d_cleared = math.floor(el_ret / (ret.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE))
+                        if o_dist and o_dist <= (d_cleared + 0.05) then
+                            is_behind_wake = true
+                        end
+                    end
+
+                    if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach and not is_behind_wake then
+                        if o_dist < closest_dist then
+                            closest_dist = o_dist
+                            closest_entity = ent
+                        end
+                    end
+                end
+            end
+
+            if closest_entity and closest_dist < math.huge then
+                local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+                local is_growing = (ret.status == "growing" and cur_flight ~= nil)
+                local cur_head_dist = ret.total_dist or ret.max_range or full_reach
+
+                if is_growing then
+                    local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+                    cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
+                end
+
+                if not is_growing or closest_dist <= (cur_head_dist + 0.05) then
+                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
+                else
+                    flow_kinetic.update_reticle_horizon(ret, closest_dist, closest_entity, cur_flight)
+                end
+
+                local down_id = ret.downstream_reticle_id
+                if down_id and storage.projector_reticles and storage.projector_reticles[down_id] then
+                    local surf = game.surfaces[ret.surface_name or "nauvis"]
+                    local _, down_exit = flow_kinetic.get_obstacle_chain_bounds(surf, r_sp, ret.dir, closest_entity, 0, full_reach)
+                    local exit_d = down_exit or closest_dist
+                    for i = 1, #queue do
+                        local item = queue[i]
+                        local ent = item.entity
+                        if ent and ent.valid and item.o_dist and item.o_dist > (exit_d + 0.05) then
+                            flow_kinetic.queue_reticle_obstacle(down_id, ent, item.o_dist)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if storage.pending_reticle_obstacles and next(storage.pending_reticle_obstacles) ~= nil then
+        flow_kinetic.flush_pending_reticle_obstacles()
+    end
+end
+
+function flow_kinetic.queue_reticle_obstacle(r_id, entity, o_dist)
+    if not (r_id and entity and entity.valid) then return end
+    storage.pending_reticle_obstacles = storage.pending_reticle_obstacles or {}
+    local r_queue = storage.pending_reticle_obstacles[r_id]
+    if not r_queue then
+        r_queue = {}
+        storage.pending_reticle_obstacles[r_id] = r_queue
+    end
+    r_queue[#r_queue + 1] = {
+        entity = entity,
+        o_dist = o_dist
+    }
+end
+
+function flow_kinetic.flush_pending_reticle_obstacles()
+    local pending = storage.pending_reticle_obstacles
+    if not (pending and next(pending) ~= nil) then return end
+    storage.pending_reticle_obstacles = nil
+
+    for r_id, queue in pairs(pending) do
+        local ret = storage.projector_reticles and storage.projector_reticles[r_id]
+        if ret then
+            local r_dx = ret.dir.x
+            local r_dy = ret.dir.y
+            local r_sp = ret.start_pos
+            local full_reach = ret.max_reach or 50
+            local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
+
+            local closest_dist = math.huge
+            local closest_entity = nil
+
+            for i = 1, #queue do
+                local item = queue[i]
+                local ent = item.entity
+                if ent and ent.valid then
+                    local bb = ent.bounding_box
+                    local o_dist = nil
+                    local on_axis = false
+
+                    if r_dx > 0 then
+                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                        o_dist = bb.left_top.x - r_sp.x
+                    elseif r_dx < 0 then
+                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                        o_dist = r_sp.x - bb.right_bottom.x
+                    elseif r_dy > 0 then
+                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                        o_dist = bb.left_top.y - r_sp.y
+                    elseif r_dy < 0 then
+                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                        o_dist = r_sp.y - bb.right_bottom.y
+                    end
+
+                    local is_retreating = (ret.status == "retreating")
+                    local is_behind_wake = false
+                    if is_retreating and ret.retreat_tick then
+                        local el_ret = math.max(0, game.tick - ret.retreat_tick)
+                        local d_cleared = math.floor(el_ret / (ret.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE))
+                        if o_dist and o_dist <= (d_cleared + 0.05) then
+                            is_behind_wake = true
+                        end
+                    end
+
+                    if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach and not is_behind_wake then
+                        if o_dist < closest_dist then
+                            closest_dist = o_dist
+                            closest_entity = ent
+                        end
+                    end
+                end
+            end
+
+            if closest_entity and closest_dist < math.huge then
+                local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+                local is_growing = (ret.status == "growing" and cur_flight ~= nil)
+                local cur_head_dist = ret.total_dist or ret.max_range or full_reach
+
+                if is_growing then
+                    local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+                    cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
+                end
+
+                if not is_growing or closest_dist <= (cur_head_dist + 0.05) then
+                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
+                else
+                    flow_kinetic.update_reticle_horizon(ret, closest_dist, closest_entity, cur_flight)
+                end
+
+                local down_id = ret.downstream_reticle_id
+                if down_id and storage.projector_reticles and storage.projector_reticles[down_id] then
+                    local surf = game.surfaces[ret.surface_name or "nauvis"]
+                    local _, down_exit = flow_kinetic.get_obstacle_chain_bounds(surf, r_sp, ret.dir, closest_entity, 0, full_reach)
+                    local exit_d = down_exit or closest_dist
+                    for i = 1, #queue do
+                        local item = queue[i]
+                        local ent = item.entity
+                        if ent and ent.valid and item.o_dist and item.o_dist > (exit_d + 0.05) then
+                            flow_kinetic.queue_reticle_obstacle(down_id, ent, item.o_dist)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if storage.pending_reticle_obstacles and next(storage.pending_reticle_obstacles) ~= nil then
+        flow_kinetic.flush_pending_reticle_obstacles()
+    end
+end
+
+function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_port_fn, wake_port_fn)
+    if not (entity and entity.valid and entity.bounding_box) then return end
+    if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
+    local bb = entity.bounding_box
+    local surface = entity.surface
+    if not (surface and surface.valid) then return end
+
+    enqueue_port_fn = enqueue_port_fn or enqueue_port
+    wake_port_fn = wake_port_fn or wake_port_parked
+
+    local MARGIN = 2.5
+    if storage.motion_bvh and storage.motion_bvh[surface.index] then
+        local motion_tree = storage.motion_bvh[surface.index]
+        local motion_hits = {}
+        trajectory_bvh.query_box(motion_tree, bb.left_top.x - MARGIN, bb.left_top.y - MARGIN, bb.right_bottom.x + MARGIN, bb.right_bottom.y + MARGIN, motion_hits)
+        if #motion_hits > 0 then
+            if flow_kinetic.handle_motion_obstacle_changed then
+                flow_kinetic.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
+            end
+
+            if is_removal and storage.projector_reticles then
+                flow_kinetic.handle_reticle_obstacle_cleared(entity)
+            elseif not is_removal and storage.projector_reticles then
+                local checked_owners = {}
+                for i = 1, #motion_hits do
+                    local hit_leaf = motion_hits[i]
+                    local r_id = hit_leaf.owner_id
+                    if r_id and not checked_owners[r_id] then
+                        checked_owners[r_id] = true
+                        local ret = storage.projector_reticles[r_id]
+                        if ret then
+                            local is_self = ret.projector_unit and (entity.unit_number == ret.projector_unit
+                                or (storage.active_projectors and storage.active_projectors[ret.projector_unit] == entity))
+                            if not is_self then
+                                local r_dx = ret.dir.x
+                                local r_dy = ret.dir.y
+                                local r_sp = ret.start_pos
+                                local o_dist = nil
+                                local on_axis = false
+
+                                if r_dx > 0 then
+                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                                    o_dist = bb.left_top.x - r_sp.x
+                                elseif r_dx < 0 then
+                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
+                                    o_dist = r_sp.x - bb.right_bottom.x
+                                elseif r_dy > 0 then
+                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                                    o_dist = bb.left_top.y - r_sp.y
+                                elseif r_dy < 0 then
+                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
+                                    o_dist = r_sp.y - bb.right_bottom.y
+                                end
+
+                                local full_reach = ret.max_reach or 50
+                                local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
+
+                                local is_retreating = (ret.status == "retreating")
+                                local is_behind_wake = false
+                                if is_retreating and ret.retreat_tick then
+                                    local el_ret = math.max(0, game.tick - ret.retreat_tick)
+                                    local d_cleared = math.floor(el_ret / (ret.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE))
+                                    if o_dist and o_dist <= (d_cleared + 0.05) then
+                                        is_behind_wake = true
+                                    end
+                                end
+
+                                if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach and not is_behind_wake then
+                                    flow_kinetic.queue_reticle_obstacle(r_id, entity, o_dist)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
+end
+
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
+    return flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_port_fn, wake_port_fn)
+end
+
+function flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
     if not (entity and entity.valid and entity.bounding_box) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
     local bb = entity.bounding_box
@@ -2020,20 +2268,7 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                                 end
 
                                 if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach and not is_behind_wake then
-                                    local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
-                                    local is_growing = (ret.status == "growing" and cur_flight ~= nil)
-                                    local cur_head_dist = ret.total_dist or ret.max_range or full_reach
-
-                                    if is_growing then
-                                        local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
-                                        cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
-                                    end
-
-                                    if not is_growing or o_dist <= (cur_head_dist + 0.05) then
-                                        flow_kinetic.truncate_reticle(ret, o_dist, entity)
-                                    else
-                                        flow_kinetic.update_reticle_horizon(ret, o_dist, entity, cur_flight)
-                                    end
+                                    flow_kinetic.queue_reticle_obstacle(r_id, entity, o_dist)
                                 end
                             end
                         end
@@ -2213,6 +2448,8 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
 end
 
 function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
+    flow_kinetic.flush_pending_reticle_obstacles()
+    flow_kinetic.flush_pending_reticle_obstacles()
     storage.character_colliders = storage.character_colliders or {}
     storage.character_last_keys = storage.character_last_keys or {}
     storage.character_last_surface = storage.character_last_surface or {}
@@ -2365,9 +2602,11 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
     end
 
     flow_kinetic.step_pending_bvh_segments(game.tick)
+    flow_kinetic.flush_pending_reticle_obstacles()
 end
 
 function flow_kinetic.step_pending_bvh_segments(current_tick)
+    flow_kinetic.flush_pending_reticle_obstacles()
     local pending = storage.pending_bvh_segments
     if not pending or #pending == 0 then return end
 

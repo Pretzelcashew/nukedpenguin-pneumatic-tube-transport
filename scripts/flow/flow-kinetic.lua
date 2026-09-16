@@ -1193,6 +1193,107 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
     end
 end
 
+function flow_kinetic.find_obstacle_chain_exit(surface, sp, dir, entry_dist, max_dist, initial_entity)
+    local cur_exit = entry_dist
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+    if not (surface and surface.valid and sp and (dx ~= 0 or dy ~= 0)) then
+        return cur_exit
+    end
+
+    local function get_entity_bounds(ent)
+        if not (ent and ent.valid and ent.bounding_box) then return nil, nil end
+        local cbb = ent.bounding_box
+        local on_axis = false
+        local c_entry = nil
+        local c_exit = nil
+
+        if dx > 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = cbb.left_top.x - sp.x
+            c_exit = cbb.right_bottom.x - sp.x
+        elseif dx < 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = sp.x - cbb.right_bottom.x
+            c_exit = sp.x - cbb.left_top.x
+        elseif dy > 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = cbb.left_top.y - sp.y
+            c_exit = cbb.right_bottom.y - sp.y
+        elseif dy < 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = sp.y - cbb.right_bottom.y
+            c_exit = sp.y - cbb.left_top.y
+        end
+
+        if on_axis and c_entry and c_exit then
+            return c_entry, c_exit
+        end
+        return nil, nil
+    end
+
+    if initial_entity then
+        local _, i_exit = get_entity_bounds(initial_entity)
+        if i_exit and i_exit > cur_exit then
+            cur_exit = i_exit
+        end
+    end
+
+    if cur_exit >= max_dist then
+        return max_dist
+    end
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(sp.x + dx * entry_dist, sp.x + dx * max_dist)
+        max_x = math.max(sp.x + dx * entry_dist, sp.x + dx * max_dist)
+        min_y = sp.y - 0.45
+        max_y = sp.y + 0.45
+    else
+        min_x = sp.x - 0.45
+        max_x = sp.x + 0.45
+        min_y = math.min(sp.y + dy * entry_dist, sp.y + dy * max_dist)
+        max_y = math.max(sp.y + dy * entry_dist, sp.y + dy * max_dist)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local intervals = {}
+    for _, cand in ipairs(candidates) do
+        if cand.valid and not (IGNORABLE_TYPES[cand.type] or PROXY_NAMES[cand.name]) then
+            local is_ignorable = false
+            if cand.type == "gate" and not (cand.is_closed and cand.is_closed()) then
+                is_ignorable = true
+            end
+            if not is_ignorable then
+                local c_entry, c_exit = get_entity_bounds(cand)
+                if c_entry and c_exit and c_exit > entry_dist then
+                    intervals[#intervals + 1] = { entry = c_entry, exit = c_exit }
+                end
+            end
+        end
+    end
+
+    local extended = true
+    while extended do
+        extended = false
+        for i = 1, #intervals do
+            local inv = intervals[i]
+            if inv.entry <= (cur_exit + 0.05) and inv.exit > cur_exit then
+                cur_exit = inv.exit
+                extended = true
+                if cur_exit >= max_dist then
+                    return max_dist
+                end
+            end
+        end
+    end
+
+    return math.min(max_dist, cur_exit)
+end
+
 function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     if not (reticle and obst_dist) then return end
     if obst_dist >= (reticle.total_dist or reticle.max_range or 50) then return end
@@ -1263,7 +1364,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         old_endpoint_pos = { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
     end
 
-    local downstream_dist = old_total_dist - obst_dist
+    local surface = game.surfaces[reticle.surface_name or "nauvis"]
+    local exit_dist = flow_kinetic.find_obstacle_chain_exit(surface, sp, reticle.dir, obst_dist, old_total_dist, obstacle_entity)
+    local downstream_dist = old_total_dist - exit_dist
     local should_spawn_downstream = (downstream_dist > 0.2)
 
     reticle.total_dist = obst_dist
@@ -1379,7 +1482,7 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             total_dist = old_total_dist,
             status = "retreating",
             start_tick = reticle.start_tick or game.tick,
-            retreat_tick = game.tick - math.floor(obst_dist * tpt),
+            retreat_tick = game.tick - math.floor(exit_dist * tpt),
             ticks_per_tile = tpt,
             seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
         }
@@ -1387,16 +1490,16 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         storage.pinned_corridors = storage.pinned_corridors or {}
         storage.pinned_corridors[down_id] = true
 
-        local cur_seg_idx = target_seg_idx
+        local exit_seg_idx = math.max(1, math.floor(exit_dist / 16) + 1)
         local max_seg_idx = math.max(1, math.floor(old_total_dist / 16) + 1)
-        local seg_boundary = cur_seg_idx * 16
-        local dist_to_boundary = seg_boundary - obst_dist
+        local seg_boundary = exit_seg_idx * 16
+        local dist_to_boundary = seg_boundary - exit_dist
 
-        for s = cur_seg_idx, max_seg_idx do
+        for s = exit_seg_idx, max_seg_idx do
             local s_start = (s - 1) * 16
             local s_end = math.min(s * 16, old_total_dist)
 
-            if s_end > (s_start + 0.05) and (s > cur_seg_idx or dist_to_boundary > 0.05) then
+            if s_end > (exit_dist + 0.05) then
                 local s_key = string.format("%d,%d:%d", dx, dy, s)
                 local seg_start_pos = { x = sp.x + dx * s_start, y = sp.y + dy * s_start }
                 local seg_end_pos = { x = sp.x + dx * s_end, y = sp.y + dy * s_end }
@@ -1430,9 +1533,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             trajectory_bvh.refresh_active_renders()
         end
 
-        local rem_dist = old_total_dist - obst_dist
-        local anti_seg_idx = cur_seg_idx
-        local anti_start = { x = collision_pos.x, y = collision_pos.y }
+        local rem_dist = old_total_dist - exit_dist
+        local anti_seg_idx = exit_seg_idx
+        local anti_start = { x = sp.x + dx * exit_dist, y = sp.y + dy * exit_dist }
         local first_step = math.min(dist_to_boundary, rem_dist)
 
         if dist_to_boundary <= 0.05 and rem_dist > dist_to_boundary then

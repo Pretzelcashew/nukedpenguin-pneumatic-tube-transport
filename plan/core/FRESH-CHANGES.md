@@ -148,3 +148,13 @@
 2. **Pre-Calibrated Wake Reeling (`scripts/flow/flow-kinetic.lua`):** Initialized the downstream slice with `status = "retreating"` and a back-calculated `retreat_tick` matching the obstacle distance, allowing observer viewport culling to hide upstream dots while preserving downstream dots.
 3. **Discrete Anti-Reticle Flight Launch (`scripts/flow/flow-kinetic.lua`):** Scheduled an `anti_reticle` flight starting squarely at the collision boundary (`collision_pos`) to hop through downstream 16-tile segments, progressively reeling in dots and recycling BVH leaves upon reaching the old endpoint.
 4. **Trailing Wake Boundary Guard (`scripts/flow/flow-kinetic.lua`):** Added `is_behind_wake` filtering to `handle_obstacle_changed`, preventing obstacles built behind an already-retreating wake from triggering redundant or out-of-order truncations.
+
+
+### Revision: Obstacle Exit-Boundary Scanning and Solid Footprint Wake Suppression
+**Date:** 2026-09-16 09:49 EDT
+**Context:** When placing long structures (such as elevated rail ramps) or contiguous rows of obstacles across an active beam, the downstream wake previously retained dots rendered directly on top of the solid obstacle footprint, with the anti-reticle awkwardly traversing through the building chassis. This session implemented an obstacle exit-boundary scanner to identify the far collision face, immediately wiping all dots within the physical footprint and launching the retreating anti-reticle cleanly from the open-air exit boundary.
+**Key Changes:**
+1. **Contiguous Obstacle Exit Scanner (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.find_obstacle_chain_exit` to compute the far exit boundary (`exit_dist`) along the beam axis, iteratively extending through contiguous or overlapping obstacles (supporting single large entities like rail ramps, multi-building blueprints, and defensive walls).
+2. **Solid Footprint Wake Suppression (`scripts/flow/flow-kinetic.lua`):** Calibrated the downstream reticle's `retreat_tick` directly to `game.tick - math.floor(exit_dist * tpt)`, preventing trail dots within the solid obstacle body ($d \le \text{exit\_dist}$) from ever spawning into observer viewports.
+3. **Eclipsed Segment Culling (`scripts/flow/flow-kinetic.lua`):** Filtered out BVH leaf segments that lie entirely within the obstacle footprint ($s_{\text{end}} \le \text{exit\_dist}$), inserting only surviving open-air segments into `motion_tree` and `traj_tree`.
+4. **Exit-Face Anti-Reticle Spawning (`scripts/flow/flow-kinetic.lua`):** Repositioned the downstream `anti_reticle` flight origin directly to the obstacle's exit boundary (`sp + dir * exit_dist`), cleanly reeling in only the surviving open-air wake toward the original terminal endpoint.

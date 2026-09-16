@@ -1,39 +1,226 @@
 *** FILE: scripts/flow/flow-kinetic.lua
 <<< FIND
-                                if on_axis and o_dist and o_dist > 0.05 and o_dist < (ret.total_dist or ret.max_range or 50) then
-                                    local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
-                                    local is_growing = (ret.status == "growing" and cur_flight ~= nil)
-                                    local cur_head_dist = ret.total_dist or ret.max_range or 50
-=== REPLACE ===
-                                local full_reach = ret.max_reach or 50
-                                local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
-                                if on_axis and o_dist and o_dist > 0.05 and o_dist < beam_reach then
-                                    local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
-                                    local is_growing = (ret.status == "growing" and cur_flight ~= nil)
-                                    local cur_head_dist = ret.total_dist or ret.max_range or full_reach
->>>
+            else
+                flow_kinetic.resume_reticle_probing(ret)
+            end
+        end
+    end
+end
 
-*** FILE: scripts/capsules/capsule-ballistics.lua
-<<< FIND
-        local surface = game.surfaces[flight.surface_name or "nauvis"]
-        local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, flight.projector_unit)
-        if obst and obst.dist then
-            next_step = math.max(0.1, obst.dist)
-            rem = next_step
-            flight.remaining_distance = rem
-            if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
-                flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
-            end
-        end
+function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
 === REPLACE ===
-        local surface = game.surfaces[flight.surface_name or "nauvis"]
-        local obst = flow_kinetic.scan_leaf_rect(surface, next_start, { x = dx, y = dy }, next_step, flight.projector_unit)
-        if obst and obst.dist then
-            next_step = math.max(0.1, obst.dist)
-            rem = 0
-            flight.remaining_distance = 0
-            if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
-                flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
+            else
+                flow_kinetic.resume_reticle_probing(ret)
             end
         end
+    end
+end
+
+function flow_kinetic.find_obstacle_chain_exit(surface, sp, dir, entry_dist, max_dist, initial_entity)
+    local cur_exit = entry_dist
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+    if not (surface and surface.valid and sp and (dx ~= 0 or dy ~= 0)) then
+        return cur_exit
+    end
+
+    local function get_entity_bounds(ent)
+        if not (ent and ent.valid and ent.bounding_box) then return nil, nil end
+        local cbb = ent.bounding_box
+        local on_axis = false
+        local c_entry = nil
+        local c_exit = nil
+
+        if dx > 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = cbb.left_top.x - sp.x
+            c_exit = cbb.right_bottom.x - sp.x
+        elseif dx < 0 then
+            on_axis = (cbb.left_top.y - 0.05 <= sp.y and sp.y <= cbb.right_bottom.y + 0.05)
+            c_entry = sp.x - cbb.right_bottom.x
+            c_exit = sp.x - cbb.left_top.x
+        elseif dy > 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = cbb.left_top.y - sp.y
+            c_exit = cbb.right_bottom.y - sp.y
+        elseif dy < 0 then
+            on_axis = (cbb.left_top.x - 0.05 <= sp.x and sp.x <= cbb.right_bottom.x + 0.05)
+            c_entry = sp.y - cbb.right_bottom.y
+            c_exit = sp.y - cbb.left_top.y
+        end
+
+        if on_axis and c_entry and c_exit then
+            return c_entry, c_exit
+        end
+        return nil, nil
+    end
+
+    if initial_entity then
+        local _, i_exit = get_entity_bounds(initial_entity)
+        if i_exit and i_exit > cur_exit then
+            cur_exit = i_exit
+        end
+    end
+
+    if cur_exit >= max_dist then
+        return max_dist
+    end
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(sp.x + dx * entry_dist, sp.x + dx * max_dist)
+        max_x = math.max(sp.x + dx * entry_dist, sp.x + dx * max_dist)
+        min_y = sp.y - 0.45
+        max_y = sp.y + 0.45
+    else
+        min_x = sp.x - 0.45
+        max_x = sp.x + 0.45
+        min_y = math.min(sp.y + dy * entry_dist, sp.y + dy * max_dist)
+        max_y = math.max(sp.y + dy * entry_dist, sp.y + dy * max_dist)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local intervals = {}
+    for _, cand in ipairs(candidates) do
+        if cand.valid and not (IGNORABLE_TYPES[cand.type] or PROXY_NAMES[cand.name]) then
+            local is_ignorable = false
+            if cand.type == "gate" and not (cand.is_closed and cand.is_closed()) then
+                is_ignorable = true
+            end
+            if not is_ignorable then
+                local c_entry, c_exit = get_entity_bounds(cand)
+                if c_entry and c_exit and c_exit > entry_dist then
+                    intervals[#intervals + 1] = { entry = c_entry, exit = c_exit }
+                end
+            end
+        end
+    end
+
+    local extended = true
+    while extended do
+        extended = false
+        for i = 1, #intervals do
+            local inv = intervals[i]
+            if inv.entry <= (cur_exit + 0.05) and inv.exit > cur_exit then
+                cur_exit = inv.exit
+                extended = true
+                if cur_exit >= max_dist then
+                    return max_dist
+                end
+            end
+        end
+    end
+
+    return math.min(max_dist, cur_exit)
+end
+
+function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
+>>>
+<<< FIND
+    local downstream_dist = old_total_dist - obst_dist
+    local should_spawn_downstream = (downstream_dist > 0.2)
+
+    reticle.total_dist = obst_dist
+=== REPLACE ===
+    local surface = game.surfaces[reticle.surface_name or "nauvis"]
+    local exit_dist = flow_kinetic.find_obstacle_chain_exit(surface, sp, reticle.dir, obst_dist, old_total_dist, obstacle_entity)
+    local downstream_dist = old_total_dist - exit_dist
+    local should_spawn_downstream = (downstream_dist > 0.2)
+
+    reticle.total_dist = obst_dist
+>>>
+<<< FIND
+    if should_spawn_downstream then
+        storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
+        local down_id = storage.next_reticle_id
+        local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+
+        local down_term = old_endpoint_pos or { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
+        storage.projector_reticles[down_id] = {
+            id = down_id,
+            projector_unit = nil,
+            surface_name = reticle.surface_name,
+            surface_index = s_idx,
+            start_pos = { x = sp.x, y = sp.y },
+            terminal_pos = { x = down_term.x, y = down_term.y },
+            endpoint_pos = { x = down_term.x, y = down_term.y },
+            dir = { x = dx, y = dy },
+            q_level = reticle.q_level or 0,
+            max_reach = old_total_dist,
+            max_range = old_total_dist,
+            total_dist = old_total_dist,
+            status = "retreating",
+            start_tick = reticle.start_tick or game.tick,
+            retreat_tick = game.tick - math.floor(obst_dist * tpt),
+            ticks_per_tile = tpt,
+            seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+        }
+
+        storage.pinned_corridors = storage.pinned_corridors or {}
+        storage.pinned_corridors[down_id] = true
+
+        local cur_seg_idx = target_seg_idx
+        local max_seg_idx = math.max(1, math.floor(old_total_dist / 16) + 1)
+        local seg_boundary = cur_seg_idx * 16
+        local dist_to_boundary = seg_boundary - obst_dist
+
+        for s = cur_seg_idx, max_seg_idx do
+            local s_start = (s - 1) * 16
+            local s_end = math.min(s * 16, old_total_dist)
+
+            if s_end > (s_start + 0.05) and (s > cur_seg_idx or dist_to_boundary > 0.05) then
+=== REPLACE ===
+    if should_spawn_downstream then
+        storage.next_reticle_id = (storage.next_reticle_id or 0) + 1
+        local down_id = storage.next_reticle_id
+        local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+
+        local down_term = old_endpoint_pos or { x = sp.x + dx * old_total_dist, y = sp.y + dy * old_total_dist }
+        storage.projector_reticles[down_id] = {
+            id = down_id,
+            projector_unit = nil,
+            surface_name = reticle.surface_name,
+            surface_index = s_idx,
+            start_pos = { x = sp.x, y = sp.y },
+            terminal_pos = { x = down_term.x, y = down_term.y },
+            endpoint_pos = { x = down_term.x, y = down_term.y },
+            dir = { x = dx, y = dy },
+            q_level = reticle.q_level or 0,
+            max_reach = old_total_dist,
+            max_range = old_total_dist,
+            total_dist = old_total_dist,
+            status = "retreating",
+            start_tick = reticle.start_tick or game.tick,
+            retreat_tick = game.tick - math.floor(exit_dist * tpt),
+            ticks_per_tile = tpt,
+            seg_key = string.format("%d,%d:%d", dx, dy, target_seg_idx)
+        }
+
+        storage.pinned_corridors = storage.pinned_corridors or {}
+        storage.pinned_corridors[down_id] = true
+
+        local exit_seg_idx = math.max(1, math.floor(exit_dist / 16) + 1)
+        local max_seg_idx = math.max(1, math.floor(old_total_dist / 16) + 1)
+        local seg_boundary = exit_seg_idx * 16
+        local dist_to_boundary = seg_boundary - exit_dist
+
+        for s = exit_seg_idx, max_seg_idx do
+            local s_start = (s - 1) * 16
+            local s_end = math.min(s * 16, old_total_dist)
+
+            if s_end > (exit_dist + 0.05) then
+>>>
+<<< FIND
+        local rem_dist = old_total_dist - obst_dist
+        local anti_seg_idx = cur_seg_idx
+        local anti_start = { x = collision_pos.x, y = collision_pos.y }
+        local first_step = math.min(dist_to_boundary, rem_dist)
+=== REPLACE ===
+        local rem_dist = old_total_dist - exit_dist
+        local anti_seg_idx = exit_seg_idx
+        local anti_start = { x = sp.x + dx * exit_dist, y = sp.y + dy * exit_dist }
+        local first_step = math.min(dist_to_boundary, rem_dist)
 >>>

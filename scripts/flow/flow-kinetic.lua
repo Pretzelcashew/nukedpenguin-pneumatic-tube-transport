@@ -1749,8 +1749,10 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                 local old_keys = storage.character_last_keys[char_key] or {}
 
                 -- 1. Evacuate positions no longer in 1-node influence
+                local evacuated_any = false
                 for old_k, old_p in pairs(old_keys) do
                     if not new_keys[old_k] then
+                        evacuated_any = true
                         storage.character_colliders[old_k] = nil
                         wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
                         if flow_kinetic.handle_motion_obstacle_changed and char.valid and char.surface then
@@ -1761,6 +1763,55 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                                 trajectory_bvh.query_box(m_tree, c_bb.left_top.x - 2.5, c_bb.left_top.y - 2.5, c_bb.right_bottom.x + 2.5, c_bb.right_bottom.y + 2.5, m_hits)
                                 if #m_hits > 0 then
                                     flow_kinetic.handle_motion_obstacle_changed(char.surface, char, c_bb, true, m_hits)
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local u_num = char.unit_number
+                if evacuated_any and u_num and storage.blocked_reticles and storage.blocked_reticles[u_num] then
+                    local to_check = {}
+                    for rid in pairs(storage.blocked_reticles[u_num]) do
+                        to_check[#to_check + 1] = rid
+                    end
+
+                    for i = 1, #to_check do
+                        local rid = to_check[i]
+                        local ret = storage.projector_reticles and storage.projector_reticles[rid]
+                        if ret and ret.surface_name == sname then
+                            local cbb = char.bounding_box
+                            local r_dx = ret.dir.x
+                            local r_dy = ret.dir.y
+                            local r_sp = ret.start_pos
+                            local on_axis = false
+                            local o_dist = nil
+
+                            if r_dx > 0 then
+                                on_axis = (cbb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= cbb.right_bottom.y + 0.05)
+                                o_dist = cbb.left_top.x - r_sp.x
+                            elseif r_dx < 0 then
+                                on_axis = (cbb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= cbb.right_bottom.y + 0.05)
+                                o_dist = r_sp.x - cbb.right_bottom.x
+                            elseif r_dy > 0 then
+                                on_axis = (cbb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= cbb.right_bottom.x + 0.05)
+                                o_dist = cbb.left_top.y - r_sp.y
+                            elseif r_dy < 0 then
+                                on_axis = (cbb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= cbb.right_bottom.x + 0.05)
+                                o_dist = r_sp.y - cbb.right_bottom.y
+                            end
+
+                            local max_reach = ret.max_reach or 50
+                            if not on_axis or not o_dist or o_dist <= 0.05 or o_dist >= max_reach then
+                                flow_kinetic.handle_reticle_obstacle_cleared(char)
+                            else
+                                local cur_total = ret.total_dist or 0
+                                if math.abs(o_dist - cur_total) > 0.1 then
+                                    if o_dist < cur_total then
+                                        flow_kinetic.truncate_reticle(ret, o_dist, char)
+                                    else
+                                        flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                    end
                                 end
                             end
                         end
@@ -1812,6 +1863,9 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                     storage.character_colliders[old_k] = nil
                     wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
                 end
+            end
+            if storage.blocked_reticles and storage.blocked_reticles[char_key] then
+                flow_kinetic.handle_reticle_obstacle_cleared({ unit_number = char_key })
             end
             storage.character_last_keys[char_key] = nil
             if storage.character_last_surface then storage.character_last_surface[char_key] = nil end

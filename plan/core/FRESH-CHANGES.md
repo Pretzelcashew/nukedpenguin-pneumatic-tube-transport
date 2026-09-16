@@ -129,3 +129,12 @@
 3. **Canonical Segment Origin Dot Anchoring (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Anchored dot coordinate placement strictly to canonical segment origins (`reticle.start_pos + dir * d_start`), eliminating offset double-addition on mid-segment resumed flights.
 4. **Static Trail Fallback Hardening (`scripts/utils/viewport-bvh.lua`):** Gated full-segment dot fallbacks in `attach_static_render` behind explicit `leaf.has_trail == true` checks, preventing active in-flight leaves from prematurely spawning full-length trails.
 5. **Selective Endpoint Pruning & Flicker Suppression (`scripts/utils/viewport-bvh.lua`):** Removed full-segment dot detachment when clearing `leaf.static_render_spec`, preserving valid upstream dots across obstacle waking and recycling only endpoint hazard indicators.
+
+
+### Revision: Discrete Character Tile Evacuation and Downstream Beam Tracking
+**Date:** 2026-09-16 08:48 EDT
+**Context:** While characters obstructed beams reliably on entry, moving out of the beam or walking downstream failed to notify or clear the truncated reticles because the tile evacuation loop omitted reticle waking hooks. This session wired the reticle obstacle clearance and upstream/downstream adjustment directly into the existing discrete grid-tile evacuation pipeline in `step_character_colliders`.
+**Key Changes:**
+1. **Discrete Tile Evacuation Hook (`scripts/flow/flow-kinetic.lua`):** Flagged `evacuated_any` during discrete tile departures in `step_character_colliders` to gate reticle evaluation strictly to grid-tile boundary transitions without sub-pixel polling.
+2. **On-Axis Directional Motion Resolution (`scripts/flow/flow-kinetic.lua`):** Evaluated character position changes against registered reticles upon tile evacuation: waking and regrowing beams when the player steps off-axis or walks downstream, and immediately applying `truncate_reticle` when the player steps upstream closer to the emitter.
+3. **Character Disconnect & Death Lifecycle Clearing (`scripts/flow/flow-kinetic.lua`):** Connected the dead/disconnected character cleanup pass in `step_character_colliders` to `handle_reticle_obstacle_cleared`, ensuring abandoned beams resume forward probing automatically.

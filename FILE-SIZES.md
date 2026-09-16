@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-16 12:18:41  
+**Last Generated:** 2026-09-16 13:00:31  
 **Total Scope:** 22 directories, 116 files  
-**Total Workspace Size:** 8.61 MB | **Total Text Lines:** 37,194  
+**Total Workspace Size:** 8.63 MB | **Total Text Lines:** 37,444  
 
 ---
 
@@ -12,7 +12,7 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
 | `plan/core/CHANGELOG.md` | 2,685 | 433.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-kinetic.lua` | 2,424 | 105.0 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-kinetic.lua` | 2,663 | 116.6 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 1,413 | 57.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-ballistics.lua` | 1,282 | 57.0 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/flow/flow-engine.lua` | 1,120 | 48.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
@@ -73,7 +73,7 @@ nukedpenguin-pneumatic-tube-transport/
 │       ├── CHANGELOG.md                        [2,685 lines | 433.8 KB]
 │       ├── CURRENT-TASK.md                     [1 lines | 259 B]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [180 lines | 31.0 KB]
+│       ├── FRESH-CHANGES.md                    [191 lines | 33.7 KB]
 │       ├── HELPERS.md                          [92 lines | 4.3 KB]
 │       ├── MANIFEST.md                         [126 lines | 24.0 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
@@ -126,7 +126,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── flow-common.lua                     [150 lines | 5.8 KB]
 │   │   ├── flow-engine.lua                     [1,120 lines | 48.4 KB]
 │   │   ├── flow-gate-interop.lua               [517 lines | 22.9 KB]
-│   │   ├── flow-kinetic.lua                    [2,424 lines | 105.0 KB]
+│   │   ├── flow-kinetic.lua                    [2,663 lines | 116.6 KB]
 │   │   ├── flow-renderer.lua                   [706 lines | 27.0 KB]
 │   │   └── port-defs.lua                       [370 lines | 35.6 KB]
 │   ├── hubs/

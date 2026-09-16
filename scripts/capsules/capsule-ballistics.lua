@@ -840,6 +840,13 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
                 flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
             end
+            local is_receiver = (flight.projector_unit ~= nil) and obst.entity and obst.entity.valid and (obst.entity.name == "pneumatic-projector")
+            flight.render_spec = flow_kinetic.DEFAULT_HEAD_SPEC
+            if reticle then
+                reticle.pending_receiver = is_receiver and obst.entity.unit_number or nil
+                reticle.hit_receiver = nil
+                reticle.head_render_spec = flow_kinetic.DEFAULT_HEAD_SPEC
+            end
         end
 
         local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
@@ -920,6 +927,18 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         local heap = timed_motion.get_arrival_heap()
         heap:push(flight_id, flight.arrival_tick, flight_id)
     else
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        local is_receiver = (reticle and reticle.projector_unit ~= nil and reticle.pending_receiver ~= nil)
+        local hit_receiver_unit = is_receiver and reticle.pending_receiver or nil
+        local final_head_spec = is_receiver and flow_kinetic.RECEIVER_HEAD_SPEC or flow_kinetic.DEFAULT_HEAD_SPEC
+
+        if reticle then
+            reticle.hit_receiver = hit_receiver_unit
+            reticle.pending_receiver = nil
+            reticle.head_render_spec = final_head_spec
+        end
+
         local surface = game.surfaces[flight.surface_name or "nauvis"]
         if surface and surface.valid then
             local motion_tree = timed_motion.get_motion_tree(surface.index)
@@ -936,7 +955,7 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                     leaf.dir = { x = dx, y = dy }
                     leaf.q_level = flight.q_level or 0
                     leaf.trail_count = total_leaf_dist
-                    leaf.static_render_spec = flight.render_spec
+                    leaf.static_render_spec = final_head_spec
                     leaf.static_pos = { x = tp.x, y = tp.y }
                     viewport_bvh.on_leaf_static_changed(surface.index, leaf)
                 end
@@ -944,8 +963,6 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         end
 
         timed_motion.remove_flight(flight_id, owner_id)
-        local reticle_id = flight.reticle_id or owner_id
-        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
         if reticle then
             if reticle.status ~= "retreating" then
                 reticle.status = "stationary"
@@ -961,7 +978,8 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                     status = "endpoint",
                     endpoint_pos = { x = tp.x, y = tp.y },
                     surface_name = flight.surface_name,
-                    seg_key = reticle.seg_key
+                    seg_key = reticle.seg_key,
+                    receiver_unit = reticle.hit_receiver
                 }
             end
         end

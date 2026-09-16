@@ -14,6 +14,44 @@ local HOP_DISTANCE = 5
 local ENABLE_KINETIC_FLOW_PROPAGATION = false
 flow_kinetic.ENABLE_KINETIC_FLOW_PROPAGATION = ENABLE_KINETIC_FLOW_PROPAGATION
 
+local DEFAULT_HEAD_SPEC = {
+    color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+    radius = 0.24,
+    has_ring = true,
+    ring_radius = 0.42,
+    ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+    ring_width = 2
+}
+local RECEIVER_HEAD_SPEC = {
+    color = { r = 0.2, g = 0.85, b = 1.0, a = 0.95 },
+    radius = 0.24,
+    has_ring = true,
+    ring_radius = 0.42,
+    ring_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.85 },
+    ring_width = 2
+}
+flow_kinetic.DEFAULT_HEAD_SPEC = DEFAULT_HEAD_SPEC
+flow_kinetic.RECEIVER_HEAD_SPEC = RECEIVER_HEAD_SPEC
+
+local DEFAULT_HEAD_SPEC = {
+    color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+    radius = 0.24,
+    has_ring = true,
+    ring_radius = 0.42,
+    ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+    ring_width = 2
+}
+local RECEIVER_HEAD_SPEC = {
+    color = { r = 0.2, g = 0.85, b = 1.0, a = 0.95 },
+    radius = 0.24,
+    has_ring = true,
+    ring_radius = 0.42,
+    ring_color = { r = 0.2, g = 0.85, b = 1.0, a = 0.85 },
+    ring_width = 2
+}
+flow_kinetic.DEFAULT_HEAD_SPEC = DEFAULT_HEAD_SPEC
+flow_kinetic.RECEIVER_HEAD_SPEC = RECEIVER_HEAD_SPEC
+
 function flow_kinetic.orphan_reticle(owner_unit, reason)
     if not owner_unit then return end
     storage.projector_reticles = storage.projector_reticles or {}
@@ -112,17 +150,12 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     storage.pinned_corridors[reticle_id] = true
 
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
-    local head_render_spec = {
-        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-        radius = 0.24,
-        has_ring = true,
-        ring_radius = 0.42,
-        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-        ring_width = 2
-    }
+    local is_rec = initial_obstacle and initial_obstacle.valid and initial_obstacle.name == "pneumatic-projector"
     storage.projector_reticles[reticle_id] = {
         id = reticle_id,
         projector_unit = owner_id,
+        pending_receiver = is_rec and initial_obstacle.unit_number or nil,
+        hit_receiver = nil,
         surface_name = node.surface_name,
         surface_index = (game.surfaces[node.surface_name] and game.surfaces[node.surface_name].index) or 1,
         start_pos = { x = node.pos.x, y = node.pos.y },
@@ -136,7 +169,7 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         start_tick = game.tick,
         ticks_per_tile = tpt,
         head_flight_id = reticle_id,
-        head_render_spec = head_render_spec
+        head_render_spec = DEFAULT_HEAD_SPEC
     }
 
     if initial_obstacle then
@@ -158,14 +191,7 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         reticle_id = reticle_id,
         projector_unit = owner_id,
         q_level = node.q_level or 0,
-        render_spec = {
-            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-            radius = 0.24,
-            has_ring = true,
-            ring_radius = 0.42,
-            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-            ring_width = 2
-        },
+        render_spec = DEFAULT_HEAD_SPEC,
     }
 end
 
@@ -1032,6 +1058,9 @@ function flow_kinetic.resume_reticle_probing(reticle)
     if not reticle or reticle.status == "retreating" then return end
     local reticle_id = reticle.id
     flow_kinetic.unregister_reticle_obstacle(reticle_id)
+    reticle.pending_receiver = nil
+    reticle.hit_receiver = nil
+    reticle.head_render_spec = DEFAULT_HEAD_SPEC
 
     local proj_unit = reticle.projector_unit
     local proj = proj_unit and storage.active_projectors and storage.active_projectors[proj_unit]
@@ -1129,7 +1158,8 @@ function flow_kinetic.resume_reticle_probing(reticle)
         storage.projector_scope[proj_unit] = {
             reticle_id = reticle_id,
             flight_id = reticle_id,
-            status = "traveling"
+            status = "traveling",
+            receiver_unit = nil
         }
     end
 
@@ -1155,14 +1185,7 @@ function flow_kinetic.resume_reticle_probing(reticle)
         q_level = reticle.q_level or 0,
         ticks_per_tile = tpt,
         flight_start_dist = cur_dist,
-        render_spec = {
-            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-            radius = 0.24,
-            has_ring = true,
-            ring_radius = 0.42,
-            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-            ring_width = 2
-        }
+        render_spec = DEFAULT_HEAD_SPEC
     }
 end
 
@@ -1190,6 +1213,13 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
 
             if is_flying then
                 flow_kinetic.unregister_reticle_obstacle(rid)
+                ret.pending_receiver = nil
+                ret.hit_receiver = nil
+                ret.head_render_spec = DEFAULT_HEAD_SPEC
+                cur_flight.render_spec = DEFAULT_HEAD_SPEC
+                if ret.projector_unit and storage.projector_scope and storage.projector_scope[ret.projector_unit] then
+                    storage.projector_scope[ret.projector_unit].receiver_unit = nil
+                end
                 local full_reach = ret.max_reach or 50
                 ret.max_range = full_reach
                 ret.total_dist = full_reach
@@ -1464,26 +1494,14 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         end
     end
 
-    local head_spec = reticle.head_render_spec or {
-        color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-        radius = 0.24,
-        has_ring = true,
-        ring_radius = 0.42,
-        ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-        ring_width = 2
-    }
+    local is_receiver = (reticle.projector_unit ~= nil) and obstacle_entity and obstacle_entity.valid and (obstacle_entity.name == "pneumatic-projector")
+    local hit_rec_unit = is_receiver and obstacle_entity.unit_number or nil
+    reticle.pending_receiver = nil
+    reticle.hit_receiver = hit_rec_unit
 
+    local head_spec = is_receiver and RECEIVER_HEAD_SPEC or DEFAULT_HEAD_SPEC
+    reticle.head_render_spec = head_spec
     local hazard_spec = head_spec
-    if is_live then
-        hazard_spec = {
-            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
-            radius = 0.24,
-            has_ring = true,
-            ring_radius = 0.42,
-            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
-            ring_width = 2
-        }
-    end
 
     local full_reach = reticle.max_reach or reticle.max_range or 50
     local old_total_dist = reticle.total_dist or reticle.max_range or full_reach
@@ -1592,7 +1610,8 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             status = "endpoint",
             endpoint_pos = { x = collision_pos.x, y = collision_pos.y },
             surface_name = reticle.surface_name,
-            seg_key = reticle.seg_key
+            seg_key = reticle.seg_key,
+            receiver_unit = hit_rec_unit
         }
     end
 
@@ -1755,6 +1774,12 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     if not (reticle and obst_dist and obst_dist > 0) then return end
     flight = flight or (reticle.head_flight_id and timed_motion.get_flight(reticle.head_flight_id))
     if not flight then return end
+
+    local is_receiver = (reticle.projector_unit ~= nil) and obstacle_entity and obstacle_entity.valid and (obstacle_entity.name == "pneumatic-projector")
+    reticle.pending_receiver = is_receiver and obstacle_entity.unit_number or nil
+    reticle.hit_receiver = nil
+    reticle.head_render_spec = DEFAULT_HEAD_SPEC
+    flight.render_spec = DEFAULT_HEAD_SPEC
 
     if obstacle_entity and obstacle_entity.valid then
         flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)

@@ -676,6 +676,9 @@ function capsule_ballistics.launch_timed_flight(spec)
         max_distance = spec.max_distance,
         seg_idx = spec.seg_idx or 1
     }
+    if record then
+        record.flight_start_dist = spec.flight_start_dist
+    end
 
     return timed_motion.schedule_flight(record)
 end
@@ -808,6 +811,9 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             next_step = math.max(0.1, obst.dist)
             rem = next_step
             flight.remaining_distance = rem
+            if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
+                flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
+            end
         end
 
         local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
@@ -842,23 +848,35 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         flight.start_pos = next_start
         flight.terminal_pos = next_term
         flight.total_dist = next_step
+        flight.flight_start_dist = nil
         local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
         local flight_ticks = math.max(1, math.ceil(next_step * tpt))
         flight.start_tick = current_tick
         flight.arrival_tick = current_tick + flight_ticks
         flight.flight_ticks = flight_ticks
 
+        local reticle_id = flight.reticle_id or owner_id
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if reticle then
+            reticle.terminal_pos = { x = next_term.x, y = next_term.y }
+            reticle.endpoint_pos = { x = next_term.x, y = next_term.y }
+            reticle.total_dist = d_end
+            reticle.seg_key = seg_key
+        end
+
         local surface = game.surfaces[flight.surface_name or "nauvis"]
         if surface and surface.valid then
             local motion_tree = timed_motion.get_motion_tree(surface.index)
             if motion_tree then
                 local owner_rec = motion_tree.trajectories and motion_tree.trajectories[owner_id]
-                local leaf = owner_rec and owner_rec.segments and owner_rec.segments[string.format("%d,%d:%d", dx, dy, flight.seg_idx - 1)]
+                local prev_seg_key = string.format("%d,%d:%d", dx, dy, flight.seg_idx - 1)
+                local leaf = owner_rec and owner_rec.segments and owner_rec.segments[prev_seg_key]
                 if leaf then
+                    local total_leaf_dist = math.abs(leaf.end_pos.x - leaf.start_pos.x) + math.abs(leaf.end_pos.y - leaf.start_pos.y)
                     leaf.has_trail = true
                     leaf.dir = { x = dx, y = dy }
                     leaf.q_level = flight.q_level or 0
-                    leaf.trail_count = leaf_dist
+                    leaf.trail_count = total_leaf_dist
                     viewport_bvh.on_leaf_static_changed(surface.index, leaf)
                 end
             end
@@ -891,10 +909,11 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                 local owner_rec = motion_tree.trajectories and motion_tree.trajectories[owner_id]
                 local leaf = owner_rec and owner_rec.segments and owner_rec.segments[seg_key]
                 if leaf then
+                    local total_leaf_dist = math.abs(leaf.end_pos.x - leaf.start_pos.x) + math.abs(leaf.end_pos.y - leaf.start_pos.y)
                     leaf.has_trail = true
                     leaf.dir = { x = dx, y = dy }
                     leaf.q_level = flight.q_level or 0
-                    leaf.trail_count = leaf_dist
+                    leaf.trail_count = total_leaf_dist
                     leaf.static_render_spec = flight.render_spec
                     leaf.static_pos = { x = tp.x, y = tp.y }
                     viewport_bvh.on_leaf_static_changed(surface.index, leaf)

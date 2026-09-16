@@ -26,6 +26,7 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     storage.projector_scope[owner_unit] = nil
 
     if not reticle_id then return end
+    flow_kinetic.unregister_reticle_obstacle(reticle_id)
     local reticle = storage.projector_reticles[reticle_id]
     if not reticle or reticle.status == "retreating" then return end
 
@@ -86,11 +87,14 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local dy = node.dir.y
     local step = math.min(16, max_range)
 
+    local full_reach = max_range
     local surface = game.surfaces[node.surface_name]
     local obst = flow_kinetic.scan_leaf_rect(surface, node.pos, node.dir, step, owner_id)
+    local initial_obstacle = nil
     if obst and obst.dist then
         step = math.max(0.1, obst.dist)
         max_range = step
+        initial_obstacle = obst.entity
     end
 
     local start_pos = { x = node.pos.x, y = node.pos.y }
@@ -116,6 +120,7 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         terminal_pos = { x = node.pos.x + dx * max_range, y = node.pos.y + dy * max_range },
         dir = { x = dx, y = dy },
         q_level = node.q_level or 0,
+        max_reach = full_reach,
         max_range = max_range,
         total_dist = max_range,
         status = "growing",
@@ -123,6 +128,10 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         ticks_per_tile = tpt,
         head_flight_id = reticle_id
     }
+
+    if initial_obstacle then
+        flow_kinetic.register_reticle_obstacle(reticle_id, initial_obstacle)
+    end
 
     flow_kinetic.launch_timed_flight{
         id = reticle_id,
@@ -879,9 +888,222 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
     return nil
 end
 
+function flow_kinetic.register_reticle_obstacle(reticle_id, obstacle_entity)
+    if not (reticle_id and obstacle_entity and obstacle_entity.valid) then return end
+    storage.blocked_reticles = storage.blocked_reticles or {}
+    storage.reticle_blocked_by = storage.reticle_blocked_by or {}
+
+    local u_num = obstacle_entity.unit_number
+    local reg_id = nil
+    if script.register_on_object_destroyed then
+        pcall(function()
+            reg_id = script.register_on_object_destroyed(obstacle_entity)
+        end)
+    end
+
+    if u_num then
+        storage.blocked_reticles[u_num] = storage.blocked_reticles[u_num] or {}
+        storage.blocked_reticles[u_num][reticle_id] = true
+    end
+
+    if reg_id then
+        storage.blocked_reticles_by_reg = storage.blocked_reticles_by_reg or {}
+        storage.blocked_reticles_by_reg[reg_id] = storage.blocked_reticles_by_reg[reg_id] or {}
+        storage.blocked_reticles_by_reg[reg_id][reticle_id] = true
+    end
+
+    storage.reticle_blocked_by[reticle_id] = {
+        unit_number = u_num,
+        reg_id = reg_id
+    }
+end
+
+function flow_kinetic.unregister_reticle_obstacle(reticle_id)
+    if not (reticle_id and storage.reticle_blocked_by) then return end
+    local entry = storage.reticle_blocked_by[reticle_id]
+    if not entry then return end
+    storage.reticle_blocked_by[reticle_id] = nil
+
+    if entry.unit_number and storage.blocked_reticles and storage.blocked_reticles[entry.unit_number] then
+        storage.blocked_reticles[entry.unit_number][reticle_id] = nil
+        if next(storage.blocked_reticles[entry.unit_number]) == nil then
+            storage.blocked_reticles[entry.unit_number] = nil
+        end
+    end
+
+    if entry.reg_id and storage.blocked_reticles_by_reg and storage.blocked_reticles_by_reg[entry.reg_id] then
+        storage.blocked_reticles_by_reg[entry.reg_id][reticle_id] = nil
+        if next(storage.blocked_reticles_by_reg[entry.reg_id]) == nil then
+            storage.blocked_reticles_by_reg[entry.reg_id] = nil
+        end
+    end
+end
+
+function flow_kinetic.resume_reticle_probing(reticle)
+    if not reticle or reticle.status == "retreating" then return end
+    local reticle_id = reticle.id
+    flow_kinetic.unregister_reticle_obstacle(reticle_id)
+
+    local proj_unit = reticle.projector_unit
+    local proj = proj_unit and storage.active_projectors and storage.active_projectors[proj_unit]
+    if not (proj and proj.valid and projector_settings.is_powered(proj) and projector_settings.is_projector_enabled(proj)) then
+        return
+    end
+
+    local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[proj_unit]
+    local muzzle_node = nil
+    if u_ports then
+        for i = 1, #u_ports do
+            local mn = storage.flow_nodes and storage.flow_nodes[u_ports[i]]
+            if mn and (mn.is_muzzle or mn.kinetic_transmit) then
+                muzzle_node = mn
+                break
+            end
+        end
+    end
+
+    local max_reach = (muzzle_node and flow_kinetic.get_node_kinetic_emitter(muzzle_node)) or reticle.max_reach or 50
+    reticle.max_reach = max_reach
+    local cur_dist = reticle.total_dist or 0
+    if cur_dist >= max_reach then return end
+
+    local dx = reticle.dir.x
+    local dy = reticle.dir.y
+    local s_idx = reticle.surface_index or 1
+    local surface = game.surfaces[reticle.surface_name or "nauvis"]
+    if not (surface and surface.valid) then return end
+
+    local cur_seg_idx = math.max(1, math.floor(cur_dist / 16) + 1)
+    local seg_boundary = cur_seg_idx * 16
+    local dist_to_boundary = seg_boundary - cur_dist
+
+    local rem_reach = max_reach - cur_dist
+    local step = math.min(dist_to_boundary, rem_reach)
+    if step <= 0.05 then
+        cur_seg_idx = cur_seg_idx + 1
+        seg_boundary = cur_seg_idx * 16
+        dist_to_boundary = 16
+        step = math.min(16, rem_reach)
+    end
+
+    local cur_pos = { x = reticle.terminal_pos.x, y = reticle.terminal_pos.y }
+    local obst = flow_kinetic.scan_leaf_rect(surface, cur_pos, reticle.dir, step, proj_unit)
+    local next_obst_entity = nil
+    if obst and obst.dist then
+        step = math.max(0.1, obst.dist)
+        rem_reach = step
+        next_obst_entity = obst.entity
+    end
+
+    local target_pos = {
+        x = cur_pos.x + dx * step,
+        y = cur_pos.y + dy * step
+    }
+
+    local target_seg_key = string.format("%d,%d:%d", dx, dy, cur_seg_idx)
+    local d_start = (cur_seg_idx - 1) * 16
+    local new_d_end = cur_dist + step
+    local seg_start_pos = {
+        x = reticle.start_pos.x + dx * d_start,
+        y = reticle.start_pos.y + dy * d_start
+    }
+
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    if motion_tree then
+        local leaf = motion_tree:insert_segment(reticle_id, target_seg_key, seg_start_pos, target_pos, d_start, new_d_end, cur_seg_idx)
+        if leaf then
+            leaf.static_pos = nil
+            leaf.static_render_spec = nil
+            leaf.dir = { x = dx, y = dy }
+            leaf.q_level = reticle.q_level or 0
+            leaf.trail_count = math.max(0, math.floor(cur_dist - d_start))
+            viewport_bvh.on_segment_registered(s_idx, leaf)
+            viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+        end
+    end
+
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    if traj_tree then
+        traj_tree:insert_segment(reticle_id, target_seg_key, seg_start_pos, target_pos, d_start, new_d_end, cur_seg_idx)
+        trajectory_bvh.refresh_active_renders()
+    end
+
+    reticle.status = "growing"
+    reticle.head_flight_id = reticle_id
+    reticle.terminal_pos = { x = target_pos.x, y = target_pos.y }
+    reticle.endpoint_pos = { x = target_pos.x, y = target_pos.y }
+    reticle.total_dist = new_d_end
+    reticle.seg_key = target_seg_key
+
+    if storage.projector_scope and proj_unit then
+        storage.projector_scope[proj_unit] = {
+            reticle_id = reticle_id,
+            flight_id = reticle_id,
+            status = "traveling"
+        }
+    end
+
+    if next_obst_entity then
+        flow_kinetic.register_reticle_obstacle(reticle_id, next_obst_entity)
+    end
+
+    local tpt = reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
+    flow_kinetic.launch_timed_flight{
+        id = reticle_id,
+        owner_id = reticle_id,
+        surface_name = reticle.surface_name,
+        start_pos = cur_pos,
+        terminal_pos = target_pos,
+        dir = { x = dx, y = dy },
+        kind = "projector_scope",
+        on_arrival = "projector_scope",
+        remaining_distance = rem_reach,
+        max_distance = max_reach,
+        seg_idx = cur_seg_idx,
+        reticle_id = reticle_id,
+        projector_unit = proj_unit,
+        q_level = reticle.q_level or 0,
+        ticks_per_tile = tpt,
+        flight_start_dist = cur_dist,
+        render_spec = {
+            color = { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
+            radius = 0.24,
+            has_ring = true,
+            ring_radius = 0.42,
+            ring_color = { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
+            ring_width = 2
+        }
+    }
+end
+
+function flow_kinetic.handle_reticle_obstacle_cleared(entity)
+    if not (entity and storage.projector_reticles) then return end
+    local u_num = entity.unit_number
+    local to_wake = {}
+
+    if u_num and storage.blocked_reticles and storage.blocked_reticles[u_num] then
+        for rid in pairs(storage.blocked_reticles[u_num]) do
+            to_wake[#to_wake + 1] = rid
+        end
+        storage.blocked_reticles[u_num] = nil
+    end
+
+    for i = 1, #to_wake do
+        local rid = to_wake[i]
+        local ret = storage.projector_reticles[rid]
+        if ret then
+            flow_kinetic.resume_reticle_probing(ret)
+        end
+    end
+end
+
 function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     if not (reticle and obst_dist) then return end
     if obst_dist >= (reticle.total_dist or reticle.max_range or 50) then return end
+
+    if obstacle_entity and obstacle_entity.valid then
+        flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
+    end
 
     local s_idx = reticle.surface_index or 1
     local motion_tree = timed_motion.get_motion_tree(s_idx)
@@ -974,6 +1196,30 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         end
     end
 
+    if traj_tree and traj_tree.trajectories and traj_tree.trajectories[reticle_id] then
+        local t_rec = traj_tree.trajectories[reticle_id]
+        if t_rec.segments then
+            local to_remove_traj = {}
+            for seg_key, leaf in pairs(t_rec.segments) do
+                local s_idx_num = leaf.seg_idx or tonumber(seg_key:match(":(%d+)$")) or 1
+                if s_idx_num > target_seg_idx then
+                    to_remove_traj[#to_remove_traj + 1] = seg_key
+                elseif s_idx_num == target_seg_idx then
+                    leaf.d_end = obst_dist
+                    leaf.end_pos = { x = collision_pos.x, y = collision_pos.y }
+                    leaf.min_x = math.min(leaf.start_pos.x, collision_pos.x) - 0.45
+                    leaf.max_x = math.max(leaf.start_pos.x, collision_pos.x) + 0.45
+                    leaf.min_y = math.min(leaf.start_pos.y, collision_pos.y) - 0.45
+                    leaf.max_y = math.max(leaf.start_pos.y, collision_pos.y) + 0.45
+                end
+            end
+            for i = 1, #to_remove_traj do
+                traj_tree:remove_segment(reticle_id, to_remove_traj[i])
+            end
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
+
     if reticle.projector_unit and storage.projector_scope then
         storage.projector_scope[reticle.projector_unit] = {
             reticle_id = reticle_id,
@@ -989,6 +1235,10 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     if not (reticle and obst_dist and obst_dist > 0) then return end
     flight = flight or (reticle.head_flight_id and timed_motion.get_flight(reticle.head_flight_id))
     if not flight then return end
+
+    if obstacle_entity and obstacle_entity.valid then
+        flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
+    end
 
     local r_dx = reticle.dir.x
     local r_dy = reticle.dir.y
@@ -1105,6 +1355,23 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
             end
         end
     end
+
+    if traj_tree and traj_tree.trajectories and traj_tree.trajectories[reticle.id] then
+        local t_rec = traj_tree.trajectories[reticle.id]
+        if t_rec.segments then
+            local to_remove_traj = {}
+            for k, leaf in pairs(t_rec.segments) do
+                local s_num = leaf.seg_idx or tonumber(k:match(":(%d+)$")) or 1
+                if s_num > target_seg_idx then
+                    to_remove_traj[#to_remove_traj + 1] = k
+                end
+            end
+            for i = 1, #to_remove_traj do
+                traj_tree:remove_segment(reticle.id, to_remove_traj[i])
+            end
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
 end
 
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
@@ -1128,7 +1395,9 @@ function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_f
                 flow_kinetic.handle_motion_obstacle_changed(surface, entity, bb, is_removal, motion_hits)
             end
 
-            if not is_removal and storage.projector_reticles then
+            if is_removal and storage.projector_reticles then
+                flow_kinetic.handle_reticle_obstacle_cleared(entity)
+            elseif not is_removal and storage.projector_reticles then
                 local checked_owners = {}
                 for i = 1, #motion_hits do
                     local hit_leaf = motion_hits[i]

@@ -137,6 +137,9 @@ function flow_engine.init_storage()
     storage.projector_ready_states = storage.projector_ready_states or {}
     storage.projector_last_fired = storage.projector_last_fired or {}
     storage.pending_bvh_segments = storage.pending_bvh_segments or {}
+    storage.blocked_reticles = storage.blocked_reticles or {}
+    storage.blocked_reticles_by_reg = storage.blocked_reticles_by_reg or {}
+    storage.reticle_blocked_by = storage.reticle_blocked_by or {}
     if storage.flow_nodes then
         for pkey, node in pairs(storage.flow_nodes) do
             if node and node.is_kinetic and node.is_endpoint then
@@ -964,8 +967,40 @@ function flow_engine.register_events()
 
     events.on_event(defines.events.on_object_destroyed, function(event)
         local reg_id = event.registration_number
-        if not reg_id or not storage.object_destruction_map then return end
+        if not reg_id then return end
 
+        local u_num = event.useful_id
+        if u_num and storage.blocked_reticles and storage.blocked_reticles[u_num] then
+            local to_wake = {}
+            for rid in pairs(storage.blocked_reticles[u_num]) do
+                to_wake[#to_wake + 1] = rid
+            end
+            storage.blocked_reticles[u_num] = nil
+            for i = 1, #to_wake do
+                local rid = to_wake[i]
+                local ret = storage.projector_reticles and storage.projector_reticles[rid]
+                if ret then
+                    flow_kinetic.resume_reticle_probing(ret)
+                end
+            end
+        end
+
+        if storage.blocked_reticles_by_reg and storage.blocked_reticles_by_reg[reg_id] then
+            local to_wake = {}
+            for rid in pairs(storage.blocked_reticles_by_reg[reg_id]) do
+                to_wake[#to_wake + 1] = rid
+            end
+            storage.blocked_reticles_by_reg[reg_id] = nil
+            for i = 1, #to_wake do
+                local rid = to_wake[i]
+                local ret = storage.projector_reticles and storage.projector_reticles[rid]
+                if ret then
+                    flow_kinetic.resume_reticle_probing(ret)
+                end
+            end
+        end
+
+        if not storage.object_destruction_map then return end
         local entry = storage.object_destruction_map[reg_id]
         if not entry then return end
 

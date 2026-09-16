@@ -983,7 +983,8 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                                     capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
                                     if leaf and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope") then
                                         local elapsed_t = math.max(0, current_tick - t_entry)
-                                        local dist_in_leaf = math.min(d_end - d_start, math.floor(elapsed_t / tpt))
+                                        local start_offset = math.max(0, (flight_rec.flight_start_dist or d_start) - d_start)
+                                        local dist_in_leaf = math.min(d_end - d_start, start_offset + math.floor(elapsed_t / tpt))
                                         local cur_dots = item.trail_dots_count or 0
                                         if dist_in_leaf > cur_dots then
                                             item.render_objects = item.render_objects or {}

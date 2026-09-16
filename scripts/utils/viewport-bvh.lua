@@ -345,19 +345,24 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         min_allowed = math.floor(elapsed_retreat / tpt)
     end
 
-    if leaf.has_trail then
-        local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
-        local cur_d = item.trail_dots_count or 0
+    local count = leaf.trail_count or (leaf.d_end and leaf.d_start and (leaf.d_end - leaf.d_start)) or 0
+    for idx, obj in pairs(objects) do
+        if type(idx) == "number" and idx > count then
+            render_pool.recycle(player_index, obj)
+            objects[idx] = nil
+        end
+    end
+    item.trail_dots_count = count
 
-        if cur_d > count then
-            for i = count + 1, cur_d do
-                if objects[i] then
-                    render_pool.recycle(player_index, objects[i])
-                    objects[i] = nil
-                end
+    if leaf.has_trail or count > 0 then
+        local cur_d = 0
+        for idx, obj in pairs(objects) do
+            if type(idx) == "number" and idx > cur_d then
+                cur_d = idx
             end
-            item.trail_dots_count = count
-        elseif cur_d < count or not item.trail_attached then
+        end
+
+        if cur_d < count or not item.trail_attached then
             item.trail_attached = true
             local q_level = leaf.q_level or 0
         local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
@@ -502,36 +507,57 @@ end
 function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
     if not (surface_index and leaf) then return end
     local key = tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key)
-    local observing = {}
-    viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
     local surf = game.surfaces[surface_index]
     if not (surf and surf.valid) then return end
 
+    local updated_players = {}
+    if storage.player_visible_set then
+        for p_idx, v_set in pairs(storage.player_visible_set) do
+            local item = v_set[key]
+            if item then
+                updated_players[p_idx] = true
+                item.leaf = leaf
+                local player = game.get_player(p_idx)
+                local view_settings = player and player.valid and player.game_view_settings
+                local alt_mode = view_settings and view_settings.show_entity_info
+                if alt_mode then
+                    viewport_bvh.attach_static_render(p_idx, item, surf)
+                else
+                    viewport_bvh.detach_static_render(p_idx, item)
+                end
+            end
+        end
+    end
+
+    local observing = {}
+    viewport_bvh.query_players_in_box(surface_index, leaf.min_x, leaf.min_y, leaf.max_x, leaf.max_y, observing)
     for i = 1, #observing do
         local p_idx = observing[i]
-        local player = game.get_player(p_idx)
-        local view_settings = player and player.valid and player.game_view_settings
-        local alt_mode = view_settings and view_settings.show_entity_info
+        if not updated_players[p_idx] then
+            local player = game.get_player(p_idx)
+            local view_settings = player and player.valid and player.game_view_settings
+            local alt_mode = view_settings and view_settings.show_entity_info
 
-        local v_set = viewport_bvh.get_visible_set(p_idx)
-        local item = v_set[key]
-        if not item then
-            item = {
-                leaf = leaf,
-                key = key,
-                owner_id = leaf.owner_id,
-                seg_key = leaf.seg_key,
-                render_objects = nil
-            }
-            v_set[key] = item
-        else
-            item.leaf = leaf
-        end
+            local v_set = viewport_bvh.get_visible_set(p_idx)
+            local item = v_set[key]
+            if not item then
+                item = {
+                    leaf = leaf,
+                    key = key,
+                    owner_id = leaf.owner_id,
+                    seg_key = leaf.seg_key,
+                    render_objects = nil
+                }
+                v_set[key] = item
+            else
+                item.leaf = leaf
+            end
 
-        if alt_mode then
-            viewport_bvh.attach_static_render(p_idx, item, surf)
-        else
-            viewport_bvh.detach_static_render(p_idx, item)
+            if alt_mode then
+                viewport_bvh.attach_static_render(p_idx, item, surf)
+            else
+                viewport_bvh.detach_static_render(p_idx, item)
+            end
         end
     end
 end

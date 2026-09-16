@@ -1,1 +1,5 @@
-[2026-09-15 19:03:51] APPLIED patch.txt (3 file(s)): MODIFY: flow-kinetic.lua, MODIFY: flow-kinetic.lua, MODIFY: capsule-ballistics.lua
+[2026-09-15 20:28:26] APPLIED patch.txt (1 file(s)): MODIFY: flow-kinetic.lua
+[2026-09-15 20:29:45] APPLIED patch.txt (1 file(s)): MODIFY: capsule-renderer.lua
+[2026-09-15 20:30:44] APPLIED patch.txt (1 file(s)): MODIFY: capsule-ballistics.lua
+[2026-09-15 20:31:33] APPLIED patch.txt (1 file(s)): MODIFY: flow-engine.lua
+[2026-09-15 20:34:04] APPLIED patch.txt (1 file(s)): MODIFY: viewport-bvh.lua

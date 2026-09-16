@@ -935,13 +935,34 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
     else
         local reticle_id = flight.reticle_id or owner_id
         local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
-        local proj_unit = (reticle and reticle.projector_unit) or flight.projector_unit
-        local is_receiver = (proj_unit ~= nil and reticle and (reticle.pending_receiver ~= nil or reticle.hit_receiver ~= nil))
+        local proj_unit = reticle and reticle.projector_unit
+        local is_orphan = (not reticle) or (proj_unit == nil)
+        local is_receiver = (not is_orphan) and (reticle.pending_receiver ~= nil or reticle.hit_receiver ~= nil)
         local hit_receiver_unit = is_receiver and (reticle.pending_receiver or reticle.hit_receiver) or nil
-        local final_head_spec = is_receiver and flow_kinetic.RECEIVER_HEAD_SPEC or flow_kinetic.DEFAULT_HEAD_SPEC
 
+        local surface = game.surfaces[flight.surface_name or "nauvis"]
+        if not is_receiver and not is_orphan and proj_unit and surface and surface.valid then
+            local rec_cands = surface.find_entities_filtered{
+                name = "pneumatic-projector",
+                position = tp,
+                radius = 2.0
+            }
+            for _, cand in ipairs(rec_cands) do
+                if cand.valid and cand.unit_number ~= proj_unit then
+                    local cbb = cand.bounding_box
+                    if tp.x >= cbb.left_top.x - 0.5 and tp.x <= cbb.right_bottom.x + 0.5
+                       and tp.y >= cbb.left_top.y - 0.5 and tp.y <= cbb.right_bottom.y + 0.5 then
+                        is_receiver = true
+                        hit_receiver_unit = cand.unit_number
+                        break
+                    end
+                end
+            end
+        end
+
+        local final_head_spec = is_receiver and flow_kinetic.RECEIVER_HEAD_SPEC or flow_kinetic.DEFAULT_HEAD_SPEC
         if reticle then
-            reticle.hit_receiver = hit_receiver_unit
+            reticle.hit_receiver = is_receiver and hit_receiver_unit or nil
             reticle.pending_receiver = nil
             reticle.head_render_spec = final_head_spec
         end

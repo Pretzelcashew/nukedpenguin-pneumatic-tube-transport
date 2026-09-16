@@ -69,9 +69,23 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     if not reticle or reticle.status == "retreating" then return end
 
     reticle.projector_unit = nil
+    reticle.pending_receiver = nil
+    reticle.hit_receiver = nil
+    reticle.head_render_spec = DEFAULT_HEAD_SPEC
     reticle.status = "retreating"
     local current_tick = game.tick
     reticle.retreat_tick = current_tick
+
+    local s_idx = reticle.surface_index or 1
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    if motion_tree and reticle.seg_key then
+        local owner_rec = motion_tree.trajectories and motion_tree.trajectories[reticle_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[reticle.seg_key]
+        if leaf and leaf.static_render_spec == RECEIVER_HEAD_SPEC then
+            leaf.static_render_spec = DEFAULT_HEAD_SPEC
+            viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+        end
+    end
 
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
     local anti_flight_id = "anti:" .. tostring(reticle_id)
@@ -1653,7 +1667,7 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             retreat_tick = game.tick - math.floor(exit_dist * tpt),
             ticks_per_tile = tpt,
             seg_key = string.format("%d,%d:%d", dx, dy, head_was_severed and (cur_flight.seg_idx or target_seg_idx) or target_seg_idx),
-            head_render_spec = head_spec,
+            head_render_spec = DEFAULT_HEAD_SPEC,
             head_flight_id = head_was_severed and down_id or nil
         }
 
@@ -1702,8 +1716,8 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
                         else
                             leaf.has_trail = true
                             leaf.trail_count = math.max(0, math.floor(s_end - s_start))
-                            if is_last_seg and head_spec and not head_was_severed then
-                                leaf.static_render_spec = head_spec
+                            if is_last_seg and not head_was_severed then
+                                leaf.static_render_spec = DEFAULT_HEAD_SPEC
                                 leaf.static_pos = { x = down_term.x, y = down_term.y }
                             else
                                 leaf.static_render_spec = nil
@@ -2224,7 +2238,54 @@ function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_por
     return flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
 end
 
+function flow_kinetic.dock_incoming_reticles_at_projector(entity)
+    if not (entity and entity.valid and entity.bounding_box and entity.surface and entity.surface.valid) then return end
+    local surface = entity.surface
+    local s_idx = surface.index
+    local motion_tree = storage.motion_bvh and storage.motion_bvh[s_idx]
+    if not (motion_tree and storage.projector_reticles) then return end
+
+    local bb = entity.bounding_box
+    local EPSILON = 0.5
+    local motion_hits = {}
+    trajectory_bvh.query_box(motion_tree, bb.left_top.x - EPSILON, bb.left_top.y - EPSILON, bb.right_bottom.x + EPSILON, bb.right_bottom.y + EPSILON, motion_hits)
+    if #motion_hits == 0 then return end
+
+    local checked = {}
+    for i = 1, #motion_hits do
+        local r_id = motion_hits[i].owner_id
+        if r_id and not checked[r_id] then
+            checked[r_id] = true
+            local ret = storage.projector_reticles[r_id]
+            if ret and ret.projector_unit and ret.projector_unit ~= entity.unit_number and ret.status ~= "retreating" then
+                local tp = ret.terminal_pos or ret.endpoint_pos
+                if tp and tp.x >= bb.left_top.x - EPSILON and tp.x <= bb.right_bottom.x + EPSILON
+                   and tp.y >= bb.left_top.y - EPSILON and tp.y <= bb.right_bottom.y + EPSILON then
+                    ret.hit_receiver = entity.unit_number
+                        ret.pending_receiver = nil
+                        ret.head_render_spec = flow_kinetic.RECEIVER_HEAD_SPEC
+                        local m_tree = timed_motion.get_motion_tree(s_idx)
+                        if m_tree and ret.seg_key then
+                            local owner_rec = m_tree.trajectories and m_tree.trajectories[r_id]
+                            local leaf = owner_rec and owner_rec.segments and owner_rec.segments[ret.seg_key]
+                            if leaf then
+                                leaf.static_render_spec = flow_kinetic.RECEIVER_HEAD_SPEC
+                                viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                            end
+                        end
+                        if storage.projector_scope and storage.projector_scope[ret.projector_unit] then
+                            storage.projector_scope[ret.projector_unit].receiver_unit = entity.unit_number
+                        end
+                    end
+            end
+        end
+    end
+end
+
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
+    if not is_removal and entity and entity.valid and entity.name == "pneumatic-projector" then
+        flow_kinetic.dock_incoming_reticles_at_projector(entity)
+    end
     return flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_port_fn, wake_port_fn)
 end
 
@@ -2428,6 +2489,29 @@ function flow_kinetic.clear_receiver_references(receiver_unit, enqueue_port_fn, 
             fn.capsule_transmit = is_prom
             enqueue_port_fn(pkey)
             wake_port_fn(pkey)
+        end
+    end
+
+    if storage.projector_reticles then
+        for r_id, ret in pairs(storage.projector_reticles) do
+            if ret.hit_receiver == receiver_unit or ret.pending_receiver == receiver_unit then
+                ret.hit_receiver = nil
+                ret.pending_receiver = nil
+                ret.head_render_spec = DEFAULT_HEAD_SPEC
+                if ret.projector_unit and storage.projector_scope and storage.projector_scope[ret.projector_unit] then
+                    storage.projector_scope[ret.projector_unit].receiver_unit = nil
+                end
+                local s_idx = ret.surface_index or 1
+                local motion_tree = timed_motion.get_motion_tree(s_idx)
+                if motion_tree and ret.seg_key then
+                    local owner_rec = motion_tree.trajectories and motion_tree.trajectories[r_id]
+                    local leaf = owner_rec and owner_rec.segments and owner_rec.segments[ret.seg_key]
+                    if leaf and leaf.static_render_spec == RECEIVER_HEAD_SPEC then
+                        leaf.static_render_spec = DEFAULT_HEAD_SPEC
+                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                    end
+                end
+            end
         end
     end
 end

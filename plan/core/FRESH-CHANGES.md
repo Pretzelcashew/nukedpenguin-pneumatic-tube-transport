@@ -108,3 +108,13 @@
 **Key Changes:**
 1. **Scope Step & Trajectory Segmentation (`scripts/capsules/capsule-ballistics.lua`):** Added mid-segment boundary detection to preserve segment indexing and start offsets during sub-segment steps, clamped remaining distance to zero on obstacle impact, and bypassed premature trail finalization on partial chunks.
 2. **Dynamic Obstacle Clearance & Reach Checks (`scripts/flow/flow-kinetic.lua`):** Enabled in-flight reticles to dynamically restore remaining flight distance when obstacles clear during growth, and updated obstacle collision scanning to check against full potential reach rather than truncated intermediate distances.
+
+
+### Revision: Multi-Layer Obstacle Clearance and Reticle Jump Mitigation
+**Date:** 2026-09-15 21:35 EDT
+**Context:** Clearing a downstream obstacle while an upstream obstacle remained in front of an active projector caused the reticle to wake prematurely, ignore the adjacent blocking structure, and jump through obstacles to maximum reach. This session hardened obstacle registration with single-blocker unregistration, verified active ownership during entity clearance, added on-axis overlap hit detection, and clamped terminal segment bounds upon in-flight collisions.
+**Key Changes:**
+1. **Single-Owner Obstacle Registration (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.unregister_reticle_obstacle` at the start of `register_reticle_obstacle` to ensure reticles track only the closest active obstacle and purge obsolete downstream waking references in $O(1)$ time.
+2. **Obstacle Clearance Ownership Verification (`scripts/flow/flow-kinetic.lua`):** Gated reticle waking in `handle_reticle_obstacle_cleared` behind explicit verification against `storage.reticle_blocked_by[rid]`, permanently preventing deconstructed or mined downstream entities from waking upstream-blocked beams.
+3. **On-Axis Overlap Hit Detection (`scripts/flow/flow-kinetic.lua`):** Enhanced `scan_leaf_rect` to detect entities overlapping or touching the probe origin on-axis (`cbb.left_top.x <= start_pos.x + 0.05`), preventing resumed probes from bypassing structures standing directly at `start_pos`.
+4. **Scope Arrival Boundary Clamping (`scripts/capsules/capsule-ballistics.lua`):** Recalculated `d_end` immediately upon collision in `handle_projector_scope_arrival`, ensuring trajectory BVH, motion BVH, and reticle total distance clamp accurately to the obstacle face.

@@ -859,16 +859,16 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
 
                 if dx > 0 then
                     on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
-                    d = cbb.left_top.x - start_pos.x
+                    d = (cbb.left_top.x <= start_pos.x + 0.05 and start_pos.x < cbb.right_bottom.x - 0.05) and 0.1 or (cbb.left_top.x - start_pos.x)
                 elseif dx < 0 then
                     on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
-                    d = start_pos.x - cbb.right_bottom.x
+                    d = (cbb.left_top.x + 0.05 < start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05) and 0.1 or (start_pos.x - cbb.right_bottom.x)
                 elseif dy > 0 then
                     on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
-                    d = cbb.left_top.y - start_pos.y
+                    d = (cbb.left_top.y <= start_pos.y + 0.05 and start_pos.y < cbb.right_bottom.y - 0.05) and 0.1 or (cbb.left_top.y - start_pos.y)
                 elseif dy < 0 then
                     on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
-                    d = start_pos.y - cbb.right_bottom.y
+                    d = (cbb.left_top.y + 0.05 < start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05) and 0.1 or (start_pos.y - cbb.right_bottom.y)
                 end
 
                 if on_axis and d and d > 0.05 and d < closest_dist then
@@ -890,6 +890,7 @@ end
 
 function flow_kinetic.register_reticle_obstacle(reticle_id, obstacle_entity)
     if not (reticle_id and obstacle_entity and obstacle_entity.valid) then return end
+    flow_kinetic.unregister_reticle_obstacle(reticle_id)
     storage.blocked_reticles = storage.blocked_reticles or {}
     storage.reticle_blocked_by = storage.reticle_blocked_by or {}
 
@@ -1083,7 +1084,10 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
 
     if u_num and storage.blocked_reticles and storage.blocked_reticles[u_num] then
         for rid in pairs(storage.blocked_reticles[u_num]) do
-            to_wake[#to_wake + 1] = rid
+            local blocked_by = storage.reticle_blocked_by and storage.reticle_blocked_by[rid]
+            if not blocked_by or blocked_by.unit_number == u_num then
+                to_wake[#to_wake + 1] = rid
+            end
         end
         storage.blocked_reticles[u_num] = nil
     end

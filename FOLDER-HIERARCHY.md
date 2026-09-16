@@ -1,10 +1,23 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-15 20:02:50  
-**Scope:** 22 directories, 113 files  
+**Last Generated:** 2026-09-15 21:18:55  
+**Scope:** 23 directories, 130 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
+├── .patch_archive/
+│   ├── last_patch.txt
+│   ├── patch_20260915_202826.txt
+│   ├── patch_20260915_202945.txt
+│   ├── patch_20260915_203044.txt
+│   ├── patch_20260915_203133.txt
+│   ├── patch_20260915_203404.txt
+│   ├── patch_20260915_204602.txt
+│   ├── patch_20260915_204702.txt
+│   ├── patch_20260915_204751.txt
+│   ├── patch_20260915_204851.txt
+│   ├── patch_20260915_205449.txt
+│   └── patch_history.log
 ├── docs/
 │   ├── arch/
 │   │   ├── ARCH-CAPSULES-MOTION.md
@@ -22,8 +35,12 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── ARCHITECTURE.md
 │   │   ├── CHANGES_0.3.23.md
 │   │   ├── FLIGHT-OCCLUSION.md
+│   │   ├── image-1.png
+│   │   ├── image-2.png
+│   │   ├── image.png
 │   │   ├── MOTION-REFACTOR.md
 │   │   ├── SCRATCH-B.md
+│   │   ├── SCRATCH-C.md
 │   │   └── SCRATCH.md
 │   └── core/
 │       ├── ANTI-RETICLE.md
@@ -127,6 +144,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── events.lua
 │   └── proxy-manager.lua
 ├── .gitignore
+├── aggregate.txt
 ├── aggregator_patcher.py
 ├── changelog.txt
 ├── control.lua

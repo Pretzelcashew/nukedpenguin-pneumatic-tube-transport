@@ -836,6 +836,7 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             next_step = math.max(0.1, obst.dist)
             rem = 0
             flight.remaining_distance = 0
+            d_end = (is_mid_segment and cur_dist or d_start) + next_step
             if obst.entity and obst.entity.valid and flow_kinetic.register_reticle_obstacle then
                 flow_kinetic.register_reticle_obstacle(flight.reticle_id or owner_id, obst.entity)
             end

@@ -1,8 +1,12 @@
-fix reticle head obstruction so it doesnt jump backward based on the prospective flight path position, in other words, theres a bug where the obstacle (like a character walking away from the reticle as it moves toward the player), then the character turns back toward the reticle, and the reticle's collision for jumping back to the position of the obstacle is erroneously using the prospective flight path position rather than the spatiotemporal head position, so it looks like the head is jumping forward to the obstacle, cheating time.
+add a want emmission cooldown per em projector, 1 second, either make it a timer or using a binary heap like our other timers (probably the first option bnecause projectors on want emission cooldown will likely be rare, unless many players are going hame with rotating their projectors at the same time). but for mod consistency, we already have ways of managing binary heaped timers, so cherry picking when we apply that usage, feels off. if making another binary heap for timers wont be too much fuss should we do it for consistency?
 
 
 
 
+
+<s>fix orphaned reticles not being able to resume flight on obstacle clear if they had initiated as a stopped as obstacle when they were born. (currently in flight orphaned reticles are not affected by this bug)</s>
+
+<s>fix reticle head obstruction so it doesnt jump backward based on the prospective flight path position, in other words, theres a bug where the obstacle (like a character walking away from the reticle as it moves toward the player), then the character turns back toward the reticle, and the reticle's collision for jumping back to the position of the obstacle is erroneously using the prospective flight path position rather than the spatiotemporal head position, so it looks like the head is jumping forward to the obstacle, cheating time.</s>
 
 <s>soft-remove the ability for reitcles that are orphaned, to be split candidates</S>
 

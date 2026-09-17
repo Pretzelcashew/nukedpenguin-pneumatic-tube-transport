@@ -7,6 +7,7 @@ projector_settings.LAUNCH_ENERGY_JOULES = 9000000 -- 9 MJ full buffer firing cap
 projector_settings.RECHARGE_GRACE_TICKS = 180 -- Grace window for active beam while recharging
 projector_settings.MAX_ENDPOINT_CAPSULES = 2
 projector_settings.PROJECTILE_DAMAGE = 250
+projector_settings.WANT_EMISSION_COOLDOWN_TICKS = 60 -- 1 second cooldown between positive emissions
 
 local function evaluate_condition(val, operator, target)
     if operator == "<" then return val < target

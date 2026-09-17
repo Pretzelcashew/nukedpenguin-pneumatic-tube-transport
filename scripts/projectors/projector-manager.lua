@@ -112,6 +112,7 @@ projector_manager.spec = {
 
     on_unregister = function(entity, unit_number)
         flow_kinetic.orphan_reticle(unit_number, "unregistered")
+        flow_kinetic.clear_cooldown(unit_number)
         if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end
         if storage.projector_enabled_states then storage.projector_enabled_states[unit_number] = nil end
         if storage.projector_muzzle_states then storage.projector_muzzle_states[unit_number] = nil end

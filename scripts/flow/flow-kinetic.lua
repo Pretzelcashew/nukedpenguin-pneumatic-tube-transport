@@ -2,6 +2,7 @@ local flow_common = require("scripts.flow.flow-common")
 local flow_renderer = require("scripts.flow.flow-renderer")
 local port_defs = require("scripts.flow.port-defs")
 local projector_settings = require("scripts.projectors.projector-settings")
+local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
@@ -33,8 +34,82 @@ local RECEIVER_HEAD_SPEC = {
 flow_kinetic.DEFAULT_HEAD_SPEC = DEFAULT_HEAD_SPEC
 flow_kinetic.RECEIVER_HEAD_SPEC = RECEIVER_HEAD_SPEC
 
+function flow_kinetic.get_cooldown_heap()
+    if not storage.projector_cooldown_heap then
+        storage.projector_cooldown_heap = binary_heap.new()
+    else
+        binary_heap.attach(storage.projector_cooldown_heap)
+    end
+    return storage.projector_cooldown_heap
+end
+
+function flow_kinetic.set_cooldown(owner_unit, duration)
+    if not owner_unit then return end
+    duration = duration or projector_settings.WANT_EMISSION_COOLDOWN_TICKS or 60
+    local target_tick = game.tick + duration
+    storage.projector_cooldown_until = storage.projector_cooldown_until or {}
+    storage.projector_cooldown_until[owner_unit] = target_tick
+end
+
+function flow_kinetic.clear_cooldown(owner_unit)
+    if not owner_unit then return end
+    if storage.projector_cooldown_until then
+        storage.projector_cooldown_until[owner_unit] = nil
+    end
+    local heap = storage.projector_cooldown_heap
+    if heap then
+        binary_heap.attach(heap)
+        heap:remove(owner_unit)
+    end
+end
+
+function flow_kinetic.step_cooldown_heap(current_tick)
+    local heap = storage.projector_cooldown_heap
+    if not heap or heap.size == 0 then return end
+    current_tick = current_tick or game.tick
+
+    binary_heap.attach(heap)
+
+    while heap.size > 0 do
+        local top_id, top_prio = heap:peek()
+        if not top_prio or top_prio > current_tick then
+            break
+        end
+
+        heap:pop()
+        local unit_number = top_id
+        local proj = storage.active_projectors and storage.active_projectors[unit_number]
+        if proj and proj.valid and projector_settings.is_powered(proj) and projector_settings.is_projector_enabled(proj) then
+            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+            local muzzle_node = nil
+            local muzzle_pkey = nil
+            if u_ports then
+                for i = 1, #u_ports do
+                    local pkey = u_ports[i]
+                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                    if node and node.is_muzzle then
+                        muzzle_node = node
+                        muzzle_pkey = pkey
+                        break
+                    end
+                end
+            end
+
+            if muzzle_node and muzzle_pkey then
+                local max_range = flow_kinetic.get_node_kinetic_emitter(muzzle_node)
+                if max_range and max_range > 0 then
+                    flow_kinetic.on_muzzle_want_emission(muzzle_node, muzzle_pkey, max_range, true)
+                end
+            end
+        end
+    end
+end
+
 function flow_kinetic.orphan_reticle(owner_unit, reason)
     if not owner_unit then return end
+    if reason == "destroyed" or reason == "unregistered" then
+        flow_kinetic.clear_cooldown(owner_unit)
+    end
     storage.projector_reticles = storage.projector_reticles or {}
     storage.projector_scope = storage.projector_scope or {}
 
@@ -45,15 +120,17 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     storage.projector_scope[owner_unit] = nil
 
     if not reticle_id then return end
-    flow_kinetic.unregister_reticle_obstacle(reticle_id)
     local reticle = storage.projector_reticles[reticle_id]
-    if not reticle or reticle.status == "retreating" then return end
+    if not reticle or reticle.status == "retreating" then
+        flow_kinetic.unregister_reticle_obstacle(reticle_id)
+        return
+    end
 
     reticle.projector_unit = nil
     reticle.pending_receiver = nil
     reticle.hit_receiver = nil
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
-    reticle.status = "retreating"
+    reticle.status = (reticle.status == "growing") and "growing" or "stationary"
     local current_tick = game.tick
     reticle.retreat_tick = current_tick
 
@@ -113,8 +190,20 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
         end
     end
 
+    local current_tick = game.tick
+    local cooldown_until = storage.projector_cooldown_until and storage.projector_cooldown_until[owner_id]
+    if cooldown_until and current_tick < cooldown_until then
+        local heap = flow_kinetic.get_cooldown_heap()
+        if heap then
+            heap:push(owner_id, cooldown_until, { pkey = pkey, target_kinetic = target_kinetic })
+        end
+        return
+    end
+
     local max_range = target_kinetic or flow_kinetic.get_node_kinetic_emitter(node)
     if not max_range or max_range <= 0 then return end
+
+    flow_kinetic.set_cooldown(owner_id)
 
     local dx = node.dir.x
     local dy = node.dir.y
@@ -1082,6 +1171,17 @@ function flow_kinetic.resume_reticle_probing(reticle)
     local cur_dist = reticle.total_dist or 0
     if cur_dist >= max_reach then return end
 
+    if reticle.anti_flight_id then
+        local anti = timed_motion.get_flight(reticle.anti_flight_id)
+        if anti then
+            local extra = max_reach - (anti.max_distance or cur_dist)
+            if extra > 0 then
+                anti.remaining_distance = (anti.remaining_distance or 0) + extra
+                anti.max_distance = max_reach
+            end
+        end
+    end
+
     local dx = reticle.dir.x
     local dy = reticle.dir.y
     local s_idx = reticle.surface_index or 1
@@ -1125,6 +1225,15 @@ function flow_kinetic.resume_reticle_probing(reticle)
 
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     if motion_tree then
+        if reticle.seg_key and reticle.seg_key ~= target_seg_key then
+            local owner_rec = motion_tree.trajectories and motion_tree.trajectories[reticle_id]
+            local prev_leaf = owner_rec and owner_rec.segments and owner_rec.segments[reticle.seg_key]
+            if prev_leaf and prev_leaf.static_render_spec then
+                prev_leaf.static_pos = nil
+                prev_leaf.static_render_spec = nil
+                viewport_bvh.on_leaf_static_changed(s_idx, prev_leaf)
+            end
+        end
         local leaf = motion_tree:insert_segment(reticle_id, target_seg_key, seg_start_pos, target_pos, d_start, new_d_end, cur_seg_idx)
         if leaf then
             leaf.static_pos = nil
@@ -1476,7 +1585,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     local entry_dist = chain_entry or obst_dist
     local exit_dist = chain_exit or obst_dist
 
-    if obstacle_entity and obstacle_entity.valid and reticle.projector_unit then
+    local prev_blocked_by = storage.reticle_blocked_by and storage.reticle_blocked_by[reticle.id]
+
+    if obstacle_entity and obstacle_entity.valid then
         flow_kinetic.register_reticle_obstacle(reticle.id, obstacle_entity)
     end
 
@@ -1638,6 +1749,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or reticle.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
         local down_term = head_was_severed and { x = sp.x + dx * full_reach, y = sp.y + dy * full_reach } or head_pos
         local down_dist = head_was_severed and full_reach or old_total_dist
+        local exit_seg_idx = math.max(1, math.floor(exit_dist / 16) + 1)
+        local max_seg_idx = math.max(1, math.floor(down_dist / 16) + 1)
+        local cur_flight_seg = head_was_severed and (cur_flight.seg_idx or exit_seg_idx) or max_seg_idx
 
         storage.projector_reticles[down_id] = {
             id = down_id,
@@ -1649,14 +1763,14 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
             endpoint_pos = { x = down_term.x, y = down_term.y },
             dir = { x = dx, y = dy },
             q_level = reticle.q_level or 0,
-            max_reach = down_dist,
+            max_reach = full_reach,
             max_range = down_dist,
             total_dist = down_dist,
-            status = head_was_severed and "growing" or "retreating",
+            status = head_was_severed and "growing" or "stationary",
             start_tick = reticle.start_tick or game.tick,
             retreat_tick = game.tick - math.floor(exit_dist * tpt),
             ticks_per_tile = tpt,
-            seg_key = string.format("%d,%d:%d", dx, dy, head_was_severed and (cur_flight.seg_idx or target_seg_idx) or target_seg_idx),
+            seg_key = string.format("%d,%d:%d", dx, dy, cur_flight_seg),
             head_render_spec = DEFAULT_HEAD_SPEC,
             head_flight_id = head_was_severed and down_id or nil
         }
@@ -1664,9 +1778,54 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         storage.pinned_corridors = storage.pinned_corridors or {}
         storage.pinned_corridors[down_id] = true
 
-        local exit_seg_idx = math.max(1, math.floor(exit_dist / 16) + 1)
-        local max_seg_idx = math.max(1, math.floor(down_dist / 16) + 1)
-        local cur_flight_seg = head_was_severed and (cur_flight.seg_idx or exit_seg_idx) or max_seg_idx
+        if not head_was_severed then
+            local registered_obstacle = false
+            if prev_blocked_by and prev_blocked_by.unit_number then
+                local u_num = prev_blocked_by.unit_number
+                local reg_id = prev_blocked_by.reg_id
+                storage.blocked_reticles = storage.blocked_reticles or {}
+                storage.blocked_reticles[u_num] = storage.blocked_reticles[u_num] or {}
+                storage.blocked_reticles[u_num][down_id] = true
+                if reg_id then
+                    storage.blocked_reticles_by_reg = storage.blocked_reticles_by_reg or {}
+                    storage.blocked_reticles_by_reg[reg_id] = storage.blocked_reticles_by_reg[reg_id] or {}
+                    storage.blocked_reticles_by_reg[reg_id][down_id] = true
+                end
+                storage.reticle_blocked_by = storage.reticle_blocked_by or {}
+                storage.reticle_blocked_by[down_id] = {
+                    unit_number = u_num,
+                    reg_id = reg_id
+                }
+                registered_obstacle = true
+            end
+
+            if not registered_obstacle and surface and surface.valid and down_dist < (full_reach - 0.05) then
+                local cands = surface.find_entities_filtered{
+                    area = {{down_term.x - 0.5, down_term.y - 0.5}, {down_term.x + 0.5, down_term.y + 0.5}}
+                }
+                for _, cand in ipairs(cands) do
+                    if cand.valid and not (IGNORABLE_TYPES[cand.type] or PROXY_NAMES[cand.name]) then
+                        local is_ignorable = false
+                        if cand.type == "gate" and not (cand.is_closed and cand.is_closed()) then
+                            is_ignorable = true
+                        end
+                        if not is_ignorable then
+                            flow_kinetic.register_reticle_obstacle(down_id, cand)
+                            break
+                        end
+                    end
+                end
+            end
+
+            if storage.reticle_gates and storage.reticle_gates[reticle.id] then
+                for g_unit, g_data in pairs(storage.reticle_gates[reticle.id]) do
+                    if g_data.dist > (exit_dist + 0.05) then
+                        storage.reticle_gates[down_id] = storage.reticle_gates[down_id] or {}
+                        storage.reticle_gates[down_id][g_unit] = g_data
+                    end
+                end
+            end
+        end
         local seg_boundary = exit_seg_idx * 16
         local dist_to_boundary = seg_boundary - exit_dist
 
@@ -2619,6 +2778,7 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
     end
 
     flow_kinetic.step_pending_bvh_segments(game.tick)
+    flow_kinetic.step_cooldown_heap(game.tick)
     flow_kinetic.flush_pending_reticle_obstacles()
 end
 

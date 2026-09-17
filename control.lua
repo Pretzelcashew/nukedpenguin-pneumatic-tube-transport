@@ -61,6 +61,7 @@ local function setup_storage()
     storage.projector_power_states = storage.projector_power_states or {}
     storage.projector_enabled_states = storage.projector_enabled_states or {}
     storage.projector_muzzle_states = storage.projector_muzzle_states or {}
+    storage.projector_cooldown_until = storage.projector_cooldown_until or {}
 
     liminal_surface.init_storage()
 
@@ -83,6 +84,13 @@ local function setup_storage()
     elseif storage.kinetic_arrival_heap then
         storage.kinetic_arrival_heap.comparator = nil
         binary_heap.compact(storage.kinetic_arrival_heap, 64)
+    end
+    if storage.projector_cooldown_heap then
+        storage.projector_cooldown_heap.comparator = nil
+        binary_heap.attach(storage.projector_cooldown_heap)
+        binary_heap.compact(storage.projector_cooldown_heap, 64)
+    else
+        storage.projector_cooldown_heap = binary_heap.new()
     end
     if storage.timed_flight_records then
         for _, rec in pairs(storage.timed_flight_records) do
@@ -174,6 +182,9 @@ script.on_nth_tick(120, function()
         binary_heap.step_decay(storage.timed_arrival_heap, 8)
     elseif storage.kinetic_arrival_heap then
         binary_heap.step_decay(storage.kinetic_arrival_heap, 8)
+    end
+    if storage.projector_cooldown_heap then
+        binary_heap.step_decay(storage.projector_cooldown_heap, 8)
     end
     if storage.surface_bvh then
         for _, tree in pairs(storage.surface_bvh) do

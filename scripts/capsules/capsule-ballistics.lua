@@ -1080,6 +1080,44 @@ function capsule_ballistics.handle_anti_reticle_arrival(flight_id, flight, curre
         local heap = timed_motion.get_arrival_heap()
         heap:push(flight_id, flight.arrival_tick, flight_id)
     else
+        local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
+        if reticle and reticle.total_dist and reticle.total_dist > ((flight.max_distance or 0) + 0.05) then
+            local extra = reticle.total_dist - (flight.max_distance or 0)
+            flight.max_distance = reticle.total_dist
+            flight.remaining_distance = extra
+            local next_step = math.min(16, extra)
+            local next_start = { x = tp.x, y = tp.y }
+            local next_term = { x = tp.x + dx * next_step, y = tp.y + dy * next_step }
+            local next_seg = cur_seg + 1
+
+            flight.start_pos = next_start
+            flight.terminal_pos = next_term
+            flight.seg_idx = next_seg
+            flight.total_dist = next_step
+            local tpt = flight.ticks_per_tile or capsule_ballistics.TICKS_PER_TILE
+            local flight_ticks = math.max(1, math.ceil(next_step * tpt))
+            flight.start_tick = current_tick
+            flight.arrival_tick = current_tick + flight_ticks
+            flight.flight_ticks = flight_ticks
+
+            local flights_store = storage.timed_flights or storage.projector_flights
+            if flights_store and owner_id and flights_store[owner_id] then
+                local flights = flights_store[owner_id]
+                for i = 1, #flights do
+                    if flights[i].id == flight_id then
+                        flights[i].start_tick = current_tick
+                        flights[i].arrival_tick = flight.arrival_tick
+                        flights[i].duration = flight_ticks
+                        break
+                    end
+                end
+            end
+
+            local heap = timed_motion.get_arrival_heap()
+            heap:push(flight_id, flight.arrival_tick, flight_id)
+            return
+        end
+
         if storage.pinned_corridors then
             storage.pinned_corridors[owner_id] = nil
         end
@@ -1088,6 +1126,7 @@ function capsule_ballistics.handle_anti_reticle_arrival(flight_id, flight, curre
         timed_motion.remove_flight(flight_id, owner_id)
 
         if storage.projector_reticles then
+            flow_kinetic.unregister_reticle_obstacle(reticle_id)
             storage.projector_reticles[reticle_id] = nil
         end
         viewport_bvh.on_segment_removed(s_idx, owner_id)

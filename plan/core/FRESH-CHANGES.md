@@ -249,3 +249,14 @@
 **Key Changes:**
 1. **Duplicate Visual Spec Cleanup (`scripts/flow/flow-kinetic.lua`):** Removed the redundant second assignment block for `DEFAULT_HEAD_SPEC` and `RECEIVER_HEAD_SPEC` at the module header.
 2. **Obstacle Queue Deduplication (`scripts/flow/flow-kinetic.lua`):** Deleted the redundant 96-line second definition of `flow_kinetic.queue_reticle_obstacle` and `flow_kinetic.flush_pending_reticle_obstacles` preceding `handle_obstacle_changed_v2`, leaving a single authoritative obstruction queue implementation and eliminating patch collision hazards.
+
+
+### Revision: Projector Want Emission Cooldown and Rapid Reticle Spam Suppression
+**Date:** 2026-09-17 09:38 EDT
+**Context:** Rapidly rotating electromagnetic projectors or oscillating circuit/power conditions allowed players to trigger multiple simultaneous kinetic beam emissions, creating overlapping reticle flights and spamming the trajectory BVH. This session established a 1-second (60-tick) post-emission cooldown per projector managed by an indexed binary min-heap, preserving immediate beam emission on initial placement or isolated rotation while deferring rapid follow-up requests until the cooldown elapses.
+**Key Changes:**
+1. **Cooldown Constant Specification (`scripts/projectors/projector-settings.lua`):** Added `WANT_EMISSION_COOLDOWN_TICKS = 60` defining the 1-second threshold between positive beam emissions.
+2. **Binary Heap Storage & Maintenance Lifecycle (`control.lua`):** Initialized `storage.projector_cooldown_heap` as an indexed binary min-heap alongside `storage.projector_cooldown_until` in `setup_storage`, and hooked the heap into `script.on_nth_tick(120)` for amortized buffer decay (`binary_heap.step_decay`).
+3. **Emission-Gated Cooldown Activation (`scripts/flow/flow-kinetic.lua`):** Gated `flow_kinetic.on_muzzle_want_emission` behind the active cooldown timestamp (`storage.projector_cooldown_until[owner_id]`). Once a beam successfully emits, the 1-second cooldown begins; any subsequent emission requests arriving within the 1-second window are scheduled onto `storage.projector_cooldown_heap` without duplicate beam creation.
+4. **Per-Tick Cooldown Heap Dispatcher (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.step_cooldown_heap` and wired it into the per-tick collider loop (`step_character_colliders`), popping expired timers in $O(1)$ amortized time to launch queued beam flights strictly in the projector's latest orientation.
+5. **Lifecycle Teardown & Purge Hook (`scripts/flow/flow-kinetic.lua`, `scripts/projectors/projector-manager.lua`):** Implemented `flow_kinetic.clear_cooldown` to remove pending cooldown entries from both the binary heap and storage when projectors are deconstructed or unregistered.

@@ -1,22 +1,5 @@
-when a parented reticle head collides with an obstacle, and the obstacle is another projector, turn the reticle head cyan instead of coral, and when clearing the obstacle, always turn back to coral. 
+we will notify the reticle parent projector when the child reticle has collided successfully with another projector. 
 
+the projector will be able to launch ballistic capsules to the reciever projector
 
-
-
-
-<s>add a want emmission cooldown per em projector, 1 second, either make it a timer or using a binary heap like our other timers (probably the first option bnecause projectors on want emission cooldown will likely be rare, unless many players are going hame with rotating their projectors at the same time). but for mod consistency, we already have ways of managing binary heaped timers, so cherry picking when we apply that usage, feels off. if making another binary heap for timers wont be too much fuss should we do it for consistency?</s>
-
-<s>fix orphaned reticles not being able to resume flight on obstacle clear if they had initiated as a stopped as obstacle when they were born. (currently in flight orphaned reticles are not affected by this bug)</s>
-
-<s>fix reticle head obstruction so it doesnt jump backward based on the prospective flight path position, in other words, theres a bug where the obstacle (like a character walking away from the reticle as it moves toward the player), then the character turns back toward the reticle, and the reticle's collision for jumping back to the position of the obstacle is erroneously using the prospective flight path position rather than the spatiotemporal head position, so it looks like the head is jumping forward to the obstacle, cheating time.</s>
-
-<s>soft-remove the ability for reitcles that are orphaned, to be split candidates</S>
-
-
-
-
-<s>fix the new projector reticle so orphaned reticles never turn cyan, or if they are cyan turn to the normal orange color. just a simple efficient assureance at the efficient check state, no brute forces. 
-
-for reticles reaching their max distance, one final check at the reticle is needed to ensure we dont miss a projector right at the reticles edge, and also when a projector comes into existence we need to bvh hit test for a reticle that is in this max state so we dont miss a connection. it literally is an edge case.
-
-picture shown of the edge case. if you have a better more efficient idea, im all ears. i just am concerned about this edge case treatment honestly, like if its going to end up in odd collision expansion. i have an idea though, when the reticle does reach its max distance, we could stretch that least bvh leaf slightly in one direction to pick up these hair instances? right? we jsut have to be sure this small stretch isnt going to impact any spatiotemporal calculations? if it does then we need a different approach.</s>
+we already have a fully fleshed out ballistic capsule system, its using the old kinetic flow as the projector reciever identifier, so we are simply changing the hook to our reticle system. but the flight paths will act the same, we will always create a capsule flight cooridor separate from the reticle bvh nodes, however it is very likely that we will be cloning the reticle's bvh leaves to make th initial flight cooridor. the flight cooridor will be communial for the ballistic capsules making this trek, so we dont need to make a new flight cooridor for every capsule making the same exact trek. the handling is already in existence we are simply re-hooking the initiator to the new reticle target. we are not using the same exact bvh leafs of the reticle for the flight cooridor, we will be cloning them once for the already existing capsule flight system to use.

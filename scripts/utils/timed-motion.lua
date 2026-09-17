@@ -197,11 +197,12 @@ function timed_motion.shift_horizon(record, new_terminal_pos, current_tick, min_
 
     local total_dist = math.abs(new_terminal_pos.x - record.start_pos.x) + math.abs(new_terminal_pos.y - record.start_pos.y)
     local tpt = record.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
-    local new_flight_ticks = math.max(min_ticks, math.ceil(total_dist * tpt))
-    local new_arrival_tick = record.start_tick + new_flight_ticks
-    if new_arrival_tick <= current_tick then
-        new_arrival_tick = current_tick
-    end
+    local elapsed_ticks = math.max(0, current_tick - (record.start_tick or current_tick))
+    local cur_dist = elapsed_ticks / tpt
+    local rem_dist = math.max(0, total_dist - cur_dist)
+    local rem_ticks = math.max(min_ticks, math.ceil(rem_dist * tpt))
+    local new_arrival_tick = current_tick + rem_ticks
+    local new_flight_ticks = elapsed_ticks + rem_ticks
 
     record.terminal_pos.x = new_terminal_pos.x
     record.terminal_pos.y = new_terminal_pos.y
@@ -228,11 +229,6 @@ function timed_motion.shift_horizon(record, new_terminal_pos, current_tick, min_
         heap:remove(record.id)
         heap:push(record.id, new_arrival_tick, record.id)
     end
-
-    local surf = record.surface_name and game.surfaces[record.surface_name]
-    local s_idx = (surf and surf.valid and surf.index) or (record.surface_index or 1)
-    timed_motion.remove_corridor(s_idx, record.owner_id)
-    timed_motion.ensure_corridor(s_idx, record.owner_id, record.start_pos, new_terminal_pos)
 
     return true
 end

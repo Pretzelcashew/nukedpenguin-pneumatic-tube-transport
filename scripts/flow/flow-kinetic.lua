@@ -1743,6 +1743,10 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         }
     end
 
+    if is_receiver and hit_rec_unit and reticle.projector_unit and flow_kinetic.notify_projector_receiver_docked then
+        flow_kinetic.notify_projector_receiver_docked(reticle.projector_unit, hit_rec_unit, reticle_id)
+    end
+
     local downstream_dist = (head_was_severed and (full_reach - exit_dist)) or (old_total_dist - exit_dist)
 
     local is_split_candidate = (reticle.projector_unit ~= nil)
@@ -2330,6 +2334,9 @@ function flow_kinetic.dock_incoming_reticles_at_projector(entity)
                         if storage.projector_scope and storage.projector_scope[ret.projector_unit] then
                             storage.projector_scope[ret.projector_unit].receiver_unit = entity.unit_number
                         end
+                        if flow_kinetic.notify_projector_receiver_docked then
+                            flow_kinetic.notify_projector_receiver_docked(ret.projector_unit, entity.unit_number, r_id)
+                        end
                     end
             end
         end
@@ -2651,13 +2658,16 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                         storage.character_colliders[old_k] = nil
                         wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
                         if flow_kinetic.handle_motion_obstacle_changed and char.valid and char.surface then
-                            local c_bb = char.bounding_box
+                            local evac_bb = {
+                                left_top = { x = old_p.x - 0.45, y = old_p.y - 0.45 },
+                                right_bottom = { x = old_p.x + 0.45, y = old_p.y + 0.45 }
+                            }
                             local m_tree = storage.motion_bvh and storage.motion_bvh[char.surface.index]
                             if m_tree then
                                 local m_hits = {}
-                                trajectory_bvh.query_box(m_tree, c_bb.left_top.x - 2.5, c_bb.left_top.y - 2.5, c_bb.right_bottom.x + 2.5, c_bb.right_bottom.y + 2.5, m_hits)
+                                trajectory_bvh.query_box(m_tree, evac_bb.left_top.x - 2.5, evac_bb.left_top.y - 2.5, evac_bb.right_bottom.x + 2.5, evac_bb.right_bottom.y + 2.5, m_hits)
                                 if #m_hits > 0 then
-                                    flow_kinetic.handle_motion_obstacle_changed(char.surface, char, c_bb, true, m_hits)
+                                    flow_kinetic.handle_motion_obstacle_changed(char.surface, char, evac_bb, true, m_hits)
                                 end
                             end
                         end

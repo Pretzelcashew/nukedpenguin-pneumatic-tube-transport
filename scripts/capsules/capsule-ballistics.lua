@@ -118,22 +118,16 @@ function capsule_ballistics.get_beam_endpoint(unit_number, dx, dy, start_dist)
     return nil, nil
 end
 
-function capsule_ballistics.count_endpoint_capsules(unit_number, endpoint_key, endpoint_node)
+function capsule_ballistics.count_receiver_capsules(sender_unit, receiver_unit)
     local count = 0
 
-    if storage.parked_by_port and storage.parked_by_port[endpoint_key] then
-        for _ in pairs(storage.parked_by_port[endpoint_key]) do
-            count = count + 1
-        end
-    end
-
-    local hit_receiver_unit = endpoint_node and endpoint_node.hit_receiver
-    if hit_receiver_unit and storage.flow_unit_ports and storage.flow_unit_ports[hit_receiver_unit] then
-        local r_ports = storage.flow_unit_ports[hit_receiver_unit]
+    if receiver_unit and storage.flow_unit_ports and storage.flow_unit_ports[receiver_unit] and storage.parked_by_port then
+        local r_ports = storage.flow_unit_ports[receiver_unit]
         for i = 1, #r_ports do
             local rpkey = r_ports[i]
-            if storage.parked_by_port and storage.parked_by_port[rpkey] then
-                for _ in pairs(storage.parked_by_port[rpkey]) do
+            local bucket = storage.parked_by_port[rpkey]
+            if bucket then
+                for _ in pairs(bucket) do
                     count = count + 1
                 end
             end
@@ -142,15 +136,243 @@ function capsule_ballistics.count_endpoint_capsules(unit_number, endpoint_key, e
 
     if storage.capsules then
         for _, cap in pairs(storage.capsules) do
-            if cap.beam_flight and cap.beam_flight.owner == unit_number then
-                if cap.from_port_key ~= endpoint_key then
-                    count = count + 1
-                end
+            if cap.beam_flight and cap.beam_flight.owner == sender_unit then
+                count = count + 1
             end
         end
     end
 
     return count
+end
+
+function capsule_ballistics.count_endpoint_capsules(unit_number, endpoint_key, endpoint_node)
+    local hit_rec = (endpoint_node and endpoint_node.hit_receiver) or (type(endpoint_key) == "number" and endpoint_key)
+    return capsule_ballistics.count_receiver_capsules(unit_number, hit_rec)
+end
+
+function capsule_ballistics.ensure_capsule_corridor(surface_index, sender_unit, reticle_id, start_pos, terminal_pos)
+    if not (surface_index and sender_unit) then return end
+    local motion_tree = timed_motion.get_motion_tree(surface_index)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, surface_index)
+    if not motion_tree then return end
+
+    local owner_rec = motion_tree.trajectories and motion_tree.trajectories[sender_unit]
+    if owner_rec and owner_rec.segments and next(owner_rec.segments) then
+        return
+    end
+
+    local reticle_rec = reticle_id and motion_tree.trajectories and motion_tree.trajectories[reticle_id]
+    if reticle_rec and reticle_rec.segments and next(reticle_rec.segments) then
+        for seg_key, r_leaf in pairs(reticle_rec.segments) do
+            local sp = { x = r_leaf.start_pos.x, y = r_leaf.start_pos.y }
+            local ep = { x = r_leaf.end_pos.x, y = r_leaf.end_pos.y }
+            local leaf = motion_tree:insert_segment(sender_unit, seg_key, sp, ep, r_leaf.d_start, r_leaf.d_end, r_leaf.seg_idx)
+            if leaf then
+                leaf.has_trail = nil
+                leaf.trail_count = nil
+                leaf.static_render_spec = nil
+                leaf.static_pos = nil
+                leaf.dir = { x = r_leaf.dir.x, y = r_leaf.dir.y }
+                leaf.q_level = r_leaf.q_level or 0
+                viewport_bvh.on_segment_registered(surface_index, leaf)
+            end
+            if traj_tree then
+                traj_tree:insert_segment(sender_unit, seg_key, sp, ep, r_leaf.d_start, r_leaf.d_end, r_leaf.seg_idx)
+            end
+        end
+        if traj_tree then
+            trajectory_bvh.refresh_active_renders()
+        end
+    elseif start_pos and terminal_pos then
+        timed_motion.ensure_corridor(surface_index, sender_unit, start_pos, terminal_pos)
+        if traj_tree then
+            traj_tree:insert_trajectory(sender_unit, start_pos, terminal_pos)
+            trajectory_bvh.refresh_active_renders()
+        end
+    end
+end
+
+function capsule_ballistics.notify_projector_receiver_docked(proj_unit, receiver_unit, reticle_id, runner)
+    if not (proj_unit and receiver_unit) then return end
+    storage.projector_scope = storage.projector_scope or {}
+    local scope = storage.projector_scope[proj_unit]
+    if scope then
+        scope.receiver_unit = receiver_unit
+        scope.status = "endpoint"
+    else
+        storage.projector_scope[proj_unit] = {
+            reticle_id = reticle_id,
+            status = "endpoint",
+            receiver_unit = receiver_unit
+        }
+    end
+
+    local reticle = reticle_id and storage.projector_reticles and storage.projector_reticles[reticle_id]
+    local s_idx = (reticle and reticle.surface_index) or 1
+    capsule_ballistics.ensure_capsule_corridor(s_idx, proj_unit, reticle_id, reticle and reticle.start_pos, reticle and reticle.terminal_pos)
+
+    if runner and runner.wake_parked_capsules then
+        runner.wake_parked_capsules(proj_unit)
+    elseif storage.flow_unit_ports and storage.flow_unit_ports[proj_unit] and storage.parked_by_port then
+        local u_ports = storage.flow_unit_ports[proj_unit]
+        for i = 1, #u_ports do
+            local bucket = storage.parked_by_port[u_ports[i]]
+            if bucket then
+                for cap_id in pairs(bucket) do
+                    local cap = storage.capsules and storage.capsules[cap_id]
+                    if cap and cap.to_port_key == nil then
+                        cap.next_retry_tick = nil
+                        cap.last_failed_hub = nil
+                        cap.last_port_key = nil
+                    end
+                end
+            end
+        end
+    end
+end
+flow_kinetic.notify_projector_receiver_docked = capsule_ballistics.notify_projector_receiver_docked
+
+function capsule_ballistics.try_projector_reticle_launch(capsule, unit_number, runner)
+    if not (storage.active_projectors and storage.active_projectors[unit_number]) then
+        return nil
+    end
+
+    if not capsule.entered_via_pressure then
+        return nil
+    end
+
+    if not capsule_transit.is_electromagnetic_capsule(capsule) then
+        return nil
+    end
+
+    local proj_entity = storage.active_projectors[unit_number]
+    if not (proj_entity and proj_entity.valid and projector_settings.is_projector_active(proj_entity)) then
+        return nil
+    end
+    if not projector_settings.can_fire(proj_entity) then
+        return nil
+    end
+
+    local scope = storage.projector_scope and storage.projector_scope[unit_number]
+    local reticle_id = scope and scope.reticle_id
+    local reticle = reticle_id and storage.projector_reticles and storage.projector_reticles[reticle_id]
+
+    local receiver_unit = (scope and scope.receiver_unit) or (reticle and reticle.hit_receiver)
+    if not receiver_unit then
+        return nil
+    end
+
+    local receiver_entity = storage.active_projectors and storage.active_projectors[receiver_unit]
+    if not (receiver_entity and receiver_entity.valid) then
+        return nil
+    end
+
+    local max_cap = projector_settings.MAX_ENDPOINT_CAPSULES or 2
+    local endpoint_count = capsule_ballistics.count_receiver_capsules(unit_number, receiver_unit)
+    if endpoint_count >= max_cap then
+        return nil
+    end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    local muzzle_pkey = nil
+    local muzzle_node = nil
+    if unit_ports then
+        for i = 1, #unit_ports do
+            local pkey = unit_ports[i]
+            local pnode = storage.flow_nodes and storage.flow_nodes[pkey]
+            if pnode and (pnode.is_muzzle or pnode.kinetic_transmit) then
+                muzzle_pkey = pkey
+                muzzle_node = pnode
+                break
+            end
+        end
+    end
+
+    if not (muzzle_node and muzzle_node.dir) then
+        return nil
+    end
+
+    local dx = muzzle_node.dir.x
+    local dy = muzzle_node.dir.y
+    local surface = game.surfaces[muzzle_node.surface_name]
+    if not (surface and surface.valid) then
+        return nil
+    end
+
+    local cap_id = capsule.capsule_id or capsule.id
+    local from_port_key = capsule.from_port_key
+
+    local tx = muzzle_node.pos.x + dx
+    local ty = muzzle_node.pos.y + dy
+    local player_target = capsule_transit.check_player_collision(surface, tx, ty, capsule)
+    if player_target then
+        local launch_cost = projector_settings.get_launch_energy(proj_entity)
+        proj_entity.energy = math.max(0, proj_entity.energy - launch_cost)
+        storage.projector_last_fired = storage.projector_last_fired or {}
+        storage.projector_last_fired[unit_number] = game.tick
+        if storage.projector_ready_states then
+            storage.projector_ready_states[unit_number] = false
+        end
+
+        local q_lvl = muzzle_node.q_level or 0
+        capsule_ballistics.apply_crash_damage(surface, { x = tx, y = ty }, q_lvl, unit_number, capsule)
+        runner.mark_capsule_unparked(capsule)
+        hub_spill.spill_capsule(cap_id, surface, { x = tx, y = ty }, nil, true)
+        runner.wake_parked_capsules(from_port_key)
+        return nil
+    end
+
+    local launch_cost = projector_settings.get_launch_energy(proj_entity)
+    proj_entity.energy = math.max(0, proj_entity.energy - launch_cost)
+    storage.projector_last_fired = storage.projector_last_fired or {}
+    storage.projector_last_fired[unit_number] = game.tick
+    if storage.projector_ready_states then
+        storage.projector_ready_states[unit_number] = false
+    end
+
+    local terminal_pos = {
+        x = (dx ~= 0) and (receiver_entity.position.x - dx * 1.5) or muzzle_node.pos.x,
+        y = (dy ~= 0) and (receiver_entity.position.y - dy * 1.5) or muzzle_node.pos.y
+    }
+
+    capsule_ballistics.ensure_capsule_corridor(surface.index, unit_number, reticle_id, muzzle_node.pos, terminal_pos)
+
+    local current_tick = game.tick
+    local total_dist = math.abs(terminal_pos.x - muzzle_node.pos.x) + math.abs(terminal_pos.y - muzzle_node.pos.y)
+    local tpt = capsule_ballistics.TICKS_PER_TILE
+    local flight_ticks = math.max(capsule_ballistics.TICKS_PER_HOP, math.ceil(total_dist * tpt))
+
+    capsule.entered_via_pressure = false
+    capsule.beam_flight = {
+        start_pos = { x = muzzle_node.pos.x, y = muzzle_node.pos.y },
+        terminal_pos = terminal_pos,
+        orig_terminal_pos = { x = terminal_pos.x, y = terminal_pos.y },
+        orig_receiver = receiver_unit,
+        hit_receiver_unit = receiver_unit,
+        start_tick = current_tick,
+        arrival_tick = current_tick + flight_ticks,
+        flight_ticks = flight_ticks,
+        surface_name = muzzle_node.surface_name or "nauvis",
+        surface_index = surface.index,
+        dx = dx,
+        dy = dy,
+        current_hop = 1,
+        total_hops = math.max(1, math.ceil(total_dist / capsule_ballistics.HOP_DISTANCE)),
+        owner = unit_number,
+        owner_id = unit_number,
+        id = cap_id,
+        capsule_id = cap_id,
+        ticks_per_tile = tpt,
+        total_dist = total_dist,
+        dir = { x = dx, y = dy },
+        q_level = muzzle_node.q_level or 0,
+        is_receiver_dock = true
+    }
+
+    if capsule_ballistics.USE_TIMED_ARRIVAL then
+        return capsule_ballistics.dispatch_timed_launch(capsule, muzzle_node, from_port_key, runner)
+    end
+    return "timed_launched"
 end
 
 --------------------------------------------------------------------------------
@@ -396,6 +618,10 @@ function capsule_ballistics.advance_kinetic_trajectory(capsule, current_node, un
 end
 
 function capsule_ballistics.try_projector_launch(capsule, unit_number, runner)
+    return capsule_ballistics.try_projector_reticle_launch(capsule, unit_number, runner)
+end
+
+function capsule_ballistics._legacy_try_projector_launch(capsule, unit_number, runner)
     if not (storage.active_projectors and storage.active_projectors[unit_number]) then
         return nil
     end
@@ -1023,6 +1249,9 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                     seg_key = reticle.seg_key,
                     receiver_unit = reticle.hit_receiver
                 }
+            end
+            if is_receiver and hit_receiver_unit and reticle.projector_unit then
+                capsule_ballistics.notify_projector_receiver_docked(reticle.projector_unit, hit_receiver_unit, reticle_id, runner)
             end
         end
     end

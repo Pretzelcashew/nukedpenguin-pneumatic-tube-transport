@@ -156,10 +156,21 @@ function timed_motion.remove_flight(id, owner_id)
         end
         if #flights == 0 then
             flights_store[owner_id] = nil
-            local is_pinned = (storage.pinned_corridors and storage.pinned_corridors[owner_id])
-                or (storage.active_projectors and storage.active_projectors[owner_id])
-            if not is_pinned then
-                timed_motion.remove_corridor(nil, owner_id)
+            local is_decaying = storage.decaying_corridors and storage.decaying_corridors[owner_id]
+            if is_decaying then
+                local dec_info = storage.decaying_corridors[owner_id]
+                storage.decaying_corridors[owner_id] = nil
+                local s_idx = (type(dec_info) == "table" and dec_info.surface_index) or nil
+                timed_motion.remove_corridor(s_idx, owner_id)
+                if storage.pinned_corridors then
+                    storage.pinned_corridors[owner_id] = nil
+                end
+            else
+                local is_pinned = (storage.pinned_corridors and storage.pinned_corridors[owner_id])
+                    or (storage.active_projectors and storage.active_projectors[owner_id])
+                if not is_pinned then
+                    timed_motion.remove_corridor(nil, owner_id)
+                end
             end
         end
     else
@@ -172,6 +183,16 @@ function timed_motion.remove_flight(id, owner_id)
             end
             if #flights == 0 then
                 flights_store[o_id] = nil
+                local is_decaying = storage.decaying_corridors and storage.decaying_corridors[o_id]
+                if is_decaying then
+                    local dec_info = storage.decaying_corridors[o_id]
+                    storage.decaying_corridors[o_id] = nil
+                    local s_idx = (type(dec_info) == "table" and dec_info.surface_index) or nil
+                    timed_motion.remove_corridor(s_idx, o_id)
+                    if storage.pinned_corridors then
+                        storage.pinned_corridors[o_id] = nil
+                    end
+                end
             end
         end
     end
@@ -287,6 +308,9 @@ function timed_motion.ensure_corridor(surface_index, corridor_id, start_pos, ter
     local tree = viewport_bvh.get_motion_tree(surface_index)
     if not tree then return nil end
 
+    if storage.decaying_corridors and storage.decaying_corridors[corridor_id] then
+        timed_motion.remove_corridor(surface_index, corridor_id)
+    end
     local owner_rec = tree.trajectories and tree.trajectories[corridor_id]
     if not (owner_rec and owner_rec.segments and next(owner_rec.segments)) then
         local dx = terminal_pos.x - start_pos.x

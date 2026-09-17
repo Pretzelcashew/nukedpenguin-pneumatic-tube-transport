@@ -105,6 +105,51 @@ function flow_kinetic.step_cooldown_heap(current_tick)
     end
 end
 
+function flow_kinetic.count_in_flight_capsules(owner_unit)
+    if not owner_unit then return 0 end
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local flights = flights_store and flights_store[owner_unit]
+    if not flights then return 0 end
+    local count = 0
+    for i = 1, #flights do
+        local f = flights[i]
+        if f and (f.kind == nil or f.kind == "capsule") then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function flow_kinetic.remove_capsule_corridor(owner_unit, surface_index, surface_name)
+    if not owner_unit then return end
+    timed_motion.remove_corridor(surface_index, owner_unit)
+    flow_kinetic.unregister_trajectory_in_bvh(owner_unit, surface_name, true)
+    if storage.pinned_corridors then
+        storage.pinned_corridors[owner_unit] = nil
+    end
+    if storage.decaying_corridors then
+        storage.decaying_corridors[owner_unit] = nil
+    end
+end
+
+function flow_kinetic.unlink_projector_receiver(proj_unit, surface_index, surface_name)
+    if not proj_unit then return end
+    if storage.projector_scope and storage.projector_scope[proj_unit] then
+        storage.projector_scope[proj_unit].receiver_unit = nil
+    end
+
+    local in_transit = flow_kinetic.count_in_flight_capsules(proj_unit)
+    if in_transit == 0 then
+        flow_kinetic.remove_capsule_corridor(proj_unit, surface_index, surface_name)
+    else
+        storage.decaying_corridors = storage.decaying_corridors or {}
+        storage.decaying_corridors[proj_unit] = {
+            surface_index = surface_index,
+            surface_name = surface_name
+        }
+    end
+end
+
 function flow_kinetic.orphan_reticle(owner_unit, reason)
     if not owner_unit then return end
     if reason == "destroyed" or reason == "unregistered" then
@@ -114,15 +159,28 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     storage.projector_scope = storage.projector_scope or {}
 
     local scope = storage.projector_scope[owner_unit]
-    if not scope then return end
+    if not scope then
+        if flow_kinetic.count_in_flight_capsules(owner_unit) == 0 then
+            flow_kinetic.remove_capsule_corridor(owner_unit)
+        end
+        return
+    end
 
     local reticle_id = (type(scope) == "table" and scope.reticle_id) or (type(scope) == "number" and scope)
     storage.projector_scope[owner_unit] = nil
 
-    if not reticle_id then return end
+    if not reticle_id then
+        if flow_kinetic.count_in_flight_capsules(owner_unit) == 0 then
+            flow_kinetic.remove_capsule_corridor(owner_unit)
+        end
+        return
+    end
     local reticle = storage.projector_reticles[reticle_id]
     if not reticle or reticle.status == "retreating" then
         flow_kinetic.unregister_reticle_obstacle(reticle_id)
+        if flow_kinetic.count_in_flight_capsules(owner_unit) == 0 then
+            flow_kinetic.remove_capsule_corridor(owner_unit)
+        end
         return
     end
 
@@ -135,6 +193,18 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     reticle.retreat_tick = current_tick
 
     local s_idx = reticle.surface_index or 1
+    local s_name = reticle.surface_name or "nauvis"
+
+    local in_transit_capsules = flow_kinetic.count_in_flight_capsules(owner_unit)
+    if in_transit_capsules == 0 then
+        flow_kinetic.remove_capsule_corridor(owner_unit, s_idx, s_name)
+    else
+        storage.decaying_corridors = storage.decaying_corridors or {}
+        storage.decaying_corridors[owner_unit] = {
+            surface_index = s_idx,
+            surface_name = s_name
+        }
+    end
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     if motion_tree and reticle.seg_key then
         local owner_rec = motion_tree.trajectories and motion_tree.trajectories[reticle_id]
@@ -1142,11 +1212,15 @@ function flow_kinetic.resume_reticle_probing(reticle)
     if not reticle or reticle.status == "retreating" then return end
     local reticle_id = reticle.id
     flow_kinetic.unregister_reticle_obstacle(reticle_id)
+    local prev_receiver = reticle.hit_receiver
+    local proj_unit = reticle.projector_unit
     reticle.pending_receiver = nil
     reticle.hit_receiver = nil
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
-    if reticle.projector_unit and storage.projector_scope and storage.projector_scope[reticle.projector_unit] then
-        storage.projector_scope[reticle.projector_unit].receiver_unit = nil
+    if prev_receiver and proj_unit then
+        flow_kinetic.unlink_projector_receiver(proj_unit, reticle.surface_index, reticle.surface_name)
+    elseif proj_unit and storage.projector_scope and storage.projector_scope[proj_unit] then
+        storage.projector_scope[proj_unit].receiver_unit = nil
     end
     local s_idx = reticle.surface_index or 1
     local motion_tree = timed_motion.get_motion_tree(s_idx)
@@ -1334,12 +1408,16 @@ function flow_kinetic.handle_reticle_obstacle_cleared(entity)
 
             if is_flying then
                 flow_kinetic.unregister_reticle_obstacle(rid)
+                local prev_receiver = ret.hit_receiver
+                local proj_unit = ret.projector_unit
                 ret.pending_receiver = nil
                 ret.hit_receiver = nil
                 ret.head_render_spec = DEFAULT_HEAD_SPEC
                 cur_flight.render_spec = DEFAULT_HEAD_SPEC
-                if ret.projector_unit and storage.projector_scope and storage.projector_scope[ret.projector_unit] then
-                    storage.projector_scope[ret.projector_unit].receiver_unit = nil
+                if prev_receiver and proj_unit then
+                    flow_kinetic.unlink_projector_receiver(proj_unit, ret.surface_index, ret.surface_name)
+                elseif proj_unit and storage.projector_scope and storage.projector_scope[proj_unit] then
+                    storage.projector_scope[proj_unit].receiver_unit = nil
                 end
                 local full_reach = ret.max_reach or 50
                 ret.max_range = full_reach
@@ -1619,8 +1697,12 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
 
     local is_receiver = (reticle.projector_unit ~= nil) and obstacle_entity and obstacle_entity.valid and (obstacle_entity.name == "pneumatic-projector")
     local hit_rec_unit = is_receiver and obstacle_entity.unit_number or nil
+    local prev_receiver = reticle.hit_receiver
     reticle.pending_receiver = nil
     reticle.hit_receiver = hit_rec_unit
+    if prev_receiver and prev_receiver ~= hit_rec_unit and reticle.projector_unit then
+        flow_kinetic.unlink_projector_receiver(reticle.projector_unit, s_idx, reticle.surface_name)
+    end
 
     local head_spec = is_receiver and RECEIVER_HEAD_SPEC or DEFAULT_HEAD_SPEC
     reticle.head_render_spec = head_spec
@@ -1958,9 +2040,13 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     if not flight then return end
 
     local is_receiver = (reticle.projector_unit ~= nil) and obstacle_entity and obstacle_entity.valid and (obstacle_entity.name == "pneumatic-projector")
+    local prev_receiver = reticle.hit_receiver
     reticle.pending_receiver = is_receiver and obstacle_entity.unit_number or nil
     reticle.hit_receiver = nil
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
+    if prev_receiver and reticle.projector_unit then
+        flow_kinetic.unlink_projector_receiver(reticle.projector_unit, s_idx, reticle.surface_name)
+    end
     flight.render_spec = DEFAULT_HEAD_SPEC
     flight.projector_unit = flight.projector_unit or reticle.projector_unit
     flight.reticle_id = flight.reticle_id or reticle.id
@@ -2556,11 +2642,15 @@ function flow_kinetic.clear_receiver_references(receiver_unit, enqueue_port_fn, 
     if storage.projector_reticles then
         for r_id, ret in pairs(storage.projector_reticles) do
             if ret.hit_receiver == receiver_unit or ret.pending_receiver == receiver_unit then
+                local was_hit = (ret.hit_receiver == receiver_unit)
+                local proj_unit = ret.projector_unit
                 ret.hit_receiver = nil
                 ret.pending_receiver = nil
                 ret.head_render_spec = DEFAULT_HEAD_SPEC
-                if ret.projector_unit and storage.projector_scope and storage.projector_scope[ret.projector_unit] then
-                    storage.projector_scope[ret.projector_unit].receiver_unit = nil
+                if was_hit and proj_unit then
+                    flow_kinetic.unlink_projector_receiver(proj_unit, ret.surface_index, ret.surface_name)
+                elseif proj_unit and storage.projector_scope and storage.projector_scope[proj_unit] then
+                    storage.projector_scope[proj_unit].receiver_unit = nil
                 end
                 local s_idx = ret.surface_index or 1
                 local motion_tree = timed_motion.get_motion_tree(s_idx)

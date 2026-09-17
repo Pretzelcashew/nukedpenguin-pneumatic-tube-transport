@@ -156,6 +156,10 @@ function capsule_ballistics.ensure_capsule_corridor(surface_index, sender_unit, 
     local traj_tree = trajectory_bvh.get_surface_tree(storage, surface_index)
     if not motion_tree then return end
 
+    if storage.decaying_corridors and storage.decaying_corridors[sender_unit] then
+        flow_kinetic.remove_capsule_corridor(sender_unit, surface_index)
+    end
+
     local owner_rec = motion_tree.trajectories and motion_tree.trajectories[sender_unit]
     if owner_rec and owner_rec.segments and next(owner_rec.segments) then
         return
@@ -1428,7 +1432,33 @@ function capsule_ballistics.remove_flight(capsule_id, beam_owner)
     if capsule_id and storage.capsules and storage.capsules[capsule_id] then
         capsule_renderer.destroy_arrival_dot(storage.capsules[capsule_id])
     end
-    timed_motion.remove_flight(capsule_id, beam_owner)
+
+    local owner = beam_owner
+    if not owner and storage.timed_flight_records and storage.timed_flight_records[capsule_id] then
+        owner = storage.timed_flight_records[capsule_id].owner_id
+    end
+
+    timed_motion.remove_flight(capsule_id, owner or beam_owner)
+
+    if storage.decaying_corridors then
+        if owner and storage.decaying_corridors[owner] then
+            if flow_kinetic.count_in_flight_capsules(owner) == 0 then
+                local dec = storage.decaying_corridors[owner]
+                local s_idx = (type(dec) == "table" and dec.surface_index) or nil
+                local s_name = (type(dec) == "table" and dec.surface_name) or nil
+                flow_kinetic.remove_capsule_corridor(owner, s_idx, s_name)
+            end
+        elseif not owner then
+            for dec_owner, dec in pairs(storage.decaying_corridors) do
+                if flow_kinetic.count_in_flight_capsules(dec_owner) == 0 then
+                    local s_idx = (type(dec) == "table" and dec.surface_index) or nil
+                    local s_name = (type(dec) == "table" and dec.surface_name) or nil
+                    flow_kinetic.remove_capsule_corridor(dec_owner, s_idx, s_name)
+                end
+            end
+        end
+    end
+
     if not storage.projector_flights then return end
     if beam_owner and storage.projector_flights[beam_owner] then
         local p_flights = storage.projector_flights[beam_owner]

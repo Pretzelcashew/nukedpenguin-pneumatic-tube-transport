@@ -1,5 +1,2 @@
-we will notify the reticle parent projector when the child reticle has collided successfully with another projector. 
-
-the projector will be able to launch ballistic capsules to the reciever projector
-
-we already have a fully fleshed out ballistic capsule system, its using the old kinetic flow as the projector reciever identifier, so we are simply changing the hook to our reticle system. but the flight paths will act the same, we will always create a capsule flight cooridor separate from the reticle bvh nodes, however it is very likely that we will be cloning the reticle's bvh leaves to make th initial flight cooridor. the flight cooridor will be communial for the ballistic capsules making this trek, so we dont need to make a new flight cooridor for every capsule making the same exact trek. the handling is already in existence we are simply re-hooking the initiator to the new reticle target. we are not using the same exact bvh leafs of the reticle for the flight cooridor, we will be cloning them once for the already existing capsule flight system to use.
+when the projector's reticle is orphaned, the paired flight corridor for ballistic capules should be removed if there are no in transit ballistic capsules on it.
+in the case that there are ballistic capsules on it, do not immediately remove this flight cooridor, but mark it as decaying, meaning that, when there are no more capsules moving on it, it can safely be removed. (we can do a simple capsule count check, the least amount of work so we dont have to re-poll on tick)

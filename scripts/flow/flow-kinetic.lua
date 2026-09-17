@@ -1077,9 +1077,11 @@ function flow_kinetic.resume_reticle_probing(reticle)
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
 
     local proj_unit = reticle.projector_unit
-    local proj = proj_unit and storage.active_projectors and storage.active_projectors[proj_unit]
-    if not (proj and proj.valid and projector_settings.is_powered(proj) and projector_settings.is_projector_enabled(proj)) then
-        return
+    if proj_unit then
+        local proj = storage.active_projectors and storage.active_projectors[proj_unit]
+        if not (proj and proj.valid and projector_settings.is_powered(proj) and projector_settings.is_projector_enabled(proj)) then
+            return
+        end
     end
 
     local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[proj_unit]
@@ -1633,7 +1635,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
 
     local downstream_dist = (head_was_severed and (full_reach - exit_dist)) or (old_total_dist - exit_dist)
 
-    if downstream_dist <= 0.2 then
+    local is_split_candidate = (reticle.projector_unit ~= nil)
+
+    if downstream_dist <= 0.2 or not is_split_candidate then
         if head_was_severed and cur_flight then
             timed_motion.remove_flight(cur_flight.id, reticle_id)
         end
@@ -2019,10 +2023,10 @@ function flow_kinetic.flush_pending_reticle_obstacles()
                     cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
                 end
 
-                if not is_growing or closest_dist <= (cur_head_dist + 0.05) then
-                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
-                else
+                if is_growing and closest_dist > (cur_head_dist + 0.05) then
                     flow_kinetic.update_reticle_horizon(ret, closest_dist, closest_entity, cur_flight)
+                elseif ret.projector_unit ~= nil then
+                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
                 end
 
                 local down_id = ret.downstream_reticle_id
@@ -2129,10 +2133,10 @@ function flow_kinetic.flush_pending_reticle_obstacles()
                     cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
                 end
 
-                if not is_growing or closest_dist <= (cur_head_dist + 0.05) then
-                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
-                else
+                if is_growing and closest_dist > (cur_head_dist + 0.05) then
                     flow_kinetic.update_reticle_horizon(ret, closest_dist, closest_entity, cur_flight)
+                elseif ret.projector_unit ~= nil then
+                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
                 end
 
                 local down_id = ret.downstream_reticle_id

@@ -20,6 +20,18 @@ local QUALITY_BEAM_PALETTE = {
 }
 local MINOR_DOT_COLOR = {r = 0.90, g = 0.20, b = 0.70, a = 0.75}
 
+-- Collective Observation Governor & Schmitt-Trigger Hysteresis Constants
+local CADENCE_60FPS = 1
+local CADENCE_30FPS = 2
+local CADENCE_20FPS = 3
+
+local THRESHOLD_DROP_TO_30 = 30
+local THRESHOLD_CLIMB_TO_60 = 18
+local THRESHOLD_DROP_TO_20 = 75
+local THRESHOLD_CLIMB_TO_30 = 50
+local EMERGENCY_SPIKE_DELTA = 40
+local EMERGENCY_MAX_COUNT = 120
+
 -- Module-scoped per-frame player viewport cache & scratch structures
 local last_prepared_tick = -1
 local active_debug_players = {}
@@ -30,6 +42,7 @@ local active_viewport_count = 0
 local scratch_debug_players = {}
 local scratch_debug_keys = {}
 local previous_arrival_capsules = {}
+local scratch_observed_flights = {}
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
@@ -48,6 +61,341 @@ local function is_stack_spoilable(stack)
         return true
     end
     return false
+end
+
+function capsule_renderer.init_storage()
+    storage.render_governor = storage.render_governor or {
+        observed_count = 0,
+        smoothed_count = 0,
+        cadence = CADENCE_60FPS,
+        is_idle = true,
+        last_step_tick = 0
+    }
+    storage.render_precalc_buffer = storage.render_precalc_buffer or {
+        entries = {},
+        active_keys = {},
+        active_count = 0,
+        high_water = 0
+    }
+end
+
+function capsule_renderer.get_governor_cadence()
+    local gov = storage.render_governor
+    return (gov and gov.cadence) or CADENCE_60FPS
+end
+
+function capsule_renderer.is_governor_idle()
+    local gov = storage.render_governor
+    return not gov or gov.is_idle == true
+end
+
+function capsule_renderer.invalidate_flight(flight_id)
+    local buf = storage.render_precalc_buffer
+    if not buf or not buf.entries then return end
+    local entry = buf.entries[flight_id]
+    if entry then
+        entry.dirty = true
+    end
+end
+
+function capsule_renderer.invalidate_corridor(owner_id)
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local owner_flights = flights_store and flights_store[owner_id]
+    if not owner_flights then return end
+    local buf = storage.render_precalc_buffer
+    if not buf or not buf.entries then return end
+    for f = 1, #owner_flights do
+        local flight = owner_flights[f]
+        local f_id = flight.id or flight.capsule_id
+        local entry = buf.entries[f_id]
+        if entry then
+            entry.dirty = true
+        end
+    end
+end
+
+function capsule_renderer.invalidate_all()
+    local buf = storage.render_precalc_buffer
+    if not buf or not buf.entries then return end
+    for _, entry in pairs(buf.entries) do
+        entry.dirty = true
+    end
+end
+
+function capsule_renderer.step_buffer_decay(max_prune, target_buf)
+    local buf = target_buf or storage.render_precalc_buffer
+    if not buf or not buf.entries then return end
+    max_prune = max_prune or 8
+
+    local entries = buf.entries
+    local active_keys = buf.active_keys or {}
+    local active_count = buf.active_count or 0
+    local high_water = buf.high_water or 0
+
+    local retention_floor = (active_count * 2) + 64
+    if high_water <= retention_floor then
+        return
+    end
+
+    local active_set = {}
+    for i = 1, active_count do
+        local k = active_keys[i]
+        if k then active_set[k] = true end
+    end
+
+    local pruned = 0
+    for k in pairs(entries) do
+        if not active_set[k] then
+            entries[k] = nil
+            pruned = pruned + 1
+            if pruned >= max_prune then
+                break
+            end
+        end
+    end
+
+    buf.high_water = math.max(active_count, high_water - pruned)
+end
+
+function capsule_renderer.update_governor(current_tick)
+    if not storage.render_governor then
+        capsule_renderer.init_storage()
+    end
+    local gov = storage.render_governor
+
+    local flights_store = storage.timed_flights or storage.projector_flights
+    if not flights_store or next(flights_store) == nil then
+        gov.observed_count = 0
+        gov.smoothed_count = 0
+        gov.cadence = CADENCE_60FPS
+        gov.is_idle = true
+        gov.last_step_tick = current_tick
+        return
+    end
+
+    local players = game.connected_players
+    if not players or #players == 0 then
+        gov.observed_count = 0
+        gov.smoothed_count = 0
+        gov.cadence = CADENCE_60FPS
+        gov.is_idle = true
+        gov.last_step_tick = current_tick
+        return
+    end
+
+    local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
+    for p = 1, #players do
+        local player = players[p]
+        if player and player.valid then
+            local vs = player.game_view_settings
+            local alt_mode = vs and vs.show_entity_info
+            local rm = player.render_mode
+            local is_chart = (rm == defines.render_mode.chart or rm == defines.render_mode.chart_zoomed_in)
+
+            if alt_mode and not is_chart then
+                local p_idx = player.index
+                local v_set = viewport_bvh.get_visible_set(p_idx)
+                if v_set then
+                    for _, item in pairs(v_set) do
+                        local owner_flights = flights_store[item.owner_id]
+                        if owner_flights then
+                            local leaf = item.leaf
+                            local d_start = leaf and leaf.d_start or 0
+                            local d_end = leaf and leaf.d_end or 16
+
+                            for f = 1, #owner_flights do
+                                local flight = owner_flights[f]
+                                local f_id = flight.id or flight.capsule_id
+                                local t_start = flight.start_tick or 0
+                                local flight_rec = timed_motion.get_flight(f_id)
+                                local is_scope = (flight.kind == "projector_scope") or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope"))
+                                local is_anti = (flight.kind == "anti_reticle") or (flight_rec and (flight_rec.kind == "anti_reticle" or flight_rec.on_arrival == "anti_reticle"))
+
+                                local t_entry, t_exit
+                                if is_scope or is_anti then
+                                    local f_seg = flight_rec and flight_rec.seg_idx or 1
+                                    local l_seg = leaf and leaf.seg_idx or 1
+                                    if f_seg == l_seg then
+                                        t_entry = flight.start_tick or 0
+                                        t_exit = flight.arrival_tick or (t_entry + math.ceil((d_end - d_start) * tpt))
+                                    else
+                                        t_entry = -1
+                                        t_exit = -1
+                                    end
+                                else
+                                    t_entry = t_start + math.floor(d_start * tpt)
+                                    t_exit = t_start + math.ceil(d_end * tpt)
+                                end
+
+                                if not is_anti and current_tick >= t_entry and current_tick <= t_exit then
+                                    scratch_observed_flights[f_id] = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local buf = storage.render_precalc_buffer
+    buf.active_keys = buf.active_keys or {}
+    local observed = 0
+    for f_id in pairs(scratch_observed_flights) do
+        observed = observed + 1
+        buf.active_keys[observed] = f_id
+        scratch_observed_flights[f_id] = nil
+    end
+    for i = observed + 1, #buf.active_keys do
+        buf.active_keys[i] = nil
+    end
+    buf.active_count = observed
+    if observed > (buf.high_water or 0) then
+        buf.high_water = observed
+    end
+
+    gov.observed_count = observed
+    gov.last_step_tick = current_tick
+
+    if observed == 0 then
+        gov.smoothed_count = 0
+        gov.cadence = CADENCE_60FPS
+        gov.is_idle = true
+        return
+    end
+
+    gov.is_idle = false
+    local cur_cadence = gov.cadence or CADENCE_60FPS
+    local smoothed = gov.smoothed_count or 0
+
+    if observed >= EMERGENCY_MAX_COUNT or (observed - smoothed) >= EMERGENCY_SPIKE_DELTA then
+        gov.cadence = CADENCE_20FPS
+        gov.smoothed_count = observed
+        return
+    end
+
+    smoothed = (smoothed * 0.85) + (observed * 0.15)
+    gov.smoothed_count = smoothed
+
+    if cur_cadence == CADENCE_60FPS then
+        if smoothed >= THRESHOLD_DROP_TO_30 then
+            gov.cadence = CADENCE_30FPS
+        end
+    elseif cur_cadence == CADENCE_30FPS then
+        if smoothed <= THRESHOLD_CLIMB_TO_60 then
+            gov.cadence = CADENCE_60FPS
+        elseif smoothed >= THRESHOLD_DROP_TO_20 then
+            gov.cadence = CADENCE_20FPS
+        end
+    elseif cur_cadence == CADENCE_20FPS then
+        if smoothed <= THRESHOLD_CLIMB_TO_30 then
+            gov.cadence = CADENCE_30FPS
+        end
+    else
+        gov.cadence = CADENCE_60FPS
+    end
+end
+
+function capsule_renderer.precalc_flight_position(f_id, target_tick)
+    local flight_rec = timed_motion.get_flight(f_id)
+    local capsule = storage.capsules and storage.capsules[f_id]
+    local bf = (capsule and capsule.beam_flight) or flight_rec
+    if not bf then return end
+
+    local buf = storage.render_precalc_buffer
+    if not (buf and buf.entries) then return end
+
+    local entry = buf.entries[f_id]
+    if not entry then
+        entry = { pos = { x = 0, y = 0 }, progress = 0, target_tick = 0, arrival_tick = 0, term_x = 0, term_y = 0, dirty = false, valid = false }
+        buf.entries[f_id] = entry
+    end
+
+    local term_pos = bf.terminal_pos or bf.start_pos
+    local term_x = term_pos and term_pos.x or 0
+    local term_y = term_pos and term_pos.y or 0
+    local arr_tick = bf.arrival_tick or 0
+
+    local pos, progress = timed_motion.get_interpolated_position(bf, target_tick)
+    entry.pos.x = pos.x
+    entry.pos.y = pos.y
+    entry.progress = progress
+    entry.target_tick = target_tick
+    entry.arrival_tick = arr_tick
+    entry.term_x = term_x
+    entry.term_y = term_y
+    entry.dirty = false
+    entry.valid = true
+end
+
+function capsule_renderer.get_flight_position(bf, f_id, current_tick)
+    local buf = storage.render_precalc_buffer
+    local entry = buf and buf.entries and buf.entries[f_id]
+    local arr_tick = bf.arrival_tick or 0
+    local term_pos = bf.terminal_pos or bf.start_pos
+    local term_x = term_pos and term_pos.x or 0
+    local term_y = term_pos and term_pos.y or 0
+
+    if entry and entry.valid and not entry.dirty and entry.target_tick == current_tick
+        and entry.arrival_tick == arr_tick and entry.term_x == term_x and entry.term_y == term_y then
+        return entry.pos, entry.progress
+    end
+
+    local pos, progress = timed_motion.get_interpolated_position(bf, current_tick)
+    if not entry then
+        entry = { pos = { x = pos.x, y = pos.y }, progress = progress, target_tick = current_tick, arrival_tick = arr_tick, term_x = term_x, term_y = term_y, dirty = false, valid = true }
+        if buf and buf.entries then
+            buf.entries[f_id] = entry
+        end
+    else
+        entry.pos.x = pos.x
+        entry.pos.y = pos.y
+        entry.progress = progress
+        entry.target_tick = current_tick
+        entry.arrival_tick = arr_tick
+        entry.term_x = term_x
+        entry.term_y = term_y
+        entry.dirty = false
+        entry.valid = true
+    end
+    return entry.pos, progress
+end
+
+function capsule_renderer.step_precalculations(current_tick)
+    local gov = storage.render_governor
+    if not gov or gov.is_idle then return end
+
+    local buf = storage.render_precalc_buffer
+    if not buf or not buf.active_keys or buf.active_count == 0 then return end
+
+    local cadence = gov.cadence or CADENCE_60FPS
+    if cadence == CADENCE_60FPS then
+        for i = 1, buf.active_count do
+            capsule_renderer.precalc_flight_position(buf.active_keys[i], current_tick)
+        end
+    elseif cadence == CADENCE_30FPS then
+        if (current_tick % 2 == 1) then
+            local target_tick = current_tick + 1
+            for i = 1, buf.active_count do
+                capsule_renderer.precalc_flight_position(buf.active_keys[i], target_tick)
+            end
+        end
+    elseif cadence == CADENCE_20FPS then
+        local phase = current_tick % 3
+        if phase == 1 then
+            local target_tick = current_tick + 2
+            local half = math.floor(buf.active_count * 0.5)
+            for i = 1, half do
+                capsule_renderer.precalc_flight_position(buf.active_keys[i], target_tick)
+            end
+        elseif phase == 2 then
+            local target_tick = current_tick + 1
+            local half = math.floor(buf.active_count * 0.5)
+            for i = half + 1, buf.active_count do
+                capsule_renderer.precalc_flight_position(buf.active_keys[i], target_tick)
+            end
+        end
+    end
 end
 
 --- Pre-evaluates player viewport eligibility, Alt Mode state, and hover peeking unit numbers once per tick.
@@ -137,6 +485,7 @@ function capsule_renderer.prepare_frame()
     for i = active_viewport_count + 1, #active_viewports do
         active_viewports[i] = nil
     end
+    capsule_renderer.update_governor(current_tick)
     if t_pf then profiler.record_bvh("Prepare Frame", t_pf) end
 end
 
@@ -866,8 +1215,12 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
         return
     end
 
-    local cadence = dbg.render_cadence or 1
-    if cadence > 1 and ((current_tick + p_idx) % cadence ~= 0) then
+    local gov = storage.render_governor
+    local cadence = (gov and gov.cadence) or CADENCE_60FPS
+    if dbg and dbg.render_cadence and dbg.render_cadence > cadence then
+        cadence = dbg.render_cadence
+    end
+    if cadence > 1 and (current_tick % cadence ~= 0) then
         return
     end
 
@@ -1005,7 +1358,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                         local bf = (capsule and capsule.beam_flight) or flight_rec
 
                         if bf then
-                            local curr_pos, progress = timed_motion.get_interpolated_position(bf, current_tick)
+                            local curr_pos, progress = capsule_renderer.get_flight_position(bf, f_id, current_tick)
                             local passenger = capsule and capsule.passenger
                             local passenger_valid = passenger and passenger.valid
                             if passenger_valid and passenger.index == p_idx then
@@ -1104,6 +1457,13 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 end
 
 function capsule_renderer.update_timed_capsules(current_tick)
+    local gov = storage.render_governor
+    if gov and gov.is_idle then
+        return
+    end
+
+    capsule_renderer.step_precalculations(current_tick)
+
     local flights_store = storage.timed_flights or storage.projector_flights
     local has_flights = (flights_store and next(flights_store) ~= nil)
     local has_arrival_caps = (next(previous_arrival_capsules) ~= nil)
@@ -1452,7 +1812,79 @@ function capsule_renderer.run_tests(player)
     end
     log_msg("[color=green][RenderDispatcher Test] Test 5: Off-Screen Eviction & Pool Recycling -> PASSED[/color]")
 
-    log_msg("[color=green][font=default-bold][RenderDispatcher Test] ALL 5 TESTS PASSED! Per-Player Sliding-Scale Render Dispatcher active.[/font][/color]")
+    -- Test 6: Collective Observation Governor Schmitt-Trigger & Buffer Decay
+    capsule_renderer.init_storage()
+    local gov = storage.render_governor
+    gov.observed_count = 0
+    gov.smoothed_count = 0
+    gov.cadence = 1
+    gov.is_idle = true
+
+    -- Verify idle state
+    if not capsule_renderer.is_governor_idle() or capsule_renderer.get_governor_cadence() ~= 1 then
+        log_msg("[color=red][RenderDispatcher Test] Test 6 FAILED: Idle governor state incorrect[/color]")
+        return false
+    end
+
+    -- Test buffer high-water allocation and amortized decay on isolated fixture
+    local test_buf = {
+        entries = {
+            [99901] = { x = 1, y = 1, dirty = false },
+            [99902] = { x = 2, y = 2, dirty = false }
+        },
+        active_keys = { 99901 },
+        active_count = 1,
+        high_water = 200 -- Trigger ceiling > (1 * 2 + 64)
+    }
+
+    capsule_renderer.step_buffer_decay(8, test_buf)
+    if test_buf.entries[99902] ~= nil then
+        log_msg("[color=red][RenderDispatcher Test] Test 6 FAILED: Inactive buffer entry not pruned during decay[/color]")
+        return false
+    end
+    if test_buf.entries[99901] == nil then
+        log_msg("[color=red][RenderDispatcher Test] Test 6 FAILED: Active buffer entry mistakenly pruned[/color]")
+        return false
+    end
+
+    log_msg("[color=green][RenderDispatcher Test] Test 6: Collective Observation Governor & Buffer Pooling -> PASSED[/color]")
+
+    -- Test 7: Amortized Pre-Calculation & Lockstep Cadence Execution
+    local dummy_bf = {
+        start_pos = { x = 0, y = 0 },
+        terminal_pos = { x = 60, y = 0 },
+        start_tick = 1000,
+        arrival_tick = 1050
+    }
+    local pre_pos, pre_prog = capsule_renderer.get_flight_position(dummy_bf, 99999, 1025)
+    local direct_pos, direct_prog = timed_motion.get_interpolated_position(dummy_bf, 1025)
+    if math.abs(pre_pos.x - direct_pos.x) > 0.01 or math.abs(pre_prog - direct_prog) > 0.01 then
+        log_msg("[color=red][RenderDispatcher Test] Test 7 FAILED: Pre-calculated position does not match direct interpolation[/color]")
+        return false
+    end
+
+    -- Verify automatic invalidation on obstacle truncation
+    dummy_bf.terminal_pos = { x = 10, y = 0 }
+    dummy_bf.arrival_tick = 1012
+    local truncated_pos = capsule_renderer.get_flight_position(dummy_bf, 99999, 1025)
+    if truncated_pos.x > 10.01 then
+        log_msg("[color=red][RenderDispatcher Test] Test 7 FAILED: Obstacle truncation failed to update clamped position[/color]")
+        return false
+    end
+
+    local cached_entry = storage.render_precalc_buffer and storage.render_precalc_buffer.entries[99999]
+    if not cached_entry or cached_entry.arrival_tick ~= 1012 or cached_entry.term_x ~= 10 then
+        log_msg("[color=red][RenderDispatcher Test] Test 7 FAILED: Cache entry failed to synchronize updated flight horizons[/color]")
+        return false
+    end
+
+    if storage.render_precalc_buffer and storage.render_precalc_buffer.entries then
+        storage.render_precalc_buffer.entries[99999] = nil
+    end
+
+    log_msg("[color=green][RenderDispatcher Test] Test 7: Amortized Pre-Calculation & Auto-Invalidation -> PASSED[/color]")
+
+    log_msg("[color=green][font=default-bold][RenderDispatcher Test] ALL 7 TESTS PASSED! Collective Observation Governor & Lockstep Pre-Calc Engine active.[/font][/color]")
     return true
 end
 

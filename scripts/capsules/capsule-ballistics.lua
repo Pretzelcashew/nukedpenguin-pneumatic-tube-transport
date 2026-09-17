@@ -953,6 +953,7 @@ function capsule_ballistics.update_projector_flights(beam_owner)
                 if pos_changed or receiver_changed then
                     timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
                     bf.hit_receiver_unit = new_receiver
+                    capsule_renderer.invalidate_flight(cap_id)
 
                     local surface = game.surfaces[bf.surface_name or "nauvis"]
                     if surface and surface.valid then
@@ -1120,6 +1121,7 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         flight.start_tick = current_tick
         flight.arrival_tick = current_tick + flight_ticks
         flight.flight_ticks = flight_ticks
+        capsule_renderer.invalidate_flight(flight_id)
 
         local reticle_id = flight.reticle_id or owner_id
         local reticle = storage.projector_reticles and storage.projector_reticles[reticle_id]
@@ -1234,6 +1236,7 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
             end
         end
 
+        capsule_renderer.invalidate_flight(flight_id)
         timed_motion.remove_flight(flight_id, owner_id)
         if reticle then
             if reticle.status ~= "retreating" then
@@ -1434,6 +1437,7 @@ function capsule_ballistics.remove_flight(capsule_id, beam_owner)
     if capsule_id and storage.capsules and storage.capsules[capsule_id] then
         capsule_renderer.destroy_arrival_dot(storage.capsules[capsule_id])
     end
+    capsule_renderer.invalidate_flight(capsule_id)
 
     local owner = beam_owner
     if not owner and storage.timed_flight_records and storage.timed_flight_records[capsule_id] then
@@ -1573,6 +1577,7 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                                     bf.hit_receiver_unit = nil
                                 end
                                 timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
+                                capsule_renderer.invalidate_flight(cap_id)
                                 capsule_renderer.update_arrival_dots(cap, cap_id)
                             end
                         else
@@ -1625,6 +1630,7 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                                 end
 
                                 timed_motion.shift_horizon(bf, new_term, current_tick, TICKS_PER_HOP)
+                                capsule_renderer.invalidate_flight(cap_id)
                                 capsule_renderer.update_arrival_dots(cap, cap_id)
                             end
                         end

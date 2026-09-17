@@ -23,6 +23,7 @@ local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
 local counter_range = require("scripts.counters.counter-range")
 local capsule_runner = require("scripts.capsules.capsule-runner")
+local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
@@ -68,6 +69,7 @@ local function setup_storage()
     flow_engine.init_storage()
     counter_range.init_storage()
     timed_motion.init_storage()
+    capsule_renderer.init_storage()
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
 
@@ -201,4 +203,5 @@ script.on_nth_tick(120, function()
             trajectory_bvh.step_decay(tree, 8)
         end
     end
+    capsule_renderer.step_buffer_decay(8)
 end)

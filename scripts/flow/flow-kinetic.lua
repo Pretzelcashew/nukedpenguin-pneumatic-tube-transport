@@ -9,6 +9,33 @@ local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_kinetic = {}
 
+local function invalidate_render_flight(flight_id)
+    local buf = storage.render_precalc_buffer
+    if not (buf and buf.entries) then return end
+    local entry = buf.entries[flight_id]
+    if entry then
+        entry.dirty = true
+        entry.valid = false
+    end
+end
+
+local function invalidate_render_corridor(owner_id)
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local owner_flights = flights_store and flights_store[owner_id]
+    if not owner_flights then return end
+    local buf = storage.render_precalc_buffer
+    if not (buf and buf.entries) then return end
+    for f = 1, #owner_flights do
+        local flight = owner_flights[f]
+        local f_id = flight.id or flight.capsule_id
+        local entry = buf.entries[f_id]
+        if entry then
+            entry.dirty = true
+            entry.valid = false
+        end
+    end
+end
+
 local BASE_PROJECTOR_RANGE = 50
 local HOP_DISTANCE = 5
 
@@ -206,6 +233,8 @@ function flow_kinetic.orphan_reticle(owner_unit, reason)
     reticle.status = (reticle.status == "growing") and "growing" or "stationary"
     local current_tick = game.tick
     reticle.retreat_tick = current_tick
+    invalidate_render_flight(reticle_id)
+    invalidate_render_corridor(owner_unit)
 
     local s_idx = reticle.surface_index or 1
     local s_name = reticle.surface_name or "nauvis"
@@ -1227,6 +1256,7 @@ function flow_kinetic.resume_reticle_probing(reticle)
     if not reticle or reticle.status == "retreating" then return end
     local reticle_id = reticle.id
     flow_kinetic.unregister_reticle_obstacle(reticle_id)
+    invalidate_render_flight(reticle_id)
     local prev_receiver = reticle.hit_receiver
     local proj_unit = reticle.projector_unit
     reticle.pending_receiver = nil
@@ -1750,6 +1780,8 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
     reticle.total_dist = entry_dist
     reticle.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
     reticle.endpoint_pos = { x = collision_pos.x, y = collision_pos.y }
+    invalidate_render_flight(reticle_id)
+    invalidate_render_corridor(reticle_id)
 
     if not head_was_severed and reticle.head_flight_id then
         timed_motion.remove_flight(reticle.head_flight_id, reticle_id)
@@ -2074,6 +2106,7 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     local r_dy = reticle.dir.y
     local r_sp = reticle.start_pos
     local s_idx = reticle.surface_index or 1
+    invalidate_render_flight(flight.id)
 
     -- Clamp reticle maximum reach and target endpoint
     reticle.total_dist = obst_dist
@@ -2420,6 +2453,7 @@ function flow_kinetic.dock_incoming_reticles_at_projector(entity)
                     ret.hit_receiver = entity.unit_number
                         ret.pending_receiver = nil
                         ret.head_render_spec = flow_kinetic.RECEIVER_HEAD_SPEC
+                        invalidate_render_flight(r_id)
                         flow_kinetic.register_reticle_obstacle(r_id, entity)
                         local m_tree = timed_motion.get_motion_tree(s_idx)
                         if m_tree and ret.seg_key then

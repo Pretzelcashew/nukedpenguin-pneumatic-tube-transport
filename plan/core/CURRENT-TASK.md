@@ -1,4 +1,10 @@
-soft-remove the ability for reitcles that are orphaned, to be split candidates
+fix reticle head obstruction so it doesnt jump backward based on the prospective flight path position, in other words, theres a bug where the obstacle (like a character walking away from the reticle as it moves toward the player), then the character turns back toward the reticle, and the reticle's collision for jumping back to the position of the obstacle is erroneously using the prospective flight path position rather than the spatiotemporal head position, so it looks like the head is jumping forward to the obstacle, cheating time.
+
+
+
+
+
+<s>soft-remove the ability for reitcles that are orphaned, to be split candidates</S>
 
 
 

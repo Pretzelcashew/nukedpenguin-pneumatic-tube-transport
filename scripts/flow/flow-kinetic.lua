@@ -1532,6 +1532,11 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
         cur_h_dist = cur_pos and (math.abs(cur_pos.x - sp.x) + math.abs(cur_pos.y - sp.y))
     end
 
+    if was_growing and cur_h_dist and entry_dist > (cur_h_dist + 0.05) then
+        flow_kinetic.update_reticle_horizon(reticle, entry_dist, obstacle_entity, cur_flight)
+        return
+    end
+
     local head_was_severed = was_growing and cur_h_dist and (cur_h_dist > exit_dist + 0.2)
 
     if not head_was_severed and cur_h_dist and cur_h_dist < old_total_dist then
@@ -1825,9 +1830,10 @@ function flow_kinetic.update_reticle_horizon(reticle, obst_dist, obstacle_entity
     local flight_sp = flight.start_pos
     local flight_tp = flight.terminal_pos
     local flight_start_dist = math.abs(flight_sp.x - r_sp.x) + math.abs(flight_sp.y - r_sp.y)
-    local flight_end_dist = math.abs(flight_tp.x - r_sp.x) + math.abs(flight_tp.y - r_sp.y)
+    local seg_idx = flight.seg_idx or 1
+    local seg_max_dist = seg_idx * 16
 
-    if obst_dist <= (flight_end_dist + 0.001) then
+    if obst_dist <= (seg_max_dist + 0.001) then
         -- Obstacle lies within current flight segment: clamp this segment's target & arrival
         local seg_dist = obst_dist - flight_start_dist
         flight.terminal_pos = { x = collision_pos.x, y = collision_pos.y }
@@ -2566,7 +2572,6 @@ end
 
 function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
     flow_kinetic.flush_pending_reticle_obstacles()
-    flow_kinetic.flush_pending_reticle_obstacles()
     storage.character_colliders = storage.character_colliders or {}
     storage.character_last_keys = storage.character_last_keys or {}
     storage.character_last_surface = storage.character_last_surface or {}
@@ -2651,12 +2656,36 @@ function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
                             if not on_axis or not o_dist or o_dist <= 0.05 or o_dist >= max_reach then
                                 flow_kinetic.handle_reticle_obstacle_cleared(char)
                             else
-                                local cur_total = ret.total_dist or 0
-                                if math.abs(o_dist - cur_total) > 0.1 then
-                                    if o_dist < cur_total then
+                                local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+                                local is_growing = (ret.status == "growing" and cur_flight ~= nil)
+                                local cur_head_dist = ret.total_dist or 0
+
+                                if is_growing then
+                                    local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+                                    cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
+                                end
+
+                                if is_growing then
+                                    if o_dist <= (cur_head_dist + 0.05) then
                                         flow_kinetic.truncate_reticle(ret, o_dist, char)
                                     else
-                                        flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                        local cur_target = ret.total_dist or cur_head_dist
+                                        if math.abs(o_dist - cur_target) > 0.1 then
+                                            if o_dist < cur_target then
+                                                flow_kinetic.update_reticle_horizon(ret, o_dist, char, cur_flight)
+                                            else
+                                                flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                            end
+                                        end
+                                    end
+                                else
+                                    local cur_total = ret.total_dist or 0
+                                    if math.abs(o_dist - cur_total) > 0.1 then
+                                        if o_dist < cur_total then
+                                            flow_kinetic.truncate_reticle(ret, o_dist, char)
+                                        else
+                                            flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                        end
                                     end
                                 end
                             end

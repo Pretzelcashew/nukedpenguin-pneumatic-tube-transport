@@ -306,8 +306,8 @@ function capsule_ballistics.try_projector_reticle_launch(capsule, unit_number, r
     local cap_id = capsule.capsule_id or capsule.id
     local from_port_key = capsule.from_port_key
 
-    local tx = muzzle_node.pos.x + dx
-    local ty = muzzle_node.pos.y + dy
+    local tx = muzzle_node.pos.x + dx * 0.5
+    local ty = muzzle_node.pos.y + dy * 0.5
     local player_target = capsule_transit.check_player_collision(surface, tx, ty, capsule)
     if player_target then
         local launch_cost = projector_settings.get_launch_energy(proj_entity)

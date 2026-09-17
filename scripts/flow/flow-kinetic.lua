@@ -1027,15 +1027,15 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
 
     local min_x, max_x, min_y, max_y
     if dx ~= 0 then
-        min_x = math.min(start_pos.x, start_pos.x + dx * step_dist)
-        max_x = math.max(start_pos.x, start_pos.x + dx * step_dist)
+        min_x = math.min(start_pos.x - dx * 0.5, start_pos.x + dx * step_dist)
+        max_x = math.max(start_pos.x - dx * 0.5, start_pos.x + dx * step_dist)
         min_y = start_pos.y - 0.45
         max_y = start_pos.y + 0.45
     else
         min_x = start_pos.x - 0.45
         max_x = start_pos.x + 0.45
-        min_y = math.min(start_pos.y, start_pos.y + dy * step_dist)
-        max_y = math.max(start_pos.y, start_pos.y + dy * step_dist)
+        min_y = math.min(start_pos.y - dy * 0.5, start_pos.y + dy * step_dist)
+        max_y = math.max(start_pos.y - dy * 0.5, start_pos.y + dy * step_dist)
     end
 
     local candidates = surface.find_entities_filtered{
@@ -1076,16 +1076,16 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
 
                 if dx > 0 then
                     on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
-                    d = (cbb.left_top.x <= start_pos.x + 0.05 and start_pos.x < cbb.right_bottom.x - 0.05) and 0.1 or (cbb.left_top.x - start_pos.x)
+                    d = (cbb.left_top.x <= start_pos.x and cbb.right_bottom.x >= start_pos.x - 0.5) and 0.1 or (cbb.left_top.x - start_pos.x)
                 elseif dx < 0 then
                     on_axis = (cbb.left_top.y - 0.05 <= start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05)
-                    d = (cbb.left_top.x + 0.05 < start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05) and 0.1 or (start_pos.x - cbb.right_bottom.x)
+                    d = (cbb.right_bottom.x >= start_pos.x and cbb.left_top.x <= start_pos.x + 0.5) and 0.1 or (start_pos.x - cbb.right_bottom.x)
                 elseif dy > 0 then
                     on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
-                    d = (cbb.left_top.y <= start_pos.y + 0.05 and start_pos.y < cbb.right_bottom.y - 0.05) and 0.1 or (cbb.left_top.y - start_pos.y)
+                    d = (cbb.left_top.y <= start_pos.y and cbb.right_bottom.y >= start_pos.y - 0.5) and 0.1 or (cbb.left_top.y - start_pos.y)
                 elseif dy < 0 then
                     on_axis = (cbb.left_top.x - 0.05 <= start_pos.x and start_pos.x <= cbb.right_bottom.x + 0.05)
-                    d = (cbb.left_top.y + 0.05 < start_pos.y and start_pos.y <= cbb.right_bottom.y + 0.05) and 0.1 or (start_pos.y - cbb.right_bottom.y)
+                    d = (cbb.right_bottom.y >= start_pos.y and cbb.left_top.y <= start_pos.y + 0.5) and 0.1 or (start_pos.y - cbb.right_bottom.y)
                 end
 
                 if on_axis and d and d > 0.05 and d <= closest_dist then
@@ -2246,16 +2246,16 @@ function flow_kinetic.flush_pending_reticle_obstacles()
 
                     if r_dx > 0 then
                         on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                        o_dist = bb.left_top.x - r_sp.x
+                        o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
                     elseif r_dx < 0 then
                         on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                        o_dist = r_sp.x - bb.right_bottom.x
+                        o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
                     elseif r_dy > 0 then
                         on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                        o_dist = bb.left_top.y - r_sp.y
+                        o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
                     elseif r_dy < 0 then
                         on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                        o_dist = r_sp.y - bb.right_bottom.y
+                        o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
                     end
 
                     local is_retreating = (ret.status == "retreating")
@@ -2357,16 +2357,16 @@ function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_por
 
                                 if r_dx > 0 then
                                     on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = bb.left_top.x - r_sp.x
+                                    o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
                                 elseif r_dx < 0 then
                                     on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = r_sp.x - bb.right_bottom.x
+                                    o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
                                 elseif r_dy > 0 then
                                     on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = bb.left_top.y - r_sp.y
+                                    o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
                                 elseif r_dy < 0 then
                                     on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = r_sp.y - bb.right_bottom.y
+                                    o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
                                 end
 
                                 local full_reach = ret.max_reach or 50
@@ -2494,16 +2494,16 @@ function flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueu
 
                                 if r_dx > 0 then
                                     on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = bb.left_top.x - r_sp.x
+                                    o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
                                 elseif r_dx < 0 then
                                     on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = r_sp.x - bb.right_bottom.x
+                                    o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
                                 elseif r_dy > 0 then
                                     on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = bb.left_top.y - r_sp.y
+                                    o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
                                 elseif r_dy < 0 then
                                     on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = r_sp.y - bb.right_bottom.y
+                                    o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
                                 end
 
                                 local full_reach = ret.max_reach or 50
@@ -2726,7 +2726,196 @@ local function wake_beam_pointing_at(surface_name, target_pos, is_evacuation, en
     end
 end
 
-function flow_kinetic.step_character_colliders(enqueue_port_fn, wake_port_fn)
+local function step_grid_character_colliders(enqueue_port_fn, wake_port_fn)
+    flow_kinetic.flush_pending_reticle_obstacles()
+    storage.character_colliders = storage.character_colliders or {}
+    storage.character_last_keys = storage.character_last_keys or {}
+    storage.character_last_surface = storage.character_last_surface or {}
+    storage.character_tiles = storage.character_tiles or {}
+
+    enqueue_port_fn = enqueue_port_fn or enqueue_port
+    wake_port_fn = wake_port_fn or wake_port_parked
+
+    local active_chars = {}
+
+    for _, player in pairs(game.connected_players) do
+        local char = player.character
+        if char and char.valid and char.surface and char.surface.valid then
+            local char_key = char.unit_number or player.index
+            active_chars[char_key] = true
+            local sname = char.surface.name
+            local pos = char.position
+            local tx = math.floor(pos.x)
+            local ty = math.floor(pos.y)
+
+            local last_tile = storage.character_tiles[char_key]
+            if not (last_tile and last_tile.tx == tx and last_tile.ty == ty and last_tile.sname == sname) then
+                local new_bb = {
+                    left_top = { x = tx, y = ty },
+                    right_bottom = { x = tx + 1.0, y = ty + 1.0 }
+                }
+
+                if last_tile then
+                    local old_p = { x = last_tile.tx + 0.5, y = last_tile.ty + 0.5 }
+                    local old_k = make_pos_key(last_tile.sname, old_p.x, old_p.y)
+                    storage.character_colliders[old_k] = nil
+                    wake_beam_pointing_at(last_tile.sname, old_p, true, enqueue_port_fn, wake_port_fn)
+
+                    if flow_kinetic.handle_motion_obstacle_changed and char.valid and char.surface then
+                        local evac_bb = {
+                            left_top = { x = last_tile.tx, y = last_tile.ty },
+                            right_bottom = { x = last_tile.tx + 1.0, y = last_tile.ty + 1.0 }
+                        }
+                        local m_tree = storage.motion_bvh and storage.motion_bvh[char.surface.index]
+                        if m_tree then
+                            local m_hits = {}
+                            trajectory_bvh.query_box(m_tree, evac_bb.left_top.x - 2.5, evac_bb.left_top.y - 2.5, evac_bb.right_bottom.x + 2.5, evac_bb.right_bottom.y + 2.5, m_hits)
+                            if #m_hits > 0 then
+                                flow_kinetic.handle_motion_obstacle_changed(char.surface, char, evac_bb, true, m_hits)
+                            end
+                        end
+                    end
+                end
+
+                local u_num = char.unit_number
+                if last_tile and u_num and storage.blocked_reticles and storage.blocked_reticles[u_num] then
+                    local to_check = {}
+                    for rid in pairs(storage.blocked_reticles[u_num]) do
+                        to_check[#to_check + 1] = rid
+                    end
+
+                    for i = 1, #to_check do
+                        local rid = to_check[i]
+                        local ret = storage.projector_reticles and storage.projector_reticles[rid]
+                        if ret and ret.surface_name == sname then
+                            local cbb = new_bb
+                            local r_dx = ret.dir.x
+                            local r_dy = ret.dir.y
+                            local r_sp = ret.start_pos
+                            local on_axis = false
+                            local o_dist = nil
+
+                            if r_dx > 0 then
+                                on_axis = (cbb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= cbb.right_bottom.y + 0.05)
+                                o_dist = (cbb.left_top.x <= r_sp.x and cbb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (cbb.left_top.x - r_sp.x)
+                            elseif r_dx < 0 then
+                                on_axis = (cbb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= cbb.right_bottom.y + 0.05)
+                                o_dist = (cbb.right_bottom.x >= r_sp.x and cbb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - cbb.right_bottom.x)
+                            elseif r_dy > 0 then
+                                on_axis = (cbb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= cbb.right_bottom.x + 0.05)
+                                o_dist = (cbb.left_top.y <= r_sp.y and cbb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (cbb.left_top.y - r_sp.y)
+                            elseif r_dy < 0 then
+                                on_axis = (cbb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= cbb.right_bottom.x + 0.05)
+                                o_dist = (cbb.right_bottom.y >= r_sp.y and cbb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - cbb.right_bottom.y)
+                            end
+
+                            local max_reach = ret.max_reach or 50
+                            if not on_axis or not o_dist or o_dist <= 0.05 or o_dist >= max_reach then
+                                flow_kinetic.handle_reticle_obstacle_cleared(char)
+                            else
+                                local cur_flight = ret.head_flight_id and timed_motion.get_flight(ret.head_flight_id)
+                                local is_growing = (ret.status == "growing" and cur_flight ~= nil)
+                                local cur_head_dist = ret.total_dist or 0
+
+                                if is_growing then
+                                    local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+                                    cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
+                                end
+
+                                if is_growing then
+                                    if o_dist <= (cur_head_dist + 0.05) then
+                                        flow_kinetic.truncate_reticle(ret, o_dist, char)
+                                    else
+                                        local cur_target = ret.total_dist or cur_head_dist
+                                        if math.abs(o_dist - cur_target) > 0.1 then
+                                            if o_dist < cur_target then
+                                                flow_kinetic.update_reticle_horizon(ret, o_dist, char, cur_flight)
+                                            else
+                                                flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                            end
+                                        end
+                                    end
+                                else
+                                    local cur_total = ret.total_dist or 0
+                                    if math.abs(o_dist - cur_total) > 0.1 then
+                                        if o_dist < cur_total then
+                                            flow_kinetic.truncate_reticle(ret, o_dist, char)
+                                        else
+                                            flow_kinetic.handle_reticle_obstacle_cleared(char)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local new_p = { x = tx + 0.5, y = ty + 0.5 }
+                local new_k = make_pos_key(sname, new_p.x, new_p.y)
+                storage.character_colliders[new_k] = char
+
+                flow_kinetic.handle_obstacle_changed(char, false, enqueue_port_fn, wake_port_fn)
+
+                local ports = storage.flow_grid and storage.flow_grid[new_k]
+                if ports then
+                    for pkey in pairs(ports) do
+                        local b_node = storage.flow_nodes and storage.flow_nodes[pkey]
+                        if b_node and b_node.is_kinetic then
+                            enqueue_port_fn(pkey)
+                            wake_port_fn(pkey)
+                        end
+                    end
+                end
+                wake_beam_pointing_at(sname, new_p, false, enqueue_port_fn, wake_port_fn)
+
+                storage.character_tiles[char_key] = { tx = tx, ty = ty, sname = sname }
+                storage.character_last_keys[char_key] = { [new_k] = new_p }
+                storage.character_last_surface[char_key] = sname
+            end
+        end
+    end
+
+    for char_key, last_tile in pairs(storage.character_tiles) do
+        if not active_chars[char_key] then
+            if last_tile then
+                local sname = last_tile.sname
+                local old_p = { x = last_tile.tx + 0.5, y = last_tile.ty + 0.5 }
+                local old_k = make_pos_key(sname, old_p.x, old_p.y)
+                storage.character_colliders[old_k] = nil
+                wake_beam_pointing_at(sname, old_p, true, enqueue_port_fn, wake_port_fn)
+
+                local old_surf = game.surfaces[sname]
+                if old_surf and old_surf.valid and storage.motion_bvh and storage.motion_bvh[old_surf.index] then
+                    local evac_bb = {
+                        left_top = { x = last_tile.tx, y = last_tile.ty },
+                        right_bottom = { x = last_tile.tx + 1.0, y = last_tile.ty + 1.0 }
+                    }
+                    local m_tree = storage.motion_bvh[old_surf.index]
+                    local m_hits = {}
+                    trajectory_bvh.query_box(m_tree, evac_bb.left_top.x - 2.5, evac_bb.left_top.y - 2.5, evac_bb.right_bottom.x + 2.5, evac_bb.right_bottom.y + 2.5, m_hits)
+                    if #m_hits > 0 and flow_kinetic.handle_motion_obstacle_changed then
+                        flow_kinetic.handle_motion_obstacle_changed(old_surf, { unit_number = char_key }, evac_bb, true, m_hits)
+                    end
+                end
+
+                if storage.blocked_reticles and storage.blocked_reticles[char_key] then
+                    flow_kinetic.handle_reticle_obstacle_cleared({ unit_number = char_key })
+                end
+            end
+            storage.character_tiles[char_key] = nil
+            if storage.character_last_keys then storage.character_last_keys[char_key] = nil end
+            if storage.character_last_surface then storage.character_last_surface[char_key] = nil end
+        end
+    end
+
+    flow_kinetic.step_pending_bvh_segments(game.tick)
+    flow_kinetic.step_cooldown_heap(game.tick)
+    flow_kinetic.flush_pending_reticle_obstacles()
+end
+
+flow_kinetic.step_character_colliders = step_grid_character_colliders
+
+function flow_kinetic._legacy_step_character_colliders(enqueue_port_fn, wake_port_fn)
     flow_kinetic.flush_pending_reticle_obstacles()
     storage.character_colliders = storage.character_colliders or {}
     storage.character_last_keys = storage.character_last_keys or {}

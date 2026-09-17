@@ -1,8 +1,10 @@
-add a want emmission cooldown per em projector, 1 second, either make it a timer or using a binary heap like our other timers (probably the first option bnecause projectors on want emission cooldown will likely be rare, unless many players are going hame with rotating their projectors at the same time). but for mod consistency, we already have ways of managing binary heaped timers, so cherry picking when we apply that usage, feels off. if making another binary heap for timers wont be too much fuss should we do it for consistency?
+when a parented reticle head collides with an obstacle, and the obstacle is another projector, turn the reticle head cyan instead of coral, and when clearing the obstacle, always turn back to coral. 
 
 
 
 
+
+<s>add a want emmission cooldown per em projector, 1 second, either make it a timer or using a binary heap like our other timers (probably the first option bnecause projectors on want emission cooldown will likely be rare, unless many players are going hame with rotating their projectors at the same time). but for mod consistency, we already have ways of managing binary heaped timers, so cherry picking when we apply that usage, feels off. if making another binary heap for timers wont be too much fuss should we do it for consistency?</s>
 
 <s>fix orphaned reticles not being able to resume flight on obstacle clear if they had initiated as a stopped as obstacle when they were born. (currently in flight orphaned reticles are not affected by this bug)</s>
 

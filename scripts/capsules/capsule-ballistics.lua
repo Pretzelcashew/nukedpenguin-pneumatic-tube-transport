@@ -939,6 +939,13 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
         local is_orphan = (not reticle) or (proj_unit == nil)
         local is_receiver = (not is_orphan) and (reticle.pending_receiver ~= nil or reticle.hit_receiver ~= nil)
         local hit_receiver_unit = is_receiver and (reticle.pending_receiver or reticle.hit_receiver) or nil
+        if is_receiver and hit_receiver_unit then
+            local p_ent = storage.active_projectors and storage.active_projectors[hit_receiver_unit]
+            if not (p_ent and p_ent.valid) then
+                is_receiver = false
+                hit_receiver_unit = nil
+            end
+        end
 
         local surface = game.surfaces[flight.surface_name or "nauvis"]
         if not is_receiver and not is_orphan and proj_unit and surface and surface.valid then
@@ -957,6 +964,13 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                         break
                     end
                 end
+            end
+        end
+
+        if is_receiver and hit_receiver_unit and flow_kinetic.register_reticle_obstacle then
+            local p_ent = storage.active_projectors and storage.active_projectors[hit_receiver_unit]
+            if p_ent and p_ent.valid then
+                flow_kinetic.register_reticle_obstacle(reticle_id, p_ent)
             end
         end
 

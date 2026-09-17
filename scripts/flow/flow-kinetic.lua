@@ -1145,6 +1145,19 @@ function flow_kinetic.resume_reticle_probing(reticle)
     reticle.pending_receiver = nil
     reticle.hit_receiver = nil
     reticle.head_render_spec = DEFAULT_HEAD_SPEC
+    if reticle.projector_unit and storage.projector_scope and storage.projector_scope[reticle.projector_unit] then
+        storage.projector_scope[reticle.projector_unit].receiver_unit = nil
+    end
+    local s_idx = reticle.surface_index or 1
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    if motion_tree and reticle.seg_key then
+        local owner_rec = motion_tree.trajectories and motion_tree.trajectories[reticle_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[reticle.seg_key]
+        if leaf and leaf.static_render_spec then
+            leaf.static_render_spec = DEFAULT_HEAD_SPEC
+            viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+        end
+    end
 
     local proj_unit = reticle.projector_unit
     if proj_unit then
@@ -2304,6 +2317,7 @@ function flow_kinetic.dock_incoming_reticles_at_projector(entity)
                     ret.hit_receiver = entity.unit_number
                         ret.pending_receiver = nil
                         ret.head_render_spec = flow_kinetic.RECEIVER_HEAD_SPEC
+                        flow_kinetic.register_reticle_obstacle(r_id, entity)
                         local m_tree = timed_motion.get_motion_tree(s_idx)
                         if m_tree and ret.seg_key then
                             local owner_rec = m_tree.trajectories and m_tree.trajectories[r_id]
@@ -2546,7 +2560,7 @@ function flow_kinetic.clear_receiver_references(receiver_unit, enqueue_port_fn, 
                 if motion_tree and ret.seg_key then
                     local owner_rec = motion_tree.trajectories and motion_tree.trajectories[r_id]
                     local leaf = owner_rec and owner_rec.segments and owner_rec.segments[ret.seg_key]
-                    if leaf and leaf.static_render_spec == RECEIVER_HEAD_SPEC then
+                    if leaf and leaf.static_render_spec then
                         leaf.static_render_spec = DEFAULT_HEAD_SPEC
                         viewport_bvh.on_leaf_static_changed(s_idx, leaf)
                     end

@@ -19,7 +19,7 @@ local MAX_BEAM_DISTANCE = 500
 local HOP_DISTANCE = 5
 -- SPEED TWEAK: Set to 6 for normal speed (50 tiles/sec).
 -- Set to 60 for 10x slow-mo, or 30 for 5x slow-mo!
-local TICKS_PER_HOP = 60
+local TICKS_PER_HOP = 6
 local TICKS_PER_TILE = TICKS_PER_HOP / HOP_DISTANCE
 
 capsule_ballistics.MAX_BEAM_DISTANCE = MAX_BEAM_DISTANCE

@@ -312,3 +312,11 @@
 2. **Aperture Reverse Sweep (`scripts/flow/flow-kinetic.lua`):** Expanded the spatial query rectangle in `scan_leaf_rect` by 0.5 tiles backward along the launch vector, ensuring entities standing within the chassis inset are captured by `find_entities_filtered` while preserving emitter self-collision shielding.
 3. **Muzzle Overlap Collision Clamping (`scripts/flow/flow-kinetic.lua`):** Updated cardinal distance calculations across `scan_leaf_rect`, `handle_obstacle_changed_v2`, `_legacy_handle_obstacle_changed`, `flush_pending_reticle_obstacles`, and `step_grid_character_colliders` to classify any obstacle touching or overlapping the muzzle face (within 0.5 tiles) as an immediate collision at distance `0.1`.
 4. **Visual & Ballistic Trajectory Parity (`scripts/flow/flow-kinetic.lua`):** Aligned reticle truncation squarely with physical capsule ballistics, guaranteeing that stepping into the chassis lip immediately collapses the reticle to a 0.1-distance coral hazard ring at the muzzle.
+
+
+### Revision: Restore Projector Ballistic Velocity to Production Baseline
+**Date:** 2026-09-17 14:15 EDT  
+**Context:** Projector ballistic transit and reticle propagation had been dialed down to a 10× slow-mo cadence (`TICKS_PER_HOP = 60`) for visual validation of wake severing, multi-segment boundary handoffs, and aperture collision checks. With spatial boundary conditions and 1×1 tile colliders hardened, this session restores the hop interval to its baseline production velocity.  
+**Key Changes:**
+1. **Velocity Constant Restoration (`scripts/capsules/capsule-ballistics.lua`):** Restored `TICKS_PER_HOP` from `60` to `6`, returning projectile transit speed to 50 tiles per second (1.2 ticks per tile).
+2. **Unified System Acceleration (`scripts/capsules/capsule-ballistics.lua`):** Propagated the 1.2 ticks/tile cadence across `trajectory_bvh.TICKS_PER_TILE`, automatically scaling timed arrival scheduling, in-flight dot progression, and anti-reticle wake reeling to full operational speed.

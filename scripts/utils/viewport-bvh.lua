@@ -77,6 +77,15 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     local cx = p_pos.x
     local cy = p_pos.y
 
+    local entry = storage.player_viewports[p_idx]
+    local p_zoom = player.zoom or 1.0
+    if not override_pos and not override_radii and entry and entry.leaf and entry.surface_index == s_idx then
+        if cx == entry.last_player_x and cy == entry.last_player_y and p_zoom == entry.last_zoom then
+            entry.breached_this_tick = false
+            return entry
+        end
+    end
+
     local f_hw, f_hh
     if override_radii then
         f_hw, f_hh = override_radii.hw, override_radii.hh
@@ -130,6 +139,9 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
             baseline_pad_hh = pad_hh,
             center_x = cx,
             center_y = cy,
+            last_player_x = cx,
+            last_player_y = cy,
+            last_zoom = p_zoom,
             breached_this_tick = true,
             updates_count = 1,
             leaf = nil
@@ -151,6 +163,9 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     end
 
     -- Case 2: Existing entry on same surface -> Test concentric hysteresis boundaries
+    entry.last_player_x = cx
+    entry.last_player_y = cy
+    entry.last_zoom = p_zoom
     entry.pad_min_x = pad_min_x
     entry.pad_max_x = pad_max_x
     entry.pad_min_y = pad_min_y

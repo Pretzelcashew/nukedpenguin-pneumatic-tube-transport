@@ -1,3 +1,3 @@
-figure out how to profile my mod's event impact, even when almost nothing is going on in my mod, a new map with only a couple things on it, i get frequent lag spikes, just walking or destroying trees.
+i was looking at my debug panel and noticed something hinky. when i walk out into the woods where zero corridors or beams are on screen, the render dispatch and timed arrival stuff is still showing up with execution time every tick. 
 
-i need an easy way to profile my mod's events impact, an easily removable or suppressable profiler in case i dont need it later.
+why is it doing work if there are literally zero corridors in view and nothing is flying? it feels like the render loop is constantly ticking in the background and updating arrival dots or whatever even when everything is completely off-screen. can we make the rendering completely sleep or early-exit when there's nothing on screen to draw?

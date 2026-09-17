@@ -904,7 +904,10 @@ function capsule_runner.update_capsules(current_tick)
     capsule_renderer.prepare_frame()
 
     if capsule_ballistics.USE_TIMED_ARRIVAL then
-        capsule_ballistics.step_timed_arrivals(current_tick, capsule_runner)
+        local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
+        if heap and heap.size > 0 then
+            capsule_ballistics.step_timed_arrivals(current_tick, capsule_runner)
+        end
         capsule_renderer.update_timed_capsules(current_tick)
     end
 

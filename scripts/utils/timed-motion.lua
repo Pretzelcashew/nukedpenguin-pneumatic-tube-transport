@@ -371,9 +371,8 @@ end
 --- @param on_arrival_callback function(id, current_tick)
 function timed_motion.step_arrivals(current_tick, on_arrival_callback)
     local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
-    if not heap then return end
+    if not heap or heap.size == 0 then return end
     binary_heap.attach(heap)
-    if heap.size == 0 then return end
 
     while heap.size > 0 do
         local top_id, arrival_tick = heap:peek()

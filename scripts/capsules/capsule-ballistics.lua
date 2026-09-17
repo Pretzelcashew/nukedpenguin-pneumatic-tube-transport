@@ -1403,6 +1403,8 @@ function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner
 end
 
 function capsule_ballistics.step_timed_arrivals(current_tick, runner)
+    local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
+    if not heap or heap.size == 0 then return end
     timed_motion.step_arrivals(current_tick, function(top_id)
         capsule_ballistics.handle_timed_arrival(top_id, current_tick, runner)
     end)

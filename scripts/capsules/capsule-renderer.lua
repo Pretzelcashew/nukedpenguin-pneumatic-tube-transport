@@ -29,6 +29,7 @@ local active_viewport_count = 0
 
 local scratch_debug_players = {}
 local scratch_debug_keys = {}
+local previous_arrival_capsules = {}
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
@@ -872,12 +873,46 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 
     local surf = player.surface
     if not (surf and surf.valid) then return end
-    local t_disp = profiler.start_timer()
 
     local v_set = viewport_bvh.get_visible_set(p_idx)
+    local p_renders = storage.player_flight_renders and storage.player_flight_renders[p_idx]
+
+    if not v_set or next(v_set) == nil then
+        if p_renders and next(p_renders) ~= nil then
+            capsule_renderer.clear_player_flight_renders(p_idx)
+        end
+        return
+    end
+
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local has_flights = (flights_store and next(flights_store) ~= nil)
+
+    local needs_render_pass = false
+    if p_renders and next(p_renders) ~= nil then
+        needs_render_pass = true
+    elseif has_flights then
+        for _, item in pairs(v_set) do
+            local owner_id = item.owner_id
+            if flights_store[owner_id] then
+                needs_render_pass = true
+                break
+            end
+            local reticle = storage.projector_reticles and storage.projector_reticles[owner_id]
+            if reticle and reticle.retreat_tick then
+                needs_render_pass = true
+                break
+            end
+        end
+    end
+
+    if not needs_render_pass then
+        return
+    end
+
+    local t_disp = profiler.start_timer()
 
     storage.player_flight_renders = storage.player_flight_renders or {}
-    local p_renders = storage.player_flight_renders[p_idx]
+    p_renders = storage.player_flight_renders[p_idx]
     if not p_renders then
         p_renders = {}
         storage.player_flight_renders[p_idx] = p_renders
@@ -1069,7 +1104,13 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 end
 
 function capsule_renderer.update_timed_capsules(current_tick)
-    capsule_renderer.sync_all_arrival_dots()
+    local flights_store = storage.timed_flights or storage.projector_flights
+    local has_flights = (flights_store and next(flights_store) ~= nil)
+    local has_arrival_caps = (next(previous_arrival_capsules) ~= nil)
+
+    if has_flights or has_arrival_caps then
+        capsule_renderer.sync_all_arrival_dots()
+    end
 
     if storage.projector_flights then
         for _, flights in pairs(storage.projector_flights) do
@@ -1141,8 +1182,6 @@ end
 --------------------------------------------------------------------------------
 -- TIMED ARRIVAL DOT DEBUG RENDERING
 --------------------------------------------------------------------------------
-local previous_arrival_capsules = {}
-
 local function destroy_arrival_dot_for_player(cap, p_idx)
     local p_entry = cap.arrival_render_objects and cap.arrival_render_objects[p_idx]
     if p_entry then
@@ -1192,7 +1231,23 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         return
     end
 
+    if player.surface ~= surface then
+        destroy_arrival_dot_for_player(capsule, p_idx)
+        return
+    end
+
     local term_pos = bf.terminal_pos
+    local pv = storage.player_viewports and storage.player_viewports[p_idx]
+    if pv and (pv.padded_box or pv.outer_shell) then
+        local box = pv.padded_box or pv.outer_shell
+        local lt = box.left_top
+        local rb = box.right_bottom
+        if term_pos.x < lt.x or term_pos.x > rb.x or term_pos.y < lt.y or term_pos.y > rb.y then
+            destroy_arrival_dot_for_player(capsule, p_idx)
+            return
+        end
+    end
+
     local cap_data = capsule_manager.get(cap_id)
     local def = cap_data and cap_data.definition
     local cap_color = capsule_defs.get_debug_color(def or (cap_data and cap_data.type) or capsule.capsule_type)
@@ -1243,7 +1298,7 @@ end
 
 function capsule_renderer.update_arrival_dots(capsule, cap_id)
     if not (capsule and capsule.in_timed_flight and capsule.beam_flight) then return end
-    for _, player in pairs(game.players) do
+    for _, player in pairs(game.connected_players) do
         if player and player.valid then
             capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         end

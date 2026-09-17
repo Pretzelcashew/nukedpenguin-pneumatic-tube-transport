@@ -275,13 +275,13 @@ function debug_manager.refresh_panel(player_index)
         local rd_res = bvh_results["Render Dispatch"]
         local breach_cnt = bvh_results.__breach_count__ or 0
 
-        set_cell("lbl_time_bvh_vp", (vp_res and vp_res.total) or (sync_res and sync_res.total) or "-")
+        set_cell("lbl_time_bvh_vp", (vp_res and vp_res.avg) or (sync_res and sync_res.avg) or "-")
         set_cell("lbl_ctx_bvh_vp", tostring(breach_cnt) .. " breaches | " .. tostring((vp_res and vp_res.count) or 0) .. " updates")
 
-        set_cell("lbl_time_bvh_q", q_res and q_res.total or "-")
+        set_cell("lbl_time_bvh_q", q_res and q_res.avg or "-")
         set_cell("lbl_ctx_bvh_q", tostring(q_res and q_res.count or 0) .. " queries")
 
-        set_cell("lbl_time_bvh_rd", rd_res and rd_res.total or "-")
+        set_cell("lbl_time_bvh_rd", rd_res and rd_res.avg or "-")
         local v_set = storage.player_visible_set and storage.player_visible_set[player_index]
         local vis_cnt = 0
         if v_set then for _ in pairs(v_set) do vis_cnt = vis_cnt + 1 end end

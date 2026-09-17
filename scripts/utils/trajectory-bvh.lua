@@ -7,6 +7,8 @@
 --   4. Spatiotemporal Progress Windows: Maps [p_start, p_end] directly to capsule flight ticks.
 --   5. Dynamic AABB Tree: Insertion and removal with surface area heuristic (SAH).
 
+local profiler = require("scripts.utils.profiler")
+
 local trajectory_bvh = {}
 local bvh_mt = { __index = trajectory_bvh }
 
@@ -429,6 +431,7 @@ end
 --- @return table leaf
 function trajectory_bvh.insert(tree, leaf, key)
     if not (tree and leaf) then return nil end
+    local t = profiler.start_timer()
 
     if key then
         leaf.key = key
@@ -447,6 +450,7 @@ function trajectory_bvh.insert(tree, leaf, key)
     insert_leaf_node(tree, leaf)
     tree.size = (tree.size or 0) + 1
     tree.leaf_count = tree.size
+    if t then profiler.record_bvh("Tree Mutate", t) end
     return leaf
 end
 
@@ -456,6 +460,7 @@ end
 --- @return boolean removed
 function trajectory_bvh.remove(tree, leaf_or_key)
     if not (tree and leaf_or_key) then return false end
+    local t = profiler.start_timer()
 
     local leaf = nil
     if type(leaf_or_key) == "table" and leaf_or_key.is_leaf then
@@ -476,6 +481,7 @@ function trajectory_bvh.remove(tree, leaf_or_key)
     tree.leaf_count = tree.size
 
     recycle_node(tree, leaf)
+    if t then profiler.record_bvh("Tree Mutate", t) end
     return true
 end
 
@@ -488,6 +494,7 @@ end
 --- @param max_y number|nil
 function trajectory_bvh.update(tree, leaf, min_x, min_y, max_x, max_y)
     if not (tree and leaf) then return end
+    local t = profiler.start_timer()
     remove_leaf_node(tree, leaf)
     if min_x then
         if type(min_x) == "table" then
@@ -504,6 +511,7 @@ function trajectory_bvh.update(tree, leaf, min_x, min_y, max_x, max_y)
         end
     end
     insert_leaf_node(tree, leaf)
+    if t then profiler.record_bvh("Tree Mutate", t) end
 end
 
 --- Fetches a leaf by key in O(1)
@@ -609,6 +617,7 @@ end
 --- @param out_hits table Array to populate with matching leaf tables
 --- @return table out_hits
 function trajectory_bvh.query_box(bvh, q_min_x, q_min_y, q_max_x, q_max_y, out_hits)
+    local t = profiler.start_timer()
     if type(q_min_x) == "table" then
         local aabb = q_min_x
         out_hits = q_min_y or {}
@@ -636,6 +645,7 @@ function trajectory_bvh.query_box(bvh, q_min_x, q_min_y, q_max_x, q_max_y, out_h
     end
 
     search_node(root)
+    if t then profiler.record_bvh("Query Box", t) end
     return out_hits
 end
 

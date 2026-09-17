@@ -30,6 +30,7 @@ local function get_debug(player_index)
             peek = false,
             prints = false,
             profiler = false,
+            event_log = false,
             filter = nil,
             arrival_dots = true,
         }
@@ -54,6 +55,9 @@ local function get_debug(player_index)
         end
         if storage.debug[player_index].profiler == nil or storage.debug[player_index].profiler == true then
             storage.debug[player_index].profiler = false
+        end
+        if storage.debug[player_index].event_log == nil then
+            storage.debug[player_index].event_log = false
         end
     end
     return storage.debug[player_index]
@@ -201,7 +205,19 @@ function debug_manager.refresh_panel(player_index)
         chk_prints.state = master and (dbg.prints == true)
     end
 
+    local chk_event_log = content.pneumatic_debug_chk_event_log
+    if chk_event_log then
+        chk_event_log.enabled = master
+        chk_event_log.state = master and (dbg.event_log == true)
+    end
+
     if not profiler.ENABLED then return end
+
+    local chk_prof_stream = content.pneumatic_debug_chk_profiler_stream
+    if chk_prof_stream then
+        chk_prof_stream.enabled = master
+        chk_prof_stream.state = master and (dbg.profiler == true)
+    end
     local tbl_frame = content.profiler_table_frame
     local prof_table = tbl_frame and tbl_frame.pneumatic_debug_profiler_table
     if prof_table and prof_table.valid then
@@ -234,6 +250,42 @@ function debug_manager.refresh_panel(player_index)
         set_cell("lbl_time_projectors", results["Scanner: Projectors"] or "-")
         set_cell("lbl_ctx_projectors", stats.active_projectors .. " Projectors")
         set_cell("lbl_time_cache", results["Scanner: Cache"] or "-")
+
+        local ev_results = profiler.get_latest_event_results and profiler.get_latest_event_results() or {}
+        local ev_top_name, ev_top_count, ev_top_time = nil, 0, nil
+        for ev_k, ev_v in pairs(ev_results) do
+            if ev_k ~= "on_tick" and ev_v.count > ev_top_count then
+                ev_top_name = ev_k
+                ev_top_count = ev_v.count
+                ev_top_time = ev_v.total
+            end
+        end
+        if ev_top_name then
+            set_cell("lbl_time_events", ev_top_time)
+            set_cell("lbl_ctx_events", ev_top_name .. " (" .. ev_top_count .. "x)")
+        else
+            set_cell("lbl_time_events", "-")
+            set_cell("lbl_ctx_events", "Idle (no events)")
+        end
+
+        local bvh_results = profiler.get_latest_bvh_results and profiler.get_latest_bvh_results() or {}
+        local vp_res = bvh_results["Viewport"]
+        local sync_res = bvh_results["Visibility Sync"]
+        local q_res = bvh_results["Query Box"]
+        local rd_res = bvh_results["Render Dispatch"]
+        local breach_cnt = bvh_results.__breach_count__ or 0
+
+        set_cell("lbl_time_bvh_vp", (vp_res and vp_res.total) or (sync_res and sync_res.total) or "-")
+        set_cell("lbl_ctx_bvh_vp", tostring(breach_cnt) .. " breaches | " .. tostring((vp_res and vp_res.count) or 0) .. " updates")
+
+        set_cell("lbl_time_bvh_q", q_res and q_res.total or "-")
+        set_cell("lbl_ctx_bvh_q", tostring(q_res and q_res.count or 0) .. " queries")
+
+        set_cell("lbl_time_bvh_rd", rd_res and rd_res.total or "-")
+        local v_set = storage.player_visible_set and storage.player_visible_set[player_index]
+        local vis_cnt = 0
+        if v_set then for _ in pairs(v_set) do vis_cnt = vis_cnt + 1 end end
+        set_cell("lbl_ctx_bvh_rd", tostring(vis_cnt) .. " visible corridors")
 
         if results["__TOTAL__"] then
             set_cell("lbl_time_total", {"", "[font=default-bold]", results["__TOTAL__"], "[/font]"})
@@ -371,7 +423,22 @@ function debug_manager.open_panel(player_index)
         enabled = master
     }
 
+    content_frame.add{
+        type = "checkbox",
+        name = "pneumatic_debug_chk_event_log",
+        caption = "Real-time Event Log to Chat",
+        state = master and (dbg.event_log == true),
+        enabled = master
+    }
+
     if profiler.ENABLED then
+        content_frame.add{
+            type = "checkbox",
+            name = "pneumatic_debug_chk_profiler_stream",
+            caption = "Stream 60t Profiler to Chat",
+            state = master and (dbg.profiler == true),
+            enabled = master
+        }
         content_frame.add{type = "line", direction = "horizontal"}
 
         local profiler_label = content_frame.add{
@@ -395,6 +462,13 @@ function debug_manager.open_panel(player_index)
         type = "button",
         name = "pneumatic_debug_btn_profile_now",
         caption = "Snapshot to Console",
+        style = "button"
+    }
+
+    btn_flow.add{
+        type = "button",
+        name = "pneumatic_debug_btn_profile_bvh",
+        caption = "BVH Report",
         style = "button"
     }
 
@@ -467,6 +541,22 @@ function debug_manager.open_panel(player_index)
     prof_table.add{type = "label", name = "lbl_time_cache", caption = "-"}
     prof_table.add{type = "label", caption = "Fast-replace prune"}
 
+    prof_table.add{type = "label", caption = "[font=default-semibold]Non-Tick Events[/font]"}
+    prof_table.add{type = "label", name = "lbl_time_events", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_events", caption = "Idle (no events)"}
+
+    prof_table.add{type = "label", caption = "[font=default-semibold]BVH: Spatial Systems[/font]"}
+    prof_table.add{type = "label", name = "lbl_time_bvh_vp", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_bvh_vp", caption = "Viewport & Shells"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Spatial Queries[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_bvh_q", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_bvh_q", caption = "Box queries"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Render Dispatch[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_bvh_rd", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_bvh_rd", caption = "Visible corridors"}
+
     prof_table.add{type = "label", caption = "[font=default-bold]TOTAL Mod Script Time[/font]"}
     prof_table.add{type = "label", name = "lbl_time_total", caption = "[font=default-bold]Sampling...[/font]"}
     prof_table.add{type = "label", caption = "[font=default-bold]Combined Mod UPS Impact[/font]"}
@@ -532,6 +622,51 @@ local function toggle_profiler(player_index)
 
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Live Profiler Console Stream: " .. (dbg.profiler and "[ENABLED]" or "[DISABLED]"))
+end
+
+local function toggle_event_log(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local dbg = get_debug(player_index)
+    dbg.event_log = not dbg.event_log
+
+    debug_manager.refresh_panel(player_index)
+    player.print("[Debug] Real-time Event Log: " .. (dbg.event_log and "[ENABLED]" or "[DISABLED]"))
+end
+
+local function print_event_snapshot(player_index)
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    if not profiler.ENABLED then
+        player.print("[PT Profiler] Profiler is disabled in this release build.")
+        return
+    end
+
+    local ev_results = profiler.get_latest_event_results and profiler.get_latest_event_results() or {}
+    local has_events = false
+
+    player.print("[font=default-bold][PT Event Profiler (Latest 60t Window)][/font]")
+    for ev_name, ev_data in pairs(ev_results) do
+        has_events = true
+        player.print({
+            "",
+            "  [color=orange]⚡ ", ev_name, "[/color] (", tostring(ev_data.count), "x) Total: [color=yellow]",
+            ev_data.total, "[/color] | Avg/call: [color=green]", ev_data.avg or "-", "[/color]"
+        })
+        for _, h in ipairs(ev_data.handlers or {}) do
+            player.print({
+                "",
+                "     [color=0.75,0.75,0.75]↳ ", h.name, " (", tostring(h.count), "x):[/color] ",
+                h.total, " [color=0.6,0.6,0.6](avg ", h.avg or "-", ")[/color]"
+            })
+        end
+    end
+
+    if not has_events then
+        player.print("  [color=0.7,0.7,0.7]No events recorded in the latest window.[/color]")
+    end
 end
 
 local function toggle_new_flow(player_index)
@@ -689,7 +824,13 @@ commands.add_command("toggle-counter-range", "Toggle counter range overlay (Alt 
 commands.add_command("toggle-capsules", "Toggle capsule overlay (Alt Mode)", function(cmd) if cmd.player_index then toggle_capsules(cmd.player_index) end end)
 commands.add_command("toggle-capsule-peek", "Toggle capsule peeking overlay on hovered entity (Alt Mode)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("toggle-profiler", "Toggle streaming 60-tick live performance profiler to chat", function(cmd) if cmd.player_index then toggle_profiler(cmd.player_index) end end)
+commands.add_command("toggle-event-log", "Toggle real-time game event logging to chat as they fire", function(cmd) if cmd.player_index then toggle_event_log(cmd.player_index) end end)
 commands.add_command("profile-snapshot", "Print a live performance snapshot of all subsystems to chat", function(cmd) if cmd.player_index then profiler.trigger_snapshot(cmd.player_index) end end)
+commands.add_command("profile-events", "Print detailed event impact and handler breakdown to chat", function(cmd) if cmd.player_index then print_event_snapshot(cmd.player_index) end end)
+commands.add_command("profile-bvh", "Print live performance and memory stats for all BVH spatial trees to chat", function(cmd)
+    local p = cmd.player_index and game.get_player(cmd.player_index)
+    if p and profiler.print_bvh_summary then profiler.print_bvh_summary(p) end
+end)
 commands.add_command("clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Sandbox cleanup)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 commands.add_command("debug-filter", "Set a prefix text filter on received debug prints", function(cmd) if cmd.player_index then set_debug_filter(cmd.player_index, cmd.parameter) end end)
 commands.add_command("debug-filter-reset", "Reset the debug print prefix text filter", function(cmd) if cmd.player_index then reset_debug_filter(cmd.player_index, cmd.parameter) end end)
@@ -703,7 +844,13 @@ commands.add_command("pt-toggle-capsules", "Toggle capsule overlay (Alias)", fun
 commands.add_command("pt-toggle-capsule-peek", "Toggle capsule peeking overlay (Alias)", function(cmd) if cmd.player_index then toggle_peek(cmd.player_index) end end)
 commands.add_command("pt-toggle-prints", "Toggle game debug prints (Alias)", function(cmd) if cmd.player_index then toggle_prints(cmd.player_index) end end)
 commands.add_command("pt-toggle-profiler", "Toggle streaming 60-tick live performance profiler to chat (Alias)", function(cmd) if cmd.player_index then toggle_profiler(cmd.player_index) end end)
+commands.add_command("pt-toggle-event-log", "Toggle real-time game event logging to chat (Alias)", function(cmd) if cmd.player_index then toggle_event_log(cmd.player_index) end end)
 commands.add_command("pt-profile", "Print a live performance snapshot of all subsystems to chat (Alias)", function(cmd) if cmd.player_index then profiler.trigger_snapshot(cmd.player_index) end end)
+commands.add_command("pt-profile-events", "Print detailed event impact and handler breakdown to chat (Alias)", function(cmd) if cmd.player_index then print_event_snapshot(cmd.player_index) end end)
+commands.add_command("pt-profile-bvh", "Print live performance and memory stats for all BVH spatial trees to chat (Alias)", function(cmd)
+    local p = cmd.player_index and game.get_player(cmd.player_index)
+    if p and profiler.print_bvh_summary then profiler.print_bvh_summary(p) end
+end)
 commands.add_command("pt-clear-renders", "Wipe and reconstruct all active Alt-Mode rendering overlays (Alias)", function(cmd) if cmd.player_index then clear_and_reconstruct_renders(cmd.player_index) end end)
 commands.add_command("pt-test-heap", "Run self-tests on the reusable binary heap priority queue", function(cmd)
     local player = cmd.player_index and game.get_player(cmd.player_index)
@@ -827,6 +974,11 @@ events.on_event(defines.events.on_gui_click, function(event)
         debug_manager.close_panel(event.player_index)
     elseif element.name == "pneumatic_debug_btn_profile_now" then
         profiler.trigger_snapshot(event.player_index)
+    elseif element.name == "pneumatic_debug_btn_profile_bvh" then
+        local p = game.get_player(event.player_index)
+        if p and profiler.print_bvh_summary then
+            profiler.print_bvh_summary(p)
+        end
     elseif element.name == "pneumatic_debug_btn_profile_refresh" then
         debug_manager.refresh_panel(event.player_index)
     end
@@ -895,6 +1047,12 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
     elseif name == "pneumatic_debug_chk_prints" then
         dbg.prints = element.state
         update_player_shortcuts(p_idx)
+        debug_manager.refresh_panel(p_idx)
+    elseif name == "pneumatic_debug_chk_event_log" then
+        dbg.event_log = element.state
+        debug_manager.refresh_panel(p_idx)
+    elseif name == "pneumatic_debug_chk_profiler_stream" then
+        dbg.profiler = element.state
         debug_manager.refresh_panel(p_idx)
     end
 end)

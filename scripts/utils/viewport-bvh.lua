@@ -8,6 +8,7 @@
 
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
+local profiler = require("scripts.utils.profiler")
 
 local viewport_bvh = {}
 
@@ -176,9 +177,11 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
         entry.breached_this_tick = true
         entry.updates_count = (entry.updates_count or 0) + 1
 
+        local t_sync = profiler.start_timer()
         local tree = viewport_bvh.get_tree(s_idx)
         trajectory_bvh.update(tree, entry.leaf, fat_min_x, fat_min_y, fat_max_x, fat_max_y)
         viewport_bvh.sync_player_visibility(p_idx, s_idx)
+        if t_sync then profiler.record_bvh("Visibility Sync", t_sync, true) end
     else
         entry.breached_this_tick = false
     end
@@ -199,6 +202,7 @@ end
 
 --- Updates all connected players and purges disconnected players from viewport trees
 function viewport_bvh.update_all_players()
+    local t_vp = profiler.start_timer()
     storage.player_viewports = storage.player_viewports or {}
     local active_indices = {}
 
@@ -222,6 +226,7 @@ function viewport_bvh.update_all_players()
             storage.player_viewports[p_idx] = nil
         end
     end
+    if t_vp then profiler.record_bvh("Viewport", t_vp) end
 end
 
 --- Checks if a world position is inside any player's active padded viewport on a surface in O(log N)

@@ -5,6 +5,7 @@ local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
+local profiler = require("scripts.utils.profiler")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -55,6 +56,7 @@ function capsule_renderer.prepare_frame()
         return
     end
     last_prepared_tick = current_tick
+    local t_pf = profiler.start_timer()
 
     viewport_bvh.update_all_players()
     active_debug_count = 0
@@ -134,6 +136,7 @@ function capsule_renderer.prepare_frame()
     for i = active_viewport_count + 1, #active_viewports do
         active_viewports[i] = nil
     end
+    if t_pf then profiler.record_bvh("Prepare Frame", t_pf) end
 end
 
 --- Returns the dominant item string for a capsule.
@@ -869,6 +872,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
 
     local surf = player.surface
     if not (surf and surf.valid) then return end
+    local t_disp = profiler.start_timer()
 
     local v_set = viewport_bvh.get_visible_set(p_idx)
 
@@ -1061,6 +1065,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
             p_renders[cap_id] = nil
         end
     end
+    if t_disp then profiler.record_bvh("Render Dispatch", t_disp) end
 end
 
 function capsule_renderer.update_timed_capsules(current_tick)

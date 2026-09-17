@@ -241,3 +241,11 @@
 2. **Truncation Forward Guard (`scripts/flow/flow-kinetic.lua`):** Added a defensive guard in `truncate_reticle` that automatically delegates to `update_reticle_horizon` if `entry_dist > cur_h_dist + 0.05`, guaranteeing that growing reticles never destroy flights or render static hazard reticles at forward coordinates.
 3. **Segment-Bounded Horizon Expansion (`scripts/flow/flow-kinetic.lua`):** Replaced static `flight_end_dist` clamping in `update_reticle_horizon` with canonical segment boundaries (`seg_max_dist = seg_idx * 16`), allowing in-flight targets and arrival timers to expand smoothly when forward obstacles step away within the active segment.
 4. **Duplicate Flush Scrubbing (`scripts/flow/flow-kinetic.lua`):** Cleaned up a redundant consecutive call to `flow_kinetic.flush_pending_reticle_obstacles` at the top of `step_character_colliders`.
+
+
+### Revision: Purge Duplicate Obstacle Queue Functions and Spec Tables
+**Date:** 2026-09-17 08:59 EDT
+**Context:** Incomplete undo operations from earlier patch sessions had left lingering duplicate blocks inside `flow-kinetic.lua`, causing repeated definitions of head visual specs and a redundant second copy of the frame-slice obstruction queue functions. This caused ambiguous matches during diff application and redundant function execution. This session permanently excised all duplicate definitions from the script.
+**Key Changes:**
+1. **Duplicate Visual Spec Cleanup (`scripts/flow/flow-kinetic.lua`):** Removed the redundant second assignment block for `DEFAULT_HEAD_SPEC` and `RECEIVER_HEAD_SPEC` at the module header.
+2. **Obstacle Queue Deduplication (`scripts/flow/flow-kinetic.lua`):** Deleted the redundant 96-line second definition of `flow_kinetic.queue_reticle_obstacle` and `flow_kinetic.flush_pending_reticle_obstacles` preceding `handle_obstacle_changed_v2`, leaving a single authoritative obstruction queue implementation and eliminating patch collision hazards.

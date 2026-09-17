@@ -1,2 +1,1 @@
-when the projector's reticle is orphaned, the paired flight corridor for ballistic capules should be removed if there are no in transit ballistic capsules on it.
-in the case that there are ballistic capsules on it, do not immediately remove this flight cooridor, but mark it as decaying, meaning that, when there are no more capsules moving on it, it can safely be removed. (we can do a simple capsule count check, the least amount of work so we dont have to re-poll on tick)
+change the way player character granular location change works so that every tile change is based on a grid aligned 1x1 tile square for the player, and when they escape this box is when their collider is updated as far as reticles and capsule flights are concerned

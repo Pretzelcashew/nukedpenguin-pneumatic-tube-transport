@@ -34,6 +34,21 @@ local RECEIVER_HEAD_SPEC = {
 flow_kinetic.DEFAULT_HEAD_SPEC = DEFAULT_HEAD_SPEC
 flow_kinetic.RECEIVER_HEAD_SPEC = RECEIVER_HEAD_SPEC
 
+local function get_entity_bounding_box(ent)
+    if not (ent and ent.valid) then return nil end
+    local bb = ent.bounding_box
+    if ent.type == "character" then
+        local pos = ent.position
+        local tx = math.floor(pos.x)
+        local ty = math.floor(pos.y)
+        return {
+            left_top = { x = tx, y = ty },
+            right_bottom = { x = tx + 1.0, y = ty + 1.0 }
+        }
+    end
+    return bb
+end
+
 function flow_kinetic.get_cooldown_heap()
     if not storage.projector_cooldown_heap then
         storage.projector_cooldown_heap = binary_heap.new()
@@ -1055,7 +1070,7 @@ function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_
             end
 
             if not is_ignorable then
-                local cbb = cand.bounding_box
+                local cbb = get_entity_bounding_box(cand)
                 local d = nil
                 local on_axis = false
 
@@ -1463,7 +1478,7 @@ function flow_kinetic.get_obstacle_chain_bounds(surface, sp, dir, hit_entity, mi
 
     local function get_bounds(ent)
         if not (ent and ent.valid and ent.bounding_box) then return nil, nil end
-        local cbb = ent.bounding_box
+        local cbb = get_entity_bounding_box(ent)
         local on_axis = false
         local c_entry = nil
         local c_exit = nil
@@ -1567,7 +1582,7 @@ function flow_kinetic.find_obstacle_chain_exit(surface, sp, dir, entry_dist, max
 
     local function get_entity_bounds(ent)
         if not (ent and ent.valid and ent.bounding_box) then return nil, nil end
-        local cbb = ent.bounding_box
+        local cbb = get_entity_bounding_box(ent)
         local on_axis = false
         local c_entry = nil
         local c_exit = nil
@@ -2225,7 +2240,7 @@ function flow_kinetic.flush_pending_reticle_obstacles()
                 local item = queue[i]
                 local ent = item.entity
                 if ent and ent.valid then
-                    local bb = ent.bounding_box
+                    local bb = get_entity_bounding_box(ent)
                     local o_dist = nil
                     local on_axis = false
 
@@ -2303,7 +2318,7 @@ end
 function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_port_fn, wake_port_fn)
     if not (entity and entity.valid and entity.bounding_box) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
-    local bb = entity.bounding_box
+    local bb = get_entity_bounding_box(entity)
     local surface = entity.surface
     if not (surface and surface.valid) then return end
 
@@ -2439,7 +2454,7 @@ end
 function flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
     if not (entity and entity.valid and entity.bounding_box) then return end
     if IGNORABLE_TYPES[entity.type] or PROXY_NAMES[entity.name] then return end
-    local bb = entity.bounding_box
+    local bb = get_entity_bounding_box(entity)
     local surface = entity.surface
     if not (surface and surface.valid) then return end
     local surf_name = surface.name

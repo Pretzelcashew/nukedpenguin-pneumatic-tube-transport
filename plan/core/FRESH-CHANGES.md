@@ -291,3 +291,14 @@
 2. **Orphaned Corridor Decoupling & Decaying Tagging (`scripts/flow/flow-kinetic.lua`):** Updated `flow_kinetic.orphan_reticle` and `unlink_projector_receiver` to destroy paired corridors immediately when empty, or register active corridors into `storage.decaying_corridors` when capsules remain in flight.
 3. **Arrival-Bundled Decaying Corridor Teardown (`scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Bundled decaying corridor cleanup directly into `remove_flight` across terminal heap arrivals and obstacle impact spills, unpinning active machine guards and removing decaying corridors from motion and trajectory BVH trees the exact tick the capsule count reaches zero without background tick polling.
 4. **Docking Geometry Rebuild Clearance (`scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Enhanced `ensure_capsule_corridor` and `timed_motion.ensure_corridor` to purge stale decaying corridors before inserting fresh corridor segments when newly docked receivers connect at different distances.
+
+
+
+### Revision: Grid-Aligned 1x1 Tile Character Colliders and Boundary Escape Gating
+**Date:** 2026-09-17 13:35 EDT  
+**Context:** Continuous sub-pixel coordinate polling previously caused redundant collider churn and micro-recalculations for reticles and ballistic flight corridors whenever a character moved slightly or rotated within a single tile. This session established a grid-aligned 1x1 tile bounding box for characters, gating reticle adjustments and motion BVH collider updates strictly to moments when the player escapes their current tile square.  
+**Key Changes:**
+1. **Grid-Aligned Bounding Box Resolution (`scripts/flow/flow-kinetic.lua`):** Implemented `get_entity_bounding_box` to resolve character bounding boxes to integer-aligned 1x1 tile squares (`[tx, tx + 1] x [ty, ty + 1]`) across leaf collision scans, obstacle chain calculations, pending reticle queues, and motion BVH queries.
+2. **Discrete Boundary Escape Gating (`scripts/flow/flow-kinetic.lua`):** Stored active coordinates in `storage.character_tiles` within `step_character_colliders`, bypassing all simulation steps when a player remains inside their current tile box to eliminate intra-tile collider jitter.
+3. **Tile-Aligned Evacuation & Entry Dispatch (`scripts/flow/flow-kinetic.lua`):** Gated motion BVH corridor clearance, legacy beam wakeups, and reticle horizon updates strictly to tile boundary transitions, passing explicit 1x1 tile bounding boxes for both evacuated and newly occupied positions.
+4. **Character Lifecycle & Disconnect Teardown (`scripts/flow/flow-kinetic.lua`):** Extended disconnect and character death cleanup to iterate over `storage.character_tiles`, unregistering evacuated tile colliders from motion BVH trees and waking blocked reticles.

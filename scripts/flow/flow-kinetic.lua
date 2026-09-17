@@ -2392,8 +2392,6 @@ function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_por
             end
         end
     end
-
-    return flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
 end
 
 function flow_kinetic.dock_incoming_reticles_at_projector(entity)
@@ -2445,7 +2443,14 @@ function flow_kinetic.dock_incoming_reticles_at_projector(entity)
 end
 
 function flow_kinetic.handle_obstacle_changed(entity, is_removal, enqueue_port_fn, wake_port_fn)
-    if not is_removal and entity and entity.valid and entity.name == "pneumatic-projector" then
+    if is_removal then
+        if entity and entity.valid then
+            flow_kinetic.handle_reticle_obstacle_cleared(entity)
+        end
+        return
+    end
+
+    if entity and entity.valid and entity.name == "pneumatic-projector" then
         flow_kinetic.dock_incoming_reticles_at_projector(entity)
     end
     return flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_port_fn, wake_port_fn)

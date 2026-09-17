@@ -320,3 +320,13 @@
 **Key Changes:**
 1. **Velocity Constant Restoration (`scripts/capsules/capsule-ballistics.lua`):** Restored `TICKS_PER_HOP` from `60` to `6`, returning projectile transit speed to 50 tiles per second (1.2 ticks per tile).
 2. **Unified System Acceleration (`scripts/capsules/capsule-ballistics.lua`):** Propagated the 1.2 ticks/tile cadence across `trajectory_bvh.TICKS_PER_TILE`, automatically scaling timed arrival scheduling, in-flight dot progression, and anti-reticle wake reeling to full operational speed.
+
+
+### Revision: O(1) Table-Driven Obstacle Destruction and BVH Query Elimination
+**Date:** 2026-09-17 14:52 EDT  
+**Context:** When entities were mined or destroyed (e.g., grenading 25 trees), the removal handler was executing redundant spatial AABB box queries against multiple BVH trees to ask if the dying entity touched any corridors, followed by an obsolete 50-tile flow node waking loop. Because reticles already index their active blocking entities in `storage.blocked_reticles`, querying spatial trees on destruction was completely backwards and caused severe frame cycle spikes. This session routed entity removal directly to $O(1)$ table lookups, bypassed spatial trees entirely on death, and excised the legacy fallback loop.  
+**Key Changes:**
+1. **Zero-BVH Entity Removal Fast-Path (`scripts/flow/flow-kinetic.lua`):** Short-circuited `flow_kinetic.handle_obstacle_changed` on `is_removal == true` to directly dispatch `handle_reticle_obstacle_cleared(entity)` and return immediately, completely bypassing spatial AABB tree queries on entity death or mining.
+2. **O(1) Blocker Wakeup Resolution (`scripts/flow/flow-kinetic.lua`):** Bound destruction notifications strictly to direct hash lookups in `storage.blocked_reticles[unit_number]`, allowing non-blocking entities (trees, rocks, biters) to early-exit in sub-microsecond time with zero spatial math.
+3. **Legacy Duplicate Obstacle Loop Severed (`scripts/flow/flow-kinetic.lua`):** Excised `_legacy_handle_obstacle_changed` from the tail of `handle_obstacle_changed_v2`, permanently eliminating redundant `motion_bvh` and `surface_bvh` queries along with obsolete 50-tile iterative port waking passes.
+4. **Destruction Frame Spike Elimination (`scripts/flow/flow-kinetic.lua`):** Eliminated the multi-millisecond frame cycle spikes associated with mass entity clearing (grenades, artillery strikes, cliff explosives).

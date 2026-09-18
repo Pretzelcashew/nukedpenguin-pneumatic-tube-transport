@@ -1,7 +1,7 @@
 # AI Architectural Manifest
 - **Mod**: nukedpenguin-pneumatic-tube-transport (v0.3.23)
 - **Factorio Version**: 2.1
-- **Total Active Lua Files**: 71
+- **Total Active Lua Files**: 72
 
 ## Entry Points
 - **settings**: settings
@@ -19,43 +19,44 @@
 
 ## Blast Radius (Files with >= 3 Dependents)
 - `scripts/events`: **17** dependents
-- `scripts/active-device-scanner`: **10** dependents
 - `scripts/capsules/capsule-manager`: **10** dependents
+- `scripts/active-device-scanner`: **10** dependents
 - `scripts/diverters/diverter-settings`: **10** dependents
-- `scripts/flow/port-defs`: **9** dependents
 - `scripts/projectors/projector-settings`: **9** dependents
+- `scripts/flow/port-defs`: **9** dependents
 - `scripts/capsules/capsule-definitions`: **8** dependents
 - `scripts/utils/binary-heap`: **8** dependents
-- `scripts/capsules/capsule-queries`: **7** dependents
+- `scripts/utils/trajectory-bvh`: **8** dependents
+- `scripts/capsules/capsule-queries`: **8** dependents
 - `scripts/counters/counter-range`: **7** dependents
-- `scripts/utils/trajectory-bvh`: **7** dependents
-- `scripts/hubs/hub-settings`: **6** dependents
-- `scripts/capsules/capsule-runner`: **6** dependents
-- `scripts/flow/flow-engine`: **6** dependents
-- `scripts/pumps/pump-settings`: **6** dependents
-- `scripts/counters/counter-settings`: **6** dependents
-- `scripts/utils/gui-components`: **6** dependents
+- `scripts/utils/profiler`: **7** dependents
 - `scripts/utils/item-transfer-handler`: **6** dependents
+- `scripts/counters/counter-settings`: **6** dependents
+- `scripts/flow/flow-engine`: **6** dependents
+- `scripts/utils/gui-components`: **6** dependents
+- `scripts/utils/viewport-bvh`: **6** dependents
+- `scripts/capsules/capsule-runner`: **6** dependents
+- `scripts/hubs/hub-settings`: **6** dependents
+- `scripts/pumps/pump-settings`: **6** dependents
+- `scripts/utils/timed-motion`: **5** dependents
 - `scripts/flow/flow-common`: **5** dependents
-- `scripts/utils/viewport-bvh`: **5** dependents
-- `scripts/utils/timed-motion`: **4** dependents
+- `scripts/hubs/hub-spill`: **4** dependents
 - `scripts/hubs/hub-definitions`: **4** dependents
 - `scripts/surfaces/liminal-surface`: **4** dependents
-- `scripts/hubs/hub-spill`: **4** dependents
-- `scripts/utils/profiler`: **3** dependents
-- `scripts/diverters/diverter-gui`: **3** dependents
-- `scripts/diverters/diverter-renderer`: **3** dependents
 - `scripts/utils/render-pool`: **3** dependents
-- `scripts/flow/flow-renderer`: **3** dependents
-- `scripts/pumps/pump-gui`: **3** dependents
-- `scripts/proxy-manager`: **3** dependents
 - `scripts/hubs/hub-manager`: **3** dependents
-- `scripts/capsules/capsule-lifecycle`: **3** dependents
-- `scripts/flow/flow-kinetic`: **3** dependents
+- `scripts/pumps/pump-gui`: **3** dependents
+- `scripts/capsules/capsule-renderer`: **3** dependents
+- `scripts/proxy-manager`: **3** dependents
+- `scripts/diverters/diverter-gui`: **3** dependents
 - `scripts/debug-manager`: **3** dependents
+- `scripts/flow/flow-kinetic`: **3** dependents
+- `scripts/diverters/diverter-renderer`: **3** dependents
+- `scripts/capsules/capsule-lifecycle`: **3** dependents
+- `scripts/flow/flow-renderer`: **3** dependents
 
 ## Dependency Graph (`file`: [requires...])
-- `control`: [scripts/events, scripts/surfaces/liminal-surface, scripts/debug-manager, scripts/proxy-manager, scripts/active-device-scanner, scripts/device-settings-copier, scripts/diverters/diverter-renderer, scripts/hubs/hub-manager, scripts/hubs/hub-gui, scripts/diverters/diverter-settings, scripts/diverters/diverter-gui, scripts/pumps/pump-settings, scripts/pumps/pump-gui, scripts/counters/counter-settings, scripts/counters/counter-gui, scripts/counters/counter-logic, scripts/projectors/projector-settings, scripts/capsules/capsule-runner, scripts/capsules/capsule-inputs, scripts/flow/port-defs, scripts/flow/flow-engine, scripts/counters/counter-range, scripts/utils/binary-heap, scripts/utils/trajectory-bvh, scripts/utils/timed-motion]
+- `control`: [scripts/events, scripts/surfaces/liminal-surface, scripts/debug-manager, scripts/proxy-manager, scripts/active-device-scanner, scripts/device-settings-copier, scripts/diverters/diverter-renderer, scripts/hubs/hub-manager, scripts/hubs/hub-gui, scripts/diverters/diverter-settings, scripts/diverters/diverter-gui, scripts/pumps/pump-settings, scripts/pumps/pump-gui, scripts/counters/counter-settings, scripts/counters/counter-gui, scripts/counters/counter-logic, scripts/projectors/projector-settings, scripts/capsules/capsule-runner, scripts/capsules/capsule-inputs, scripts/flow/port-defs, scripts/flow/flow-engine, scripts/counters/counter-range, scripts/capsules/capsule-renderer, scripts/utils/binary-heap, scripts/utils/trajectory-bvh, scripts/utils/timed-motion]
 - `data`: [prototypes/item, prototypes/recipe, prototypes/entity, prototypes/technology, prototypes/custom-input, prototypes/shortcut, prototypes/entities/pneumatic-diverter, prototypes/entities/pneumatic-pump-proxy, prototypes/entities/pneumatic-capsule-counter, prototypes/entities/pneumatic-projector]
 - `prototypes/custom-input`: []
 - `prototypes/entities/pneumatic-capsule-counter`: []
@@ -74,8 +75,8 @@
 - `scripts/capsules/capsule-lifecycle`: [scripts/capsules/capsule-manager, scripts/capsules/capsule-definitions, scripts/capsules/capsule-queries, scripts/hubs/hub-spill, scripts/utils/item-transfer-handler, scripts/counters/counter-range, scripts/utils/binary-heap]
 - `scripts/capsules/capsule-manager`: [scripts/capsules/capsule-definitions, scripts/surfaces/liminal-surface, scripts/utils/item-transfer-handler, scripts/utils/binary-heap]
 - `scripts/capsules/capsule-queries`: [scripts/flow/port-defs, scripts/counters/counter-range]
-- `scripts/capsules/capsule-renderer`: [scripts/capsules/capsule-manager, scripts/capsules/capsule-queries, scripts/capsules/capsule-definitions, scripts/utils/trajectory-bvh, scripts/utils/render-pool, scripts/utils/viewport-bvh, scripts/utils/timed-motion, scripts/debug-manager]
-- `scripts/capsules/capsule-runner`: [scripts/events, scripts/flow/port-defs, scripts/flow/flow-engine, scripts/hubs/hub-definitions, scripts/hubs/hub-unpacking, scripts/hubs/hub-spill, scripts/diverters/diverter-settings, scripts/projectors/projector-settings, scripts/capsules/capsule-queries, scripts/capsules/capsule-manager, scripts/capsules/capsule-lifecycle, scripts/capsules/capsule-renderer, scripts/surfaces/liminal-surface, scripts/debug-manager, scripts/capsules/capsule-definitions, scripts/capsules/capsule-transit, scripts/capsules/capsule-ballistics, scripts/utils/binary-heap]
+- `scripts/capsules/capsule-renderer`: [scripts/capsules/capsule-manager, scripts/capsules/capsule-queries, scripts/capsules/capsule-definitions, scripts/utils/trajectory-bvh, scripts/utils/render-pool, scripts/utils/viewport-bvh, scripts/utils/timed-motion, scripts/utils/profiler, scripts/debug-manager]
+- `scripts/capsules/capsule-runner`: [scripts/events, scripts/flow/port-defs, scripts/flow/flow-engine, scripts/hubs/hub-definitions, scripts/hubs/hub-unpacking, scripts/hubs/hub-spill, scripts/diverters/diverter-settings, scripts/projectors/projector-settings, scripts/capsules/capsule-queries, scripts/capsules/capsule-manager, scripts/capsules/capsule-lifecycle, scripts/capsules/capsule-renderer, scripts/surfaces/liminal-surface, scripts/debug-manager, scripts/capsules/capsule-definitions, scripts/capsules/capsule-transit, scripts/capsules/capsule-ballistics, scripts/flow/flow-pressure-corridor, scripts/utils/binary-heap, scripts/utils/profiler]
 - `scripts/capsules/capsule-transit`: [scripts/capsules/capsule-definitions, scripts/capsules/capsule-manager]
 - `scripts/counters/counter-gui`: [scripts/events, scripts/counters/counter-settings, scripts/active-device-scanner, scripts/utils/gui-components]
 - `scripts/counters/counter-logic`: [scripts/counters/counter-settings, scripts/counters/counter-range, scripts/capsules/capsule-queries, scripts/capsules/capsule-manager]
@@ -92,9 +93,10 @@
 - `scripts/event-logger`: [scripts/events]
 - `scripts/events`: [scripts/utils/profiler]
 - `scripts/flow/flow-common`: []
-- `scripts/flow/flow-engine`: [scripts/events, scripts/flow/port-defs, scripts/flow/flow-common, scripts/flow/flow-renderer, scripts/flow/flow-gate-interop, scripts/flow/flow-kinetic, scripts/pumps/pump-settings, scripts/diverters/diverter-settings, scripts/counters/counter-range, scripts/capsules/capsule-queries, scripts/capsules/capsule-manager, scripts/projectors/projector-settings]
+- `scripts/flow/flow-engine`: [scripts/events, scripts/flow/port-defs, scripts/flow/flow-common, scripts/flow/flow-renderer, scripts/flow/flow-gate-interop, scripts/flow/flow-kinetic, scripts/pumps/pump-settings, scripts/diverters/diverter-settings, scripts/counters/counter-range, scripts/capsules/capsule-queries, scripts/capsules/capsule-manager, scripts/projectors/projector-settings, scripts/flow/flow-pressure-corridor]
 - `scripts/flow/flow-gate-interop`: [scripts/flow/port-defs, scripts/flow/flow-common]
 - `scripts/flow/flow-kinetic`: [scripts/flow/flow-common, scripts/flow/flow-renderer, scripts/flow/port-defs, scripts/projectors/projector-settings, scripts/utils/binary-heap, scripts/utils/trajectory-bvh, scripts/utils/timed-motion, scripts/utils/viewport-bvh]
+- `scripts/flow/flow-pressure-corridor`: [scripts/utils/timed-motion, scripts/utils/viewport-bvh, scripts/utils/trajectory-bvh, scripts/capsules/capsule-queries]
 - `scripts/flow/flow-renderer`: [scripts/flow/flow-common, scripts/flow/port-defs]
 - `scripts/flow/port-defs`: []
 - `scripts/hubs/hub-definitions`: []
@@ -123,6 +125,6 @@
 - `scripts/utils/profiler`: []
 - `scripts/utils/render-pool`: []
 - `scripts/utils/timed-motion`: [scripts/utils/binary-heap, scripts/utils/trajectory-bvh, scripts/utils/viewport-bvh]
-- `scripts/utils/trajectory-bvh`: []
-- `scripts/utils/viewport-bvh`: [scripts/utils/trajectory-bvh, scripts/utils/render-pool]
+- `scripts/utils/trajectory-bvh`: [scripts/utils/profiler]
+- `scripts/utils/viewport-bvh`: [scripts/utils/trajectory-bvh, scripts/utils/render-pool, scripts/utils/profiler]
 - `settings`: []

@@ -545,7 +545,7 @@ function flow_engine.step(tick)
                     elseif current_flow ~= 0 and target_flow == 0 then
                         local c_id = flow_pressure_corridor.get_corridor_for_port(pkey)
                         if c_id then
-                            flow_pressure_corridor.remove_corridor(c_id)
+                            flow_pressure_corridor.start_anti_pressure(c_id)
                         end
                     end
                 end
@@ -586,7 +586,7 @@ function flow_engine.step(tick)
         end
 
         if flow_changed or range_changed or kinetic_changed then
-            if node then
+            if node and not in_corridor then
                 local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node.unit_number]
                 if unit_ports and node.group then
                     for _, int_key in pairs(unit_ports) do
@@ -608,11 +608,13 @@ function flow_engine.step(tick)
             local neighbors = storage.flow_connections and storage.flow_connections[pkey]
             if neighbors and next(neighbors) ~= nil then
                 for n_key in pairs(neighbors) do
-                    flow_engine.enqueue_port(n_key)
-                    if flow_changed then
-                        update_edge_render(pkey, n_key)
+                    if not in_corridor and not flow_pressure_corridor.get_corridor_for_port(n_key) then
+                        flow_engine.enqueue_port(n_key)
+                        if flow_changed then
+                            update_edge_render(pkey, n_key)
+                        end
+                        wake_port_parked(n_key)
                     end
-                    wake_port_parked(n_key)
                 end
             else
                 local eff_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
@@ -806,6 +808,8 @@ function flow_engine.disconnect_entity(entity)
 
     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
     if not unit_ports then return end
+
+    flow_pressure_corridor.handle_entity_disconnecting(unit_number, unit_ports)
 
     for port_index, pkey in pairs(unit_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]

@@ -2,8 +2,21 @@ local timed_motion = require("scripts.utils.timed-motion")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local capsule_queries = require("scripts.capsules.capsule-queries")
+local flow_common = require("scripts.flow.flow-common")
+local render_pool = require("scripts.utils.render-pool")
 
 local flow_pressure_corridor = {}
+
+-- SPEED CONFIGURATION:
+-- Set to 1.2 for production velocity (50 tiles/sec).
+-- Set to 30 for slow-mo testing (0.5s per tile).
+local TICKS_PER_TILE = 30
+local HOP_DISTANCE = 5
+local TICKS_PER_HOP = math.floor(TICKS_PER_TILE * HOP_DISTANCE)
+
+flow_pressure_corridor.TICKS_PER_TILE = TICKS_PER_TILE
+flow_pressure_corridor.TICKS_PER_HOP = TICKS_PER_HOP
+flow_pressure_corridor.HOP_DISTANCE = HOP_DISTANCE
 
 --- Creates a single 1-tube seed corridor pinned in the motion BVH
 --- @param pkey string Entry port key
@@ -139,20 +152,23 @@ function flow_pressure_corridor.create_seed_corridor(pkey, node, partner_key, pa
         status = "traveling",
         num_segs = 1,
         covered_ports = covered_ports,
-        capsule_count = 0
+        capsule_count = 0,
+        ticks_per_tile = TICKS_PER_TILE,
+        head_flight_id = nil
     }
 
     for i = 1, #covered_ports do
         storage.port_to_pressure_corridor[covered_ports[i]] = corridor_id
     end
 
-    -- Option 1: 1 tick per port-pair hop (matching flow engine spread rate)
-    local flight_ticks = math.max(1, hops_spent)
+    local tpt = TICKS_PER_TILE
+    local flight_ticks = math.max(1, math.ceil(total_dist * tpt))
     local flight_id = "pscope:" .. corridor_id
     local current_tick = game.tick
-    local arrival_tick = current_tick + flight_ticks
 
-    timed_motion.schedule_flight{
+    storage.pressure_corridors[corridor_id].head_flight_id = flight_id
+
+    local record = timed_motion.create_record{
         id = flight_id,
         owner_id = corridor_id,
         surface_name = (surface and surface.name) or "nauvis",
@@ -179,6 +195,7 @@ function flow_pressure_corridor.create_seed_corridor(pkey, node, partner_key, pa
             handoff_target = handoff_target
         }
     }
+    timed_motion.schedule_flight(record)
 
     game.print(string.format(
         "[color=cyan][PressureCorridor:PROBE][/color] Launched wave '%s': Segment 1 (%.1f tiles, %d ticks) -> advancing...",
@@ -353,6 +370,13 @@ function flow_pressure_corridor.handle_scope_arrival(flight_id, flight, current_
         local rem_pressure = (cor.flow_level > 0) and (cor.flow_level - cor.hops_spent) or (cor.flow_level + cor.hops_spent)
         cor.rem_pressure = rem_pressure
 
+        if cor.handoff_port and rem_pressure ~= 0 then
+            storage.flow_levels = storage.flow_levels or {}
+            storage.flow_levels[cor.exit_port] = rem_pressure
+            flow_common.enqueue_port(cor.handoff_port)
+            flow_common.wake_port_parked(cor.handoff_port)
+        end
+
         game.print(string.format(
             "[color=green][PressureCorridor:REACHED][/color] '%s' completed: %.1f tiles (%d leaves, %d hops spent) P_rem=%d handoff=%s",
             corridor_id, cor.dist, cor.num_segs, cor.hops_spent, rem_pressure, tostring(cor.handoff_port)
@@ -443,14 +467,15 @@ function flow_pressure_corridor.handle_scope_arrival(flight_id, flight, current_
     cor.exit_port = last_out_key or cor.exit_port
     cor.handoff_port = next_in
 
-    local seg_hops = hops_spent - meta.hops_spent
-    local flight_ticks = math.max(1, seg_hops)
+    local tpt = flight.ticks_per_tile or TICKS_PER_TILE
+    local flight_ticks = math.max(1, math.ceil(next_seg_dist * tpt))
     local arrival_tick = current_tick + flight_ticks
 
     flight.start_pos = seg_start
     flight.terminal_pos = seg_end
     flight.seg_idx = next_seg_idx
     flight.flight_ticks = flight_ticks
+    flight.ticks_per_tile = tpt
     flight.start_tick = current_tick
     flight.arrival_tick = arrival_tick
 
@@ -472,8 +497,121 @@ function flow_pressure_corridor.handle_scope_arrival(flight_id, flight, current_
     ))
 end
 
+--- Initiates a retreating anti-pressure wave to cleanly reel in dots when pressure turns off
+function flow_pressure_corridor.start_anti_pressure(corridor_id)
+    if not corridor_id then return end
+    local cor = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if not cor or cor.status == "retreating" then return end
+
+    if cor.head_flight_id then
+        timed_motion.remove_flight(cor.head_flight_id, corridor_id)
+        cor.head_flight_id = nil
+    end
+
+    local current_tick = game.tick
+    cor.status = "retreating"
+    cor.retreat_tick = current_tick
+
+    local total_dist = cor.dist or 1
+    local first_step = math.min(16, total_dist)
+    local anti_flight_id = "anti_pressure:" .. corridor_id
+    cor.anti_flight_id = anti_flight_id
+
+    local next_term = {
+        x = cor.start_pos.x + cor.dir.x * first_step,
+        y = cor.start_pos.y + cor.dir.y * first_step
+    }
+
+    local flight_ticks = math.max(1, math.ceil(first_step * TICKS_PER_TILE))
+    local anti_record = timed_motion.create_record{
+        id = anti_flight_id,
+        owner_id = corridor_id,
+        surface_name = cor.surface_name or "nauvis",
+        surface_index = cor.surface_index or 1,
+        start_pos = { x = cor.start_pos.x, y = cor.start_pos.y },
+        terminal_pos = next_term,
+        dir = { x = cor.dir.x, y = cor.dir.y },
+        start_tick = current_tick,
+        ticks_per_tile = TICKS_PER_TILE,
+        flight_ticks = flight_ticks,
+        kind = "anti_pressure",
+        on_arrival = "anti_pressure_arrival",
+        remaining_distance = total_dist,
+        max_distance = total_dist,
+        seg_idx = 1
+    }
+    timed_motion.schedule_flight(anti_record)
+
+    game.print(string.format(
+        "[color=orange][PressureCorridor:VENT][/color] Flow shutoff on '%s' -> anti-pressure wave reeling in (%.1f tiles)...",
+        corridor_id, total_dist
+    ))
+end
+
+--- Arrival handler for anti-pressure waves: unpins completed BVH leaves and prunes visible sets
+function flow_pressure_corridor.handle_anti_pressure_arrival(flight_id, flight, current_tick, runner)
+    if not flight then return end
+    local corridor_id = flight.owner_id
+    local cor = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if not cor then return end
+
+    local s_idx = flight.surface_index or 1
+    local dir = flight.dir or { x = 0, y = 0 }
+    local cur_seg = flight.seg_idx or 1
+    local seg_key = string.format("%d,%d:%d", dir.x, dir.y, cur_seg)
+
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    if motion_tree then
+        motion_tree:remove_segment(corridor_id, seg_key)
+    end
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    if traj_tree then
+        traj_tree:remove_segment(corridor_id, seg_key)
+        trajectory_bvh.refresh_active_renders()
+    end
+    viewport_bvh.on_segment_removed(s_idx, corridor_id, seg_key)
+
+    local step_dist = math.abs(flight.terminal_pos.x - flight.start_pos.x) + math.abs(flight.terminal_pos.y - flight.start_pos.y)
+    local rem = (flight.remaining_distance or 0) - step_dist
+    flight.remaining_distance = rem
+
+    if rem > 0.05 then
+        local next_step = math.min(16, rem)
+        local next_seg = cur_seg + 1
+        local next_start = { x = flight.terminal_pos.x, y = flight.terminal_pos.y }
+        local next_term = { x = next_start.x + dir.x * next_step, y = next_start.y + dir.y * next_step }
+        local tpt = flight.ticks_per_tile or TICKS_PER_TILE
+        local flight_ticks = math.max(1, math.ceil(next_step * tpt))
+        local arr_tick = current_tick + flight_ticks
+
+        flight.start_pos = next_start
+        flight.terminal_pos = next_term
+        flight.seg_idx = next_seg
+        flight.total_dist = next_step
+        flight.flight_ticks = flight_ticks
+        flight.start_tick = current_tick
+        flight.arrival_tick = arr_tick
+
+        local heap = timed_motion.get_arrival_heap()
+        if heap then
+            heap:push(flight_id, arr_tick, flight_id)
+        end
+    else
+        if storage.pinned_corridors then
+            storage.pinned_corridors[corridor_id] = nil
+        end
+        timed_motion.remove_flight(flight_id, corridor_id)
+        flow_pressure_corridor.remove_corridor(corridor_id)
+        game.print(string.format(
+            "[color=orange][PressureCorridor:DISSIPATED][/color] Corridor '%s' fully cleared and dismantled.",
+            corridor_id
+        ))
+    end
+end
+
 timed_motion.register_arrival_handler("pressure_scope_arrival", flow_pressure_corridor.handle_scope_arrival)
 timed_motion.register_arrival_handler("pressure_corridor_arrival", flow_pressure_corridor.handle_corridor_arrival)
+timed_motion.register_arrival_handler("anti_pressure_arrival", flow_pressure_corridor.handle_anti_pressure_arrival)
 
 --- Removes a seed corridor from the BVH and clears viewport dots
 --- @param corridor_id string
@@ -508,7 +646,28 @@ function flow_pressure_corridor.remove_corridor(corridor_id)
         storage.pinned_corridors[corridor_id] = nil
     end
 
+    timed_motion.remove_flight("pscope:" .. corridor_id, corridor_id)
+    timed_motion.remove_flight("anti_pressure:" .. corridor_id, corridor_id)
+
+    if storage.player_flight_renders then
+        for p_idx, p_renders in pairs(storage.player_flight_renders) do
+            local r_entry = p_renders["pscope:" .. corridor_id] or p_renders["anti_pressure:" .. corridor_id]
+            if r_entry and r_entry.objects then
+                for o = 1, #r_entry.objects do
+                    render_pool.recycle(p_idx, r_entry.objects[o])
+                end
+            end
+            p_renders["pscope:" .. corridor_id] = nil
+            p_renders["anti_pressure:" .. corridor_id] = nil
+        end
+    end
+
     if storage.port_to_pressure_corridor then
+        if cor.covered_ports then
+            for i = 1, #cor.covered_ports do
+                storage.port_to_pressure_corridor[cor.covered_ports[i]] = nil
+            end
+        end
         if cor.entry_port then storage.port_to_pressure_corridor[cor.entry_port] = nil end
         if cor.exit_port then storage.port_to_pressure_corridor[cor.exit_port] = nil end
     end
@@ -606,12 +765,18 @@ end
 
 --- Hook B: Called when pressure first transmits into a passive pneumatic port
 function flow_pressure_corridor.on_pressure_transmit(pkey, node, target_flow, current_flow)
+    if storage.port_to_pressure_corridor and storage.port_to_pressure_corridor[pkey] then
+        return false, "already_in_corridor"
+    end
     local ent_name = (node.entity and node.entity.valid and node.entity.name) or "node"
     local u_num = node.unit_number or 0
 
     local partner_key, flow_dir, partner_node = flow_pressure_corridor.get_colinear_partner(pkey, node)
 
     if partner_key and flow_dir then
+        if storage.port_to_pressure_corridor and storage.port_to_pressure_corridor[partner_key] then
+            return false, "partner_already_in_corridor"
+        end
         local neighbors = storage.flow_connections and storage.flow_connections[partner_key]
         local neighbor_count = 0
         local next_conn = nil
@@ -636,6 +801,261 @@ function flow_pressure_corridor.on_pressure_transmit(pkey, node, target_flow, cu
             pkey, ent_name, u_num, target_flow, reason
         ))
         return false, reason
+    end
+end
+
+--- Truncates an active pressure corridor at a specific intact tube count
+function flow_pressure_corridor.truncate_corridor(corridor_id, keep_tubes, new_dist, new_exit_key, new_exit_node)
+    local cor = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if not cor then return end
+
+    local s_idx = cor.surface_index or 1
+    local dir = cor.dir or { x = 0, y = 0 }
+    local old_dist = cor.dist or new_dist
+
+    local first_cut_port_idx = (keep_tubes * 2) + 1
+    if cor.covered_ports and storage.port_to_pressure_corridor then
+        for p = first_cut_port_idx, #cor.covered_ports do
+            local pkey = cor.covered_ports[p]
+            storage.port_to_pressure_corridor[pkey] = nil
+        end
+        for p = #cor.covered_ports, first_cut_port_idx, -1 do
+            cor.covered_ports[p] = nil
+        end
+    end
+
+    cor.dist = new_dist
+    cor.end_pos = { x = new_exit_node.pos.x, y = new_exit_node.pos.y }
+    cor.exit_port = new_exit_key
+    cor.handoff_port = nil
+    cor.hops_spent = keep_tubes
+    local rem_p = (cor.flow_level > 0) and math.max(0, cor.flow_level - keep_tubes)
+        or math.min(0, cor.flow_level + keep_tubes)
+    cor.rem_pressure = rem_p
+
+    local target_seg_idx = math.max(1, math.floor(new_dist / 16) + 1)
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+
+    local num_segs = cor.num_segs or target_seg_idx
+    for s = target_seg_idx + 1, num_segs do
+        local seg_key = string.format("%d,%d:%d", dir.x, dir.y, s)
+        if motion_tree then
+            motion_tree:remove_segment(corridor_id, seg_key)
+        end
+        if traj_tree then
+            traj_tree:remove_segment(corridor_id, seg_key)
+        end
+        viewport_bvh.on_segment_removed(s_idx, corridor_id, seg_key)
+    end
+    cor.num_segs = target_seg_idx
+
+    local term_seg_key = string.format("%d,%d:%d", dir.x, dir.y, target_seg_idx)
+    if motion_tree then
+        local owner_rec = motion_tree.trajectories and motion_tree.trajectories[corridor_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[term_seg_key]
+        if leaf then
+            leaf.d_end = new_dist
+            leaf.end_pos = { x = cor.end_pos.x, y = cor.end_pos.y }
+            leaf.trail_count = math.max(1, math.floor(new_dist - leaf.d_start))
+            leaf.min_x = math.min(leaf.start_pos.x, cor.end_pos.x) - 0.45
+            leaf.max_x = math.max(leaf.start_pos.x, cor.end_pos.x) + 0.45
+            leaf.min_y = math.min(leaf.start_pos.y, cor.end_pos.y) - 0.45
+            leaf.max_y = math.max(leaf.start_pos.y, cor.end_pos.y) + 0.45
+            viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+        end
+    end
+    if traj_tree then
+        local owner_rec = traj_tree.trajectories and traj_tree.trajectories[corridor_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[term_seg_key]
+        if leaf then
+            leaf.d_end = new_dist
+            leaf.end_pos = { x = cor.end_pos.x, y = cor.end_pos.y }
+            leaf.min_x = math.min(leaf.start_pos.x, cor.end_pos.x) - 0.45
+            leaf.max_x = math.max(leaf.start_pos.x, cor.end_pos.x) + 0.45
+            leaf.min_y = math.min(leaf.start_pos.y, cor.end_pos.y) - 0.45
+            leaf.max_y = math.max(leaf.start_pos.y, cor.end_pos.y) + 0.45
+        end
+        trajectory_bvh.refresh_active_renders()
+    end
+
+    if cor.status == "traveling" then
+        local flight_id = "pscope:" .. corridor_id
+        timed_motion.remove_flight(flight_id, corridor_id)
+        cor.status = "stationary"
+    end
+
+    game.print(string.format(
+        "[color=orange][PressureCorridor:TRUNCATE][/color] Corridor '%s' truncated: %.1f -> %.1f tiles (%d tubes intact) -> terminus at %s",
+        corridor_id, old_dist, new_dist, keep_tubes, new_exit_key
+    ))
+end
+
+--- Reschedules an advancing wavefront horizon when an obstacle or gap appears ahead of the moving head
+function flow_pressure_corridor.update_corridor_horizon(cor, keep_tubes, new_dist, new_exit_key, new_exit_node, flight)
+    local corridor_id = cor.id
+    local s_idx = cor.surface_index or 1
+    local dir = cor.dir or { x = 0, y = 0 }
+
+    local first_cut_port_idx = (keep_tubes * 2) + 1
+    if cor.covered_ports and storage.port_to_pressure_corridor then
+        for p = first_cut_port_idx, #cor.covered_ports do
+            storage.port_to_pressure_corridor[cor.covered_ports[p]] = nil
+        end
+        for p = #cor.covered_ports, first_cut_port_idx, -1 do
+            cor.covered_ports[p] = nil
+        end
+    end
+
+    cor.dist = new_dist
+    cor.end_pos = { x = new_exit_node.pos.x, y = new_exit_node.pos.y }
+    cor.exit_port = new_exit_key
+    cor.handoff_port = nil
+    cor.hops_spent = keep_tubes
+    local rem_p = (cor.flow_level > 0) and math.max(0, cor.flow_level - keep_tubes)
+        or math.min(0, cor.flow_level + keep_tubes)
+    cor.rem_pressure = rem_p
+
+    if flight then
+        local sp = flight.start_pos
+        local seg_dist = math.abs(cor.end_pos.x - sp.x) + math.abs(cor.end_pos.y - sp.y)
+        flight.terminal_pos = { x = cor.end_pos.x, y = cor.end_pos.y }
+        flight.total_dist = seg_dist
+        flight.remaining_distance = seg_dist
+        if flight.metadata then
+            flight.metadata.is_stopped = true
+            flight.metadata.hops_budget = keep_tubes
+            flight.metadata.total_dist = new_dist
+        end
+
+        local tpt = flight.ticks_per_tile or TICKS_PER_TILE
+        local new_flight_ticks = math.max(1, math.ceil(seg_dist * tpt))
+        local current_tick = game.tick
+        local new_arrival_tick = flight.start_tick + new_flight_ticks
+        if new_arrival_tick <= current_tick then
+            new_arrival_tick = current_tick + 1
+        end
+
+        flight.flight_ticks = new_flight_ticks
+        flight.arrival_tick = new_arrival_tick
+
+        local heap = timed_motion.get_arrival_heap()
+        if heap then
+            heap:remove(flight.id)
+            heap:push(flight.id, new_arrival_tick, flight.id)
+        end
+    end
+
+    local target_seg_idx = math.max(1, math.floor(new_dist / 16) + 1)
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+
+    local term_seg_key = string.format("%d,%d:%d", dir.x, dir.y, target_seg_idx)
+    if motion_tree then
+        local owner_rec = motion_tree.trajectories and motion_tree.trajectories[corridor_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[term_seg_key]
+        if leaf then
+            leaf.d_end = new_dist
+            leaf.end_pos = { x = cor.end_pos.x, y = cor.end_pos.y }
+            leaf.min_x = math.min(leaf.start_pos.x, cor.end_pos.x) - 0.45
+            leaf.max_x = math.max(leaf.start_pos.x, cor.end_pos.x) + 0.45
+            leaf.min_y = math.min(leaf.start_pos.y, cor.end_pos.y) - 0.45
+            leaf.max_y = math.max(leaf.start_pos.y, cor.end_pos.y) + 0.45
+        end
+    end
+    if traj_tree then
+        local owner_rec = traj_tree.trajectories and traj_tree.trajectories[corridor_id]
+        local leaf = owner_rec and owner_rec.segments and owner_rec.segments[term_seg_key]
+        if leaf then
+            leaf.d_end = new_dist
+            leaf.end_pos = { x = cor.end_pos.x, y = cor.end_pos.y }
+            leaf.min_x = math.min(leaf.start_pos.x, cor.end_pos.x) - 0.45
+            leaf.max_x = math.max(leaf.start_pos.x, cor.end_pos.x) + 0.45
+            leaf.min_y = math.min(leaf.start_pos.y, cor.end_pos.y) - 0.45
+            leaf.max_y = math.max(leaf.start_pos.y, cor.end_pos.y) + 0.45
+        end
+        trajectory_bvh.refresh_active_renders()
+    end
+
+    game.print(string.format(
+        "[color=cyan][PressureCorridor:HORIZON][/color] Corridor '%s' horizon clamped to %.1f tiles ahead -> wave will stop at gap.",
+        corridor_id, new_dist
+    ))
+end
+
+function flow_pressure_corridor.handle_corridor_disruption(corridor_id, hit_pkey, unit_number)
+    local cor = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if not cor then return end
+
+    local hit_idx = nil
+    if cor.covered_ports then
+        for i = 1, #cor.covered_ports do
+            if cor.covered_ports[i] == hit_pkey then
+                hit_idx = i
+                break
+            end
+        end
+    end
+
+    if not hit_idx or hit_idx <= 2 then
+        flow_pressure_corridor.remove_corridor(corridor_id)
+        game.print(string.format(
+            "[color=orange][PressureCorridor:DISRUPT][/color] Corridor '%s' severed at entry (#%d, port %s) -> corridor dismantled!",
+            corridor_id, unit_number or 0, tostring(hit_pkey)
+        ))
+        return
+    end
+
+    local hit_tube_idx = math.ceil(hit_idx / 2)
+    local keep_tubes = hit_tube_idx - 1
+
+    if keep_tubes < 1 then
+        flow_pressure_corridor.remove_corridor(corridor_id)
+        return
+    end
+
+    local last_exit_key = cor.covered_ports[keep_tubes * 2]
+    local last_exit_node = storage.flow_nodes and storage.flow_nodes[last_exit_key]
+    if not last_exit_node then
+        flow_pressure_corridor.remove_corridor(corridor_id)
+        return
+    end
+
+    local new_dist = math.abs(last_exit_node.pos.x - cor.start_pos.x) + math.abs(last_exit_node.pos.y - cor.start_pos.y)
+    if new_dist < 0.5 then
+        flow_pressure_corridor.remove_corridor(corridor_id)
+        return
+    end
+
+    -- Real-time head position check: partition between forward horizon clamping and backward cut truncation
+    local cur_head_dist = cor.dist or 0
+    local cur_flight = cor.head_flight_id and timed_motion.get_flight(cor.head_flight_id)
+    if cor.status == "traveling" and cur_flight then
+        local cur_pos = timed_motion.get_interpolated_position(cur_flight, game.tick)
+        cur_head_dist = math.abs(cur_pos.x - cor.start_pos.x) + math.abs(cur_pos.y - cor.start_pos.y)
+    end
+
+    if cor.status == "traveling" and new_dist > (cur_head_dist + 0.05) then
+        flow_pressure_corridor.update_corridor_horizon(cor, keep_tubes, new_dist, last_exit_key, last_exit_node, cur_flight)
+    else
+        flow_pressure_corridor.truncate_corridor(corridor_id, keep_tubes, new_dist, last_exit_key, last_exit_node)
+    end
+end
+
+--- Hook called by flow_engine.disconnect_entity before ports are destroyed
+function flow_pressure_corridor.handle_entity_disconnecting(unit_number, unit_ports)
+    if not (unit_ports and storage.port_to_pressure_corridor) then return end
+
+    local checked_corridors = {}
+    for _, pkey in pairs(unit_ports) do
+        local cor_id = storage.port_to_pressure_corridor[pkey]
+        if cor_id and not checked_corridors[cor_id] then
+            checked_corridors[cor_id] = pkey
+        end
+    end
+
+    for cor_id, hit_pkey in pairs(checked_corridors) do
+        flow_pressure_corridor.handle_corridor_disruption(cor_id, hit_pkey, unit_number)
     end
 end
 

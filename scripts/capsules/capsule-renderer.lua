@@ -417,8 +417,68 @@ function capsule_renderer.step_precalculations(current_tick)
     end
 end
 
+local function clean_prepare_frame()
+    local current_tick = game.tick
+    if last_prepared_tick == current_tick then
+        return
+    end
+    last_prepared_tick = current_tick
+    local t_pf = profiler.start_timer()
+
+    viewport_bvh.update_all_players()
+    active_debug_count = 0
+
+    local players = game.players
+    for _, player in pairs(players) do
+        if player and player.valid then
+            local p_idx = player.index
+            local view_settings = player.game_view_settings
+            local alt_mode = view_settings and view_settings.show_entity_info
+
+            if alt_mode then
+                local wants_debug = is_debug_active("capsules", p_idx)
+                local wants_peek = is_debug_active("peek", p_idx)
+                local hovered_unit = nil
+
+                if wants_peek then
+                    local selected = player.selected
+                    if selected and selected.valid and selected.unit_number then
+                        hovered_unit = selected.unit_number
+                    else
+                        wants_peek = false
+                    end
+                end
+
+                if wants_debug or wants_peek then
+                    active_debug_count = active_debug_count + 1
+                    local entry = active_debug_players[active_debug_count]
+                    if not entry then
+                        entry = {}
+                        active_debug_players[active_debug_count] = entry
+                    end
+                    entry.player = player
+                    entry.index = p_idx
+                    entry.wants_debug = wants_debug
+                    entry.wants_peek = wants_peek
+                    entry.hovered_unit = hovered_unit
+                end
+            end
+        end
+    end
+
+    for i = active_debug_count + 1, #active_debug_players do
+        active_debug_players[i] = nil
+    end
+    capsule_renderer.update_governor(current_tick)
+    if t_pf then profiler.record_bvh("Prepare Frame", t_pf) end
+end
+
 --- Pre-evaluates player viewport eligibility, Alt Mode state, and hover peeking unit numbers once per tick.
 function capsule_renderer.prepare_frame()
+    return clean_prepare_frame()
+end
+
+local function _legacy_prepare_frame()
     local current_tick = game.tick
     if last_prepared_tick == current_tick then
         return

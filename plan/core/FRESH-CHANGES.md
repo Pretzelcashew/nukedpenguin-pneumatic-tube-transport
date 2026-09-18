@@ -377,3 +377,9 @@
 3. **Acyclic Invalidation Helpers (`scripts/flow/flow-kinetic.lua`):** Stripped `require("scripts.capsules.capsule-renderer")` from `flow-kinetic.lua` to break an indirect circular dependency chain (`capsule-renderer -> debug-manager -> flow-engine -> flow-kinetic`), replacing external calls with localized, zero-allocation storage buffer dirtying helpers.
 4. **Test Fixture Isolation & Assertion Parity (`scripts/capsules/capsule-renderer.lua`):** Updated `step_buffer_decay` to accept an optional test buffer fixture to prevent Test 6 from colliding with live factory entries, and adjusted Test 7 to assert against physical obstacle horizon truncation rather than constant-velocity intermediate positions.
 
+### Revision: Clean Prepare Frame & Active Debug Player Caching
+**Date:** 2026-09-17 21:23 EDT
+**Context:** Refactors the per-tick frame preparation routine in the capsule renderer to streamline player viewport evaluation and active debug state collection.
+**Key Changes:**
+1. **Frame Preparation (`scripts/capsules/capsule-renderer.lua`):** Implemented `clean_prepare_frame` to evaluate Alt Mode eligibility, resolve hover peek unit numbers, and manage pooled `active_debug_players` allocations.
+2. **Legacy Transition (`scripts/capsules/capsule-renderer.lua`):** Routed `capsule_renderer.prepare_frame` directly to `clean_prepare_frame` while retaining the previous implementation as `_legacy_prepare_frame`.

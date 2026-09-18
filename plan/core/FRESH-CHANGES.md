@@ -383,3 +383,14 @@
 **Key Changes:**
 1. **Frame Preparation (`scripts/capsules/capsule-renderer.lua`):** Implemented `clean_prepare_frame` to evaluate Alt Mode eligibility, resolve hover peek unit numbers, and manage pooled `active_debug_players` allocations.
 2. **Legacy Transition (`scripts/capsules/capsule-renderer.lua`):** Routed `capsule_renderer.prepare_frame` directly to `clean_prepare_frame` while retaining the previous implementation as `_legacy_prepare_frame`.
+
+
+### Revision: Pneumatic Pressure Corridor Flight and Flow Integration
+**Date:** 2026-09-18 00:24 EDT
+**Context:** Extends timed capsule flight to straight pneumatic lines by intercepting flow engine pressure emit and transmit events, bypassing discrete hops along linear pipe corridors.
+**Key Changes:**
+1. **Pressure Corridor Timed Launch (`scripts/capsules/capsule-runner.lua`):** Added a pre-routing evaluation step in target selection to execute timed launches into valid pressure corridors before falling back to classic hop logic.
+2. **Centralized Arrival Dispatch (`scripts/utils/timed-motion.lua`, `scripts/capsules/capsule-ballistics.lua`):** Migrated arrival handler registration and lookups from `capsule_ballistics` into `timed_motion`, adding safety fallback tick calculations during flight scheduling.
+3. **Flow Corridor Lifecycle (`scripts/flow/flow-engine.lua`):** Hooked pressure emission and transmission delta events to create and tear down pressure corridors, suppressing individual node rendering in favor of corridor renders.
+4. **Corridor Trail Visuals (`scripts/utils/viewport-bvh.lua`):** Added dedicated BVH static dot rendering for pressure corridors, styling dots in cyan for positive pressure push and orange for vacuum pull.
+5. **Architecture Roadmap (`plan/core/CURRENT-TASK.md`):** Documented specifications for straight-line corridor detection, obstruction handling, and seamless handoffs between timed flight and branching hop networks.

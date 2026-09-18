@@ -10,6 +10,7 @@ local counter_range = require("scripts.counters.counter-range")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local projector_settings = require("scripts.projectors.projector-settings")
+local flow_pressure_corridor = require("scripts.flow.flow-pressure-corridor")
 
 local flow_engine = {}
 
@@ -529,6 +530,27 @@ function flow_engine.step(tick)
             flow_changed = (target_flow ~= current_flow)
 
         if flow_changed then
+            local is_corridor = false
+            if node then
+                if node.emitter and node.emitter ~= 0 then
+                    if current_flow == 0 and target_flow ~= 0 then
+                        flow_pressure_corridor.on_pressure_emit(pkey, node, target_flow, current_flow)
+                    end
+                else
+                    if current_flow == 0 and target_flow ~= 0 then
+                        local straight, c_id = flow_pressure_corridor.on_pressure_transmit(pkey, node, target_flow, current_flow)
+                        if straight and c_id then
+                            is_corridor = true
+                        end
+                    elseif current_flow ~= 0 and target_flow == 0 then
+                        local c_id = flow_pressure_corridor.get_corridor_for_port(pkey)
+                        if c_id then
+                            flow_pressure_corridor.remove_corridor(c_id)
+                        end
+                    end
+                end
+            end
+
             if target_flow ~= 0 then
                 storage.flow_levels[pkey] = target_flow
             else
@@ -537,7 +559,12 @@ function flow_engine.step(tick)
 
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node then
-                update_pos_render(node.pos_key)
+                local in_corridor = is_corridor or (flow_pressure_corridor.get_corridor_for_port(pkey) ~= nil)
+                if in_corridor then
+                    destroy_pos_renders(node.pos_key)
+                else
+                    update_pos_render(node.pos_key)
+                end
             end
         end
 

@@ -401,31 +401,53 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
         local sp = r_sp and { x = r_sp.x + dx * d_base, y = r_sp.y + dy * d_base } or leaf.start_pos
 
         if sp and (dx ~= 0 or dy ~= 0) then
-            for i = cur_d + 1, count do
-                local d = d_base + i
-                if d > min_allowed then
-                local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
-                if d % 5 == 0 then
-                    local prom = render_pool.lease_circle{
-                        color = palette.core,
-                        radius = 0.16,
+            if leaf.pressure_corridor then
+                -- Dedicated Pneumatic Pressure Dot Styling (Cyan for +P push, Orange for -P vacuum)
+                local p_lvl = leaf.pressure_level or 10
+                local dot_color = (p_lvl >= 0)
+                    and { r = 0.20, g = 0.85, b = 1.00, a = 0.90 }
+                    or  { r = 1.00, g = 0.50, b = 0.15, a = 0.90 }
+
+                for i = cur_d + 1, count do
+                    local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
+                    local dot = render_pool.lease_circle{
+                        color = dot_color,
+                        radius = 0.10,
                         filled = true,
                         target = dot_pos,
                         surface = surface,
                         players = { player }
                     }
-                    if prom then objects[i] = prom end
-                else
-                    local min_dot = render_pool.lease_circle{
-                        color = MINOR_DOT_COLOR,
-                        radius = 0.08,
-                        filled = true,
-                        target = dot_pos,
-                        surface = surface,
-                        players = { player }
-                    }
-                    if min_dot then objects[i] = min_dot end
+                    if dot then objects[i] = dot end
                 end
+            else
+                -- Kinetic Projector Beam Styling (Magenta / Quality-Tiered)
+                for i = cur_d + 1, count do
+                    local d = d_base + i
+                    if d > min_allowed then
+                        local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
+                        if d % 5 == 0 then
+                            local prom = render_pool.lease_circle{
+                                color = palette.core,
+                                radius = 0.16,
+                                filled = true,
+                                target = dot_pos,
+                                surface = surface,
+                                players = { player }
+                            }
+                            if prom then objects[i] = prom end
+                        else
+                            local min_dot = render_pool.lease_circle{
+                                color = MINOR_DOT_COLOR,
+                                radius = 0.08,
+                                filled = true,
+                                target = dot_pos,
+                                surface = surface,
+                                players = { player }
+                            }
+                            if min_dot then objects[i] = min_dot end
+                        end
+                    end
                 end
             end
             item.trail_dots_count = count

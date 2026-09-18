@@ -15,6 +15,7 @@ local debug_manager = require("scripts.debug-manager")
 local capsule_defs = require("scripts.capsules.capsule-definitions")
 local capsule_transit = require("scripts.capsules.capsule-transit")
 local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
+local flow_pressure_corridor = require("scripts.flow.flow-pressure-corridor")
 local binary_heap = require("scripts.utils.binary-heap")
 local profiler = require("scripts.utils.profiler")
 
@@ -593,6 +594,12 @@ function capsule_runner.select_next_target(capsule)
         return "timed_launched"
     elseif launch_result then
         return launch_result
+    end
+
+    -- 3. Pressure Corridor Timed Launch
+    local corridor_launch = flow_pressure_corridor.try_corridor_launch(capsule, from_port_key, capsule_runner)
+    if corridor_launch == "timed_launched" then
+        return "timed_launched"
     end
 
     local payload_item = capsule.dominant_item

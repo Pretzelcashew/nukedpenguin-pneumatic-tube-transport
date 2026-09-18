@@ -104,6 +104,8 @@ function timed_motion.schedule_flight(record)
     storage.timed_flight_records = storage.timed_flight_records or {}
     storage.timed_flight_records[cap_id] = record
 
+    record.arrival_tick = record.arrival_tick or ((record.start_tick or game.tick) + (record.flight_ticks or 1))
+
     local heap = timed_motion.get_arrival_heap()
     heap:push(cap_id, record.arrival_tick, cap_id)
 
@@ -364,8 +366,19 @@ function timed_motion.remove_corridor(surface_index, corridor_id)
 end
 
 --------------------------------------------------------------------------------
--- STEP ARRIVALS
+-- STEP ARRIVALS & HANDLER REGISTRY
 --------------------------------------------------------------------------------
+local arrival_handlers = {}
+timed_motion.arrival_handlers = arrival_handlers
+
+function timed_motion.register_arrival_handler(kind, handler)
+    arrival_handlers[kind] = handler
+end
+
+function timed_motion.get_arrival_handler(kind)
+    return arrival_handlers[kind]
+end
+
 --- Pops all expired arrivals from the min-heap and dispatches to handler
 --- @param current_tick number
 --- @param on_arrival_callback function(id, current_tick)
@@ -376,7 +389,7 @@ function timed_motion.step_arrivals(current_tick, on_arrival_callback)
 
     while heap.size > 0 do
         local top_id, arrival_tick = heap:peek()
-        if not top_id or arrival_tick > current_tick then
+        if not top_id or (arrival_tick and arrival_tick > current_tick) then
             break
         end
 

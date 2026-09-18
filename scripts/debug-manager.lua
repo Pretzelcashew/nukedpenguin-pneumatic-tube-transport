@@ -237,6 +237,19 @@ function debug_manager.refresh_panel(player_index)
         set_cell("lbl_time_capsules", results["Capsule Motion"] or "-")
         set_cell("lbl_ctx_capsules", "Active: " .. stats.active_capsules .. " (Parked: " .. stats.parked_capsules .. ")")
 
+        set_cell("lbl_time_cap_tubes", results["Capsules: Tube Traversal"] or "-")
+        local in_tubes = math.max(0, stats.active_capsules - (stats.in_flight_capsules or 0))
+        set_cell("lbl_ctx_cap_tubes", tostring(in_tubes) .. " tube capsules")
+
+        set_cell("lbl_time_cap_ballistics", results["Capsules: Ballistics"] or "-")
+        set_cell("lbl_ctx_cap_ballistics", tostring(stats.in_flight_capsules or 0) .. " in-flight | Heap: " .. tostring(stats.arrival_heap_size or 0))
+
+        set_cell("lbl_time_cap_sync", results["Capsules: Frame Sync"] or "-")
+        local gov = storage.render_governor
+        local cad_str = (gov and gov.cadence == 1 and "60 FPS") or (gov and gov.cadence == 2 and "30 FPS") or (gov and gov.cadence == 3 and "20 FPS") or "Idle"
+        if gov and gov.is_idle then cad_str = "Idle (0 observed)" end
+        set_cell("lbl_ctx_cap_sync", "Cadence: " .. cad_str)
+
         set_cell("lbl_time_hubs", results["Hub Logistics"] or "-")
         set_cell("lbl_ctx_hubs", "Active Hubs: " .. stats.active_hubs)
 
@@ -509,9 +522,21 @@ function debug_manager.open_panel(player_index)
     prof_table.add{type = "label", name = "lbl_time_flow", caption = "-"}
     prof_table.add{type = "label", name = "lbl_ctx_flow", caption = "Queue: " .. stats.flow_queue_depth .. " | Nodes: " .. stats.flow_node_count}
 
-    prof_table.add{type = "label", caption = "Capsule Motion"}
+    prof_table.add{type = "label", caption = "[font=default-semibold]Capsule Motion[/font]"}
     prof_table.add{type = "label", name = "lbl_time_capsules", caption = "-"}
     prof_table.add{type = "label", name = "lbl_ctx_capsules", caption = "Active: " .. stats.active_capsules .. " (Parked: " .. stats.parked_capsules .. ")"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Tube Traversal[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_cap_tubes", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_cap_tubes", caption = "6t Discrete Hops"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Ballistics & Heap[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_cap_ballistics", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_cap_ballistics", caption = "Arrivals & Flights"}
+
+    prof_table.add{type = "label", caption = "  [color=0.75,0.75,0.75]↳ Frame Sync[/color]"}
+    prof_table.add{type = "label", name = "lbl_time_cap_sync", caption = "-"}
+    prof_table.add{type = "label", name = "lbl_ctx_cap_sync", caption = "Governor & Viewports"}
 
     prof_table.add{type = "label", caption = "Hub Logistics"}
     prof_table.add{type = "label", name = "lbl_time_hubs", caption = "-"}

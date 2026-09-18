@@ -25,6 +25,9 @@ local latest_bvh_results = {}
 local system_order = {
     "Flow Engine",
     "Capsule Motion",
+    "Capsules: Tube Traversal",
+    "Capsules: Ballistics",
+    "Capsules: Frame Sync",
     "Hub Logistics",
     "Device Scanner",
     "Scanner: Counters",
@@ -348,6 +351,9 @@ function profiler.print_summary(player)
         ["__TOTAL__"] = true,
         ["Flow Engine"] = true,
         ["Capsule Motion"] = true,
+        ["Capsules: Tube Traversal"] = true,
+        ["Capsules: Ballistics"] = true,
+        ["Capsules: Frame Sync"] = true,
         ["Hub Logistics"] = true,
         ["Device Scanner"] = true,
         ["Scanner: Counters"] = true,
@@ -617,12 +623,17 @@ function profiler.get_system_stats()
         flow_node_count = 0,
         active_capsules = 0,
         parked_capsules = 0,
+        in_flight_capsules = 0,
+        arrival_heap_size = 0,
         active_hubs = 0,
         active_pumps = 0,
         active_diverters = 0,
         active_counters = 0,
         active_projectors = 0,
     }
+
+    local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
+    stats.arrival_heap_size = heap and heap.size or 0
 
     if not storage then return stats end
 
@@ -641,6 +652,14 @@ function profiler.get_system_stats()
     if storage.active_capsules then
         for _ in pairs(storage.active_capsules) do
             stats.active_capsules = stats.active_capsules + 1
+        end
+    end
+
+    if storage.capsules then
+        for _, cap in pairs(storage.capsules) do
+            if cap.in_timed_flight then
+                stats.in_flight_capsules = stats.in_flight_capsules + 1
+            end
         end
     end
 

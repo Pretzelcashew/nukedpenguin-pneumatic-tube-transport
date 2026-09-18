@@ -43,6 +43,7 @@ local scratch_debug_players = {}
 local scratch_debug_keys = {}
 local previous_arrival_capsules = {}
 local scratch_observed_flights = {}
+local scratch_active_owners = {}
 
 --- Helper to safely test if an item stack is spoilable without triggering Factorio 2.0 LuaItemPrototype __index errors
 local function is_stack_spoilable(stack)
@@ -183,6 +184,22 @@ function capsule_renderer.update_governor(current_tick)
         return
     end
 
+    for k in pairs(scratch_active_owners) do scratch_active_owners[k] = nil end
+    if flights_store then
+        for owner_id, flights in pairs(flights_store) do
+            if flights and #flights > 0 then
+                scratch_active_owners[owner_id] = true
+            end
+        end
+    end
+    if storage.projector_reticles then
+        for r_id, ret in pairs(storage.projector_reticles) do
+            if ret.retreat_tick then
+                scratch_active_owners[r_id] = true
+            end
+        end
+    end
+
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
     for p = 1, #players do
         local player = players[p]
@@ -197,6 +214,7 @@ function capsule_renderer.update_governor(current_tick)
                 local v_set = viewport_bvh.get_visible_set(p_idx)
                 if v_set then
                     for _, item in pairs(v_set) do
+                        if scratch_active_owners[item.owner_id] then
                         local owner_flights = flights_store[item.owner_id]
                         if owner_flights then
                             local leaf = item.leaf
@@ -232,6 +250,7 @@ function capsule_renderer.update_governor(current_tick)
                                 end
                             end
                         end
+                        end -- if scratch_active_owners
                     end
                 end
             end
@@ -1277,6 +1296,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if flights_store and v_set and next(v_set) ~= nil then
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
+            if scratch_active_owners[item.owner_id] then
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
             if reticle and reticle.retreat_tick then
                 local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
@@ -1440,6 +1460,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                     end
                 end
             end
+            end -- if scratch_active_owners
         end
     end
 

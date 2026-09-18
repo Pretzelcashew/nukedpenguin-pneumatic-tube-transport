@@ -16,6 +16,7 @@ local capsule_defs = require("scripts.capsules.capsule-definitions")
 local capsule_transit = require("scripts.capsules.capsule-transit")
 local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
 local binary_heap = require("scripts.utils.binary-heap")
+local profiler = require("scripts.utils.profiler")
 
 local STAGGER_TICKS = 6
 local MAX_NODE_HOPS_PER_STEP = 3
@@ -901,8 +902,11 @@ local function _unused_handle_liminal_entity_spawn(entity)
 end
 
 function capsule_runner.update_capsules(current_tick)
+    local t_sync = profiler.start_sub_timer("Capsules: Frame Sync")
     capsule_renderer.prepare_frame()
+    profiler.stop_sub_timer("Capsules: Frame Sync", t_sync)
 
+    local t_ballistics = profiler.start_sub_timer("Capsules: Ballistics")
     if capsule_ballistics.USE_TIMED_ARRIVAL then
         local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
         if heap and heap.size > 0 then
@@ -910,8 +914,10 @@ function capsule_runner.update_capsules(current_tick)
         end
         capsule_renderer.update_timed_capsules(current_tick)
     end
+    profiler.stop_sub_timer("Capsules: Ballistics", t_ballistics)
 
     if not storage.capsules or next(storage.capsules) == nil then return end
+    local t_tubes = profiler.start_sub_timer("Capsules: Tube Traversal")
     capsule_transit.prepare_player_targets()
     capsule_lifecycle.step_spoil_heap(current_tick)
 
@@ -1021,6 +1027,7 @@ function capsule_runner.update_capsules(current_tick)
         end
         end -- if not capsule.in_timed_flight
     end
+    profiler.stop_sub_timer("Capsules: Tube Traversal", t_tubes)
 end
 
 function capsule_runner.register_events()

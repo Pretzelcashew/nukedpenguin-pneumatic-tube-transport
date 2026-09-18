@@ -383,3 +383,12 @@
 **Key Changes:**
 1. **Frame Preparation (`scripts/capsules/capsule-renderer.lua`):** Implemented `clean_prepare_frame` to evaluate Alt Mode eligibility, resolve hover peek unit numbers, and manage pooled `active_debug_players` allocations.
 2. **Legacy Transition (`scripts/capsules/capsule-renderer.lua`):** Routed `capsule_renderer.prepare_frame` directly to `clean_prepare_frame` while retaining the previous implementation as `_legacy_prepare_frame`.
+
+
+### Revision: Reticle Wake Peeling Governor Dormancy Fix
+**Date:** 2026-09-18 14:36 EDT
+**Context:** When projector reticles were decaying or retreating, the observation governor was incorrectly classifying the simulation as completely idle because anti-reticle flights were filtered out of visual observation counts. This caused `update_timed_capsules` to early-exit, entirely skipping the per-tick dot-clearing loop in `dispatch_player_renders` until the 16-tile segment arrival popped the entire BVH leaf at once. This session registered visible wake retreats as active work in the governor, locked the cadence to 60 FPS during retreats, and restored smooth tick-by-tick dot peeling.
+**Key Changes:**
+1. **Governor Dormancy Awakening (`scripts/capsules/capsule-renderer.lua`):** Evaluated active `retreat_tick` entries in `update_governor` alongside active flights, ensuring visible retreating corridors prevent the governor from entering an idle sleep state.
+2. **60 FPS Cadence Lock for Wake Peeling (`scripts/capsules/capsule-renderer.lua`):** Bypassed cadence throttling in `dispatch_player_renders` whenever a visible reticle is actively retreating, ensuring dot clearance executes on every single tick.
+3. **Decoupled Render Pass Evaluation (`scripts/capsules/capsule-renderer.lua`):** Removed the outer `has_flights` guard from the `needs_render_pass` check, allowing visible retreating reticles to trigger render dispatch independently of active projectile flights.

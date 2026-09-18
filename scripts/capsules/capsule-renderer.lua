@@ -165,7 +165,18 @@ function capsule_renderer.update_governor(current_tick)
     local gov = storage.render_governor
 
     local flights_store = storage.timed_flights or storage.projector_flights
-    if not flights_store or next(flights_store) == nil then
+    local has_flights = flights_store and next(flights_store) ~= nil
+    local has_retreats = false
+    if storage.projector_reticles then
+        for _, ret in pairs(storage.projector_reticles) do
+            if ret.retreat_tick then
+                has_retreats = true
+                break
+            end
+        end
+    end
+
+    if not has_flights and not has_retreats then
         gov.observed_count = 0
         gov.smoothed_count = 0
         gov.cadence = CADENCE_60FPS
@@ -215,7 +226,11 @@ function capsule_renderer.update_governor(current_tick)
                 if v_set then
                     for _, item in pairs(v_set) do
                         if scratch_active_owners[item.owner_id] then
-                        local owner_flights = flights_store[item.owner_id]
+                        local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
+                        if reticle and reticle.retreat_tick then
+                            scratch_observed_flights["retreat:" .. tostring(item.owner_id)] = true
+                        end
+                        local owner_flights = flights_store and flights_store[item.owner_id]
                         if owner_flights then
                             local leaf = item.leaf
                             local d_start = leaf and leaf.d_start or 0
@@ -1299,7 +1314,19 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if dbg and dbg.render_cadence and dbg.render_cadence > cadence then
         cadence = dbg.render_cadence
     end
-    if cadence > 1 and (current_tick % cadence ~= 0) then
+
+    local has_visible_retreat = false
+    if v_set then
+        for _, it in pairs(v_set) do
+            local r = storage.projector_reticles and storage.projector_reticles[it.owner_id]
+            if r and r.retreat_tick then
+                has_visible_retreat = true
+                break
+            end
+        end
+    end
+
+    if not has_visible_retreat and cadence > 1 and (current_tick % cadence ~= 0) then
         return
     end
 
@@ -1317,15 +1344,13 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     end
 
     local flights_store = storage.timed_flights or storage.projector_flights
-    local has_flights = (flights_store and next(flights_store) ~= nil)
-
     local needs_render_pass = false
     if p_renders and next(p_renders) ~= nil then
         needs_render_pass = true
-    elseif has_flights then
+    else
         for _, item in pairs(v_set) do
             local owner_id = item.owner_id
-            if flights_store[owner_id] then
+            if flights_store and flights_store[owner_id] then
                 needs_render_pass = true
                 break
             end

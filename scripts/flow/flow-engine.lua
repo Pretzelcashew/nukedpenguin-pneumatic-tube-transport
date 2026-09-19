@@ -10,6 +10,11 @@ local counter_range = require("scripts.counters.counter-range")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local projector_settings = require("scripts.projectors.projector-settings")
+local motion_protocols = require("scripts.utils.motion-protocols")
+local timed_motion = require("scripts.utils.timed-motion")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
+local render_pool = require("scripts.utils.render-pool")
 
 local flow_engine = {}
 
@@ -117,6 +122,7 @@ function flow_engine.init_storage()
     storage.kinetic_levels = storage.kinetic_levels or {}
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
+    storage.pressure_corridors = storage.pressure_corridors or {}
 
     -- Counter Range Fields
     storage.counter_levels = storage.counter_levels or {}
@@ -163,6 +169,385 @@ end
 
 function flow_engine.enqueue_unit_ports(unit_number)
     flow_common.enqueue_unit_ports(unit_number)
+end
+
+local function attach_pressure_corridor_static_render(player_index, item, surface)
+    if not (item and item.leaf and surface and surface.valid) then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
+    if not corr then return end
+
+    local leaf = item.leaf
+    item.render_objects = item.render_objects or {}
+    local objects = item.render_objects
+
+    local cur_tick = game.tick
+    local tpt = corr.ticks_per_tile or 2
+
+    local current_reach = corr.total_dist or 1
+    if corr.status == "growing" and corr.start_tick then
+        local elapsed = math.max(0, cur_tick - corr.start_tick)
+        current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
+    end
+
+    local dist_cleared = -1
+    if corr.status == "receding" and corr.retreat_tick then
+        local elapsed_retreat = math.max(0, cur_tick - corr.retreat_tick)
+        dist_cleared = math.floor(elapsed_retreat / tpt)
+    end
+
+    local d_base = leaf.d_start or 0
+    local count = leaf.trail_count or (leaf.d_end and math.max(0, math.floor(leaf.d_end - d_base))) or 0
+
+    for idx, obj in pairs(objects) do
+        if type(idx) == "number" then
+            local d = d_base + idx
+            if d > current_reach or d <= dist_cleared or idx > count then
+                render_pool.recycle(player_index, obj)
+                objects[idx] = nil
+            end
+        end
+    end
+
+    local is_vacuum = (corr.flow_level and corr.flow_level < 0)
+    local dot_color = is_vacuum
+        and { r = 1.0, g = 0.45, b = 0.1, a = 0.85 }
+        or  { r = 0.2, g = 0.85, b = 1.0, a = 0.85 }
+    local prom_color = is_vacuum
+        and { r = 1.0, g = 0.55, b = 0.2, a = 0.95 }
+        or  { r = 0.35, g = 0.95, b = 1.0, a = 0.95 }
+
+    local sp = corr.start_pos
+    local dx = corr.dir.x
+    local dy = corr.dir.y
+
+    for i = 1, count do
+        local d = d_base + i
+        if d <= current_reach and d > dist_cleared and not objects[i] then
+            local dot_pos = { x = sp.x + dx * d, y = sp.y + dy * d }
+            local is_prom = (d % 5 == 0)
+            local obj = render_pool.lease_circle{
+                color = is_prom and prom_color or dot_color,
+                radius = is_prom and 0.16 or 0.10,
+                filled = true,
+                target = dot_pos,
+                surface = surface,
+                render_layer = "entity-info-icon-above",
+                players = { player }
+            }
+            if obj then objects[i] = obj end
+        end
+    end
+
+    item.render_objects = objects
+end
+
+motion_protocols.register_static_render("pressure_static", attach_pressure_corridor_static_render)
+motion_protocols.register_protocol("pressure_corridor", {
+    medium = "pneumatic_network",
+    progression = "chained_segment",
+    head = "none",
+    trail = "none",
+    disruption = "silent_halt",
+    arrival = "none",
+    static_render = "pressure_static",
+    detector = "tube_connectivity",
+    clearance_policy = "none"
+})
+
+local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node)
+    local dx = out_node.dir.x
+    local dy = out_node.dir.y
+    local curr_out = out_pkey
+    local curr_out_node = out_node
+    local initial_len = math.abs(out_node.pos.x - in_node.pos.x) + math.abs(out_node.pos.y - in_node.pos.y)
+    local total_dist = math.max(1, initial_len)
+    local corridor_entities = { [in_node.unit_number] = true }
+    local terminal_branch_pkey = nil
+    local max_reach = 64
+
+    while total_dist < max_reach do
+        local conns = storage.flow_connections and storage.flow_connections[curr_out]
+        if not conns or next(conns) == nil then
+            break
+        end
+
+        local next_in_pkey = nil
+        for n_key in pairs(conns) do
+            next_in_pkey = n_key
+            break
+        end
+
+        local next_in_node = storage.flow_nodes and storage.flow_nodes[next_in_pkey]
+        if not next_in_node then break end
+
+        local next_unit = next_in_node.unit_number
+        if not next_unit or corridor_entities[next_unit] then break end
+
+        local next_u_ports = storage.flow_unit_ports and storage.flow_unit_ports[next_unit]
+        if not next_u_ports then break end
+
+        local found_straight_exit = nil
+        local found_exit_node = nil
+        for _, other_key in ipairs(next_u_ports) do
+            if other_key ~= next_in_pkey then
+                local other_node = storage.flow_nodes and storage.flow_nodes[other_key]
+                if other_node and other_node.group == next_in_node.group then
+                    if flow_common.is_colinear_straight_internal(next_in_pkey, next_in_node, other_key, other_node) then
+                        if other_node.dir and other_node.dir.x == dx and other_node.dir.y == dy then
+                            found_straight_exit = other_key
+                            found_exit_node = other_node
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        if not (found_straight_exit and found_exit_node) then
+            terminal_branch_pkey = next_in_pkey
+            break
+        end
+
+        local seg_len = math.abs(found_exit_node.pos.x - next_in_node.pos.x) + math.abs(found_exit_node.pos.y - next_in_node.pos.y)
+        if seg_len <= 0 then seg_len = 1 end
+        total_dist = total_dist + seg_len
+
+        corridor_entities[next_unit] = true
+        curr_out = found_straight_exit
+        curr_out_node = found_exit_node
+    end
+
+    return total_dist, terminal_branch_pkey, corridor_entities
+end
+
+function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_node, flow_level)
+    if not (in_node and out_node and in_node.pos and out_node.pos and out_node.dir) then return end
+    local corridor_id = "corridor:" .. in_pkey .. "->" .. out_pkey
+
+    storage.pressure_corridors = storage.pressure_corridors or {}
+    local existing = storage.pressure_corridors[corridor_id]
+    if existing and existing.flow_level == flow_level and existing.status ~= "receding" then
+        return
+    end
+
+    if existing then
+        flow_engine.unseed_pressure_corridor(corridor_id, true)
+    end
+
+    local surface_name = in_node.surface_name
+    local surface = surface_name and game.surfaces[surface_name]
+    if not (surface and surface.valid) then return end
+    local s_idx = surface.index
+
+    local source_pkey = nil
+    local source_unit = nil
+    local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
+    if in_conns then
+        for neighbor_key in pairs(in_conns) do
+            local n_node = storage.flow_nodes and storage.flow_nodes[neighbor_key]
+            if n_node then
+                source_pkey = neighbor_key
+                source_unit = n_node.unit_number
+                break
+            end
+        end
+    end
+
+    local total_dist, terminal_branch_pkey, corridor_entities = scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node)
+    local dx = out_node.dir.x
+    local dy = out_node.dir.y
+    local start_pos = { x = in_node.pos.x, y = in_node.pos.y }
+    local terminal_pos = { x = start_pos.x + dx * total_dist, y = start_pos.y + dy * total_dist }
+    local max_seg_idx = math.max(1, math.ceil(total_dist / 16))
+
+    storage.pressure_corridors[corridor_id] = {
+        id = corridor_id,
+        in_pkey = in_pkey,
+        out_pkey = out_pkey,
+        source_pkey = source_pkey,
+        source_unit = source_unit,
+        unit_number = in_node.unit_number,
+        surface_name = surface_name,
+        surface_index = s_idx,
+        start_pos = start_pos,
+        terminal_pos = terminal_pos,
+        dir = { x = dx, y = dy },
+        total_dist = total_dist,
+        flow_level = flow_level,
+        q_level = in_node.q_level or 0,
+        max_seg_idx = max_seg_idx,
+        corridor_entities = corridor_entities,
+        terminal_branch_pkey = terminal_branch_pkey,
+        start_tick = game.tick,
+        status = "growing",
+        registered_segs = 1,
+        ticks_per_tile = 2
+    }
+
+    motion_protocols.protocols[corridor_id] = motion_protocols.protocols["pressure_corridor"]
+
+    local s_end = math.min(16, total_dist)
+    local seg_key = string.format("%d,%d:1", dx, dy)
+    local seg_start_pos = { x = start_pos.x, y = start_pos.y }
+    local seg_end_pos = { x = start_pos.x + dx * s_end, y = start_pos.y + dy * s_end }
+
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    if motion_tree then
+        local leaf = motion_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, 0, s_end, 1)
+        if leaf then
+            leaf.dir = { x = dx, y = dy }
+            leaf.q_level = in_node.q_level or 0
+            leaf.has_trail = true
+            leaf.trail_count = math.max(0, math.floor(s_end))
+            viewport_bvh.on_segment_registered(s_idx, leaf)
+        end
+    end
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    if traj_tree then
+        traj_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, 0, s_end, 1)
+        trajectory_bvh.refresh_active_renders()
+    end
+end
+
+function flow_engine.on_pressure_stop_transmit(in_pkey, in_node, out_pkey, out_node)
+    local corridor_id = "corridor:" .. in_pkey .. "->" .. out_pkey
+    local corr = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if corr and corr.status ~= "receding" then
+        corr.status = "receding"
+        corr.retreat_tick = game.tick
+    end
+end
+
+function flow_engine.unseed_pressure_corridor(corridor_id, force)
+    local corr = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
+    if not corr then return end
+
+    if not force and corr.status ~= "receding" then
+        corr.status = "receding"
+        corr.retreat_tick = game.tick
+        return
+    end
+
+    local s_idx = corr.surface_index or 1
+    local motion_tree = timed_motion.get_motion_tree(s_idx)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    local num_segs = corr.max_seg_idx or math.max(1, math.ceil(corr.total_dist / 16))
+
+    for s = 1, num_segs do
+        local seg_key = string.format("%d,%d:%d", corr.dir.x, corr.dir.y, s)
+        if motion_tree then
+            motion_tree:remove_segment(corridor_id, seg_key)
+        end
+        viewport_bvh.on_segment_removed(s_idx, corridor_id, seg_key)
+        if traj_tree then
+            traj_tree:remove_segment(corridor_id, seg_key)
+        end
+    end
+
+    if traj_tree then
+        trajectory_bvh.refresh_active_renders()
+    end
+
+    motion_protocols.protocols[corridor_id] = nil
+    storage.pressure_corridors[corridor_id] = nil
+end
+
+function flow_engine.step_pressure_corridors(tick)
+    local corridors = storage.pressure_corridors
+    if not (corridors and next(corridors) ~= nil) then return end
+
+    for cid, corr in pairs(corridors) do
+        local tpt = corr.ticks_per_tile or 2
+        local s_idx = corr.surface_index
+
+        local src_alive = true
+        if corr.source_pkey then
+            local src_node = storage.flow_nodes and storage.flow_nodes[corr.source_pkey]
+            local src_flow = storage.flow_levels and storage.flow_levels[corr.source_pkey] or 0
+            local in_conns = storage.flow_connections and storage.flow_connections[corr.in_pkey]
+            if (not src_node) or (src_flow == 0) or (not in_conns) or (not in_conns[corr.source_pkey]) then
+                src_alive = false
+            end
+        end
+
+        if not src_alive and corr.status ~= "receding" then
+            corr.status = "receding"
+            corr.retreat_tick = tick
+        end
+
+        if corr.status == "growing" then
+            local elapsed = math.max(0, tick - corr.start_tick)
+            local current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
+            local cur_seg_target = math.max(1, math.ceil(current_reach / 16))
+
+            if cur_seg_target > corr.registered_segs then
+                local motion_tree = timed_motion.get_motion_tree(s_idx)
+                local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+                local sp = corr.start_pos
+                local dx = corr.dir.x
+                local dy = corr.dir.y
+
+                for s = corr.registered_segs + 1, cur_seg_target do
+                    local s_start = (s - 1) * 16
+                    local s_end = math.min(s * 16, corr.total_dist)
+                    local seg_key = string.format("%d,%d:%d", dx, dy, s)
+                    local seg_start_pos = { x = sp.x + dx * s_start, y = sp.y + dy * s_start }
+                    local seg_end_pos = { x = sp.x + dx * s_end, y = sp.y + dy * s_end }
+
+                    if motion_tree then
+                        local leaf = motion_tree:insert_segment(cid, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
+                        if leaf then
+                            leaf.dir = { x = dx, y = dy }
+                            leaf.q_level = corr.q_level or 0
+                            leaf.has_trail = true
+                            leaf.trail_count = math.max(0, math.floor(s_end - s_start))
+                            viewport_bvh.on_segment_registered(s_idx, leaf)
+                        end
+                    end
+                    if traj_tree then
+                        traj_tree:insert_segment(cid, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
+                    end
+                end
+                corr.registered_segs = cur_seg_target
+                if traj_tree then trajectory_bvh.refresh_active_renders() end
+            end
+
+            local motion_tree = timed_motion.get_motion_tree(s_idx)
+            local owner_rec = motion_tree and motion_tree.trajectories and motion_tree.trajectories[cid]
+            if owner_rec and owner_rec.segments then
+                for _, leaf in pairs(owner_rec.segments) do
+                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                end
+            end
+
+            if current_reach >= corr.total_dist then
+                corr.status = "active"
+                if corr.terminal_branch_pkey and not corr.branch_enqueued then
+                    corr.branch_enqueued = true
+                    flow_engine.enqueue_port(corr.terminal_branch_pkey)
+                    flow_common.wake_port_parked(corr.terminal_branch_pkey)
+                end
+            end
+        elseif corr.status == "receding" then
+            local elapsed_retreat = math.max(0, tick - (corr.retreat_tick or tick))
+            local dist_cleared = math.floor(elapsed_retreat / tpt)
+
+            local motion_tree = timed_motion.get_motion_tree(s_idx)
+            local owner_rec = motion_tree and motion_tree.trajectories and motion_tree.trajectories[cid]
+            if owner_rec and owner_rec.segments then
+                for _, leaf in pairs(owner_rec.segments) do
+                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                end
+            end
+
+            if dist_cleared >= corr.total_dist then
+                flow_engine.unseed_pressure_corridor(cid, true)
+            end
+        end
+    end
 end
 
 function flow_engine.get_node_emitter_level(node)
@@ -535,6 +920,8 @@ function flow_engine.step(tick)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
     flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
     flow_kinetic.step_reticle_obstacles()
+    viewport_bvh.update_all_players()
+    flow_engine.step_pressure_corridors(tick)
 
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
@@ -619,8 +1006,16 @@ function flow_engine.step(tick)
                                 if allow_flow and USE_PRESSURE_CORRIDORS then
                                     local int_conns = storage.flow_connections and storage.flow_connections[int_key]
                                     local has_external = int_conns and (next(int_conns) ~= nil)
-                                    if (not has_external) or is_colinear_straight_internal(pkey, node, int_key, int_node) then
+                                    local is_straight = is_colinear_straight_internal(pkey, node, int_key, int_node)
+                                    if (not has_external) or is_straight then
                                         allow_flow = false
+                                    end
+                                    if is_straight and has_external then
+                                        if target_flow ~= 0 then
+                                            flow_engine.on_pressure_begin_transmit(pkey, node, int_key, int_node, target_flow)
+                                        else
+                                            flow_engine.on_pressure_stop_transmit(pkey, node, int_key, int_node)
+                                        end
                                     end
                                 end
                                 if allow_flow
@@ -844,6 +1239,17 @@ function flow_engine.disconnect_entity(entity)
     for port_index, pkey in pairs(unit_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
         local pos_key = node and node.pos_key
+
+        if storage.pressure_corridors then
+            for cid, corr in pairs(storage.pressure_corridors) do
+                local touches = (corr.source_unit == unit_number)
+                    or (corr.corridor_entities and corr.corridor_entities[unit_number])
+                if touches and corr.status ~= "receding" then
+                    corr.status = "receding"
+                    corr.retreat_tick = game.tick
+                end
+            end
+        end
 
         flow_common.destroy_node(pkey)
 

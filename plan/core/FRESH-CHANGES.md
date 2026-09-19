@@ -59,3 +59,12 @@
 2. **Downstream Tip Pressure Handoff (`scripts/flow/flow-engine.lua`):** Updated terminal branch handoffs in `step_pressure_corridors` to compute `tip_mag = math.max(0, init_mag - (corr.total_dist - 1))`, feeding the exact remaining pressure to downstream junctions, corners, and hubs via `storage.corridor_tip_flows`.
 3. **Monotonic Counter Progression (`scripts/capsules/capsule-renderer.lua`):** Preserved `corr.current_reach` during corridor rendering, stepping rendered numbers down progressively from the current pressure level at distance 1 rather than counting up from 1 at the corridor tip.
 4. **Native Z-Order Reordering (`scripts/capsules/capsule-renderer.lua`, `scripts/flow/flow-renderer.lua`):** Replaced unsupported `render_layer` assignments on geometric shapes and text with Factorio's native `bring_to_front()` method across pressure corridor, junction flow, and counter range overlays, guaranteeing numbers are drawn strictly in front of circles regardless of object recycling or creation order.
+
+
+### Revision: Incremental Pressure Corridor BVH Leaf Registration
+**Date:** 2026-09-19 17:59 EDT
+**Context:** Aligns pressure corridor spatial tree lifecycles with the gradual expansion model used by optical projector reticles. Deprecates instant pre-allocation of downstream 16-tile segments in favor of wavefront-driven, progressive BVH leaf insertion as pressure advances.
+**Key Changes:**
+1. **Segment-1 Initial Registration (`scripts/flow/flow-engine.lua`):** Scoped initial corridor registration in `on_pressure_begin_transmit` strictly to segment 1 ($s = 1$, $0 \le d \le \min(16, \text{total\_dist})$) and initialized `registered_segs = 1`, preventing downstream 16-tile segments from spawning before the pressure wavefront reaches them.
+2. **Progressive Spatial Tree Expansion (`scripts/flow/flow-engine.lua`):** Activated dynamic leaf insertion in `step_pressure_corridors`, registering segments 2+ into `motion_tree`, `traj_tree`, and observer viewports only when `cur_seg_target > corr.registered_segs`.
+3. **Teardown Scope Clamping (`scripts/flow/flow-engine.lua`):** Updated `unseed_pressure_corridor` to bound segment removal loops to `corr.registered_segs or corr.max_seg_idx or 1`, avoiding queries for downstream segments that were never allocated.

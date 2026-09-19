@@ -322,7 +322,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         last_out_pkey = last_out_pkey,
         start_tick = game.tick,
         status = "growing",
-        registered_segs = max_seg_idx,
+        registered_segs = 1,
         ticks_per_tile = 2
     }
 
@@ -332,9 +332,9 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
     local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
     local corr_leaves = {}
 
-    for s = 1, max_seg_idx do
-        local s_start = (s - 1) * 16
-        local s_end = math.min(s * 16, total_dist)
+    for s = 1, 1 do
+        local s_start = 0
+        local s_end = math.min(16, total_dist)
         local seg_key = string.format("%d,%d:%d", dx, dy, s)
         local seg_start_pos = { x = start_pos.x + dx * s_start, y = start_pos.y + dy * s_start }
         local seg_end_pos = { x = start_pos.x + dx * s_end, y = start_pos.y + dy * s_end }
@@ -394,7 +394,7 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
     local s_idx = corr.surface_index or 1
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
-    local num_segs = corr.max_seg_idx or math.max(1, math.ceil(corr.total_dist / 16))
+    local num_segs = corr.registered_segs or corr.max_seg_idx or 1
 
     for s = 1, num_segs do
         local seg_key = string.format("%d,%d:%d", corr.dir.x, corr.dir.y, s)

@@ -1563,25 +1563,10 @@ function capsule_ballistics.handle_ballistic_disruption(bf, cap, cap_id, surface
     if is_peaceful then bf.peaceful_spill = true end
     if is_silent then bf.silent_halt = true end
 
-                    bf.orig_terminal_pos = bf.orig_terminal_pos or { x = bf.terminal_pos.x, y = bf.terminal_pos.y }
-                    bf.orig_receiver = (bf.orig_receiver ~= nil and bf.orig_receiver) or bf.hit_receiver_unit
+    bf.orig_terminal_pos = bf.orig_terminal_pos or { x = bf.terminal_pos.x, y = bf.terminal_pos.y }
+    bf.orig_receiver = (bf.orig_receiver ~= nil and bf.orig_receiver) or bf.hit_receiver_unit
 
-                    local intersects = false
-                    local obst_dist = 0
-
-                    if dx ~= 0 and dy == 0 then
-                        if bb.left_top.y - 0.45 <= sp.y and sp.y <= bb.right_bottom.y + 0.45 then
-                            local entry_x = (dx > 0) and bb.left_top.x or bb.right_bottom.x
-                            obst_dist = (entry_x - sp.x) * dx
-                            intersects = true
-                        end
-                    elseif dy ~= 0 and dx == 0 then
-                        if bb.left_top.x - 0.45 <= sp.x and sp.x <= bb.right_bottom.x + 0.45 then
-                            local entry_y = (dy > 0) and bb.left_top.y or bb.right_bottom.y
-                            obst_dist = (entry_y - sp.y) * dy
-                            intersects = true
-                        end
-                    end
+    local intersects, obst_dist = motion_protocols.calculate_axis_distance(sp, { x = dx, y = dy }, bb)
 
                     if intersects then
                         local elapsed_ticks = math.max(0, current_tick - (bf.start_tick or current_tick))

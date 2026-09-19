@@ -352,6 +352,9 @@ function flow_kinetic.on_muzzle_want_emission(node, pkey, target_kinetic, kineti
     local is_rec = initial_obstacle and initial_obstacle.valid and initial_obstacle.name == "pneumatic-projector"
     storage.projector_reticles[reticle_id] = {
         id = reticle_id,
+        protocol = "projector_scope",
+        kind = "projector_scope",
+        clearance_policy = "optical_ray",
         projector_unit = owner_id,
         pending_receiver = is_rec and initial_obstacle.unit_number or nil,
         hit_receiver = nil,
@@ -1050,6 +1053,10 @@ function flow_kinetic.step_port(node, pkey, enqueue_port_fn, wake_port_fn)
 end
 
 function flow_kinetic.scan_leaf_rect(surface, start_pos, dir, step_dist, sender_unit, reticle_id)
+    return motion_protocols.scan_open_air_leaf(surface, start_pos, dir, step_dist, sender_unit, reticle_id, flow_kinetic)
+end
+
+function flow_kinetic._legacy_scan_leaf_rect(surface, start_pos, dir, step_dist, sender_unit, reticle_id)
     if not (surface and surface.valid and start_pos and dir and step_dist and step_dist > 0) then return nil end
     local dx = dir.x or 0
     local dy = dir.y or 0
@@ -1902,6 +1909,9 @@ function flow_kinetic.truncate_reticle(reticle, obst_dist, obstacle_entity)
 
         storage.projector_reticles[down_id] = {
             id = down_id,
+            protocol = "projector_scope",
+            kind = "projector_scope",
+            clearance_policy = "optical_ray",
             projector_unit = nil,
             surface_name = reticle.surface_name,
             surface_index = s_idx,
@@ -2275,23 +2285,7 @@ function flow_kinetic.flush_pending_reticle_obstacles()
                 local ent = item.entity
                 if ent and ent.valid then
                     local bb = get_entity_bounding_box(ent)
-                    local o_dist = nil
-                    local on_axis = false
-
-                    if r_dx > 0 then
-                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                        o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
-                    elseif r_dx < 0 then
-                        on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                        o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
-                    elseif r_dy > 0 then
-                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                        o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
-                    elseif r_dy < 0 then
-                        on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                        o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
-                    end
-
+                    local on_axis, o_dist = motion_protocols.calculate_axis_distance(r_sp, { x = r_dx, y = r_dy }, bb, 0.05)
                     local is_retreating = (ret.status == "retreating")
                     local is_behind_wake = false
                     if is_retreating and ret.retreat_tick then
@@ -2321,11 +2315,7 @@ function flow_kinetic.flush_pending_reticle_obstacles()
                     cur_head_dist = math.abs(cur_pos.x - r_sp.x) + math.abs(cur_pos.y - r_sp.y)
                 end
 
-                if is_growing and closest_dist > (cur_head_dist + 0.05) then
-                    flow_kinetic.update_reticle_horizon(ret, closest_dist, closest_entity, cur_flight)
-                elseif ret.projector_unit ~= nil then
-                    flow_kinetic.truncate_reticle(ret, closest_dist, closest_entity)
-                end
+                motion_protocols.dispatch_clearance_policy(ret, closest_dist, cur_head_dist, closest_entity, false, game.tick, cur_flight)
 
                 local down_id = ret.downstream_reticle_id
                 if down_id and storage.projector_reticles and storage.projector_reticles[down_id] then
@@ -2386,23 +2376,7 @@ function flow_kinetic.handle_obstacle_changed_v2(entity, is_removal, enqueue_por
                                 local r_dx = ret.dir.x
                                 local r_dy = ret.dir.y
                                 local r_sp = ret.start_pos
-                                local o_dist = nil
-                                local on_axis = false
-
-                                if r_dx > 0 then
-                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
-                                elseif r_dx < 0 then
-                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
-                                elseif r_dy > 0 then
-                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
-                                elseif r_dy < 0 then
-                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
-                                end
-
+                                local on_axis, o_dist = motion_protocols.calculate_axis_distance(r_sp, { x = r_dx, y = r_dy }, bb, 0.05)
                                 local full_reach = ret.max_reach or 50
                                 local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
 
@@ -2529,23 +2503,7 @@ function flow_kinetic._legacy_handle_obstacle_changed(entity, is_removal, enqueu
                                 local r_dx = ret.dir.x
                                 local r_dy = ret.dir.y
                                 local r_sp = ret.start_pos
-                                local o_dist = nil
-                                local on_axis = false
-
-                                if r_dx > 0 then
-                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = (bb.left_top.x <= r_sp.x and bb.right_bottom.x >= r_sp.x - 0.5) and 0.1 or (bb.left_top.x - r_sp.x)
-                                elseif r_dx < 0 then
-                                    on_axis = (bb.left_top.y - 0.05 <= r_sp.y and r_sp.y <= bb.right_bottom.y + 0.05)
-                                    o_dist = (bb.right_bottom.x >= r_sp.x and bb.left_top.x <= r_sp.x + 0.5) and 0.1 or (r_sp.x - bb.right_bottom.x)
-                                elseif r_dy > 0 then
-                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = (bb.left_top.y <= r_sp.y and bb.right_bottom.y >= r_sp.y - 0.5) and 0.1 or (bb.left_top.y - r_sp.y)
-                                elseif r_dy < 0 then
-                                    on_axis = (bb.left_top.x - 0.05 <= r_sp.x and r_sp.x <= bb.right_bottom.x + 0.05)
-                                    o_dist = (bb.right_bottom.y >= r_sp.y and bb.left_top.y <= r_sp.y + 0.5) and 0.1 or (r_sp.y - bb.right_bottom.y)
-                                end
-
+                                local on_axis, o_dist = motion_protocols.calculate_axis_distance(r_sp, { x = r_dx, y = r_dy }, bb, 0.05)
                                 local full_reach = ret.max_reach or 50
                                 local beam_reach = (ret.status == "growing" and full_reach) or ret.total_dist or ret.max_range or full_reach
 
@@ -2963,6 +2921,33 @@ motion_protocols.register_disruption("reticle_slice", function(ret, obst_dist, o
         flow_kinetic.truncate_reticle(ret, obst_dist, obstacle_entity)
     end
 end)
+
+-- Register open-air solid obstacle detector using module-scoped upvalues (zero runtime require)
+motion_protocols.register_detector("open_air_solids", function(entity, surface)
+    if not (entity and entity.valid) then return false, false end
+    local c_type = entity.type
+    local c_name = entity.name
+    if flow_kinetic.IGNORABLE_TYPES[c_type] or flow_kinetic.PROXY_NAMES[c_name] then
+        return false, false
+    end
+    if c_type == "gate" and not (entity.is_closed and entity.is_closed()) then
+        return false, false
+    end
+    local is_dock = (c_name == "pneumatic-projector")
+    return true, is_dock
+end)
+
+-- Register optical ray clearance policy using module-scoped upvalues (zero runtime require)
+motion_protocols.register_clearance_policy("optical_ray", {
+    on_forward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
+        flow_kinetic.update_reticle_horizon(flight_or_ret, d_obst, entity, cur_flight)
+    end,
+    on_backward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
+        if flight_or_ret.projector_unit ~= nil then
+            flow_kinetic.truncate_reticle(flight_or_ret, d_obst, entity)
+        end
+    end
+})
 
 function flow_kinetic._legacy_step_character_colliders(enqueue_port_fn, wake_port_fn)
     flow_kinetic.flush_pending_reticle_obstacles()

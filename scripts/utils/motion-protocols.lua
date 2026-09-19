@@ -6,7 +6,48 @@ motion_protocols.trails = {}
 motion_protocols.disruptions = {}
 motion_protocols.arrivals = {}
 motion_protocols.static_renders = {}
+motion_protocols.detectors = {}
+motion_protocols.clearance_policies = {}
 motion_protocols.protocols = {}
+
+--------------------------------------------------------------------------------
+-- SPATIAL AXIS PROJECTION HELPERS
+--------------------------------------------------------------------------------
+--- Calculates 1D on-axis distance from start_pos along cardinal dir to an AABB bounding box
+--- @param sp table { x, y }
+--- @param dir table { x, y }
+--- @param bb table { left_top = {x, y}, right_bottom = {x, y} }
+--- @param width_margin number|nil
+--- @return boolean intersects, number distance
+function motion_protocols.calculate_axis_distance(sp, dir, bb, width_margin)
+    local margin = width_margin or 0.45
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+
+    if dx > 0 then
+        if (bb.left_top.y - margin <= sp.y) and (sp.y <= bb.right_bottom.y + margin) then
+            local d = (bb.left_top.x <= sp.x and bb.right_bottom.x >= sp.x - 0.5) and 0.1 or (bb.left_top.x - sp.x)
+            return true, d
+        end
+    elseif dx < 0 then
+        if (bb.left_top.y - margin <= sp.y) and (sp.y <= bb.right_bottom.y + margin) then
+            local d = (bb.right_bottom.x >= sp.x and bb.left_top.x <= sp.x + 0.5) and 0.1 or (sp.x - bb.right_bottom.x)
+            return true, d
+        end
+    elseif dy > 0 then
+        if (bb.left_top.x - margin <= sp.x) and (sp.x <= bb.right_bottom.x + margin) then
+            local d = (bb.left_top.y <= sp.y and bb.right_bottom.y >= sp.y - 0.5) and 0.1 or (bb.left_top.y - sp.y)
+            return true, d
+        end
+    elseif dy < 0 then
+        if (bb.left_top.x - margin <= sp.x) and (sp.x <= bb.right_bottom.x + margin) then
+            local d = (bb.right_bottom.y >= sp.y and bb.left_top.y <= sp.y + 0.5) and 0.1 or (sp.y - bb.right_bottom.y)
+            return true, d
+        end
+    end
+
+    return false, 0
+end
 
 --------------------------------------------------------------------------------
 -- PROGRESSION TIMING WINDOW RESOLUTION
@@ -66,6 +107,38 @@ function motion_protocols.register_static_render(name, handler)
     motion_protocols.static_renders[name] = handler
 end
 
+function motion_protocols.register_detector(name, handler)
+    motion_protocols.detectors[name] = handler
+end
+
+function motion_protocols.register_clearance_policy(name, policy_spec)
+    motion_protocols.clearance_policies[name] = {
+        name = name,
+        on_forward = policy_spec.on_forward,
+        on_backward = policy_spec.on_backward
+    }
+end
+
+function motion_protocols.dispatch_clearance_policy(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, extra)
+    local proto = motion_protocols.get_protocol(flight_or_ret)
+    local policy = proto and motion_protocols.clearance_policies[proto.clearance_policy]
+    if not policy then return false end
+
+    local is_growing = (flight_or_ret.status == "growing" and extra ~= nil)
+    if is_growing and d_obst > (d_current + 0.05) then
+        if policy.on_forward then
+            policy.on_forward(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, extra)
+            return true
+        end
+    else
+        if policy.on_backward then
+            policy.on_backward(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, extra)
+            return true
+        end
+    end
+    return false
+end
+
 function motion_protocols.register_protocol(name, spec)
     motion_protocols.protocols[name] = {
         name = name,
@@ -77,6 +150,8 @@ function motion_protocols.register_protocol(name, spec)
         disruption = spec.disruption or "none",
         arrival = spec.arrival or spec.on_arrival or "none",
         static_render = spec.static_render or "none",
+        detector = spec.detector or "open_air_solids",
+        clearance_policy = spec.clearance_policy or "discrete_projectile",
         custom_data = spec.custom_data
     }
 end
@@ -91,6 +166,14 @@ function motion_protocols.get_protocol(name_or_flight)
             return name_or_flight
         end
         local p_name = name_or_flight.protocol or name_or_flight.name or name_or_flight.kind or (type(name_or_flight.on_arrival) == "string" and name_or_flight.on_arrival)
+        if not p_name then
+            -- Infer reticle identity from structural state
+            if name_or_flight.projector_unit ~= nil or name_or_flight.head_flight_id ~= nil or name_or_flight.anti_flight_id ~= nil or name_or_flight.retreat_tick ~= nil or name_or_flight.head_render_spec ~= nil then
+                p_name = "projector_scope"
+            elseif name_or_flight.beam_flight ~= nil or name_or_flight.passenger ~= nil or name_or_flight.capsule_type ~= nil then
+                p_name = "capsule"
+            end
+        end
         return (p_name and motion_protocols.protocols[p_name]) or motion_protocols.protocols["capsule"]
     end
     return motion_protocols.protocols[name_or_flight] or motion_protocols.protocols["capsule"]
@@ -123,21 +206,47 @@ end)
 --------------------------------------------------------------------------------
 -- ALTERNATIVE PROTOCOL B: DISRUPTION SUBPROTOCOLS
 --------------------------------------------------------------------------------
--- Silent Halt: Clamps remaining distance cleanly on obstacle collision without explosion or spillage
+-- Alternative disruption defaults (flags evaluated during terminal arrival)
 motion_protocols.register_disruption("silent_halt", function(bf, cap, cap_id, surface, entity, bb, is_removal, current_tick)
-    local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
-    return capsule_ballistics.handle_ballistic_disruption(bf, cap, cap_id, surface, entity, bb, is_removal, current_tick, true, true)
+    if bf then bf.silent_halt = true end
+    return true
 end)
 
--- Peaceful Spill: Clamps horizon on obstacle cut and drops safe container without explosive impact damage
 motion_protocols.register_disruption("peaceful_spill", function(bf, cap, cap_id, surface, entity, bb, is_removal, current_tick)
-    local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
-    return capsule_ballistics.handle_ballistic_disruption(bf, cap, cap_id, surface, entity, bb, is_removal, current_tick, true, false)
+    if bf then bf.peaceful_spill = true end
+    return true
 end)
 
 --------------------------------------------------------------------------------
 -- PRE-REGISTER BASE PROTOCOLS (EXACT EQUIVALENCE PRESERVATION)
 --------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- CORE DETECTOR & CLEARANCE SUBPROTOCOLS
+--------------------------------------------------------------------------------
+-- Detector: Open-Air Solid Footprints (checks gates, proxy names, and ignorable debris)
+motion_protocols.register_detector("open_air_solids", function(entity, surface)
+    if not (entity and entity.valid) then return false, false end
+    local flow_kinetic = require("scripts.flow.flow-kinetic")
+    local c_type = entity.type
+    local c_name = entity.name
+    if flow_kinetic.IGNORABLE_TYPES[c_type] or flow_kinetic.PROXY_NAMES[c_name] then
+        return false, false
+    end
+    if c_type == "gate" and not (entity.is_closed and entity.is_closed()) then
+        return false, false
+    end
+    local is_dock = (c_name == "pneumatic-projector")
+    return true, is_dock
+end)
+
+-- Detector: Pneumatic Network Graph (checks if pipe/node exists in flow grid)
+motion_protocols.register_detector("tube_connectivity", function(node_or_edge)
+    if not node_or_edge or not node_or_edge.valid then
+        return true, false -- Missing/broken tube = barrier
+    end
+    return false, node_or_edge.is_dock or false
+end)
+
 -- 1. Ballistic Cargo & Passenger Capsule
 motion_protocols.register_protocol("capsule", {
     medium = "open_air",
@@ -145,7 +254,23 @@ motion_protocols.register_protocol("capsule", {
     head = "capsule_head",
     trail = "none",
     disruption = "ballistic_crash",
-    arrival = "capsule_terminal"
+    arrival = "capsule_terminal",
+    detector = "open_air_solids",
+    clearance_policy = "discrete_projectile"
+})
+
+-- Clearance Policy: Optical Ray (Continuous laser: forward clamps horizon; backward slices tail & detaches wake)
+motion_protocols.register_clearance_policy("optical_ray", {
+    on_forward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
+        local flow_kinetic = require("scripts.flow.flow-kinetic")
+        flow_kinetic.update_reticle_horizon(flight_or_ret, d_obst, entity, cur_flight)
+    end,
+    on_backward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
+        local flow_kinetic = require("scripts.flow.flow-kinetic")
+        if flight_or_ret.projector_unit ~= nil then
+            flow_kinetic.truncate_reticle(flight_or_ret, d_obst, entity)
+        end
+    end
 })
 
 -- 2. Projector Sighting Laser Probe
@@ -156,7 +281,9 @@ motion_protocols.register_protocol("projector_scope", {
     trail = "reticle_dots",
     disruption = "reticle_slice",
     arrival = "scope_step",
-    static_render = "reticle_static"
+    static_render = "reticle_static",
+    detector = "open_air_solids",
+    clearance_policy = "optical_ray"
 })
 
 -- 3. Temporal Anti-Reticle Wake Reeling (Arrival cleanup flight: no visible head, no in-flight trail)
@@ -166,7 +293,9 @@ motion_protocols.register_protocol("anti_reticle", {
     head = "none",
     trail = "none",
     disruption = "none",
-    arrival = "anti_reticle_step"
+    arrival = "anti_reticle_step",
+    detector = "open_air_solids",
+    clearance_policy = "none"
 })
 
 -- Alias for backwards compatibility
@@ -190,7 +319,9 @@ motion_protocols.register_protocol("tube_wave", {
     trail = "none",                 -- Can hook into custom tube pulse or remain silent
     disruption = "silent_halt",     -- Reusable subprotocol: Stops propagation quietly on cut
     arrival = "none",               -- Plug in custom network query or inventory scan
-    static_render = "none"
+    static_render = "none",
+    detector = "tube_connectivity",
+    clearance_policy = "silent_wave"
 })
 
 -- Template 2: In-Tube High-Speed Transit Flight (Capsule visuals, peaceful on deconstruction)
@@ -201,7 +332,9 @@ motion_protocols.register_protocol("tube_transit", {
     trail = "none",
     disruption = "peaceful_spill",  -- Subprotocol overlap: Safe ground container, zero crash explosion!
     arrival = "capsule_terminal",   -- Subprotocol overlap: Docks into receiver/hub!
-    static_render = "none"
+    static_render = "none",
+    detector = "tube_connectivity",
+    clearance_policy = "peaceful_transit"
 })
 
 --------------------------------------------------------------------------------
@@ -313,7 +446,47 @@ function motion_protocols.run_tests(player)
     end
     log_msg("[color=green][MotionProtocols Test] Test 5: Head & Trail Facet Independence -> PASSED[/color]")
 
-    log_msg("[color=green][font=default-bold][MotionProtocols Test] ALL 5 TESTS PASSED! Modular Subprotocol Architecture operational.[/font][/color]")
+    -- Test 6: Disruption Detector Subprotocols
+    local air_det = motion_protocols.detectors["open_air_solids"]
+    if not air_det then
+        log_msg("[color=red][MotionProtocols Test] Test 6 FAILED: open_air_solids detector not registered[/color]")
+        return false
+    end
+    local tube_det = motion_protocols.detectors["tube_connectivity"]
+    if not tube_det or not tube_det(nil) then
+        log_msg("[color=red][MotionProtocols Test] Test 6 FAILED: tube_connectivity detector failed on missing node[/color]")
+        return false
+    end
+    log_msg("[color=green][MotionProtocols Test] Test 6: Disruption Detector Subprotocols -> PASSED[/color]")
+
+    -- Test 7: Directional Clearance Policies (Forward vs Backward Bifurcation)
+    local test_forward_called = false
+    local test_backward_called = false
+    motion_protocols.register_clearance_policy("test_policy", {
+        on_forward = function() test_forward_called = true end,
+        on_backward = function() test_backward_called = true end
+    })
+    local test_flight = { protocol = "test_clearance", clearance_policy = "test_policy" }
+    motion_protocols.register_protocol("test_clearance", test_flight)
+
+    -- Forward disruption (d_obst > d_current)
+    motion_protocols.dispatch_clearance_policy(test_flight, 50, 20, nil, false, 1000)
+    if not test_forward_called or test_backward_called then
+        log_msg("[color=red][MotionProtocols Test] Test 7 FAILED: Forward clearance policy dispatch incorrect[/color]")
+        return false
+    end
+
+    -- Backward disruption (d_obst <= d_current)
+    test_forward_called = false
+    test_backward_called = false
+    motion_protocols.dispatch_clearance_policy(test_flight, 10, 20, nil, false, 1000)
+    if not test_backward_called or test_forward_called then
+        log_msg("[color=red][MotionProtocols Test] Test 7 FAILED: Backward clearance policy dispatch incorrect[/color]")
+        return false
+    end
+    log_msg("[color=green][MotionProtocols Test] Test 7: Directional Clearance Policies (Forward vs Backward) -> PASSED[/color]")
+
+    log_msg("[color=green][font=default-bold][MotionProtocols Test] ALL 7 TESTS PASSED! Detector and Clearance Protocols operational.[/font][/color]")
     return true
 end
 
@@ -325,5 +498,80 @@ commands.add_command("pt-test-motion-protocols", "Run self-tests on the Modular 
     local player = cmd.player_index and game.get_player(cmd.player_index)
     motion_protocols.run_tests(player)
 end)
+
+--------------------------------------------------------------------------------
+-- OPEN-AIR LEAF SPATIAL SCANNER (MODULAR DETECTOR DELEGATE)
+--------------------------------------------------------------------------------
+function motion_protocols.scan_open_air_leaf(surface, start_pos, dir, step_dist, sender_unit, reticle_id, kin_mod)
+    if not (surface and surface.valid and start_pos and dir and step_dist and step_dist > 0) then return nil end
+    local dx = dir.x or 0
+    local dy = dir.y or 0
+    if dx == 0 and dy == 0 then return nil end
+
+    local min_x, max_x, min_y, max_y
+    if dx ~= 0 then
+        min_x = math.min(start_pos.x - dx * 0.5, start_pos.x + dx * step_dist)
+        max_x = math.max(start_pos.x - dx * 0.5, start_pos.x + dx * step_dist)
+        min_y = start_pos.y - 0.45
+        max_y = start_pos.y + 0.45
+    else
+        min_x = start_pos.x - 0.45
+        max_x = start_pos.x + 0.45
+        min_y = math.min(start_pos.y - dy * 0.5, start_pos.y + dy * step_dist)
+        max_y = math.max(start_pos.y - dy * 0.5, start_pos.y + dy * step_dist)
+    end
+
+    local candidates = surface.find_entities_filtered{
+        area = {{min_x, min_y}, {max_x, max_y}}
+    }
+
+    local closest_dist = step_dist + 0.05
+    local closest_entity = nil
+    local detector_fn = motion_protocols.get_subprotocol("projector_scope", "detector")
+        or motion_protocols.detectors["open_air_solids"]
+
+    local flow_kinetic = kin_mod
+
+    for _, cand in ipairs(candidates) do
+        local is_self = (cand.unit_number and sender_unit and cand.unit_number == sender_unit)
+        if cand.valid and not is_self then
+            local is_obstacle = detector_fn(cand, surface)
+            if not is_obstacle and cand.type == "gate" and reticle_id and cand.unit_number then
+                local ret = storage.projector_reticles and storage.projector_reticles[reticle_id]
+                if ret and ret.start_pos then
+                    local cbb = cand.bounding_box
+                    local _, abs_dist = motion_protocols.calculate_axis_distance(ret.start_pos, ret.dir, cbb, 0.05)
+                    flow_kinetic.register_corridor_gate(reticle_id, cand, abs_dist or step_dist or 1, false)
+                end
+            end
+
+            if is_obstacle then
+                local cbb = cand.bounding_box
+                if cand.type == "character" then
+                    local pos = cand.position
+                    local tx = math.floor(pos.x)
+                    local ty = math.floor(pos.y)
+                    cbb = {
+                        left_top = { x = tx, y = ty },
+                        right_bottom = { x = tx + 1.0, y = ty + 1.0 }
+                    }
+                end
+                local on_axis, d = motion_protocols.calculate_axis_distance(start_pos, dir, cbb, 0.05)
+                if on_axis and d and d > 0.05 and d <= closest_dist then
+                    closest_dist = d
+                    closest_entity = cand
+                end
+            end
+        end
+    end
+
+    if closest_entity then
+        return {
+            dist = closest_dist,
+            entity = closest_entity
+        }
+    end
+    return nil
+end
 
 return motion_protocols

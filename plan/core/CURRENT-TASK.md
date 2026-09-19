@@ -30,3 +30,16 @@ tubes are the perfect candidate for transmitting a pressure corridor because the
 but other entites also have multiple ports that dont have branching ports, such as the crossflow junction, so they are also a pressure corridor candiate on 2 axes.
 
 our first step to making all of this happen, is identifying the event for when a pressure begins to emit, and when a pressure begins to transmit. we arent hijacking this, they will transmit normal flow engine dots until it comes across a situation where the pneumatic member at this port is not a branch, not a bend, but a straight line, which is why the pneumatic tubes are the first place we will see these pressure corridors begin to expand instead of a flow engine flow spread.
+
+
+
+
+
+
+[CONTEXT_TOKENS]
+storage.pressure_corridors, scan_pneumatic_colinear_reach, last_out_pkey, terminal_branch_pkey, storage.corridor_tip_flows, max_reach = (source_pressure - 1), integer rounding (+0.5)
+motion_protocols, "pressure_static", "tube_transit", peaceful_transit, silent_halt, tube_connectivity
+viewport_bvh, render_governor, dispatch_player_renders, player_visible_set, render_pool.lease_circle, render_pool.lease_text
+render_pressure_corridor, radius 0.15, text y - 0.25, level / MAX_FLOW, P_cont = P_head*(1-f) + P_tip*f, in-place .color/.text mutation
+capsule_runner.update_capsules, select_next_target, in_timed_flight, timed_motion, storage.timed_arrival_heap, 6t discrete hops, corridor capacity floor(total_dist / 2)
+[/CONTEXT_TOKENS]

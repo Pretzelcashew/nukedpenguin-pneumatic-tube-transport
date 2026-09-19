@@ -1620,7 +1620,7 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
     local is_vacuum = (corr.flow_level and corr.flow_level < 0)
     local tpt = corr.ticks_per_tile or 2
 
-    local current_reach = corr.total_dist or 1
+    local current_reach = corr.current_reach or corr.total_dist or 1
     if corr.status == "growing" and corr.start_tick then
         local elapsed = math.max(0, current_tick - corr.start_tick)
         current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
@@ -1693,6 +1693,7 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
             if c_obj and c_obj.valid and t_obj and t_obj.valid then
                 c_obj.color = circle_color
                 t_obj.text = tostring(display_level)
+                t_obj.bring_to_front()
             else
                 if c_obj then render_pool.recycle(p_idx, c_obj) end
                 if t_obj then render_pool.recycle(p_idx, t_obj) end
@@ -1716,6 +1717,7 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
                     only_in_alt_mode = true,
                     players = { player }
                 }
+                if t_obj and t_obj.valid then t_obj.bring_to_front() end
                 objects[i] = c_obj
                 objects[tk] = t_obj
             end

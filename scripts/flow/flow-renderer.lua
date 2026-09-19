@@ -324,6 +324,7 @@ function flow_renderer.update_counter_pos_render(pos_key)
             if current and current.circle and current.circle.valid and current.text and current.text.valid then
                 current.circle.color = circle_color
                 current.text.text = tostring(level)
+                current.text.bring_to_front()
             else
                 flow_renderer.destroy_counter_renders(pos_key, p_idx)
                 if surface and surface.valid then
@@ -346,6 +347,7 @@ function flow_renderer.update_counter_pos_render(pos_key)
                         only_in_alt_mode = true,
                         players = { player }
                     }
+                    if t_obj and t_obj.valid then t_obj.bring_to_front() end
                     p_renders[pos_key] = { circle = c_obj, text = t_obj }
                 end
             end
@@ -417,6 +419,7 @@ function flow_renderer.update_pos_render(pos_key)
                 if current and current.circle and current.circle.valid and current.text and current.text.valid and not current.is_intake then
                     current.circle.color = circle_color
                     current.text.text = tostring(level)
+                    current.text.bring_to_front()
                 else
                     flow_renderer.destroy_pos_renders(pos_key, p_idx)
                     if surface and surface.valid then
@@ -439,6 +442,7 @@ function flow_renderer.update_pos_render(pos_key)
                             only_in_alt_mode = true,
                             players = { player }
                         }
+                        if t_obj and t_obj.valid then t_obj.bring_to_front() end
                         p_renders[pos_key] = { circle = c_obj, text = t_obj }
                     end
                 end

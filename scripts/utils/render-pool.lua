@@ -63,6 +63,8 @@ function render_pool.lease_circle(arg1, arg2, arg3)
             if options.radius then obj.radius = options.radius end
             if options.filled ~= nil then obj.filled = options.filled end
             if options.width then obj.width = options.width end
+            if options.render_layer then obj.render_layer = options.render_layer end
+            if options.only_in_alt_mode ~= nil then obj.only_in_alt_mode = options.only_in_alt_mode end
             if options.players then obj.players = options.players end
             obj.visible = true
             return obj
@@ -94,6 +96,7 @@ function render_pool.lease_sprite(arg1, arg2, arg3)
             if options.x_scale then obj.x_scale = options.x_scale end
             if options.y_scale then obj.y_scale = options.y_scale end
             if options.render_layer then obj.render_layer = options.render_layer end
+            if options.only_in_alt_mode ~= nil then obj.only_in_alt_mode = options.only_in_alt_mode end
             if options.players then obj.players = options.players end
             if options.tint then obj.tint = options.tint end
             obj.visible = true
@@ -126,6 +129,8 @@ function render_pool.lease_text(arg1, arg2, arg3)
             if options.color then obj.color = options.color end
             if options.scale then obj.scale = options.scale end
             if options.alignment then obj.alignment = options.alignment end
+            if options.render_layer then obj.render_layer = options.render_layer end
+            if options.only_in_alt_mode ~= nil then obj.only_in_alt_mode = options.only_in_alt_mode end
             if options.players then obj.players = options.players end
             obj.visible = true
             return obj
@@ -156,6 +161,8 @@ function render_pool.lease_line(arg1, arg2, arg3)
             if options.to then obj.to = options.to end
             if options.color then obj.color = options.color end
             if options.width then obj.width = options.width end
+            if options.render_layer then obj.render_layer = options.render_layer end
+            if options.only_in_alt_mode ~= nil then obj.only_in_alt_mode = options.only_in_alt_mode end
             if options.players then obj.players = options.players end
             obj.visible = true
             return obj

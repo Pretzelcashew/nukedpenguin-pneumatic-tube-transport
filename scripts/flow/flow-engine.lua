@@ -194,18 +194,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
     local corridor_entities = { [in_node.unit_number] = true }
     local terminal_branch_pkey = nil
 
-    local src_emitter = math.abs(flow_level or 10)
-    local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
-    if in_conns then
-        for n_key in pairs(in_conns) do
-            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
-            if n_node and n_node.emitter and n_node.emitter ~= 0 then
-                src_emitter = math.abs(flow_engine.get_node_emitter_level(n_node))
-                break
-            end
-        end
-    end
-    local max_reach = math.max(1, src_emitter - 1)
+    local max_reach = math.max(1, math.abs(flow_level or 10))
 
     while total_dist < max_reach do
         local conns = storage.flow_connections and storage.flow_connections[curr_out]
@@ -323,9 +312,9 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         dir = { x = dx, y = dy },
         total_dist = total_dist,
         current_reach = 1,
-        flow_level = (flow_level < 0) and -total_dist or total_dist,
-        initial_flow = total_dist,
-        decay_mag = total_dist,
+        flow_level = flow_level,
+        initial_flow = math.abs(flow_level or 10),
+        decay_mag = math.abs(flow_level or 10),
         q_level = in_node.q_level or 0,
         max_seg_idx = max_seg_idx,
         corridor_entities = corridor_entities,
@@ -480,7 +469,7 @@ function flow_engine.step_pressure_corridors(tick)
                             leaf.dir = { x = dx, y = dy }
                             leaf.q_level = corr.q_level or 0
                             leaf.has_trail = true
-                            leaf.trail_count = math.max(0, math.floor(s_end - s_start))
+                            leaf.trail_count = math.max(0, math.floor(s_end - s_start + 0.5))
                             corr.leaves = corr.leaves or {}
                             corr.leaves[seg_key] = leaf
                             viewport_bvh.on_segment_registered(s_idx, leaf)
@@ -505,11 +494,10 @@ function flow_engine.step_pressure_corridors(tick)
                 if corr.terminal_branch_pkey and not corr.branch_enqueued then
                     corr.branch_enqueued = true
                     local rem_level = 0
-                    local base_flow = corr.flow_level or src_flow or 0
-                    if base_flow > 0 then
-                        rem_level = math.max(0, base_flow - corr.total_dist)
-                    elseif base_flow < 0 then
-                        rem_level = math.min(0, base_flow + corr.total_dist)
+                    local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+                    local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
+                    if tip_mag > 0 then
+                        rem_level = (corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag
                     end
                     if rem_level ~= 0 and corr.last_out_pkey then
                         storage.corridor_tip_flows = storage.corridor_tip_flows or {}

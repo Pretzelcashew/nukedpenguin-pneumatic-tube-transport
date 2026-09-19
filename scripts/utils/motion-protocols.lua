@@ -124,8 +124,7 @@ function motion_protocols.dispatch_clearance_policy(flight_or_ret, d_obst, d_cur
     local policy = proto and motion_protocols.clearance_policies[proto.clearance_policy]
     if not policy then return false end
 
-    local is_growing = (flight_or_ret.status == "growing" and extra ~= nil)
-    if is_growing and d_obst > (d_current + 0.05) then
+    if d_obst > (d_current + 0.05) then
         if policy.on_forward then
             policy.on_forward(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, extra)
             return true

@@ -416,3 +416,11 @@
 4. **Reticle Identity Tagging & Structural Inference (`scripts/flow/flow-kinetic.lua`, `scripts/utils/motion-protocols.lua`):** Explicitly tagged `protocol = "projector_scope"` and `clearance_policy = "optical_ray"` on reticle records in `on_muzzle_want_emission` and `truncate_reticle`. Added structural state fallback in `get_protocol` to infer reticle identity from `projector_unit`, `head_flight_id`, and `retreat_tick`, restoring reticle tail-severing and stationary beam truncation.
 5. **Runtime Require Elimination (`scripts/utils/motion-protocols.lua`, `scripts/flow/flow-kinetic.lua`):** Purged all runtime `require()` calls inside event handlers and disruption delegates, registering policies and passing module references at startup to comply with Factorio 2.0 runtime script restrictions.
 6. **Automated Verification Expansion (`scripts/utils/motion-protocols.lua`):** Added Test 6 (detector filtering) and Test 7 (forward/backward clearance policy bifurcation) to `/test-motion-protocols`.
+
+
+### Revision: Clearance Policy Generalization and Relative Bifurcation Fix
+**Date:** 2026-09-18 22:24 EDT
+**Context:** During automated verification of the clearance protocol engine, Test 7 failed because `dispatch_clearance_policy` had been coupled to the reticle's internal `status == "growing"` state, causing generic flights and non-reticle protocols to misroute forward obstacles into backward handlers. This session excised the reticle-specific status guard, restoring the pure mathematical relative distance contract ($d_{\text{obst}} > d_{\text{current}} + 0.05 \implies \text{forward}$, $d_{\text{obst}} \le d_{\text{current}} + 0.05 \implies \text{backward}$) across all flight domains and passing all 7 test suites.
+**Key Changes:**
+1. **Generic Clearance Policy Dispatching (`scripts/utils/motion-protocols.lua`):** Removed the `is_growing` reticle state requirement from `dispatch_clearance_policy`, ensuring forward obstacles ahead of any advancing flight evaluate to `on_forward` regardless of protocol identity.
+2. **Automated Verification Validation (`scripts/utils/motion-protocols.lua`):** Confirmed live in-game green passes across all 7 automated test suites in `/test-motion-protocols` (base registry, overlapping composition, progression windows, alternative disruptions, facet independence, detectors, and directional clearance policies).

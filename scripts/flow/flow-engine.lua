@@ -172,80 +172,6 @@ function flow_engine.enqueue_unit_ports(unit_number)
     flow_common.enqueue_unit_ports(unit_number)
 end
 
-local function attach_pressure_corridor_static_render(player_index, item, surface)
-    if not (item and item.leaf and surface and surface.valid) then return end
-    local player = game.get_player(player_index)
-    if not (player and player.valid) then return end
-
-    local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
-    if not corr then return end
-
-    local leaf = item.leaf
-    item.render_objects = item.render_objects or {}
-    local objects = item.render_objects
-
-    local cur_tick = game.tick
-    local tpt = corr.ticks_per_tile or 2
-
-    local current_reach = corr.total_dist or 1
-    if corr.status == "growing" and corr.start_tick then
-        local elapsed = math.max(0, cur_tick - corr.start_tick)
-        current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
-    end
-
-    local dist_cleared = -1
-    if corr.status == "receding" and corr.retreat_tick then
-        local elapsed_retreat = math.max(0, cur_tick - corr.retreat_tick)
-        dist_cleared = math.floor(elapsed_retreat / tpt)
-    end
-
-    local d_base = leaf.d_start or 0
-    local count = leaf.trail_count or (leaf.d_end and math.max(0, math.floor(leaf.d_end - d_base))) or 0
-
-    for idx, obj in pairs(objects) do
-        if type(idx) == "number" then
-            local d = d_base + idx
-            if d > current_reach or d <= dist_cleared or idx > count then
-                render_pool.recycle(player_index, obj)
-                objects[idx] = nil
-            end
-        end
-    end
-
-    local is_vacuum = (corr.flow_level and corr.flow_level < 0)
-    local dot_color = is_vacuum
-        and { r = 1.0, g = 0.45, b = 0.1, a = 0.85 }
-        or  { r = 0.2, g = 0.85, b = 1.0, a = 0.85 }
-    local prom_color = is_vacuum
-        and { r = 1.0, g = 0.55, b = 0.2, a = 0.95 }
-        or  { r = 0.35, g = 0.95, b = 1.0, a = 0.95 }
-
-    local sp = corr.start_pos
-    local dx = corr.dir.x
-    local dy = corr.dir.y
-
-    for i = 1, count do
-        local d = d_base + i
-        if d <= current_reach and d > dist_cleared and not objects[i] then
-            local dot_pos = { x = sp.x + dx * d, y = sp.y + dy * d }
-            local is_prom = (d % 5 == 0)
-            local obj = render_pool.lease_circle{
-                color = is_prom and prom_color or dot_color,
-                radius = is_prom and 0.16 or 0.10,
-                filled = true,
-                target = dot_pos,
-                surface = surface,
-                render_layer = "entity-info-icon-above",
-                players = { player }
-            }
-            if obj then objects[i] = obj end
-        end
-    end
-
-    item.render_objects = objects
-end
-
-motion_protocols.register_static_render("pressure_static", attach_pressure_corridor_static_render)
 motion_protocols.register_protocol("pressure_corridor", {
     medium = "pneumatic_network",
     progression = "chained_segment",
@@ -263,11 +189,23 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
     local dy = out_node.dir.y
     local curr_out = out_pkey
     local curr_out_node = out_node
-    local initial_len = math.abs(out_node.pos.x - in_node.pos.x) + math.abs(out_node.pos.y - in_node.pos.y)
+    local initial_len = math.floor(math.abs(out_node.pos.x - in_node.pos.x) + math.abs(out_node.pos.y - in_node.pos.y) + 0.5)
     local total_dist = math.max(1, initial_len)
     local corridor_entities = { [in_node.unit_number] = true }
     local terminal_branch_pkey = nil
-    local max_reach = math.abs(flow_level or 10) * 2
+
+    local src_emitter = math.abs(flow_level or 10)
+    local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
+    if in_conns then
+        for n_key in pairs(in_conns) do
+            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+            if n_node and n_node.emitter and n_node.emitter ~= 0 then
+                src_emitter = math.abs(flow_engine.get_node_emitter_level(n_node))
+                break
+            end
+        end
+    end
+    local max_reach = math.max(1, src_emitter - 1)
 
     while total_dist < max_reach do
         local conns = storage.flow_connections and storage.flow_connections[curr_out]
@@ -312,7 +250,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
             break
         end
 
-        local seg_len = math.abs(found_exit_node.pos.x - next_in_node.pos.x) + math.abs(found_exit_node.pos.y - next_in_node.pos.y)
+        local seg_len = math.floor(math.abs(found_exit_node.pos.x - next_in_node.pos.x) + math.abs(found_exit_node.pos.y - next_in_node.pos.y) + 0.5)
         if seg_len <= 0 then seg_len = 1 end
         total_dist = total_dist + seg_len
 
@@ -384,7 +322,10 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         terminal_pos = terminal_pos,
         dir = { x = dx, y = dy },
         total_dist = total_dist,
-        flow_level = flow_level,
+        current_reach = 1,
+        flow_level = (flow_level < 0) and -total_dist or total_dist,
+        initial_flow = total_dist,
+        decay_mag = total_dist,
         q_level = in_node.q_level or 0,
         max_seg_idx = max_seg_idx,
         corridor_entities = corridor_entities,
@@ -392,31 +333,42 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         last_out_pkey = last_out_pkey,
         start_tick = game.tick,
         status = "growing",
-        registered_segs = 1,
+        registered_segs = max_seg_idx,
         ticks_per_tile = 2
     }
 
     motion_protocols.protocols[corridor_id] = motion_protocols.protocols["pressure_corridor"]
 
-    local s_end = math.min(16, total_dist)
-    local seg_key = string.format("%d,%d:1", dx, dy)
-    local seg_start_pos = { x = start_pos.x, y = start_pos.y }
-    local seg_end_pos = { x = start_pos.x + dx * s_end, y = start_pos.y + dy * s_end }
-
     local motion_tree = timed_motion.get_motion_tree(s_idx)
-    if motion_tree then
-        local leaf = motion_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, 0, s_end, 1)
-        if leaf then
-            leaf.dir = { x = dx, y = dy }
-            leaf.q_level = in_node.q_level or 0
-            leaf.has_trail = true
-            leaf.trail_count = math.max(0, math.floor(s_end))
-            viewport_bvh.on_segment_registered(s_idx, leaf)
+    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+    local corr_leaves = {}
+
+    for s = 1, max_seg_idx do
+        local s_start = (s - 1) * 16
+        local s_end = math.min(s * 16, total_dist)
+        local seg_key = string.format("%d,%d:%d", dx, dy, s)
+        local seg_start_pos = { x = start_pos.x + dx * s_start, y = start_pos.y + dy * s_start }
+        local seg_end_pos = { x = start_pos.x + dx * s_end, y = start_pos.y + dy * s_end }
+
+        if motion_tree then
+            local leaf = motion_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
+            if leaf then
+                leaf.dir = { x = dx, y = dy }
+                leaf.q_level = in_node.q_level or 0
+                leaf.has_trail = true
+                leaf.trail_count = math.max(0, math.floor(s_end - s_start + 0.5))
+                corr_leaves[seg_key] = leaf
+                viewport_bvh.on_segment_registered(s_idx, leaf)
+            end
+        end
+
+        if traj_tree then
+            traj_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
         end
     end
-    local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+
+    storage.pressure_corridors[corridor_id].leaves = corr_leaves
     if traj_tree then
-        traj_tree:insert_segment(corridor_id, seg_key, seg_start_pos, seg_end_pos, 0, s_end, 1)
         trajectory_bvh.refresh_active_renders()
     end
 end
@@ -427,6 +379,8 @@ function flow_engine.on_pressure_stop_transmit(in_pkey, in_node, out_pkey, out_n
     if corr and corr.status ~= "receding" then
         corr.status = "receding"
         corr.retreat_tick = game.tick
+        local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+        corr.end_decay_tick = game.tick + math.max(15, init_mag * 3)
     end
 end
 
@@ -496,11 +450,14 @@ function flow_engine.step_pressure_corridors(tick)
         if not src_alive and corr.status ~= "receding" then
             corr.status = "receding"
             corr.retreat_tick = tick
+            local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+            corr.end_decay_tick = tick + math.max(15, init_mag * 3)
         end
 
         if corr.status == "growing" then
             local elapsed = math.max(0, tick - corr.start_tick)
             local current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
+            corr.current_reach = current_reach
             local cur_seg_target = math.max(1, math.ceil(current_reach / 16))
 
             if cur_seg_target > corr.registered_segs then
@@ -524,6 +481,8 @@ function flow_engine.step_pressure_corridors(tick)
                             leaf.q_level = corr.q_level or 0
                             leaf.has_trail = true
                             leaf.trail_count = math.max(0, math.floor(s_end - s_start))
+                            corr.leaves = corr.leaves or {}
+                            corr.leaves[seg_key] = leaf
                             viewport_bvh.on_segment_registered(s_idx, leaf)
                         end
                     end
@@ -535,25 +494,22 @@ function flow_engine.step_pressure_corridors(tick)
                 if traj_tree then trajectory_bvh.refresh_active_renders() end
             end
 
-            local motion_tree = timed_motion.get_motion_tree(s_idx)
-            local owner_rec = motion_tree and motion_tree.trajectories and motion_tree.trajectories[cid]
-            if owner_rec and owner_rec.segments then
-                for _, leaf in pairs(owner_rec.segments) do
-                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
-                end
-            end
-
             if current_reach >= corr.total_dist then
                 corr.status = "active"
+                corr.current_reach = corr.total_dist
+                if corr.leaves then
+                    for _, leaf in pairs(corr.leaves) do
+                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                    end
+                end
                 if corr.terminal_branch_pkey and not corr.branch_enqueued then
                     corr.branch_enqueued = true
-                    local hops = math.floor(corr.total_dist / 2)
                     local rem_level = 0
                     local base_flow = corr.flow_level or src_flow or 0
                     if base_flow > 0 then
-                        rem_level = math.max(0, base_flow - hops)
+                        rem_level = math.max(0, base_flow - corr.total_dist)
                     elseif base_flow < 0 then
-                        rem_level = math.min(0, base_flow + hops)
+                        rem_level = math.min(0, base_flow + corr.total_dist)
                     end
                     if rem_level ~= 0 and corr.last_out_pkey then
                         storage.corridor_tip_flows = storage.corridor_tip_flows or {}
@@ -564,18 +520,25 @@ function flow_engine.step_pressure_corridors(tick)
                 end
             end
         elseif corr.status == "receding" then
-            local elapsed_retreat = math.max(0, tick - (corr.retreat_tick or tick))
-            local dist_cleared = math.floor(elapsed_retreat / tpt)
+            local decay_duration = corr.end_decay_tick and (corr.end_decay_tick - corr.retreat_tick) or 30
+            local elapsed = math.max(0, tick - (corr.retreat_tick or tick))
+            local tau = math.min(1.0, elapsed / decay_duration)
+            local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+            local p_head = math.ceil(init_mag * (1.0 - tau))
+            local slope = 1.0 - tau
+            local cur_tip_mag = (p_head <= 0) and 0 or math.max(0, math.ceil(p_head - (corr.total_dist - 1) * slope))
 
-            local motion_tree = timed_motion.get_motion_tree(s_idx)
-            local owner_rec = motion_tree and motion_tree.trajectories and motion_tree.trajectories[cid]
-            if owner_rec and owner_rec.segments then
-                for _, leaf in pairs(owner_rec.segments) do
-                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+            if corr.last_out_pkey and storage.corridor_tip_flows then
+                local target_tip = (cur_tip_mag > 0) and ((corr.flow_level < 0) and -cur_tip_mag or cur_tip_mag) or nil
+                if storage.corridor_tip_flows[corr.last_out_pkey] ~= target_tip then
+                    storage.corridor_tip_flows[corr.last_out_pkey] = target_tip
+                    if corr.terminal_branch_pkey then
+                        flow_engine.enqueue_port(corr.terminal_branch_pkey)
+                    end
                 end
             end
 
-            if dist_cleared >= corr.total_dist then
+            if tick >= (corr.end_decay_tick or 0) then
                 flow_engine.unseed_pressure_corridor(cid, true)
             end
         end
@@ -1284,6 +1247,8 @@ function flow_engine.disconnect_entity(entity)
                 if touches and corr.status ~= "receding" then
                     corr.status = "receding"
                     corr.retreat_tick = game.tick
+                    local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+                    corr.end_decay_tick = game.tick + math.max(15, init_mag * 3)
                 end
             end
         end

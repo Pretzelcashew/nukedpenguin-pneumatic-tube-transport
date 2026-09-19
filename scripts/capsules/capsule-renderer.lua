@@ -176,6 +176,14 @@ function capsule_renderer.update_governor(current_tick)
             end
         end
     end
+    if storage.pressure_corridors then
+        for _, corr in pairs(storage.pressure_corridors) do
+            if corr.status == "receding" or corr.status == "growing" then
+                has_retreats = true
+                break
+            end
+        end
+    end
 
     if not has_flights and not has_retreats then
         gov.observed_count = 0
@@ -211,6 +219,13 @@ function capsule_renderer.update_governor(current_tick)
             end
         end
     end
+    if storage.pressure_corridors then
+        for c_id, corr in pairs(storage.pressure_corridors) do
+            if corr.status == "receding" or corr.status == "growing" then
+                scratch_active_owners[c_id] = true
+            end
+        end
+    end
 
     local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
     for p = 1, #players do
@@ -230,6 +245,10 @@ function capsule_renderer.update_governor(current_tick)
                         local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
                         if reticle and reticle.retreat_tick then
                             scratch_observed_flights["retreat:" .. tostring(item.owner_id)] = true
+                        end
+                        local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
+                        if corr and (corr.status == "receding" or corr.status == "growing") then
+                            scratch_observed_flights["corr:" .. tostring(item.owner_id)] = true
                         end
                         local owner_flights = flights_store and flights_store[item.owner_id]
                         if owner_flights then
@@ -1342,6 +1361,11 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                 needs_render_pass = true
                 break
             end
+            local corr = storage.pressure_corridors and storage.pressure_corridors[owner_id]
+            if corr and (corr.status == "receding" or corr.status == "growing" or (corr.status == "active" and not item.final_rendered)) then
+                needs_render_pass = true
+                break
+            end
         end
     end
 
@@ -1368,6 +1392,16 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
             if reticle and reticle.retreat_tick then
                 capsule_renderer.peel_retreating_wake(reticle, item.leaf, item, p_idx, current_tick, tpt)
+            end
+
+            local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
+            if corr and (corr.status == "receding" or corr.status == "growing" or (corr.status == "active" and not item.final_rendered)) then
+                capsule_renderer.render_pressure_corridor(corr, item.leaf, item, p_idx, player, surf, current_tick)
+                if corr.status == "active" then
+                    item.final_rendered = true
+                else
+                    item.final_rendered = nil
+                end
             end
 
             local owner_flights = (storage.timed_flights and storage.timed_flights[item.owner_id])
@@ -1577,6 +1611,118 @@ function capsule_renderer.render_reticle_trail_dots(flight_rec, leaf, item, p_id
     end
 end
 
+function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, player, surf, current_tick)
+    if not (corr and leaf and item and surf and surf.valid) then return end
+    item.render_objects = item.render_objects or {}
+    local objects = item.render_objects
+
+    local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+    local is_vacuum = (corr.flow_level and corr.flow_level < 0)
+    local tpt = corr.ticks_per_tile or 2
+
+    local current_reach = corr.total_dist or 1
+    if corr.status == "growing" and corr.start_tick then
+        local elapsed = math.max(0, current_tick - corr.start_tick)
+        current_reach = math.min(corr.total_dist, math.floor(elapsed / tpt) + 1)
+        corr.current_reach = current_reach
+    end
+
+    local is_receding = (corr.status == "receding")
+    local decay_duration = corr.end_decay_tick and (corr.end_decay_tick - corr.retreat_tick) or math.max(15, init_mag * 3)
+    local tau = 0.0
+    if is_receding then
+        local elapsed = math.max(0, current_tick - (corr.retreat_tick or current_tick))
+        tau = math.min(1.0, elapsed / decay_duration)
+    end
+
+    local d_base = leaf.d_start or 0
+    local count = leaf.trail_count or (leaf.d_end and math.max(0, math.floor(leaf.d_end - d_base + 0.5))) or 0
+
+    if is_receding and tau >= 1.0 then
+        for i = 1, count do
+            if objects[i] then render_pool.recycle(p_idx, objects[i]) objects[i] = nil end
+            local tk = "t_" .. i
+            if objects[tk] then render_pool.recycle(p_idx, objects[tk]) objects[tk] = nil end
+        end
+        return
+    end
+
+    local active_reach = math.min(current_reach, init_mag)
+    local init_tip = math.max(1, init_mag - (active_reach - 1))
+    local p_head_cont = is_receding and (init_mag * (1.0 - tau)) or init_mag
+    local p_tip_cont = is_receding and (init_tip * math.max(0, 1.0 - (tau * tau))) or init_tip
+
+    local sp = corr.start_pos
+    local dx = corr.dir.x
+    local dy = corr.dir.y
+
+    for i = 1, count do
+        local d = d_base + i
+        local tile_level = 0
+        if d <= active_reach and p_head_cont > 0 then
+            if not is_receding then
+                local raw = init_mag - (d - 1)
+                if raw > 0 then
+                    tile_level = raw
+                end
+            else
+                local f = (active_reach > 1) and math.min(1.0, (d - 1) / (active_reach - 1)) or 0
+                local raw = p_head_cont * (1.0 - f) + p_tip_cont * f
+                if raw > 0.001 then
+                    tile_level = math.ceil(raw)
+                end
+            end
+        end
+
+        if tile_level <= 0 or d > active_reach then
+            if objects[i] then render_pool.recycle(p_idx, objects[i]) objects[i] = nil end
+            local tk = "t_" .. i
+            if objects[tk] then render_pool.recycle(p_idx, objects[tk]) objects[tk] = nil end
+        else
+            local display_level = is_vacuum and -tile_level or tile_level
+            local ratio = math.min(1.0, tile_level / 10)
+            local circle_color = is_vacuum
+                and { r = 1.0, g = 0.3 + ratio * 0.7, b = 0.0, a = 0.8 }
+                or  { r = 0.0, g = 0.4 + ratio * 0.6, b = 1.0, a = 0.8 }
+            local dot_pos = { x = sp.x + dx * d, y = sp.y + dy * d }
+
+            local c_obj = objects[i]
+            local tk = "t_" .. i
+            local t_obj = objects[tk]
+
+            if c_obj and c_obj.valid and t_obj and t_obj.valid then
+                c_obj.color = circle_color
+                t_obj.text = tostring(display_level)
+            else
+                if c_obj then render_pool.recycle(p_idx, c_obj) end
+                if t_obj then render_pool.recycle(p_idx, t_obj) end
+
+                c_obj = render_pool.lease_circle{
+                    color = circle_color,
+                    radius = 0.15,
+                    filled = true,
+                    target = dot_pos,
+                    surface = surf,
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+                t_obj = render_pool.lease_text{
+                    text = tostring(display_level),
+                    surface = surf,
+                    target = { x = dot_pos.x, y = dot_pos.y - 0.25 },
+                    color = { r = 1.0, g = 1.0, b = 1.0, a = 0.9 },
+                    scale = 0.7,
+                    alignment = "center",
+                    only_in_alt_mode = true,
+                    players = { player }
+                }
+                objects[i] = c_obj
+                objects[tk] = t_obj
+            end
+        end
+    end
+end
+
 function capsule_renderer.peel_retreating_wake(reticle, leaf, item, p_idx, current_tick, tpt)
     local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
     local dist_cleared = math.floor(elapsed_retreat / tpt)
@@ -1644,6 +1790,17 @@ motion_protocols.register_trail("wake_peeling", function(flight_rec, leaf, item,
     if reticle then
         capsule_renderer.peel_retreating_wake(reticle, leaf, item, p_idx, current_tick, tpt)
     end
+end)
+
+motion_protocols.register_static_render("pressure_static", function(player_index, item, surface)
+    if not (item and item.leaf and surface and surface.valid) then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
+    if not corr then return end
+
+    capsule_renderer.render_pressure_corridor(corr, item.leaf, item, player_index, player, surface, game.tick)
 end)
 
 --------------------------------------------------------------------------------

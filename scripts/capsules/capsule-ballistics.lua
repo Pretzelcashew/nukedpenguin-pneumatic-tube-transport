@@ -9,6 +9,7 @@ local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
 local flow_kinetic = require("scripts.flow.flow-kinetic")
 local timed_motion = require("scripts.utils.timed-motion")
+local motion_protocols = require("scripts.utils.motion-protocols")
 
 local capsule_ballistics = {}
 
@@ -768,10 +769,17 @@ function capsule_ballistics.handle_endpoint_arrival(capsule, id, node, bf, runne
     else
         capsule.beam_flight = nil
         if surface and surface.valid and term_pos then
-            local q_lvl = (node and node.q_level) or (bf and bf.q_level) or 0
-            local owner_unit = (node and (node.beam_owner or node.unit_number)) or (bf and bf.owner)
-            capsule_ballistics.apply_crash_damage(surface, term_pos, q_lvl, owner_unit, capsule)
-            hub_spill.spill_capsule(id, surface, term_pos, nil, true)
+            if bf and bf.silent_halt then
+                runner.remove_capsule(id)
+            else
+                local q_lvl = (node and node.q_level) or (bf and bf.q_level) or 0
+                local owner_unit = (node and (node.beam_owner or node.unit_number)) or (bf and bf.owner)
+                local is_destructive = not (bf and bf.peaceful_spill)
+                if is_destructive then
+                    capsule_ballistics.apply_crash_damage(surface, term_pos, q_lvl, owner_unit, capsule)
+                end
+                hub_spill.spill_capsule(id, surface, term_pos, nil, is_destructive)
+            end
         else
             runner.remove_capsule(id)
         end
@@ -1020,6 +1028,7 @@ capsule_ballistics.arrival_handlers = arrival_handlers
 
 function capsule_ballistics.register_arrival_handler(kind, handler)
     arrival_handlers[kind] = handler
+    motion_protocols.register_arrival(kind, handler)
 end
 
 function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, current_tick, runner)
@@ -1387,21 +1396,28 @@ capsule_ballistics.register_arrival_handler("projector_scope", capsule_ballistic
 capsule_ballistics.register_arrival_handler("anti_reticle", capsule_ballistics.handle_anti_reticle_arrival)
 capsule_ballistics.register_arrival_handler("muzzle_probe", capsule_ballistics.handle_projector_scope_arrival)
 
+motion_protocols.register_arrival("capsule_terminal", function(flight_id, flight, current_tick, runner)
+    local capsule = storage.capsules and storage.capsules[flight_id]
+    if capsule and capsule.in_timed_flight then
+        capsule_ballistics.finalize_timed_arrival(capsule, flight_id, runner)
+    end
+end)
+motion_protocols.register_arrival("scope_step", capsule_ballistics.handle_projector_scope_arrival)
+motion_protocols.register_arrival("anti_reticle_step", capsule_ballistics.handle_anti_reticle_arrival)
+
 function capsule_ballistics.handle_timed_arrival(flight_id, current_tick, runner)
     local flight = timed_motion.get_flight(flight_id)
-    local kind = (flight and flight.kind) or (storage.capsules and storage.capsules[flight_id] and "capsule")
+    local proto_src = flight or (storage.capsules and storage.capsules[flight_id])
+    local arrival_fn = motion_protocols.get_subprotocol(proto_src, "arrival")
 
-    if kind == "capsule" then
-        local capsule = storage.capsules and storage.capsules[flight_id]
-        if capsule and capsule.in_timed_flight then
-            capsule_ballistics.finalize_timed_arrival(capsule, flight_id, runner)
-        end
+    if arrival_fn then
+        arrival_fn(flight_id, flight, current_tick, runner)
     elseif flight and type(flight.on_arrival) == "string" and arrival_handlers[flight.on_arrival] then
         arrival_handlers[flight.on_arrival](flight_id, flight, current_tick, runner)
     elseif flight and type(flight.on_arrival) == "function" then
         flight.on_arrival(flight_id, flight, current_tick, runner)
-    elseif kind and arrival_handlers[kind] then
-        arrival_handlers[kind](flight_id, flight, current_tick, runner)
+    elseif flight and flight.kind and arrival_handlers[flight.kind] then
+        arrival_handlers[flight.kind](flight_id, flight, current_tick, runner)
     end
 end
 
@@ -1527,10 +1543,25 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                 local cap = cap_id and storage.capsules and storage.capsules[cap_id]
                 local bf = cap and cap.beam_flight
 
-                if bf and cap.in_timed_flight then
-                    local dx = bf.dx or (bf.dir and bf.dir.x) or 0
-                    local dy = bf.dy or (bf.dir and bf.dir.y) or 0
-                    local sp = bf.start_pos
+                if bf and (cap and cap.in_timed_flight or bf.in_timed_flight) then
+                    local proto_src = cap or f_rec or bf
+                    local disrupt_fn = motion_protocols.get_subprotocol(proto_src, "disruption")
+                        or motion_protocols.disruptions["ballistic_crash"]
+                    if disrupt_fn then
+                        disrupt_fn(bf, cap, cap_id or (f_rec and f_rec.id), surface, entity, bb, is_removal, current_tick)
+                    end
+                end
+            end
+        end
+    end
+end
+
+function capsule_ballistics.handle_ballistic_disruption(bf, cap, cap_id, surface, entity, bb, is_removal, current_tick, is_peaceful, is_silent)
+    local dx = bf.dx or (bf.dir and bf.dir.x) or 0
+    local dy = bf.dy or (bf.dir and bf.dir.y) or 0
+    local sp = bf.start_pos
+    if is_peaceful then bf.peaceful_spill = true end
+    if is_silent then bf.silent_halt = true end
 
                     bf.orig_terminal_pos = bf.orig_terminal_pos or { x = bf.terminal_pos.x, y = bf.terminal_pos.y }
                     bf.orig_receiver = (bf.orig_receiver ~= nil and bf.orig_receiver) or bf.hit_receiver_unit
@@ -1635,11 +1666,9 @@ function capsule_ballistics.handle_motion_obstacle_changed(surface, entity, bb, 
                             end
                         end
                     end
-                end
-            end
-        end
-    end
 end
+
+motion_protocols.register_disruption("ballistic_crash", capsule_ballistics.handle_ballistic_disruption)
 
 flow_kinetic.update_projector_flights = capsule_ballistics.update_projector_flights
 flow_kinetic.handle_motion_obstacle_changed = capsule_ballistics.handle_motion_obstacle_changed

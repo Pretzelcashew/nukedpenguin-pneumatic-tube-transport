@@ -6,6 +6,7 @@ local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
+local motion_protocols = require("scripts.utils.motion-protocols")
 
 local flow_kinetic = {}
 
@@ -2953,6 +2954,15 @@ local function step_grid_character_colliders(enqueue_port_fn, wake_port_fn)
 end
 
 flow_kinetic.step_character_colliders = step_grid_character_colliders
+
+-- Register reticle disruption subprotocol into Motion Protocols registry
+motion_protocols.register_disruption("reticle_slice", function(ret, obst_dist, obstacle_entity, cur_flight)
+    if cur_flight and obst_dist and cur_flight.cur_head_dist and obst_dist > (cur_flight.cur_head_dist + 0.05) then
+        flow_kinetic.update_reticle_horizon(ret, obst_dist, obstacle_entity, cur_flight)
+    else
+        flow_kinetic.truncate_reticle(ret, obst_dist, obstacle_entity)
+    end
+end)
 
 function flow_kinetic._legacy_step_character_colliders(enqueue_port_fn, wake_port_fn)
     flow_kinetic.flush_pending_reticle_obstacles()

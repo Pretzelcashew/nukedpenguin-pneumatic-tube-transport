@@ -1,8 +1,10 @@
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
+local motion_protocols = require("scripts.utils.motion-protocols")
 
 local timed_motion = {}
+timed_motion.motion_protocols = motion_protocols
 
 timed_motion.DEFAULT_TICKS_PER_TILE = 1.2
 
@@ -74,6 +76,7 @@ function timed_motion.create_record(spec)
         q_level = spec.q_level or 0,
         payload = spec.payload,
         kind = spec.kind or "capsule",
+        protocol = spec.protocol or spec.kind or (type(spec.on_arrival) == "string" and spec.on_arrival) or "capsule",
         metadata = spec.metadata or {},
         render_spec = spec.render_spec,
         on_arrival = (type(spec.on_arrival) == "string") and spec.on_arrival or nil,
@@ -81,6 +84,10 @@ function timed_motion.create_record(spec)
         max_distance = spec.max_distance,
         seg_idx = spec.seg_idx or 1
     }
+end
+
+function timed_motion.get_protocol(record)
+    return motion_protocols.get_protocol(record)
 end
 
 function timed_motion.get_flight(id)

@@ -6,6 +6,7 @@ local render_pool = require("scripts.utils.render-pool")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
 local profiler = require("scripts.utils.profiler")
+local motion_protocols = require("scripts.utils.motion-protocols")
 require("scripts.debug-manager")
 
 local capsule_renderer = {}
@@ -239,28 +240,10 @@ function capsule_renderer.update_governor(current_tick)
                             for f = 1, #owner_flights do
                                 local flight = owner_flights[f]
                                 local f_id = flight.id or flight.capsule_id
-                                local t_start = flight.start_tick or 0
                                 local flight_rec = timed_motion.get_flight(f_id)
-                                local is_scope = (flight.kind == "projector_scope") or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope"))
-                                local is_anti = (flight.kind == "anti_reticle") or (flight_rec and (flight_rec.kind == "anti_reticle" or flight_rec.on_arrival == "anti_reticle"))
+                                local t_entry, t_exit, has_visible_head = motion_protocols.get_progression_window(flight, flight_rec, leaf, d_start, d_end, tpt)
 
-                                local t_entry, t_exit
-                                if is_scope or is_anti then
-                                    local f_seg = flight_rec and flight_rec.seg_idx or 1
-                                    local l_seg = leaf and leaf.seg_idx or 1
-                                    if f_seg == l_seg then
-                                        t_entry = flight.start_tick or 0
-                                        t_exit = flight.arrival_tick or (t_entry + math.ceil((d_end - d_start) * tpt))
-                                    else
-                                        t_entry = -1
-                                        t_exit = -1
-                                    end
-                                else
-                                    t_entry = t_start + math.floor(d_start * tpt)
-                                    t_exit = t_start + math.ceil(d_end * tpt)
-                                end
-
-                                if not is_anti and current_tick >= t_entry and current_tick <= t_exit then
+                                if has_visible_head and current_tick >= t_entry and current_tick <= t_exit then
                                     scratch_observed_flights[f_id] = true
                                 end
                             end
@@ -1384,46 +1367,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
             if scratch_active_owners[item.owner_id] then
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
             if reticle and reticle.retreat_tick then
-                local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
-                local dist_cleared = math.floor(elapsed_retreat / tpt)
-                local leaf = item.leaf
-                local d_start = leaf and leaf.d_start or 0
-                local d_end = leaf and leaf.d_end or 16
-                local objs = item.render_objects or item.objects
-
-                if dist_cleared >= d_start and objs then
-                    local dots_to_clear = math.min(d_end - d_start, dist_cleared - d_start)
-                    local cur_cleared = item.cleared_dots_count or 0
-                    if dots_to_clear > cur_cleared then
-                        for step_i = cur_cleared + 1, dots_to_clear do
-                            local obj = objs[step_i]
-                            if obj then
-                                render_pool.recycle(p_idx, obj)
-                                objs[step_i] = nil
-                            end
-                        end
-                        item.cleared_dots_count = dots_to_clear
-                    end
-                end
-
-                if dist_cleared >= d_end and objs then
-                    for idx = 1, (d_end - d_start) do
-                        local obj = objs[idx]
-                        if obj then
-                            render_pool.recycle(p_idx, obj)
-                            objs[idx] = nil
-                        end
-                    end
-                end
-
-                if dist_cleared >= (reticle.total_dist or 0) and objs then
-                    for idx, obj in pairs(objs) do
-                        if obj then
-                            render_pool.recycle(p_idx, obj)
-                            objs[idx] = nil
-                        end
-                    end
-                end
+                capsule_renderer.peel_retreating_wake(reticle, item.leaf, item, p_idx, current_tick, tpt)
             end
 
             local owner_flights = (storage.timed_flights and storage.timed_flights[item.owner_id])
@@ -1436,29 +1380,10 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                 for f = 1, #owner_flights do
                     local flight = owner_flights[f]
                     local f_id = flight.id or flight.capsule_id
-                    local t_start = flight.start_tick or 0
                     local flight_rec = timed_motion.get_flight(f_id)
-                    local is_scope = (flight.kind == "projector_scope") or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope"))
-                    local is_anti = (flight.kind == "anti_reticle") or (flight_rec and (flight_rec.kind == "anti_reticle" or flight_rec.on_arrival == "anti_reticle"))
-
-                    local t_entry, t_exit
-                    if is_scope or is_anti then
-                        local f_seg = flight_rec and flight_rec.seg_idx or 1
-                        local l_seg = leaf and leaf.seg_idx or 1
-                        if f_seg == l_seg then
-                            t_entry = flight.start_tick or 0
-                            t_exit = flight.arrival_tick or (t_entry + math.ceil((d_end - d_start) * tpt))
-                        else
-                            t_entry = -1
-                            t_exit = -1
-                        end
-                    else
-                        t_entry = t_start + math.floor(d_start * tpt)
-                        t_exit = t_start + math.ceil(d_end * tpt)
-                    end
+                    local t_entry, t_exit = motion_protocols.get_progression_window(flight, flight_rec, leaf, d_start, d_end, tpt)
 
                     if current_tick >= t_entry and current_tick <= t_exit then
-                        local flight_rec = timed_motion.get_flight(f_id)
                         local capsule = storage.capsules and storage.capsules[f_id]
                         local bf = (capsule and capsule.beam_flight) or flight_rec
 
@@ -1471,76 +1396,16 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                             end
 
                             rendered_this_tick[f_id] = true
-                            if capsule and capsule.in_timed_flight then
-                                    if dbg.capsules then
-                                        capsule.last_pos = curr_pos
-                                        capsule.surface_name = surf.name
-                                        capsule_renderer.render_flight_for_player(capsule, f_id, p_idx, player, curr_pos, surf)
-                                    end
-                                elseif flight_rec and not is_anti then
-                                    capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
-                                    if leaf and (flight_rec.kind == "projector_scope" or flight_rec.on_arrival == "projector_scope") then
-                                        local r_sp = reticle and reticle.start_pos or bf.start_pos
-                                        local head_dist = math.abs(curr_pos.x - r_sp.x) + math.abs(curr_pos.y - r_sp.y)
-                                        local max_allowed_in_leaf = math.max(0, math.floor(head_dist - d_start))
-                                        local dist_in_leaf = math.min(d_end - d_start, max_allowed_in_leaf)
-                                        local cur_dots = item.trail_dots_count or 0
-                                        if dist_in_leaf > cur_dots then
-                                            item.render_objects = item.render_objects or {}
-                                            local r_sp = reticle and reticle.start_pos
-                                            local dx = (reticle and reticle.dir and reticle.dir.x) or (bf and bf.dir and bf.dir.x) or (leaf and leaf.dir and leaf.dir.x) or 0
-                                            local dy = (reticle and reticle.dir and reticle.dir.y) or (bf and bf.dir and bf.dir.y) or (leaf and leaf.dir and leaf.dir.y) or 0
-                                            if dx == 0 and dy == 0 then
-                                                local ep = leaf and leaf.end_pos or bf and bf.terminal_pos
-                                                local sp = leaf and leaf.start_pos or bf and bf.start_pos
-                                                if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
-                                                    if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
-                                                    if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
-                                                end
-                                            end
-                                            local sp = r_sp and { x = r_sp.x + dx * d_start, y = r_sp.y + dy * d_start } or (leaf and leaf.start_pos) or (bf and bf.start_pos)
-                                            local q_lvl = flight_rec.q_level or 0
-                                            local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
+                            local proto_src = flight_rec or capsule or flight
+                            local head_fn = motion_protocols.get_subprotocol(proto_src, "head")
+                            if head_fn then
+                                head_fn(capsule or flight_rec, f_id, p_idx, player, curr_pos, surf, dbg)
+                            end
 
-                                            local min_allowed = 0
-                                            if reticle and reticle.retreat_tick then
-                                                local el_ret = math.max(0, current_tick - reticle.retreat_tick)
-                                                min_allowed = math.floor(el_ret / tpt)
-                                            end
-
-                                            for step_i = cur_dots + 1, dist_in_leaf do
-                                                local global_d = d_start + step_i
-                                                if global_d > min_allowed then
-                                                local dot_p = { x = sp.x + dx * step_i, y = sp.y + dy * step_i }
-                                                local dot_obj
-                                                if global_d % 5 == 0 then
-                                                    dot_obj = render_pool.lease_circle{
-                                                        color = pal.core,
-                                                        radius = 0.16,
-                                                        filled = true,
-                                                        target = dot_p,
-                                                        surface = surf,
-                                                        players = { player }
-                                                    }
-                                                else
-                                                    dot_obj = render_pool.lease_circle{
-                                                        color = MINOR_DOT_COLOR,
-                                                        radius = 0.08,
-                                                        filled = true,
-                                                        target = dot_p,
-                                                        surface = surf,
-                                                        players = { player }
-                                                    }
-                                                end
-                                                if dot_obj then
-                                                    item.render_objects[step_i] = dot_obj
-                                                end
-                                                end
-                                            end
-                                            item.trail_dots_count = dist_in_leaf
-                                        end
-                                    end
-                                end
+                            local trail_fn = motion_protocols.get_subprotocol(proto_src, "trail")
+                            if trail_fn and leaf then
+                                trail_fn(flight_rec or bf, leaf, item, p_idx, player, surf, current_tick, tpt, curr_pos)
+                            end
                         end
                     end
                 end
@@ -1644,6 +1509,142 @@ function capsule_renderer._legacy_update_timed_capsules(current_tick)
         end
     end
 end
+
+--------------------------------------------------------------------------------
+-- SUBPROTOCOL RENDERING HANDLERS & WAKE PEELING
+--------------------------------------------------------------------------------
+function capsule_renderer.render_reticle_trail_dots(flight_rec, leaf, item, p_idx, player, surf, current_tick, tpt, curr_pos)
+    local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
+    local r_sp = reticle and reticle.start_pos or flight_rec.start_pos
+    local head_dist = math.abs(curr_pos.x - r_sp.x) + math.abs(curr_pos.y - r_sp.y)
+    local d_start = leaf.d_start or 0
+    local d_end = leaf.d_end or 16
+    local max_allowed_in_leaf = math.max(0, math.floor(head_dist - d_start))
+    local dist_in_leaf = math.min(d_end - d_start, max_allowed_in_leaf)
+    local cur_dots = item.trail_dots_count or 0
+    if dist_in_leaf > cur_dots then
+        item.render_objects = item.render_objects or {}
+        local dx = (reticle and reticle.dir and reticle.dir.x) or (flight_rec and flight_rec.dir and flight_rec.dir.x) or (leaf and leaf.dir and leaf.dir.x) or 0
+        local dy = (reticle and reticle.dir and reticle.dir.y) or (flight_rec and flight_rec.dir and flight_rec.dir.y) or (leaf and leaf.dir and leaf.dir.y) or 0
+        if dx == 0 and dy == 0 then
+            local ep = leaf and leaf.end_pos or flight_rec and flight_rec.terminal_pos
+            local sp = leaf and leaf.start_pos or flight_rec and flight_rec.start_pos
+            if ep and sp and (ep.x ~= sp.x or ep.y ~= sp.y) then
+                if ep.x > sp.x then dx = 1 elseif ep.x < sp.x then dx = -1 end
+                if ep.y > sp.y then dy = 1 elseif ep.y < sp.y then dy = -1 end
+            end
+        end
+        local sp = r_sp and { x = r_sp.x + dx * d_start, y = r_sp.y + dy * d_start } or (leaf and leaf.start_pos) or (flight_rec and flight_rec.start_pos)
+        local q_lvl = flight_rec.q_level or 0
+        local pal = QUALITY_BEAM_PALETTE[q_lvl] or QUALITY_BEAM_PALETTE[0]
+
+        local min_allowed = 0
+        if reticle and reticle.retreat_tick then
+            local el_ret = math.max(0, current_tick - reticle.retreat_tick)
+            min_allowed = math.floor(el_ret / tpt)
+        end
+
+        for step_i = cur_dots + 1, dist_in_leaf do
+            local global_d = d_start + step_i
+            if global_d > min_allowed then
+                local dot_p = { x = sp.x + dx * step_i, y = sp.y + dy * step_i }
+                local dot_obj
+                if global_d % 5 == 0 then
+                    dot_obj = render_pool.lease_circle{
+                        color = pal.core,
+                        radius = 0.16,
+                        filled = true,
+                        target = dot_p,
+                        surface = surf,
+                        players = { player }
+                    }
+                else
+                    dot_obj = render_pool.lease_circle{
+                        color = MINOR_DOT_COLOR,
+                        radius = 0.08,
+                        filled = true,
+                        target = dot_p,
+                        surface = surf,
+                        players = { player }
+                    }
+                end
+                if dot_obj then
+                    item.render_objects[step_i] = dot_obj
+                end
+            end
+        end
+        item.trail_dots_count = dist_in_leaf
+    end
+end
+
+function capsule_renderer.peel_retreating_wake(reticle, leaf, item, p_idx, current_tick, tpt)
+    local elapsed_retreat = math.max(0, current_tick - reticle.retreat_tick)
+    local dist_cleared = math.floor(elapsed_retreat / tpt)
+    local d_start = leaf and leaf.d_start or 0
+    local d_end = leaf and leaf.d_end or 16
+    local objs = item.render_objects or item.objects
+
+    if dist_cleared >= d_start and objs then
+        local dots_to_clear = math.min(d_end - d_start, dist_cleared - d_start)
+        local cur_cleared = item.cleared_dots_count or 0
+        if dots_to_clear > cur_cleared then
+            for step_i = cur_cleared + 1, dots_to_clear do
+                local obj = objs[step_i]
+                if obj then
+                    render_pool.recycle(p_idx, obj)
+                    objs[step_i] = nil
+                end
+            end
+            item.cleared_dots_count = dots_to_clear
+        end
+    end
+
+    if dist_cleared >= d_end and objs then
+        for idx = 1, (d_end - d_start) do
+            local obj = objs[idx]
+            if obj then
+                render_pool.recycle(p_idx, obj)
+                objs[idx] = nil
+            end
+        end
+    end
+
+    if dist_cleared >= (reticle.total_dist or 0) and objs then
+        for idx, obj in pairs(objs) do
+            if obj then
+                render_pool.recycle(p_idx, obj)
+                objs[idx] = nil
+            end
+        end
+    end
+end
+
+-- Hook Presentation Subprotocols into Motion Protocols Registry
+motion_protocols.register_head("capsule_head", function(cap, f_id, p_idx, player, curr_pos, surf, dbg)
+    if dbg and dbg.capsules then
+        cap.last_pos = curr_pos
+        cap.surface_name = surf.name
+        capsule_renderer.render_flight_for_player(cap, f_id, p_idx, player, curr_pos, surf)
+    end
+end)
+
+motion_protocols.register_head("hazard_reticle", function(flight_rec, f_id, p_idx, player, curr_pos, surf)
+    capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
+end)
+
+motion_protocols.register_head("custom_flight", function(flight_rec, f_id, p_idx, player, curr_pos, surf)
+    capsule_renderer.render_custom_flight_for_player(flight_rec, f_id, p_idx, player, curr_pos, surf)
+end)
+
+motion_protocols.register_trail("reticle_dots", capsule_renderer.render_reticle_trail_dots)
+
+-- Unified adapter: routes in-flight trail arguments (arg 7 = current_tick) to wake peeling
+motion_protocols.register_trail("wake_peeling", function(flight_rec, leaf, item, p_idx, player, surf, current_tick, tpt)
+    local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
+    if reticle then
+        capsule_renderer.peel_retreating_wake(reticle, leaf, item, p_idx, current_tick, tpt)
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- TIMED ARRIVAL DOT DEBUG RENDERING

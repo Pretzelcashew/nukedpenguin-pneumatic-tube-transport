@@ -9,6 +9,7 @@
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local render_pool = require("scripts.utils.render-pool")
 local profiler = require("scripts.utils.profiler")
+local motion_protocols = require("scripts.utils.motion-protocols")
 
 local viewport_bvh = {}
 
@@ -344,11 +345,8 @@ function viewport_bvh.clear_player_visible_set(player_index)
     storage.player_visible_set[player_index] = nil
 end
 
---- Attaches and leases static render objects for a leaf in a player's visible set
---- @param player_index number
---- @param item table Visible set entry
---- @param surface LuaSurface
-function viewport_bvh.attach_static_render(player_index, item, surface)
+--- Dedicated static render subprotocol implementation for targeting reticle beams
+function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
     local player = game.get_player(player_index)
     if not (player and player.valid) then return end
@@ -504,6 +502,21 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
 
     item.render_objects = objects
 end
+
+--- Attaches and leases static render objects for a leaf in a player's visible set via subprotocol
+--- @param player_index number
+--- @param item table Visible set entry
+--- @param surface LuaSurface
+function viewport_bvh.attach_static_render(player_index, item, surface)
+    if not (item and item.leaf) then return end
+    local static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
+        or motion_protocols.static_renders["reticle_static"]
+    if static_fn then
+        static_fn(player_index, item, surface)
+    end
+end
+
+motion_protocols.register_static_render("reticle_static", viewport_bvh.attach_reticle_static_render)
 
 --- Detaches and recycles static render objects for a leaf in a player's visible set
 --- @param player_index number

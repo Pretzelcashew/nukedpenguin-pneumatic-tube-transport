@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-17 11:42:20  
-**Scope:** 22 directories, 118 files  
+**Last Generated:** 2026-09-19 08:23:37  
+**Scope:** 22 directories, 121 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -120,6 +120,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── blueprint-sync.lua
 │   │   ├── gui-components.lua
 │   │   ├── item-transfer-handler.lua
+│   │   ├── motion-protocols.lua
 │   │   ├── profiler.lua
 │   │   ├── render-pool.lua
 │   │   ├── timed-motion.lua
@@ -136,7 +137,9 @@ nukedpenguin-pneumatic-tube-transport/
 ├── changelog.txt
 ├── control.lua
 ├── data.lua
+├── FILE-GROUPS.md
 ├── FILE-SIZES.md
+├── file_grouper.py
 ├── info.json
 ├── LICENSE
 ├── patch.txt

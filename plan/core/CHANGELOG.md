@@ -2186,6 +2186,8 @@
 3. **Active Gate Registration Lifecycle (`scripts/flow/flow-engine.lua`):** Extended `build_events` and `init_storage()` to index all standalone and perimeter gate entities into `storage.active_gates` so their state changes are continuously monitored regardless of direct pneumatic grid connection.
 
 
+#### 0.3.23
+
 ### Revision: Prototype Subfolder Modularization and Workspace Hygiene
 **Date:** 2026-09-11 18:22 EDT
 **Context:** Consolidated machine and proxy prototype definitions out of the root prototype folder into a dedicated entities subfolder to decouple general data specifications from device implementations. Relocated loose documentation out of the runtime script directory and archived obsolete staging files to maintain clean repository hygiene.
@@ -2676,6 +2678,431 @@
 3. **Corridor Retention & Pinning (`scripts/utils/timed-motion.lua`):** Updated `remove_flight` to verify if corridor owners are active projectors before pruning BVH segments, ensuring 16-tile spatial corridors remain pinned in the BVH while muzzles are active rather than self-destructing on flight arrival.
 4. **Viewport Renderer Decoupling (`scripts/capsules/capsule-renderer.lua`):** Removed `dbg.master` and `dbg.capsules` early-exits from `dispatch_player_renders` so custom ballistics render cleanly in standard Alt-Mode, unified flight lookups across `storage.timed_flights` and `storage.projector_flights`, and extended `render_custom_flight_for_player` to lease composite coral dots and target rings from `render_pool`.
 5. **Frame Preparation Lifecycle (`scripts/capsules/capsule-runner.lua`):** Hoisted `prepare_frame`, `step_timed_arrivals`, and `update_timed_capsules` to the very top of `update_capsules` prior to `storage.capsules` emptiness guards, guaranteeing player viewport bounds (`storage.player_viewports`) and ballistic flights tick reliably on worlds with zero physical capsules.
+
+
+### Revision: Purge Non-Serializable Lua Functions from Persistent Storage
+**Date:** 2026-09-14 22:36 EDT
+**Context:** Factorio autosaves were failing with an engine-level `on_save()` non-recoverable error caused by Lua function references stored directly in persistent `storage` tables. This session neutralized legacy heap comparator closures and enforced string-only callback identifiers across all timed motion flight records.
+**Key Changes:**
+1. **Storage Setup Migration (`control.lua`):** Stripped legacy `comparator` functions from active binary heaps (`spoil_heap`, `timed_arrival_heap`, `kinetic_arrival_heap`) and cleared function callbacks from `timed_flight_records` during `setup_storage()`.
+2. **Heap Attachment Sanitization (`scripts/utils/binary-heap.lua`):** Added explicit `heap.comparator = nil` inside `binary_heap.attach` to neutralize lingering legacy comparator functions upon deserialization with zero runtime overhead.
+3. **Flight Record Hardening (`scripts/utils/timed-motion.lua`):** Enforced string-only typing on `on_arrival` specifications in `timed_motion.create_record`, permanently preventing function closures from entering `storage.timed_flight_records`.
+4. **Arrival Dispatch Resolution (`scripts/capsules/capsule-ballistics.lua`):** Updated `handle_timed_arrival` to resolve string `on_arrival` keys through the registered arrival handler table.
+
+
+### Revision: Decouple Viewport BVH Culling from Coordinate Polling and Bound Hysteresis Margins
+**Date:** 2026-09-14 23:44 EDT
+**Context:** Periodic flight debug logging was spamming the chat console, and a redundant coordinate bounding check in the render loop was forcing per-tick flight polling while prematurely clipping coarse 16-tile BVH leaves. Additionally, the observer hysteresis shell expanded into a massive 128-tile off-screen void at far zoom levels due to a percentage-based margin multiplier.
+**Key Changes:**
+1. **Render Loop Hardening & Polling Purge (`scripts/capsules/capsule-renderer.lua`):** Purged 60-tick periodic console debug prints and eliminated redundant per-tick coordinate checks (`is_on_screen`), restoring event-driven coarse-grained leaf culling so projectiles render across the full length of any subscribed 16-tile BVH segment without coordinate polling.
+2. **Fixed-Leaf Hysteresis Bounding (`scripts/utils/viewport-bvh.lua`):** Replaced the percentage-based shell multiplier with a fixed 16-tile margin (`SHELL_TILES = 16`), ensuring the hysteresis buffer equals exactly one static BVH leaf in every direction and capping the maximum trailing buffer to 32 tiles at any camera zoom level.
+3. **Frustum Calculation & Dynamic Contraction (`scripts/utils/viewport-bvh.lua`):** Removed the 150-tile clamping ceiling and UI scale divisor from screen frustum calculations, replaced static world-space shrunk boxes with a 25% zoom-in contraction trigger (`SHRINK_THRESHOLD = 0.75`), and disabled debug test rendering in production.
+
+
+### Revision: Multi-Segment Projector Scope Probing & Viewport Static Trail Rendering
+**Date:** 2026-09-15 01:01 EDT
+**Context:** Replaces recursive 16-tile muzzle probes with a chained multi-segment projector scope flight pipeline that populates corridor trajectories and binds static trail markers and endpoint indicators to viewport BVH leaves during Alt-mode.
+**Key Changes:**
+1. **Scope Arrival & Segment Chaining (`scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Implemented `handle_projector_scope_arrival` to step through successive 16-tile corridor segments until remaining range reaches zero, registering motion leaves and anchoring endpoint data in `storage.projector_scope`.
+2. **Kinetic Probe Launch & Lifecycle (`scripts/flow/flow-kinetic.lua`, `scripts/projectors/projector-manager.lua`):** Converted muzzle emission to initiate tracked `projector_scope` flights bound to total emitter reach, with state cleanup on beam cessation and projector deconstruction.
+3. **Incremental Dot Trail Rendering (`scripts/capsules/capsule-renderer.lua`):** Added leaf-relative segment matching for scope flights alongside incremental dot trail generation using quality-tiered beam color palettes.
+4. **Static Leaf Attachments & Alt-Mode Sync (`scripts/utils/viewport-bvh.lua`, `scripts/capsules/capsule-renderer.lua`):** Added static render leasing and recycling for persistent beam trails and endpoint reticles in viewport leaves, synchronizing visibility against player Alt-mode toggles.
+
+
+### Revision: Decoupled Reticle Corridors, Anti-Reticle Temporal Wake Reeling, and Isolated Viewport Indexing
+**Date:** 2026-09-15 09:07 EDT
+**Context:** Projector beam corridors were previously coupled to physical entity unit numbers, causing key collisions, corrupted orientation math, and an inability to smoothly clean up wake trails upon machine rotation or power loss. This session decoupled reticle BVH ownership from physical projector entities, implemented an invisible anti-reticle arrival pipeline for tandem temporal wake reeling, and hardened viewport visible set namespacing against dot hijacking.
+**Key Changes:**
+1. **Decoupled Reticle Corridors & Orphaning (`scripts/flow/flow-kinetic.lua`, `scripts/projectors/projector-manager.lua`):** Assigned unique `reticle_id` identifiers to each emitted scope flight and corridor, allowing projectors to orphan active beams on rotation, power loss, or deconstruction and fire new beams immediately without BVH leaf collisions.
+2. **Anti-Reticle Flight & Arrival Cleanup (`scripts/capsules/capsule-ballistics.lua`, `scripts/flow/flow-kinetic.lua`):** Scheduled invisible `anti_reticle` flights on the binary arrival heap to time-slice wake cleanup in 16-tile hops behind advancing reticles, unpinning `storage.pinned_corridors` and culling BVH segments upon reaching terminal endpoints.
+3. **Tandem Flight & Temporal Wake Reeling (`scripts/capsules/capsule-renderer.lua`, `scripts/capsules/capsule-ballistics.lua`):** Enabled reticles and anti-reticles to advance concurrently in tandem, using closed-form temporal math (`dist_cleared`) to reel in wake dots for observers while suppressing sub-event dot updates when off-screen.
+4. **Orthogonal Direction Derivation (`scripts/utils/viewport-bvh.lua`, `scripts/capsules/capsule-renderer.lua`):** Replaced short-circuiting ternary direction lookups with explicit coordinate delta comparisons against segment `start_pos` and `end_pos`, eliminating 45-degree diagonal slants on cardinal beams.
+5. **Viewport Visible Set Namespacing & Double-Free Guard (`scripts/utils/viewport-bvh.lua`, `scripts/utils/render-pool.lua`):** Enforced `owner_id:seg_key` namespacing across `v_set` entries to prevent concurrent beams from hijacking shared render arrays, and added an early-exit visibility guard to `render_pool.recycle` to prevent duplicate free-list insertions.
+6. **Obstruction Decoupling (`scripts/flow/flow-kinetic.lua`):** Stubbed out premature obstacle-based reticle orphaning in `flow_kinetic.handle_obstacle_changed` to ensure building adjacent machines does not trigger false anti-reticle retreats.
+
+
+### Revision: Hardened Tandem Flight Indexing, Wake-Boundary Suppression, and Viewport Lifecycle Pruning
+**Date:** 2026-09-15 09:32 EDT
+**Context:** Rapid projector rotation and multi-instance firing revealed visual artifacts during tandem flight, including chunked dot respawning, array index hole collisions under Lua's length operator, and orphaned handles lingering in player visible sets. This session stabilized concurrent reticle and anti-reticle flight by enforcing direct slot indexing, gating dot generation behind the trailing wake boundary, isolating endpoint visual handles from numeric step arrays, and connecting segment-level arrival hooks directly to the observer viewport tree.
+**Key Changes:**
+1. **Direct-Slot Dot Indexing (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Replaced `#item.render_objects + 1` with explicit slot indexing (`item.render_objects[step_i] = dot_obj` and `objects[i] = dot_obj`), permanently eliminating Lua `#` array hole collapse when trailing anti-reticles recycle early slots to `nil`.
+2. **Wake-Boundary Dot Suppression (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Gated runtime and static dot spawning behind `min_allowed` (`dist_cleared`), preventing advancing heads and static changed hooks from resurrecting dots behind the retreating wake.
+3. **Endpoint Primitive Namespacing (`scripts/utils/viewport-bvh.lua`):** Migrated static endpoint sprites, rings, and circles from numeric indices to dedicated string keys (`"endpoint_ring"`, `"endpoint_circ"`, `"endpoint_sprite"`), shielding endpoint indicators from the numeric dot clearing loop.
+4. **Observer Viewport Segment Pruning (`scripts/capsules/capsule-ballistics.lua`):** Connected `viewport_bvh.on_segment_removed` to both intermediate 16-tile hops and terminal arrivals in `handle_anti_reticle_arrival`, immediately pruning dead corridor segments from `storage.player_visible_set`.
+
+
+### Revision: Deconstruction & Script-Raised Destruction Projector Reticle Orphaning
+**Date:** 2026-09-15 09:42 EDT
+**Context:** In sandbox and map editor modes, deconstructing or instant-deleting projectors failed to orphan their reticles because `script_raised_destroy` was improperly referenced in `active-device-scanner.lua` and the engine's generic `on_object_destroyed` handler omitted projector destruction notifications. This session corrected the event reference and wired projector destruction hooks across both object destruction and removal pipelines.
+**Key Changes:**
+1. **Event Reference Correction (`scripts/active-device-scanner.lua`):** Corrected `defines.script_raised_destroy` to `defines.events.script_raised_destroy`, ensuring script, editor, and sandbox deconstruction events register properly.
+2. **Object Destruction Lifecycle Hook (`scripts/flow/flow-engine.lua`):** Invoked `flow_kinetic.handle_projector_destroyed(unit_number)` inside `flow_engine.handle_object_destroyed`, guaranteeing instant deconstructions orphan active reticles.
+3. **Entity Removal Dispatch (`scripts/flow/flow-engine.lua`):** Added projector destruction notifications inside the `removal_events` handler so robot deconstruction and entity mining reliably trigger reticle wake reeling.
+
+
+### Revision: Leaf-Scoped Spatial Obstacle Interception and Reticle Corridor Truncation
+**Date:** 2026-09-15 16:14 EDT
+**Context:** Implemented the foundational spatial collision pipeline for Projector Refactor Task 1, replacing global raycasts with single-pass 16-tile leaf-scoped area queries timed with probe arrivals and enabling logarithmic corridor truncation on entity placement, gate closure, and character movement.
+**Key Changes:**
+1. **Observer Viewport Attachment (`scripts/flow/flow-kinetic.lua`):** Imported `viewport_bvh` at the top level to resolve nil global runtime exceptions during reticle segment removal and static leaf synchronization.
+2. **Leaf-Scoped Spatial Hit Detection (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.scan_leaf_rect` to execute a single spatial query bounded strictly to each 16-tile BVH leaf rectangle during generation, calculating on-axis leading face distances and shielding the emitter chassis from self-collision.
+3. **Spatiotemporal Probe Sweep Gating (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Integrated leaf rect obstacle checks into `on_muzzle_want_emission` for segment 1 and `handle_projector_scope_arrival` for segments 2+, clamping forward probe flights to the collision face and suppressing downstream leaf creation.
+4. **On-Axis Reticle Corridor Truncation (`scripts/flow/flow-kinetic.lua`):** Created `flow_kinetic.truncate_reticle` to clamp live corridors and decaying wakes squarely at collision faces, updating terminal segment bounds, conditionally attaching obstacle hazard rings on live emitters, and recycling downstream leaf visuals via `viewport_bvh.on_segment_removed`.
+5. **Logarithmic Reactive Interception (`scripts/flow/flow-kinetic.lua`):** Wired entity placement, defensive gate transitions, and character steps to query `motion_bvh` in $O(\log N)$ time, reclassified physical characters and vehicles as blocking obstacles in `IGNORABLE_TYPES`, and dispatched instant cardinal truncation.
+
+
+### Revision: Pass Player Index to Viewport Render Pool Recycling
+**Date:** 2026-09-15 16:30 EDT
+**Context:** Intra-leaf trail dots and endpoint visual indicators were being orphaned in Factorio's native rendering engine upon corridor truncation because render_pool.recycle was invoked without the required player_index parameter, silently failing to return handles to the player free list.
+**Key Changes:**
+1. **Trail Dot Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Passed `player_index` into `render_pool.recycle(player_index, objects[i])` during intra-leaf dot pruning, ensuring culled dots beyond the obstacle face properly hide and return to the player render pool.
+2. **Endpoint Indicator Recycling Signature (`scripts/utils/viewport-bvh.lua`):** Added `player_index` to all `render_pool.recycle` invocations for `endpoint_sprite`, `endpoint_ring`, and `endpoint_circ`, preventing orphaned endpoint indicators during corridor truncation and position relocation.
+
+
+### Revision: Dynamic Horizon Rescheduling and Forward Reticle Snap Suppression
+**Date:** 2026-09-15 19:10 EDT
+**Context:** Placing an entity or moving an obstacle into an advancing projector corridor was previously executing an unconditional `truncate_reticle` pass. While correct for cuts behind or directly at the advancing head, obstacles placed forward along the probe's remaining path caused the visual reticle to instantly teleport forward to the collision face ahead of schedule. This session decoupled forward obstacle detection from backward truncation, preserving backward cutoffs while updating flight records and rescheduling the binary arrival heap for smooth in-flight termination.
+**Key Changes:**
+1. **Real-Time Head Interpolation (`scripts/flow/flow-kinetic.lua`):** Integrated `timed_motion.get_interpolated_position` into `flow_kinetic.handle_obstacle_changed` to compute the advancing probe head's exact real-time cardinal distance (`cur_head_dist`) from the launch muzzle.
+2. **Directional Interception Partitioning (`scripts/flow/flow-kinetic.lua`):** Gated `flow_kinetic.truncate_reticle` strictly to obstacles appearing at or behind the current head (`o_dist <= cur_head_dist + 0.05`), ensuring corridors snap backward immediately on upstream cuts.
+3. **Dynamic Flight Horizon Rescheduling (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.update_reticle_horizon` for forward obstacles (`o_dist > cur_head_dist`), clamping `terminal_pos`, resizing active BVH leaf bounds in-place, recalculating arrival ticks at constant velocity, and rebalancing the binary arrival heap without visual pop.
+4. **Scope Arrival Total Distance Synchronization (`scripts/capsules/capsule-ballistics.lua`):** Synchronized `reticle.total_dist` to the exact endpoint distance upon terminal arrival in `handle_projector_scope_arrival`.
+
+
+### Revision: Obstacle Clearance, Canonical Corridor Regrowth, and Viewport Dot Recycling
+**Date:** 2026-09-15 20:37 EDT
+**Context:** Implemented Projector Refactor Task 3 to wake up truncated reticles upon obstacle removal (mined entities, opened gates, or combat destructions) and resume forward probing to maximum reach without resetting upstream trail dots or producing downstream ghost handles.
+**Key Changes:**
+1. **$O(1)$ Obstacle Soft-Registration (`scripts/flow/flow-kinetic.lua`, `scripts/flow/flow-engine.lua`):** Added soft-registration tables (`storage.blocked_reticles`, `storage.blocked_reticles_by_reg`, `storage.reticle_blocked_by`) linking blocking entity unit numbers and native `script.register_on_object_destroyed` registration IDs directly to blocked reticles. Removal events and `on_object_destroyed` callbacks wake registered reticles in $O(1)$ time without map-wide scans.
+2. **Canonical Segment Boundary Regrowth (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.resume_reticle_probing` to compute distance to the current segment's canonical 16-tile boundary (`(cur_seg_idx * 16) - cur_dist`) and launch forward probe flights from the unblocked collision face, preserving full projector `max_reach` and updating both motion and trajectory BVH trees without coordinate drift.
+3. **Independent BVH Recycler Pruning (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` and `update_reticle_horizon` to independently scan and prune downstream segments across both `motion_tree` and `traj_tree`, ensuring culled nodes cleanly return to `bvh.free_nodes` and `/toggle-bvh` debug boxes stay contiguous.
+4. **Offset-Aware Flight Dot Progression (`scripts/capsules/capsule-renderer.lua`):** Updated `dispatch_player_renders` to compute in-flight dot progress relative to `flight_start_dist` (`start_offset + math.floor(elapsed_t / tpt)`), ensuring resumed flights starting mid-segment spawn dots immediately from the collision face rather than lagging at segment origin.
+5. **Cumulative Leaf Trail Sync (`scripts/capsules/capsule-ballistics.lua`):** Updated `handle_projector_scope_arrival` to compute `leaf.trail_count` cumulatively from canonical segment origins (`total_leaf_dist`), synchronize `reticle.total_dist` across segment chains, and soft-register newly encountered downstream obstacles.
+6. **Unconditional Viewport Dot Recycling (`scripts/utils/viewport-bvh.lua`):** Enhanced `attach_static_render` to unconditionally prune and recycle all numeric dot handles $> \text{count}$ back into the player render pool, and updated `on_leaf_static_changed` to broadcast truncation updates across all active subscribers in `storage.player_visible_set`, permanently eliminating lingering ghost dots downstream of obstructions.
+
+
+### Revision: Projector Scope Stepping and Dynamic Reticle Obstacle Clearance
+**Date:** 2026-09-15 21:14 (EDT)
+**Context:** Resolves trajectory misalignment and boundary errors during mid-segment projector scope propagation, and ensures growing reticles correctly adjust distances when encountering or clearing obstacles mid-flight.
+**Key Changes:**
+1. **Scope Step & Trajectory Segmentation (`scripts/capsules/capsule-ballistics.lua`):** Added mid-segment boundary detection to preserve segment indexing and start offsets during sub-segment steps, clamped remaining distance to zero on obstacle impact, and bypassed premature trail finalization on partial chunks.
+2. **Dynamic Obstacle Clearance & Reach Checks (`scripts/flow/flow-kinetic.lua`):** Enabled in-flight reticles to dynamically restore remaining flight distance when obstacles clear during growth, and updated obstacle collision scanning to check against full potential reach rather than truncated intermediate distances.
+
+
+### Revision: Multi-Layer Obstacle Clearance and Reticle Jump Mitigation
+**Date:** 2026-09-15 21:35 EDT
+**Context:** Clearing a downstream obstacle while an upstream obstacle remained in front of an active projector caused the reticle to wake prematurely, ignore the adjacent blocking structure, and jump through obstacles to maximum reach. This session hardened obstacle registration with single-blocker unregistration, verified active ownership during entity clearance, added on-axis overlap hit detection, and clamped terminal segment bounds upon in-flight collisions.
+**Key Changes:**
+1. **Single-Owner Obstacle Registration (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.unregister_reticle_obstacle` at the start of `register_reticle_obstacle` to ensure reticles track only the closest active obstacle and purge obsolete downstream waking references in $O(1)$ time.
+2. **Obstacle Clearance Ownership Verification (`scripts/flow/flow-kinetic.lua`):** Gated reticle waking in `handle_reticle_obstacle_cleared` behind explicit verification against `storage.reticle_blocked_by[rid]`, permanently preventing deconstructed or mined downstream entities from waking upstream-blocked beams.
+3. **On-Axis Overlap Hit Detection (`scripts/flow/flow-kinetic.lua`):** Enhanced `scan_leaf_rect` to detect entities overlapping or touching the probe origin on-axis (`cbb.left_top.x <= start_pos.x + 0.05`), preventing resumed probes from bypassing structures standing directly at `start_pos`.
+4. **Scope Arrival Boundary Clamping (`scripts/capsules/capsule-ballistics.lua`):** Recalculated `d_end` immediately upon collision in `handle_projector_scope_arrival`, ensuring trajectory BVH, motion BVH, and reticle total distance clamp accurately to the obstacle face.
+
+
+### Revision: Dynamic Gate State Sync, Head-Bound Dot Trailing, and Trail Flicker Suppression
+**Date:** 2026-09-16 08:32 EDT
+**Context:** Projector corridors encountering dynamic obstacles like vanilla gates required decoupled state-transition monitoring to allow beams to grow through opened gates and truncate when gates close shut. Additionally, resumed flights starting mid-segment exhibited visual jumps due to unanchored dot offsets, fallback dot inflation in viewport leaf attachments, and a 1-frame trail flicker caused by full-segment detachment upon clearing static hazard rings. This session integrated an autonomous reticle gate registry, anchored in-flight dots strictly to physical head coordinates, and isolated endpoint indicator recycling from preserved segment trail dots.
+**Key Changes:**
+1. **Autonomous Reticle Gate Registry (`scripts/flow/flow-kinetic.lua`, `scripts/flow/flow-engine.lua`):** Added `storage.reticle_gates[reticle_id][gate_unit]` to monitor dynamic gate obstacles along active corridors independently of parent projector entities, resuming forward probing on gate open and invoking `truncate_reticle` on gate close.
+2. **Physical Head-Bound Dot Progression (`scripts/capsules/capsule-renderer.lua`):** Replaced independent tick-based progress estimation with direct clamping against physical interpolated head coordinates (`math.floor(head_dist - d_start)`), permanently preventing dots from jumping ahead of the advancing reticle.
+3. **Canonical Segment Origin Dot Anchoring (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Anchored dot coordinate placement strictly to canonical segment origins (`reticle.start_pos + dir * d_start`), eliminating offset double-addition on mid-segment resumed flights.
+4. **Static Trail Fallback Hardening (`scripts/utils/viewport-bvh.lua`):** Gated full-segment dot fallbacks in `attach_static_render` behind explicit `leaf.has_trail == true` checks, preventing active in-flight leaves from prematurely spawning full-length trails.
+5. **Selective Endpoint Pruning & Flicker Suppression (`scripts/utils/viewport-bvh.lua`):** Removed full-segment dot detachment when clearing `leaf.static_render_spec`, preserving valid upstream dots across obstacle waking and recycling only endpoint hazard indicators.
+
+
+### Revision: Discrete Character Tile Evacuation and Downstream Beam Tracking
+**Date:** 2026-09-16 08:48 EDT
+**Context:** While characters obstructed beams reliably on entry, moving out of the beam or walking downstream failed to notify or clear the truncated reticles because the tile evacuation loop omitted reticle waking hooks. This session wired the reticle obstacle clearance and upstream/downstream adjustment directly into the existing discrete grid-tile evacuation pipeline in `step_character_colliders`.
+**Key Changes:**
+1. **Discrete Tile Evacuation Hook (`scripts/flow/flow-kinetic.lua`):** Flagged `evacuated_any` during discrete tile departures in `step_character_colliders` to gate reticle evaluation strictly to grid-tile boundary transitions without sub-pixel polling.
+2. **On-Axis Directional Motion Resolution (`scripts/flow/flow-kinetic.lua`):** Evaluated character position changes against registered reticles upon tile evacuation: waking and regrowing beams when the player steps off-axis or walks downstream, and immediately applying `truncate_reticle` when the player steps upstream closer to the emitter.
+3. **Character Disconnect & Death Lifecycle Clearing (`scripts/flow/flow-kinetic.lua`):** Connected the dead/disconnected character cleanup pass in `step_character_colliders` to `handle_reticle_obstacle_cleared`, ensuring abandoned beams resume forward probing automatically.
+
+
+### Revision: Mid-Corridor Beam Severing and Autonomous Downstream Wake Reeling
+**Date:** 2026-09-16 09:36 EDT
+**Context:** Truncating an active or decaying projector corridor previously wiped all downstream segments instantly, causing harsh visual popping and leaving the truncated end feeling abrupt. This session implemented the core corridor severing pipeline for Projector Refactor Task 2, preserving the downstream beam as an autonomous retreating wake that reels away smoothly from the cut point.
+**Key Changes:**
+1. **Autonomous Downstream Slice Generation (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` to calculate downstream remaining distance (`old_total_dist - obst_dist`) and instantiate a new autonomous reticle ID (`down_id`) carrying over the original trail dots, total distance, and static endpoint indicator.
+2. **Pre-Calibrated Wake Reeling (`scripts/flow/flow-kinetic.lua`):** Initialized the downstream slice with `status = "retreating"` and a back-calculated `retreat_tick` matching the obstacle distance, allowing observer viewport culling to hide upstream dots while preserving downstream dots.
+3. **Discrete Anti-Reticle Flight Launch (`scripts/flow/flow-kinetic.lua`):** Scheduled an `anti_reticle` flight starting squarely at the collision boundary (`collision_pos`) to hop through downstream 16-tile segments, progressively reeling in dots and recycling BVH leaves upon reaching the old endpoint.
+4. **Trailing Wake Boundary Guard (`scripts/flow/flow-kinetic.lua`):** Added `is_behind_wake` filtering to `handle_obstacle_changed`, preventing obstacles built behind an already-retreating wake from triggering redundant or out-of-order truncations.
+
+
+### Revision: Obstacle Exit-Boundary Scanning and Solid Footprint Wake Suppression
+**Date:** 2026-09-16 09:49 EDT
+**Context:** When placing long structures (such as elevated rail ramps) or contiguous rows of obstacles across an active beam, the downstream wake previously retained dots rendered directly on top of the solid obstacle footprint, with the anti-reticle awkwardly traversing through the building chassis. This session implemented an obstacle exit-boundary scanner to identify the far collision face, immediately wiping all dots within the physical footprint and launching the retreating anti-reticle cleanly from the open-air exit boundary.
+**Key Changes:**
+1. **Contiguous Obstacle Exit Scanner (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.find_obstacle_chain_exit` to compute the far exit boundary (`exit_dist`) along the beam axis, iteratively extending through contiguous or overlapping obstacles (supporting single large entities like rail ramps, multi-building blueprints, and defensive walls).
+2. **Solid Footprint Wake Suppression (`scripts/flow/flow-kinetic.lua`):** Calibrated the downstream reticle's `retreat_tick` directly to `game.tick - math.floor(exit_dist * tpt)`, preventing trail dots within the solid obstacle body ($d \le \text{exit\_dist}$) from ever spawning into observer viewports.
+3. **Eclipsed Segment Culling (`scripts/flow/flow-kinetic.lua`):** Filtered out BVH leaf segments that lie entirely within the obstacle footprint ($s_{\text{end}} \le \text{exit\_dist}$), inserting only surviving open-air segments into `motion_tree` and `traj_tree`.
+4. **Exit-Face Anti-Reticle Spawning (`scripts/flow/flow-kinetic.lua`):** Repositioned the downstream `anti_reticle` flight origin directly to the obstacle's exit boundary (`sp + dir * exit_dist`), cleanly reeling in only the surviving open-air wake toward the original terminal endpoint.
+
+
+### Revision: Severed Reticle Head Preservation, Cadence Sync, and Chain Bounds
+**Date:** 2026-09-16 10:19 EDT
+**Context:** Placing multi-tile structures across an active beam previously created fragmented slices, stripped the front reticle head leaving headless tails, and caused trail dots to freeze before popping away in one frame due to a time-per-tile constant mismatch during slow-mo testing. This session stabilized the corridor severing pipeline by preserving the reticle head on severed wakes, synchronizing time-to-tile speeds across renderers, and resolving contiguous obstacle chains in a single spatial pass.
+**Key Changes:**
+1. **Reticle Head & Formed Tail Preservation (`scripts/flow/flow-kinetic.lua`):** Tracked `head_render_spec` across reticle lifecycles and attached the visual head indicator to the downstream slice's terminal leaf, ensuring severed wakes retain their full projectile identity with a visible head and trailing dots.
+2. **Slow-Mo Cadence Synchronization (`scripts/flow/flow-kinetic.lua`):** Anchored `tpt` directly to `trajectory_bvh.TICKS_PER_TILE` across wake creation and horizon calculation, eliminating the 10x timing mismatch with `capsule-renderer.lua` and restoring smooth tick-by-tick progressive dot reeling.
+3. **Contiguous Obstacle Chain Bounds (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.get_obstacle_chain_bounds` to compute the full entry and exit boundaries (`entry_dist`, `exit_dist`) across adjacent blocking entities, clamping the live beam at the near face while clearing matter footprints in one pass.
+4. **Decaying Wake Child & Hazard Suppression (`scripts/flow/flow-kinetic.lua`):** Enforced that decaying wakes clamp at obstacles without active machine hazard rings and never spawn child reticles, preventing visual ring stacking when placing lines of entities.
+
+
+### Revision: Severed Reticle Flight Path Adoption and Incremental Wake Reeling
+**Date:** 2026-09-16 12:14 EDT
+**Context:** Severing an active beam mid-corridor previously froze the forward head in mid-air due to premature flight destruction, while trailing wakes popped away in sudden 16-tile chunks because the per-tick dot-clearing loop was only checking item.render_objects instead of static leaf item.objects. This session enabled severed downstream slices to adopt active head flights and restored progressive tick-by-tick dot recycling across all wake types.
+**Key Changes:**
+1. **Progressive Wake Dot Recycling (`scripts/capsules/capsule-renderer.lua`):** Added `item.objects` fallback to `item.render_objects` in `dispatch_player_renders`, allowing the incremental wake-reeling loop to recycle dots from static BVH leaves tick-by-tick and eliminating 16-tile visual chunk pops.
+2. **Concurrent Wake Reeling Gating (`scripts/capsules/capsule-renderer.lua`):** Gated wake dot clearance and suppression behind `reticle.retreat_tick` instead of requiring `status == "retreating"`, enabling tandem wake reeling behind advancing severed heads.
+3. **Autonomous Severed Flight Adoption (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` to detect when a severed beam's head is still in flight (`head_was_severed`), re-homing the active `cur_flight` onto the downstream orphan (`down_id`) so the head continues traveling forward to full reach without freezing in mid-air.
+4. **Stationary Severed State Retention (`scripts/flow/flow-kinetic.lua`):** Ensured beams that were already stopped at maximum reach or obstacles remain stationary when sliced, preserving static endpoints and launching tail-only anti-reticle reeling.
+
+
+### Revision: Zero-Tick Obstacle Queuing, Adjacency Bridging, and Universal Reticle Head Retention
+**Date:** 2026-09-16 12:42 EDT
+**Context:** When placing a contiguous row of obstacles (such as drag-building defensive walls), beams were generating multiple short-lived 1-tile reticle fragments because adjacent Factorio collision boxes have a 0.4-tile gap that failed to merge under the previous 0.05-tile threshold, while an earlier duplicate-blocking guard was preventing downstream orphaned reticle creation once a beam reached maximum reach. Furthermore, previous severing logic was stripping endpoint indicators from retreating wakes under the assumption of "headless" reticles. This session introduced a zero-tick frame-slice obstruction queue, broadened obstacle adjacency merging, guaranteed downstream reticle severance at any range, and enforced that every reticle retains a visible head across its entire lifecycle.
+**Key Changes:**
+1. **Universal Reticle Head Retention (`scripts/flow/flow-kinetic.lua`):** Permanently purged headless wake concepts across truncation and wake-reeling routines; removed the retreating wake early-return and head-stripping assignments (`leaf.static_pos = nil`, `leaf.static_render_spec = nil`), ensuring both upstream collision faces and downstream severed endpoints retain valid `head_render_spec` structures and visual indicators.
+2. **Orphaned Downstream Severing at Max Reach (`scripts/flow/flow-kinetic.lua`):** Removed the `existing_down_id` blocking check in `truncate_reticle`, ensuring obstacles placed across stationary or max-range beams reliably detach the downstream portion into an autonomous orphaned reticle.
+3. **Contiguous Grid Adjacency Bridging (`scripts/flow/flow-kinetic.lua`):** Expanded the entity boundary merge tolerance from 0.05 tiles to 0.75 tiles in `get_obstacle_chain_bounds` and `find_obstacle_chain_exit`, allowing adjacent 1x1 structures on the tile grid to bridge physical collision box gaps and fuse into a single contiguous matter footprint.
+4. **Zero-Tick Frame-Slice Obstruction Queue (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.queue_reticle_obstacle` and `flow_kinetic.flush_pending_reticle_obstacles` to buffer all obstruction events occurring within the same tick; hooked flush passes into step cycles so multi-entity placements resolve in a single pass with zero tick latency and zero short-lived intermediate slices.
+5. **Decoupled Wake-Reeling Visibility Threshold (`scripts/utils/viewport-bvh.lua`):** Gated static trail dot suppression in `attach_static_render` directly behind `reticle.retreat_tick` rather than requiring `status == "retreating"`, allowing severed in-flight heads to render uninhibited while trailing wakes reel in.
+
+
+### Revision: Deferred Receiver Docking and Impact-Gated Cyan Reticle Head
+**Date:** 2026-09-16 14:41 EDT
+**Context:** Prospective reticle collision scans were turning advancing probe heads cyan while still in mid-air traveling toward opposing projectors. Parent projectors also required an accurate link to their receiving counterpart without premature association before beam arrival. This session decoupled prospective collision detection from visual reticle state, preserved standard coral head styling throughout transit, and gated cyan head transitions and parent receiver linkage strictly upon physical arrival at the receiver collision face.
+**Key Changes:**
+1. **Deferred Pending Receiver Tracking (`scripts/flow/flow-kinetic.lua`):** Introduced `pending_receiver` on reticle state across `on_muzzle_want_emission` and `update_reticle_horizon`, capturing prospective opposing projectors without pre-committing `reticle.hit_receiver` or linking receiver units prematurely.
+2. **In-Flight Head Styling Preservation (`scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-ballistics.lua`):** Enforced `DEFAULT_HEAD_SPEC` (coral) across all active in-flight probe steps, ensuring the flying head never changes color while traversing open air.
+3. **Impact-Gated Receiver Docking (`scripts/capsules/capsule-ballistics.lua`):** Updated `handle_projector_scope_arrival` terminal arrival to verify `pending_receiver`, committing `reticle.hit_receiver`, assigning `leaf.static_render_spec = RECEIVER_HEAD_SPEC` (cyan), and storing `receiver_unit` on the parent projector's scope record.
+4. **Immediate Truncation Receiver Alignment (`scripts/flow/flow-kinetic.lua`):** Updated `truncate_reticle` to immediately commit `RECEIVER_HEAD_SPEC` and link `receiver_unit` when an obstacle placed directly at or behind the head is an active receiver projector.
+5. **Obstacle Clearance & Regrowth Reset (`scripts/flow/flow-kinetic.lua`):** Cleared `pending_receiver`, `hit_receiver`, and `storage.projector_scope[proj_unit].receiver_unit` across `resume_reticle_probing` and `handle_reticle_obstacle_cleared`, smoothly restoring default styling when obstructions clear.
+
+
+### Revision: Multi-Segment Reticle Receiver Docking and Boundary Impact Resolution
+**Date:** 2026-09-16 15:02 EDT
+**Context:** Projector reticles were failing to turn cyan when impacting another projector across multi-segment corridors (>16 tiles), when regrowing after an intermediate obstacle cleared, or when an opposing projector's collision box landed directly on a 16-tile segment boundary face. This session hardened flight record metadata preservation across chained hops, added receiver detection to corridor regrowth probing, and relaxed boundary face distance thresholds in leaf collision scans.
+**Key Changes:**
+1. **Chained Flight Metadata Preservation (`scripts/capsules/capsule-ballistics.lua`):** Forwarded `projector_unit`, `reticle_id`, and `q_level` into timed motion flight records in `launch_timed_flight`, added fallback resolution to `reticle.projector_unit` in `handle_projector_scope_arrival`, and preserved ownership metadata across chained hops to prevent multi-segment beams from evaluating `flight.projector_unit ~= nil` as false.
+2. **Corridor Regrowth Receiver Docking (`scripts/flow/flow-kinetic.lua`):** Added opposing projector receiver detection and `reticle.pending_receiver` assignment to `resume_reticle_probing` when scanning forward after clearing an obstacle.
+3. **Boundary Face Collision Scanning (`scripts/flow/flow-kinetic.lua`):** Initialized `closest_dist = step_dist + 0.05` and updated on-axis distance comparisons to `d <= closest_dist` in `scan_leaf_rect`, ensuring opposing projector collision boxes touching the exact boundary face register without being clipped by strict `<` inequalities.
+4. **In-Flight Horizon Metadata Sync (`scripts/flow/flow-kinetic.lua`):** Synchronized `projector_unit` and `reticle_id` directly onto active flight records during `update_reticle_horizon`.
+5. **Terminal Arrival Receiver Fallback (`scripts/capsules/capsule-ballistics.lua`):** Updated terminal arrival evaluation in `handle_projector_scope_arrival` to verify both `pending_receiver` and pre-committed `hit_receiver` before finalizing cyan reticle head styling and scope receiver linkage.
+
+
+### Revision: Narrow-Phase Chassis Bounding-Box Edge Docking and Orphaned Reticle Demotion
+**Date:** 2026-09-16 17:08 EDT
+**Context:** Beams reaching maximum distance were failing to dock with opposing projectors resting directly on the boundary due to Factorio's 0.30-tile physical collision box inset relative to the tile grid footprint, while broadphase query margins and pneumatic socket offset math introduced artificial spatial distortion. Additionally, orphaned beams and severed downstream wakes could retain or display cyan receiver reticle indicators. This session decoupled kinetic reception from pneumatic socket concepts, replaced broadphase query blankets with a focused 0.5-tile narrow-phase native bounding-box hit test across terminal arrivals and entity placement, and enforced universal coral demotion for orphaned reticles.
+**Key Changes:**
+1. **Orphaned & Decaying Reticle Color Demotion (`scripts/flow/flow-kinetic.lua`):** Reset `head_render_spec = DEFAULT_HEAD_SPEC` (coral), wiped `hit_receiver` and `pending_receiver`, and updated terminal static leaves in `motion_tree` via `viewport_bvh.on_leaf_static_changed` across `orphan_reticle`, ensuring decaying or retreating wakes never display false cyan receiver styling.
+2. **Severed Downstream Reticle Head Sanitization (`scripts/flow/flow-kinetic.lua`):** Initialized severed downstream reticles (`down_id`) and trailing terminal leaves with `DEFAULT_HEAD_SPEC`, preventing wakes severed mid-beam from inheriting receiver head specs from cut points.
+3. **Receiver Deconstruction Reference Scrubbing (`scripts/flow/flow-kinetic.lua`):** Extended `flow_kinetic.clear_receiver_references` to iterate over active projector reticles, resetting docked reticles and static terminal leaves back to coral and unlinking `storage.projector_scope` receiver units upon receiver mining or destruction.
+4. **Terminal Reach Narrow-Phase Chassis Docking (`scripts/capsules/capsule-ballistics.lua`):** Implemented a native terminal arrival edge check in `handle_projector_scope_arrival` testing physical `cand.bounding_box` within a 0.5-tile narrow-phase tolerance, spanning Factorio's 0.30-tile collision box inset to connect opposing projector chassis faces at maximum reach without pneumatic socket offsets.
+5. **Projector Placement In-Place Docking Hook (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.dock_incoming_reticles_at_projector` using a 0.5-tile tolerance around native bounding boxes, querying intersecting motion BVH leaves on placement or rotation to immediately dock stationary beam endpoints as cyan receivers on the exact tick of construction.
+
+
+### Revision: Parented Reticle Split Candidacy, Tail Jump-Back Suppression, and Autonomous Probing Resumption
+**Date:** 2026-09-17 08:21 EDT
+**Context:** Orphaned reticles (severed downstream slices or wakes detached from deconstructed/rotated projectors) were previously treated as split candidates during obstacle collision, causing cascading child wakes when placing contiguous structures. Furthermore, obstacles placed along an orphaned beam's tail caused the reticle head to jump backward from its current position to the obstacle face, while stopped orphaned beams were barred from resuming flight upon obstacle clearance due to missing parent projector entities. This session isolated reticle splitting and tail jump-backs strictly to parented beams while restoring autonomous probing resumption for cleared orphaned reticles.
+**Key Changes:**
+1. **Split Candidacy Guard (`scripts/flow/flow-kinetic.lua`):** Gated downstream wake generation (`downstream_dist > 0.2`) in `flow_kinetic.truncate_reticle` behind `is_split_candidate = (reticle.projector_unit ~= nil)`, permanently preventing orphaned and severed reticles from spawning child slices.
+2. **Parented-Only Tail Truncation (`scripts/flow/flow-kinetic.lua`):** Restricted tail-obstruction truncation in `flow_kinetic.flush_pending_reticle_obstacles` strictly to parented reticles (`ret.projector_unit ~= nil`), ensuring orphaned reticle heads never jump backward when obstacles intersect their trailing wake.
+3. **Autonomous Probing Resumption (`scripts/flow/flow-kinetic.lua`):** Decoupled `flow_kinetic.resume_reticle_probing` from mandatory parent projector validation via `if proj_unit then`, allowing stationary orphaned reticles stopped by obstacles to resume forward probing to `max_reach` upon obstacle removal.
+
+
+### Revision: Spatiotemporal Head-Gated Obstacle Collision and Dynamic Horizon Expansion
+**Date:** 2026-09-17 08:35 EDT
+**Context:** When an obstacle (such as a character) walked away from an advancing projector reticle and then turned back toward it, the character evacuation pipeline erroneously compared the obstacle position against the prospective flight path endpoint (`ret.total_dist`) rather than the real-time spatiotemporal head position. This caused the simulation to misclassify the movement as an upstream cut and trigger `truncate_reticle`, instantly teleporting the reticle head forward to the obstacle's position and cheating time. This session decoupled forward obstacle adjustments from physical head truncations, guarded `truncate_reticle` against forward snaps, and enabled segment-bounded horizon expansion.
+**Key Changes:**
+1. **Spatiotemporal Head Resolution (`scripts/flow/flow-kinetic.lua`):** Updated `step_character_colliders` to calculate interpolated head distance via `timed_motion.get_interpolated_position`. Obstacles moving closer while remaining in front of the advancing head (`o_dist > cur_head_dist + 0.05`) now route to `update_reticle_horizon` to reschedule flight arrival at constant velocity instead of jumping the reticle head.
+2. **Truncation Forward Guard (`scripts/flow/flow-kinetic.lua`):** Added a defensive guard in `truncate_reticle` that automatically delegates to `update_reticle_horizon` if `entry_dist > cur_h_dist + 0.05`, guaranteeing that growing reticles never destroy flights or render static hazard reticles at forward coordinates.
+3. **Segment-Bounded Horizon Expansion (`scripts/flow/flow-kinetic.lua`):** Replaced static `flight_end_dist` clamping in `update_reticle_horizon` with canonical segment boundaries (`seg_max_dist = seg_idx * 16`), allowing in-flight targets and arrival timers to expand smoothly when forward obstacles step away within the active segment.
+4. **Duplicate Flush Scrubbing (`scripts/flow/flow-kinetic.lua`):** Cleaned up a redundant consecutive call to `flow_kinetic.flush_pending_reticle_obstacles` at the top of `step_character_colliders`.
+
+
+### Revision: Purge Duplicate Obstacle Queue Functions and Spec Tables
+**Date:** 2026-09-17 08:59 EDT
+**Context:** Incomplete undo operations from earlier patch sessions had left lingering duplicate blocks inside `flow-kinetic.lua`, causing repeated definitions of head visual specs and a redundant second copy of the frame-slice obstruction queue functions. This caused ambiguous matches during diff application and redundant function execution. This session permanently excised all duplicate definitions from the script.
+**Key Changes:**
+1. **Duplicate Visual Spec Cleanup (`scripts/flow/flow-kinetic.lua`):** Removed the redundant second assignment block for `DEFAULT_HEAD_SPEC` and `RECEIVER_HEAD_SPEC` at the module header.
+2. **Obstacle Queue Deduplication (`scripts/flow/flow-kinetic.lua`):** Deleted the redundant 96-line second definition of `flow_kinetic.queue_reticle_obstacle` and `flow_kinetic.flush_pending_reticle_obstacles` preceding `handle_obstacle_changed_v2`, leaving a single authoritative obstruction queue implementation and eliminating patch collision hazards.
+
+
+### Revision: Projector Want Emission Cooldown and Rapid Reticle Spam Suppression
+**Date:** 2026-09-17 09:38 EDT
+**Context:** Rapidly rotating electromagnetic projectors or oscillating circuit/power conditions allowed players to trigger multiple simultaneous kinetic beam emissions, creating overlapping reticle flights and spamming the trajectory BVH. This session established a 1-second (60-tick) post-emission cooldown per projector managed by an indexed binary min-heap, preserving immediate beam emission on initial placement or isolated rotation while deferring rapid follow-up requests until the cooldown elapses.
+**Key Changes:**
+1. **Cooldown Constant Specification (`scripts/projectors/projector-settings.lua`):** Added `WANT_EMISSION_COOLDOWN_TICKS = 60` defining the 1-second threshold between positive beam emissions.
+2. **Binary Heap Storage & Maintenance Lifecycle (`control.lua`):** Initialized `storage.projector_cooldown_heap` as an indexed binary min-heap alongside `storage.projector_cooldown_until` in `setup_storage`, and hooked the heap into `script.on_nth_tick(120)` for amortized buffer decay (`binary_heap.step_decay`).
+3. **Emission-Gated Cooldown Activation (`scripts/flow/flow-kinetic.lua`):** Gated `flow_kinetic.on_muzzle_want_emission` behind the active cooldown timestamp (`storage.projector_cooldown_until[owner_id]`). Once a beam successfully emits, the 1-second cooldown begins; any subsequent emission requests arriving within the 1-second window are scheduled onto `storage.projector_cooldown_heap` without duplicate beam creation.
+4. **Per-Tick Cooldown Heap Dispatcher (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.step_cooldown_heap` and wired it into the per-tick collider loop (`step_character_colliders`), popping expired timers in $O(1)$ amortized time to launch queued beam flights strictly in the projector's latest orientation.
+5. **Lifecycle Teardown & Purge Hook (`scripts/flow/flow-kinetic.lua`, `scripts/projectors/projector-manager.lua`):** Implemented `flow_kinetic.clear_cooldown` to remove pending cooldown entries from both the binary heap and storage when projectors are deconstructed or unregistered.
+
+
+### Revision: Arrival-Time Receiver Verification, Docking Soft-Registration, and Unconditional Clearance Coral Reset
+**Date:** 2026-09-17 10:02 EDT  
+**Context:** Projector reticles previously retained cyan receiver styling when target projectors were mined at maximum reach or when machines were unpowered, and prospective collisions could turn cyan upon arrival even if the target was deconstructed while the probe was in flight. Furthermore, in-place docking on entity placement omitted obstacle soft-registration, preventing mined receivers from waking beams. This session gated cyan head styling behind active entity validation at physical arrival, soft-registered docked projectors, and guaranteed that reticle heads unconditionally revert to coral upon obstacle clearance.  
+**Key Changes:**
+1. **Arrival-Time Obstacle Validation (`scripts/capsules/capsule-ballistics.lua`):** Verified `storage.active_projectors[hit_receiver_unit].valid` at the exact arrival tick in `handle_projector_scope_arrival` before applying `RECEIVER_HEAD_SPEC`, cleanly falling back to coral `DEFAULT_HEAD_SPEC` if the opposing projector cleared while the probe was in transit.
+2. **Terminal Impact Soft-Registration (`scripts/capsules/capsule-ballistics.lua`):** Soft-registered confirmed receiver entities into `storage.blocked_reticles` via `flow_kinetic.register_reticle_obstacle` upon physical arrival so removal events reliably alert and wake docked reticles.
+3. **Unconditional Clearance Demotion (`scripts/flow/flow-kinetic.lua`):** Positioned visual head demotion at the top of `flow_kinetic.resume_reticle_probing` to reset `reticle.head_render_spec`, clear scope receiver linkages, and broadcast coral `DEFAULT_HEAD_SPEC` on active motion BVH leaves even when range limits (`cur_dist >= max_reach`) or unpowered states halt forward probing.
+4. **In-Place Placement Soft-Registration (`scripts/flow/flow-kinetic.lua`):** Added `flow_kinetic.register_reticle_obstacle` inside `flow_kinetic.dock_incoming_reticles_at_projector` so machines built directly onto stationary endpoints wake reticles when deconstructed.
+5. **Universal Static Specification Scrubbing (`scripts/flow/flow-kinetic.lua`):** Broadened leaf static render updates in `flow_kinetic.clear_receiver_references` to reset any active static head specification back to coral and notify viewport subscribers.
+
+
+### Revision: Decouple Ballistic Flight Mechanics from Reticle Invariants and Restore Evacuation Clearing
+**Date:** 2026-09-17 11:35 EDT  
+**Context:** The introduction of the projector reticle system severely compromised the existing, hard-won ballistic capsule flight mechanics because the reticle's ephemeral sighting probe was destructively cross-wired into the foundational ballistics engine instead of being architected as an independent, decoupled sensory layer from the beginning. By forcing physical cargo containers to share corridor dismantling, horizon truncation, and collision events with a prospective laser line, in-flight capsules suffered instant time-travel explosions upon obstacle entry and dropped rendering BVH leaves mid-transit. This session enforces the strict architectural separation that should have existed from day one: the reticle operates purely as an independent targeting probe communicating solely via target-lock notifications, while physical capsule ballistics retains its continuous flight model, forward-looking arrival math, and persistent corridor viewports.
+**Key Changes:**
+1. **Forward-Looking Arrival Rescheduling (`scripts/utils/timed-motion.lua`):** Corrected `timed_motion.shift_horizon` to calculate remaining arrival time forward from `current_tick` based on real-time elapsed distance (`current_tick + rem_ticks`) rather than back-calculating from `record.start_tick` in the past, completely eliminating instantaneous time-travel explosions and spurious ground spillage when obstacles appear ahead of flying capsules.
+2. **Corridor Leaf Preservation & Zero Geometry Churn (`scripts/utils/timed-motion.lua`):** Excised destructive `remove_corridor` and `ensure_corridor` calls from `shift_horizon`, ensuring communal capsule corridor segments remain pinned in `storage.motion_bvh` and active player viewports so traveling payloads never lose their render handles mid-air.
+3. **Discrete Grid-Tile Evacuation Bounding Box (`scripts/flow/flow-kinetic.lua`):** Corrected `step_character_colliders` to pass the spatial bounding box of the evacuated beam tile (`evac_bb`) rather than the character's updated off-axis body position, allowing `handle_motion_obstacle_changed` to recognize that the beam was cleared, restore `bf.terminal_pos` to the receiver dock, revert the arrival reticle to green, and let the capsule fly through without ghost crashes.
+4. **Architectural Boundary Enforcement (`scripts/capsules/capsule-ballistics.lua`, `scripts/flow/flow-kinetic.lua`):** Confined transient laser probe steps, wake reeling, and visual head specs strictly to reticle domain ownership, establishing a single-point target lock hook (`notify_projector_receiver_docked`) that allows projectors to fire physical ballistic capsules down communal flight corridors without cross-subsystem interference.
+
+
+### Revision: Event-Driven Decaying Flight Corridors on Reticle Orphaning and Receiver Unlinking
+**Date:** 2026-09-17 12:05 EDT  
+**Context:** When a projector's reticle was orphaned or unlinked from a receiver (due to rotation, machine deconstruction, power loss, obstacle truncation, or probing regrowth), paired ballistic capsule flight corridors either lingered indefinitely or risked premature deletion while payloads were still in transit. This session implemented an event-driven lifecycle that immediately tears down unoccupied flight corridors upon disconnection while preserving occupied corridors in a decaying state until the last in-transit capsule arrives or crashes, with zero periodic tick scanning.
+**Key Changes:**
+1. **Decoupled Receiver Unlinking & Capsule Count Queries (`scripts/flow/flow-kinetic.lua`):** Implemented `flow_kinetic.count_in_flight_capsules` for $O(1)$ in-transit payload checks and `flow_kinetic.unlink_projector_receiver` to coordinate corridor teardown upon receiver loss across `resume_reticle_probing`, `truncate_reticle`, `update_reticle_horizon`, `handle_reticle_obstacle_cleared`, and `clear_receiver_references`.
+2. **Orphaned Corridor Decoupling & Decaying Tagging (`scripts/flow/flow-kinetic.lua`):** Updated `flow_kinetic.orphan_reticle` and `unlink_projector_receiver` to destroy paired corridors immediately when empty, or register active corridors into `storage.decaying_corridors` when capsules remain in flight.
+3. **Arrival-Bundled Decaying Corridor Teardown (`scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Bundled decaying corridor cleanup directly into `remove_flight` across terminal heap arrivals and obstacle impact spills, unpinning active machine guards and removing decaying corridors from motion and trajectory BVH trees the exact tick the capsule count reaches zero without background tick polling.
+4. **Docking Geometry Rebuild Clearance (`scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Enhanced `ensure_capsule_corridor` and `timed_motion.ensure_corridor` to purge stale decaying corridors before inserting fresh corridor segments when newly docked receivers connect at different distances.
+
+
+
+### Revision: Grid-Aligned 1x1 Tile Character Colliders and Boundary Escape Gating
+**Date:** 2026-09-17 13:35 EDT  
+**Context:** Continuous sub-pixel coordinate polling previously caused redundant collider churn and micro-recalculations for reticles and ballistic flight corridors whenever a character moved slightly or rotated within a single tile. This session established a grid-aligned 1x1 tile bounding box for characters, gating reticle adjustments and motion BVH collider updates strictly to moments when the player escapes their current tile square.  
+**Key Changes:**
+1. **Grid-Aligned Bounding Box Resolution (`scripts/flow/flow-kinetic.lua`):** Implemented `get_entity_bounding_box` to resolve character bounding boxes to integer-aligned 1x1 tile squares (`[tx, tx + 1] x [ty, ty + 1]`) across leaf collision scans, obstacle chain calculations, pending reticle queues, and motion BVH queries.
+2. **Discrete Boundary Escape Gating (`scripts/flow/flow-kinetic.lua`):** Stored active coordinates in `storage.character_tiles` within `step_character_colliders`, bypassing all simulation steps when a player remains inside their current tile box to eliminate intra-tile collider jitter.
+3. **Tile-Aligned Evacuation & Entry Dispatch (`scripts/flow/flow-kinetic.lua`):** Gated motion BVH corridor clearance, legacy beam wakeups, and reticle horizon updates strictly to tile boundary transitions, passing explicit 1x1 tile bounding boxes for both evacuated and newly occupied positions.
+4. **Character Lifecycle & Disconnect Teardown (`scripts/flow/flow-kinetic.lua`):** Extended disconnect and character death cleanup to iterate over `storage.character_tiles`, unregistering evacuated tile colliders from motion BVH trees and waking blocked reticles.
+
+
+### Revision: Projector Muzzle Aperture Overlap and Reticle Collision Alignment
+**Date:** 2026-09-17 14:01 EDT  
+**Context:** Because the projector's launch muzzle sits at the perimeter boundary (`±1.5`) while its physical collision box is inset to `±1.2`, characters standing against the machine's front lip had their collision boxes touch or slightly overlap the launch origin. Distance calculations evaluated this gap as zero or negative, causing reticle sweeps and reactive obstacle queues to discard the player as behind the emitter. This created a deceptive visual path where reticles shot through players who were subsequently impacted by launching capsules. This session extended the aperture scan area backward and clamped muzzle-overlap contacts to distance 0.1 across all reticle and ballistics checks.  
+**Key Changes:**
+1. **Pre-Launch Clearance Centering (`scripts/capsules/capsule-ballistics.lua`):** Shifted pre-launch player collision probing from 1.0 tile downstream to half a tile forward (`muzzle_node.pos + dir * 0.5`), directly inspecting the clearance tile touching the projector face.
+2. **Aperture Reverse Sweep (`scripts/flow/flow-kinetic.lua`):** Expanded the spatial query rectangle in `scan_leaf_rect` by 0.5 tiles backward along the launch vector, ensuring entities standing within the chassis inset are captured by `find_entities_filtered` while preserving emitter self-collision shielding.
+3. **Muzzle Overlap Collision Clamping (`scripts/flow/flow-kinetic.lua`):** Updated cardinal distance calculations across `scan_leaf_rect`, `handle_obstacle_changed_v2`, `_legacy_handle_obstacle_changed`, `flush_pending_reticle_obstacles`, and `step_grid_character_colliders` to classify any obstacle touching or overlapping the muzzle face (within 0.5 tiles) as an immediate collision at distance `0.1`.
+4. **Visual & Ballistic Trajectory Parity (`scripts/flow/flow-kinetic.lua`):** Aligned reticle truncation squarely with physical capsule ballistics, guaranteeing that stepping into the chassis lip immediately collapses the reticle to a 0.1-distance coral hazard ring at the muzzle.
+
+
+### Revision: Restore Projector Ballistic Velocity to Production Baseline
+**Date:** 2026-09-17 14:15 EDT  
+**Context:** Projector ballistic transit and reticle propagation had been dialed down to a 10× slow-mo cadence (`TICKS_PER_HOP = 60`) for visual validation of wake severing, multi-segment boundary handoffs, and aperture collision checks. With spatial boundary conditions and 1×1 tile colliders hardened, this session restores the hop interval to its baseline production velocity.  
+**Key Changes:**
+1. **Velocity Constant Restoration (`scripts/capsules/capsule-ballistics.lua`):** Restored `TICKS_PER_HOP` from `60` to `6`, returning projectile transit speed to 50 tiles per second (1.2 ticks per tile).
+2. **Unified System Acceleration (`scripts/capsules/capsule-ballistics.lua`):** Propagated the 1.2 ticks/tile cadence across `trajectory_bvh.TICKS_PER_TILE`, automatically scaling timed arrival scheduling, in-flight dot progression, and anti-reticle wake reeling to full operational speed.
+
+
+### Revision: O(1) Table-Driven Obstacle Destruction and BVH Query Elimination
+**Date:** 2026-09-17 14:52 EDT  
+**Context:** When entities were mined or destroyed (e.g., grenading 25 trees), the removal handler was executing redundant spatial AABB box queries against multiple BVH trees to ask if the dying entity touched any corridors, followed by an obsolete 50-tile flow node waking loop. Because reticles already index their active blocking entities in `storage.blocked_reticles`, querying spatial trees on destruction was completely backwards and caused severe frame cycle spikes. This session routed entity removal directly to $O(1)$ table lookups, bypassed spatial trees entirely on death, and excised the legacy fallback loop.  
+**Key Changes:**
+1. **Zero-BVH Entity Removal Fast-Path (`scripts/flow/flow-kinetic.lua`):** Short-circuited `flow_kinetic.handle_obstacle_changed` on `is_removal == true` to directly dispatch `handle_reticle_obstacle_cleared(entity)` and return immediately, completely bypassing spatial AABB tree queries on entity death or mining.
+2. **O(1) Blocker Wakeup Resolution (`scripts/flow/flow-kinetic.lua`):** Bound destruction notifications strictly to direct hash lookups in `storage.blocked_reticles[unit_number]`, allowing non-blocking entities (trees, rocks, biters) to early-exit in sub-microsecond time with zero spatial math.
+3. **Legacy Duplicate Obstacle Loop Severed (`scripts/flow/flow-kinetic.lua`):** Excised `_legacy_handle_obstacle_changed` from the tail of `handle_obstacle_changed_v2`, permanently eliminating redundant `motion_bvh` and `surface_bvh` queries along with obsolete 50-tile iterative port waking passes.
+4. **Destruction Frame Spike Elimination (`scripts/flow/flow-kinetic.lua`):** Eliminated the multi-millisecond frame cycle spikes associated with mass entity clearing (grenades, artillery strikes, cliff explosives).
+
+
+### Revision: Full-Spectrum Event Profiling and Dedicated BVH Spatial Diagnostics
+**Date:** 2026-09-17 15:26 EDT  
+**Context:** Lag spikes during character movement and mass entity destruction (e.g. tree clearing) were previously unmeasurable because the profiler only sampled `on_tick` and lacked event-specific call counters, causing non-tick handlers to be omitted and dividing discrete event spikes across the 60-tick window. This session instrumented all mod-registered game events with per-call execution timers, call frequency counters, and live real-time console alerts, while adding dedicated instrumentation across the Trajectory BVH and Player Viewport spatial subsystems.  
+**Key Changes:**
+1. **Universal Event Dispatch Profiling (`scripts/events.lua`, `scripts/utils/profiler.lua`):** Expanded `events.on_event` to time all registered Factorio game events whenever profiling is active, recording discrete call counts, total execution time, and per-call duration averages for each subsystem listener.
+2. **Real-Time Event & Shell Breach Console Logging (`scripts/events.lua`, `scripts/utils/profiler.lua`, `scripts/utils/viewport-bvh.lua`):** Added `profiler.is_event_log_active()` to stream immediate chat timestamps with execution durations whenever non-tick events or 16-tile viewport hysteresis shell breaches occur.
+3. **Dedicated BVH Subsystem Instrumentation (`scripts/utils/profiler.lua`, `scripts/utils/viewport-bvh.lua`, `scripts/utils/trajectory-bvh.lua`, `scripts/capsules/capsule-renderer.lua`):** Instrumented `update_all_players` ("Viewport"), `sync_player_visibility` ("Visibility Sync"), `query_box` ("Query Box"), `insert`/`remove`/`update` ("Tree Mutate"), and `dispatch_player_renders` ("Render Dispatch").
+4. **Interactive Diagnostics & Control Panel GUI Integration (`scripts/debug-manager.lua`):** Added `/profile-bvh`, `/profile-events`, and `/toggle-event-log` console commands alongside dedicated "BVH Report" buttons, live event logging toggles, and dedicated BVH performance rows in the Pneumatic Control Panel table.
+
+
+### Revision: Quiescent Render Dispatch Dormancy, Stationary Viewport Fast-Path, and Profiler Average Alignment
+**Date:** 2026-09-17 16:30 EDT  
+**Context:** The diagnostic panel showed continuous execution time for render dispatch, arrival stepping, and viewport BVH even when standing far from tube infrastructure or looking at static, unoccupied corridors. Furthermore, BVH spatial diagnostics displayed an alarming 1.63 ms duration beside a 0.12 ms total mod script time due to an aggregation mismatch in the debug UI. This session established true dormancy for render dispatch and arrival stepping during idle conditions, cached player viewport state for stationary cameras, enforced viewport frustum culling on arrival dots, preserved instantaneous Alt-mode toggling, and corrected debug panel metrics to display consistent per-tick averages.  
+**Key Changes:**
+1. **Quiescent Render Dispatch Dormancy (`scripts/capsules/capsule-renderer.lua`):** Evaluated visible corridors in `dispatch_player_renders` to detect when zero active flights or wake retreats exist on-screen. When all visible segments are static or `v_set` is empty, the dispatcher early-exits before starting native `LuaProfiler` timers, eliminating background profiler noise.
+2. **Instant Alt-Mode Toggle Preservation (`scripts/capsules/capsule-renderer.lua`):** Retained connected-player evaluation in `update_timed_capsules` to ensure `alt_mode ~= prev_alt` transitions execute on the exact frame of the keystroke while standing stationary, attaching or detaching static primitives without requiring camera motion.
+3. **Stationary Viewport Fast-Path (`scripts/utils/viewport-bvh.lua`):** Cached `last_player_x`, `last_player_y`, and `last_zoom` directly on player viewport entries in `update_player`. When a player is stationary and camera zoom is unchanged, all frustum half-dimension, display scale, and padding calculations are bypassed in sub-microsecond time.
+4. **Timed Arrival Heap Dormancy (`scripts/capsules/capsule-runner.lua`, `scripts/capsules/capsule-ballistics.lua`, `scripts/utils/timed-motion.lua`):** Guarded `step_timed_arrivals` behind `heap and heap.size > 0` in the runner loop and ballistics engine, preventing per-tick callback closure allocations and moving zero-size checks ahead of `binary_heap.attach` in `timed_motion.step_arrivals`.
+5. **Frustum-Culled Arrival Reticles (`scripts/capsules/capsule-renderer.lua`):** Added surface and screen bounding-box tests to `render_arrival_dot_for_player`, destroying handles and skipping `render_pool` leasing when arrival endpoints lie off-screen or on other planetary surfaces.
+6. **Diagnostic Table Metric Alignment (`scripts/debug-manager.lua`):** Replaced `.total` with `.avg` across all BVH rows (`lbl_time_bvh_vp`, `lbl_time_bvh_q`, `lbl_time_bvh_rd`) in the Pneumatic Control Panel, aligning spatial subsystem metrics with the 60-tick average displayed across all other rows and eliminating the 60-frame cumulative sum inflation.
+7. **Module Scope Upvalue Hoisting (`scripts/capsules/capsule-renderer.lua`):** Hoisted `previous_arrival_capsules` declaration to the top-level module scratch block, resolving a runtime `nil` upvalue exception in `update_timed_capsules`.
+
+
+### Revision: Collective Observation Governor, Amortized Pre-Calculation Buffer, and Lockstep Ballistics Rendering
+**Date:** 2026-09-17 19:50 EDT  
+**Context:** Visual updates for in-flight capsules and projector targeting reticles previously calculated interpolation on the render frame with per-player staggered modulo cadences. In multiplayer, this caused sawtooth CPU spikes when multiple players observed large volumes of capsules and produced visual accordion stretching where capsules in a line appeared to take turns moving. This session implemented a communal observation governor, pre-calculated coordinate buffering with amortized maintenance decay, quiet-tick math slicing, lockstep render flushing, and event-driven cache invalidation.  
+**Key Changes:**
+1. **Collective Observation Governor (`scripts/capsules/capsule-renderer.lua`):** Implemented `update_governor` in `prepare_frame()` to aggregate unique observed in-flight capsules across all connected players with Alt-Mode active in non-chart viewports, sleeping with 0.00 ms CPU time when idle.
+2. **Schmitt-Trigger Hysteresis & Emergency Override (`scripts/capsules/capsule-renderer.lua`):** Governed visual refresh rate with smoothed hysteresis thresholds (60 FPS $\rightarrow$ 30 FPS at 30 capsules, 30 FPS $\rightarrow$ 60 FPS at 18; 30 FPS $\rightarrow$ 20 FPS at 75, 20 FPS $\rightarrow$ 30 FPS at 50) and an emergency fast-drop trigger on sudden queue surges ($\ge 120$ count or $\Delta \ge 40$).
+3. **Pre-Allocated High-Water Coordinate Buffer (`control.lua`, `scripts/capsules/capsule-renderer.lua`):** Initialized `storage.render_precalc_buffer` with in-place vector mutation (`x, y`), high-water watermark tracking, and an amortized tail-pruning decay routine (`step_buffer_decay`) hooked into `script.on_nth_tick(120)`.
+4. **Time-Sliced Quiet-Tick Math Amortization (`scripts/capsules/capsule-renderer.lua`):** Implemented `step_precalculations` to compute closed-form forward coordinates during quiet ticks (100% on tick - 1 for 30 FPS; sliced 50/50 across tick - 2 and tick - 1 for 20 FPS), flattening frame-time spikes before render ticks arrive.
+5. **Lockstep Render Flushing (`scripts/capsules/capsule-renderer.lua`):** Replaced per-player staggered modulo with global lockstep render gating (`current_tick % cadence == 0`) and direct coordinate piping (`get_flight_position`), ensuring all capsules advance in unison with rigid relative spacing.
+6. **Event-Driven & Auto-Invalidation Pipeline (`scripts/capsules/capsule-ballistics.lua`, `scripts/flow/flow-kinetic.lua`, `scripts/capsules/capsule-renderer.lua`):** Wired reactive cache dirtying on projectile collisions, horizon shifts, and reticle deconstruction, paired with zero-allocation discrepancy detection in `get_flight_position` and localized acyclic helpers in `flow-kinetic.lua`.
+7. **Automated Verification Suite (`scripts/capsules/capsule-renderer.lua`):** Added Test 6 and Test 7 to `/test-render-dispatcher`, validating governor idle state, isolated buffer decay, and obstacle truncation invalidation.
+
+
+### Revision: Capsule Motion Sub-Profiler Breakdown, Static Corridor Early-Skip, and Test Fixture Isolation
+**Date:** 2026-09-17 20:25 EDT  
+**Context:** Following the collective governor and pre-calculation buffer overhaul, `Capsule Motion` remained a monolithic profiler block that masked the distribution between internal tube hops and ballistic flights. Additionally, viewports with hundreds of static finished beam segments were causing unnecessary table iterations every frame, and a circular require loop was identified between kinetic and debug modules on script reload. This session broke down the motion profiler into dedicated sub-systems, added active-owner static corridor filtering to cut render dispatch time by ~40%, decoupled kinetic invalidation helpers, and isolated the automated test fixtures.  
+**Key Changes:**
+1. **Capsule Motion Profiler Breakdown (`scripts/utils/profiler.lua`, `scripts/debug-manager.lua`, `scripts/capsules/capsule-runner.lua`):** Sub-divided `Capsule Motion` into three discrete profiler timers: `Tube Traversal` (6t discrete hops), `Ballistics & Heap` (arrival heap popping and projectile simulation), and `Frame Sync` (governor aggregation and viewport sets), exposing live counts for tube capsules, in-flight projectiles, heap entries, and active FPS cadence.
+2. **Static Corridor Early-Skip Filtering (`scripts/capsules/capsule-renderer.lua`):** Implemented a zero-allocation `scratch_active_owners` filter in `update_governor` and `dispatch_player_renders`, allowing hundreds of static finished beam segments to bypass inner simulation checks on line 1 and reducing `Render Dispatch` time from 0.295 ms to 0.179 ms across 272 visible corridors.
+3. **Acyclic Invalidation Helpers (`scripts/flow/flow-kinetic.lua`):** Stripped `require("scripts.capsules.capsule-renderer")` from `flow-kinetic.lua` to break an indirect circular dependency chain (`capsule-renderer -> debug-manager -> flow-engine -> flow-kinetic`), replacing external calls with localized, zero-allocation storage buffer dirtying helpers.
+4. **Test Fixture Isolation & Assertion Parity (`scripts/capsules/capsule-renderer.lua`):** Updated `step_buffer_decay` to accept an optional test buffer fixture to prevent Test 6 from colliding with live factory entries, and adjusted Test 7 to assert against physical obstacle horizon truncation rather than constant-velocity intermediate positions.
+
+### Revision: Clean Prepare Frame & Active Debug Player Caching
+**Date:** 2026-09-17 21:23 EDT
+**Context:** Refactors the per-tick frame preparation routine in the capsule renderer to streamline player viewport evaluation and active debug state collection.
+**Key Changes:**
+1. **Frame Preparation (`scripts/capsules/capsule-renderer.lua`):** Implemented `clean_prepare_frame` to evaluate Alt Mode eligibility, resolve hover peek unit numbers, and manage pooled `active_debug_players` allocations.
+2. **Legacy Transition (`scripts/capsules/capsule-renderer.lua`):** Routed `capsule_renderer.prepare_frame` directly to `clean_prepare_frame` while retaining the previous implementation as `_legacy_prepare_frame`.
+
+
+### Revision: Reticle Wake Peeling Governor Dormancy Fix
+**Date:** 2026-09-18 14:36 EDT
+**Context:** When projector reticles were decaying or retreating, the observation governor was incorrectly classifying the simulation as completely idle because anti-reticle flights were filtered out of visual observation counts. This caused `update_timed_capsules` to early-exit, entirely skipping the per-tick dot-clearing loop in `dispatch_player_renders` until the 16-tile segment arrival popped the entire BVH leaf at once. This session registered visible wake retreats as active work in the governor, locked the cadence to 60 FPS during retreats, and restored smooth tick-by-tick dot peeling.
+**Key Changes:**
+1. **Governor Dormancy Awakening (`scripts/capsules/capsule-renderer.lua`):** Evaluated active `retreat_tick` entries in `update_governor` alongside active flights, ensuring visible retreating corridors prevent the governor from entering an idle sleep state.
+2. **60 FPS Cadence Lock for Wake Peeling (`scripts/capsules/capsule-renderer.lua`):** Bypassed cadence throttling in `dispatch_player_renders` whenever a visible reticle is actively retreating, ensuring dot clearance executes on every single tick.
+3. **Decoupled Render Pass Evaluation (`scripts/capsules/capsule-renderer.lua`):** Removed the outer `has_flights` guard from the `needs_render_pass` check, allowing visible retreating reticles to trigger render dispatch independently of active projectile flights.
+
+
+### Revision: Modular Subprotocol Architecture and Render Substrate Decoupling
+**Date:** 2026-09-18 21:51 EDT
+**Context:** Flight and motion mechanics were previously coupled across five monolithic files, hardcoding open-air optical reticles and exploding cargo projectiles directly into the rendering, culling, and ballistics engines. This session established a composable subprotocol architecture separating flight mechanics into independent facets (heads, trails, disruptions, arrivals, and static overlays), resolved a signature argument mismatch causing a LuaPlayer userdata crash during wake peeling, and validated the substrate with an automated verification suite while preserving 100% runtime simulation and rendering performance. Path clearance and corridor topology remain targeted for subsequent separation.
+**Key Changes:**
+1. **Modular Subprotocol Registry (`scripts/utils/motion-protocols.lua`):** Created the central facet registry supporting modular heads (`capsule_head`, `hazard_reticle`, `custom_flight`, `none`), trails (`reticle_dots`, `wake_peeling`, `none`), disruptions (`ballistic_crash`, `reticle_slice`, `peaceful_spill`, `silent_halt`, `none`), arrivals (`capsule_terminal`, `scope_step`, `anti_reticle_step`), and static Alt-mode renders (`reticle_static`). Pre-configured templates for `tube_wave` and `tube_transit`.
+2. **Renderer Loop Decoupling (`scripts/capsules/capsule-renderer.lua`):** Extracted inline beam dot leasing and wake dot peeling into reusable subprotocol delegates, replaced hardcoded `is_scope`/`is_anti` timing branches with `motion_protocols.get_progression_window`, and dispatched in-flight visuals via protocol delegates.
+3. **Observer Static Presentation Decoupling (`scripts/utils/viewport-bvh.lua`):** Extracted 115 lines of reticle beam and endpoint drawing logic from `attach_static_render` into the `"reticle_static"` subprotocol delegate, keeping the spatial observer tree engine agnostic of visual archetypes.
+4. **Arrival & Disruption Subprotocol Routing (`scripts/capsules/capsule-ballistics.lua`, `scripts/flow/flow-kinetic.lua`):** Routed terminal arrival handling through `motion_protocols.get_subprotocol(..., "arrival")` and obstacle disruption through `motion_protocols.get_subprotocol(..., "disruption")`. Added support for peaceful ground spillage and silent propagation halts during obstacle cuts, while registering `"reticle_slice"` from kinetic flow.
+5. **Argument Position Bugfix (`scripts/capsules/capsule-renderer.lua`, `scripts/utils/motion-protocols.lua`):** Reclassified `anti_reticle` flights to `trail = "none"` to prevent segment-stepping timer flights from triggering in-flight dot loops, and wrapped `"wake_peeling"` with an adapter mapping the 9-argument trail call to eliminate an argument shift that passed `LuaPlayer` userdata into tick arithmetic.
+6. **Automated Subprotocol Verification Suite (`scripts/utils/motion-protocols.lua`):** Added `/test-motion-protocols` validating base registry fallbacks, overlapping mixin composition, progression window math, alternative disruption flags, and facet independence.
+
+
+### Revision: Flight Clearance Protocolization and Directional Disruption Bifurcation
+**Date:** 2026-09-18 22:15 EDT
+**Context:** Path clearance and obstacle interception were previously hardcoded in separate 60-line cardinal projection loops inside flow-kinetic.lua and capsule-ballistics.lua, coupling spatial detection to specific entity types and preventing reuse across different motion mediums. This session decoupled clearance into two orthogonal subprotocols—disruption detection (what is an obstacle) and clearance policies (how forward vs. backward disruptions are handled)—while restoring reticle tail-severing mechanics and eliminating runtime require() violations.
+**Key Changes:**
+1. **Detector & Clearance Policy Subprotocols (`scripts/utils/motion-protocols.lua`):** Added `detectors` (`open_air_solids`, `tube_connectivity`) and `clearance_policies` (`optical_ray`, `discrete_projectile`, `peaceful_transit`, `silent_wave`). Implemented `motion_protocols.calculate_axis_distance` to eliminate redundant cardinal bounding box projection boilerplate across the codebase.
+2. **Directional Clearance Dispatching (`scripts/utils/motion-protocols.lua`):** Implemented `dispatch_clearance_policy` to calculate relative spatial displacement ($\Delta d = d_{\text{obst}} - d_{\text{current}}$), cleanly routing forward obstacles ($d_{\text{obst}} > d_{\text{current}}$) to horizon clamping and backward obstacles ($d_{\text{obst}} \le d_{\text{current}}$) to tail severing or projectile pass-through.
+3. **Kinetic Obstacle Interception Decoupling (`scripts/flow/flow-kinetic.lua`):** Refactored `flush_pending_reticle_obstacles` and `handle_obstacle_changed_v2` to delegate through `dispatch_clearance_policy` and `calculate_axis_distance`. Replaced `scan_leaf_rect` with a facade delegation to `motion_protocols.scan_open_air_leaf`.
+4. **Reticle Identity Tagging & Structural Inference (`scripts/flow/flow-kinetic.lua`, `scripts/utils/motion-protocols.lua`):** Explicitly tagged `protocol = "projector_scope"` and `clearance_policy = "optical_ray"` on reticle records in `on_muzzle_want_emission` and `truncate_reticle`. Added structural state fallback in `get_protocol` to infer reticle identity from `projector_unit`, `head_flight_id`, and `retreat_tick`, restoring reticle tail-severing and stationary beam truncation.
+5. **Runtime Require Elimination (`scripts/utils/motion-protocols.lua`, `scripts/flow/flow-kinetic.lua`):** Purged all runtime `require()` calls inside event handlers and disruption delegates, registering policies and passing module references at startup to comply with Factorio 2.0 runtime script restrictions.
+6. **Automated Verification Expansion (`scripts/utils/motion-protocols.lua`):** Added Test 6 (detector filtering) and Test 7 (forward/backward clearance policy bifurcation) to `/test-motion-protocols`.
+
+
+### Revision: Clearance Policy Generalization and Relative Bifurcation Fix
+**Date:** 2026-09-18 22:24 EDT
+**Context:** During automated verification of the clearance protocol engine, Test 7 failed because `dispatch_clearance_policy` had been coupled to the reticle's internal `status == "growing"` state, causing generic flights and non-reticle protocols to misroute forward obstacles into backward handlers. This session excised the reticle-specific status guard, restoring the pure mathematical relative distance contract ($d_{\text{obst}} > d_{\text{current}} + 0.05 \implies \text{forward}$, $d_{\text{obst}} \le d_{\text{current}} + 0.05 \implies \text{backward}$) across all flight domains and passing all 7 test suites.
+**Key Changes:**
+1. **Generic Clearance Policy Dispatching (`scripts/utils/motion-protocols.lua`):** Removed the `is_growing` reticle state requirement from `dispatch_clearance_policy`, ensuring forward obstacles ahead of any advancing flight evaluate to `on_forward` regardless of protocol identity.
+2. **Automated Verification Validation (`scripts/utils/motion-protocols.lua`):** Confirmed live in-game green passes across all 7 automated test suites in `/test-motion-protocols` (base registry, overlapping composition, progression windows, alternative disruptions, facet independence, detectors, and directional clearance policies).
 
 
 

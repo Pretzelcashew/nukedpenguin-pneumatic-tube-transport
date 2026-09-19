@@ -325,6 +325,10 @@ end
 
 function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_node, flow_level)
     if not (in_node and out_node and in_node.pos and out_node.pos and out_node.dir) then return end
+    local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
+    local is_emitter = in_node.emitter and in_node.emitter ~= 0
+    if not (is_emitter or (in_conns and next(in_conns) ~= nil)) then return end
+
     local corridor_id = "corridor:" .. in_pkey .. "->" .. out_pkey
 
     storage.pressure_corridors = storage.pressure_corridors or {}
@@ -344,8 +348,10 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
 
     local source_pkey = nil
     local source_unit = nil
-    local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
-    if in_conns then
+    if is_emitter then
+        source_pkey = in_pkey
+        source_unit = in_node.unit_number
+    elseif in_conns then
         for neighbor_key in pairs(in_conns) do
             local n_node = storage.flow_nodes and storage.flow_nodes[neighbor_key]
             if n_node then
@@ -355,6 +361,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
             end
         end
     end
+    if not source_unit then return end
 
     local total_dist, terminal_branch_pkey, corridor_entities = scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node)
     local dx = out_node.dir.x
@@ -468,9 +475,12 @@ function flow_engine.step_pressure_corridors(tick)
             local src_node = storage.flow_nodes and storage.flow_nodes[corr.source_pkey]
             local src_flow = storage.flow_levels and storage.flow_levels[corr.source_pkey] or 0
             local in_conns = storage.flow_connections and storage.flow_connections[corr.in_pkey]
-            if (not src_node) or (src_flow == 0) or (not in_conns) or (not in_conns[corr.source_pkey]) then
+            local is_self_emitter = (corr.source_pkey == corr.in_pkey) and (src_node and src_node.emitter and src_node.emitter ~= 0)
+            if (not src_node) or (src_flow == 0 and not is_self_emitter) or (not is_self_emitter and (not in_conns or not in_conns[corr.source_pkey])) then
                 src_alive = false
             end
+        else
+            src_alive = false
         end
 
         if not src_alive and corr.status ~= "receding" then
@@ -1011,7 +1021,9 @@ function flow_engine.step(tick)
                                         allow_flow = false
                                     end
                                     if is_straight and has_external then
-                                        if target_flow ~= 0 then
+                                        local in_conns = storage.flow_connections and storage.flow_connections[pkey]
+                                        local has_in = (in_conns and next(in_conns) ~= nil) or (node.emitter and node.emitter ~= 0)
+                                        if has_in and target_flow ~= 0 then
                                             flow_engine.on_pressure_begin_transmit(pkey, node, int_key, int_node, target_flow)
                                         else
                                             flow_engine.on_pressure_stop_transmit(pkey, node, int_key, int_node)
@@ -1243,6 +1255,7 @@ function flow_engine.disconnect_entity(entity)
         if storage.pressure_corridors then
             for cid, corr in pairs(storage.pressure_corridors) do
                 local touches = (corr.source_unit == unit_number)
+                    or (corr.unit_number == unit_number)
                     or (corr.corridor_entities and corr.corridor_entities[unit_number])
                 if touches and corr.status ~= "receding" then
                     corr.status = "receding"

@@ -18,3 +18,13 @@
 2. **Colinear Graph Reach Scanner (`scripts/flow/flow-engine.lua`):** Implemented `scan_pneumatic_colinear_reach` to traverse contiguous straight pneumatic tube entities via `storage.flow_connections`, linking the originating pressure source (`source_unit`, `source_pkey`), detecting terminal branches for classic hops handoff, and anchoring 16-tile segments into `motion_tree` and `trajectory_bvh`.
 3. **Gradual Wavefront & Source Decay Monitor (`scripts/flow/flow-engine.lua`):** Added `step_pressure_corridors` executed on every tick with viewport observer synchronization. Animates gradual forward dot expansion ($tpt = 2$), detects when the feeding pressure source drops to 0 or is disconnected, and drives the anti-pressure peeling wave (`status = "receding"`) before cleanly unpinning BVH leaves.
 4. **Lifecycle & Destruction Decoupling (`scripts/flow/flow-engine.lua`):** Updated `disconnect_entity` to initiate gradual anti-pressure decay when the pressure source entity (pump) or any tube along the line is mined, avoiding abrupt single-tick purges while ensuring zero orphan corridors.
+
+
+### Revision: Pressure Source Ingress Gating & Anti-Reseed Suppression
+**Date:** 2026-09-19 14:22 EDT
+**Context:** Resolves an issue where removing a pressure source (pump) immediately triggered a new forward pressure seed corridor from the severed open-air tube port while the previous corridor was receding. Enforces strict incoming connection and emitter gating on corridor entry ports so severed edges immediately decay without re-evaluating as new sources.
+**Key Changes:**
+1. **Corridor Ingress Gating (`scripts/flow/flow-engine.lua`):** Gated straight colinear corridor transmission in `flow_engine.step` to require an active incoming external connection or internal emitter (`has_in`), routing severed open-air ports directly to `on_pressure_stop_transmit`.
+2. **Source Validation & Self-Emitter Resolution (`scripts/flow/flow-engine.lua`):** Hardened `flow_engine.on_pressure_begin_transmit` to reject orphan entry ports lacking external connections or active emitters, correctly resolving `source_unit` and `source_pkey` across both self-emitting machines and connected neighbors.
+3. **Orphan Corridor Source Liveness (`scripts/flow/flow-engine.lua`):** Updated `step_pressure_corridors` to mark corridors lacking a valid `source_pkey` as inactive (`src_alive = false`), ensuring disconnected or unlinked corridors begin anti-pressure recession immediately.
+4. **Deconstruction Scope Coverage (`scripts/flow/flow-engine.lua`):** Added `corr.unit_number == unit_number` checks to `disconnect_entity` to guarantee that corridors anchored directly to a mined or destroyed unit begin receding without delay.

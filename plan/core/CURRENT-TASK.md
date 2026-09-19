@@ -36,10 +36,16 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 
+[CURRENT_TASK]
+Implement smart mid-segment pressure corridor severing when intermediate pneumatic tubes are mined or destroyed, splitting the corridor into an upstream truncated corridor and a newly initialized downstream receding/orphaned corridor rather than collapsing the entire line.
+[/CURRENT_TASK]
+
 [CONTEXT_TOKENS]
-storage.pressure_corridors, scan_pneumatic_colinear_reach, last_out_pkey, terminal_branch_pkey, storage.corridor_tip_flows, max_reach = (source_pressure - 1), integer rounding (+0.5)
-motion_protocols, "pressure_static", "tube_transit", peaceful_transit, silent_halt, tube_connectivity
-viewport_bvh, render_governor, dispatch_player_renders, player_visible_set, render_pool.lease_circle, render_pool.lease_text
-render_pressure_corridor, radius 0.15, text y - 0.25, level / MAX_FLOW, P_cont = P_head*(1-f) + P_tip*f, in-place .color/.text mutation
-capsule_runner.update_capsules, select_next_target, in_timed_flight, timed_motion, storage.timed_arrival_heap, 6t discrete hops, corridor capacity floor(total_dist / 2)
+storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_grid, storage.flow_queue
+disconnect_entity, unseed_pressure_corridor, on_pressure_begin_transmit, on_pressure_stop_transmit, scan_pneumatic_colinear_reach
+corridor_entities, in_pkey, out_pkey, last_out_pkey, terminal_branch_pkey, source_unit, source_pkey, start_pos, dir, total_dist
+midline tube removal, split_pressure_corridor, upstream truncation, downstream detached wake, break_dist = math.floor(|pos - start_pos|)
+motion_tree, traj_tree, leaves, registered_segs, viewport_bvh.on_segment_removed, viewport_bvh.on_segment_registered
+status = "receding", retreat_tick, end_decay_tick, tau, p_head_cont, p_tip_cont, cur_tip_mag, target_tip
+flow_common.wake_port_parked, flow_engine.enqueue_port, update_pos_render, anti-reseed suppression, 0-tick idle sleep
 [/CONTEXT_TOKENS]

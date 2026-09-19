@@ -253,7 +253,9 @@ function flow_renderer.get_dominant_port_at_pos(pos_key)
     for pkey in pairs(grid_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
         if node and not node.is_kinetic then
-            local level = storage.flow_levels and storage.flow_levels[pkey] or 0
+            local level = (storage.corridor_tip_flows and storage.corridor_tip_flows[pkey])
+                or (storage.flow_levels and storage.flow_levels[pkey])
+                or 0
             local mag = math.abs(level)
             if mag > max_mag then
                 max_mag = mag

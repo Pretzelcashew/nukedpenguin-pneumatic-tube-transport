@@ -123,6 +123,7 @@ function flow_engine.init_storage()
     storage.parked_by_port = storage.parked_by_port or {}
     storage.object_destruction_map = storage.object_destruction_map or {}
     storage.pressure_corridors = storage.pressure_corridors or {}
+    storage.corridor_tip_flows = storage.corridor_tip_flows or {}
 
     -- Counter Range Fields
     storage.counter_levels = storage.counter_levels or {}
@@ -257,7 +258,7 @@ motion_protocols.register_protocol("pressure_corridor", {
     clearance_policy = "none"
 })
 
-local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node)
+local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node, flow_level)
     local dx = out_node.dir.x
     local dy = out_node.dir.y
     local curr_out = out_pkey
@@ -266,7 +267,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
     local total_dist = math.max(1, initial_len)
     local corridor_entities = { [in_node.unit_number] = true }
     local terminal_branch_pkey = nil
-    local max_reach = 64
+    local max_reach = math.abs(flow_level or 10) * 2
 
     while total_dist < max_reach do
         local conns = storage.flow_connections and storage.flow_connections[curr_out]
@@ -320,7 +321,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
         curr_out_node = found_exit_node
     end
 
-    return total_dist, terminal_branch_pkey, corridor_entities
+    return total_dist, terminal_branch_pkey, corridor_entities, curr_out
 end
 
 function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_node, flow_level)
@@ -363,7 +364,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
     end
     if not source_unit then return end
 
-    local total_dist, terminal_branch_pkey, corridor_entities = scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node)
+    local total_dist, terminal_branch_pkey, corridor_entities, last_out_pkey = scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node, flow_level)
     local dx = out_node.dir.x
     local dy = out_node.dir.y
     local start_pos = { x = in_node.pos.x, y = in_node.pos.y }
@@ -388,6 +389,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         max_seg_idx = max_seg_idx,
         corridor_entities = corridor_entities,
         terminal_branch_pkey = terminal_branch_pkey,
+        last_out_pkey = last_out_pkey,
         start_tick = game.tick,
         status = "growing",
         registered_segs = 1,
@@ -436,6 +438,14 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
         corr.status = "receding"
         corr.retreat_tick = game.tick
         return
+    end
+
+    if corr.last_out_pkey and storage.corridor_tip_flows and storage.corridor_tip_flows[corr.last_out_pkey] then
+        storage.corridor_tip_flows[corr.last_out_pkey] = nil
+        if corr.terminal_branch_pkey then
+            flow_engine.enqueue_port(corr.terminal_branch_pkey)
+            flow_common.wake_port_parked(corr.terminal_branch_pkey)
+        end
     end
 
     local s_idx = corr.surface_index or 1
@@ -537,6 +547,18 @@ function flow_engine.step_pressure_corridors(tick)
                 corr.status = "active"
                 if corr.terminal_branch_pkey and not corr.branch_enqueued then
                     corr.branch_enqueued = true
+                    local hops = math.floor(corr.total_dist / 2)
+                    local rem_level = 0
+                    local base_flow = corr.flow_level or src_flow or 0
+                    if base_flow > 0 then
+                        rem_level = math.max(0, base_flow - hops)
+                    elseif base_flow < 0 then
+                        rem_level = math.min(0, base_flow + hops)
+                    end
+                    if rem_level ~= 0 and corr.last_out_pkey then
+                        storage.corridor_tip_flows = storage.corridor_tip_flows or {}
+                        storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
+                    end
                     flow_engine.enqueue_port(corr.terminal_branch_pkey)
                     flow_common.wake_port_parked(corr.terminal_branch_pkey)
                 end
@@ -836,7 +858,7 @@ local function compute_port_flow_level(pkey)
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
                 if neighbors then
                     for n_key in pairs(neighbors) do
-                        local n_level = storage.flow_levels and storage.flow_levels[n_key] or 0
+                        local n_level = (storage.corridor_tip_flows and storage.corridor_tip_flows[n_key]) or (storage.flow_levels and storage.flow_levels[n_key]) or 0
                         if n_level > 1 then
                             local incoming = n_level - 1
                             if incoming > max_pos then
@@ -965,12 +987,13 @@ function flow_engine.step(tick)
         local flow_changed = false
         local range_changed = false
         local kinetic_changed = false
+        local target_flow = 0
 
         if node and node.is_kinetic then
             kinetic_changed = flow_kinetic.step_port(node, pkey, flow_engine.enqueue_port, wake_port_parked)
         else
             -- 1. Pressure Flow Wavefront
-            local target_flow = compute_port_flow_level(pkey)
+            target_flow = compute_port_flow_level(pkey)
             local current_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
             flow_changed = (target_flow ~= current_flow)
 
@@ -1023,8 +1046,9 @@ function flow_engine.step(tick)
                                     if is_straight and has_external then
                                         local in_conns = storage.flow_connections and storage.flow_connections[pkey]
                                         local has_in = (in_conns and next(in_conns) ~= nil) or (node.emitter and node.emitter ~= 0)
-                                        if has_in and target_flow ~= 0 then
-                                            flow_engine.on_pressure_begin_transmit(pkey, node, int_key, int_node, target_flow)
+                                        local curr_flow = storage.flow_levels and storage.flow_levels[pkey] or 0
+                                        if has_in and curr_flow ~= 0 then
+                                            flow_engine.on_pressure_begin_transmit(pkey, node, int_key, int_node, curr_flow)
                                         else
                                             flow_engine.on_pressure_stop_transmit(pkey, node, int_key, int_node)
                                         end

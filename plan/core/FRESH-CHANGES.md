@@ -28,3 +28,13 @@
 2. **Source Validation & Self-Emitter Resolution (`scripts/flow/flow-engine.lua`):** Hardened `flow_engine.on_pressure_begin_transmit` to reject orphan entry ports lacking external connections or active emitters, correctly resolving `source_unit` and `source_pkey` across both self-emitting machines and connected neighbors.
 3. **Orphan Corridor Source Liveness (`scripts/flow/flow-engine.lua`):** Updated `step_pressure_corridors` to mark corridors lacking a valid `source_pkey` as inactive (`src_alive = false`), ensuring disconnected or unlinked corridors begin anti-pressure recession immediately.
 4. **Deconstruction Scope Coverage (`scripts/flow/flow-engine.lua`):** Added `corr.unit_number == unit_number` checks to `disconnect_entity` to guarantee that corridors anchored directly to a mined or destroyed unit begin receding without delay.
+
+
+### Revision: Pressure Corridor Terminal Handoff & Proportional Reach Scaling
+**Date:** 2026-09-19 15:16 EDT
+**Context:** Connects pressure corridor endpoints to downstream non-colinear networks with continuous stable pressure handoffs while scaling reach dynamically to input pressure instead of an arbitrary 64-tile ceiling. Resolves phantom reverse corridor seeding and peeling wave inversion by isolating tip emissions from intermediate tube flow level records.
+**Key Changes:**
+1. **Dynamic Reach Scaling & Terminal Port Resolution (`scripts/flow/flow-engine.lua`):** Scaled `max_reach` in `scan_pneumatic_colinear_reach` to `math.abs(flow_level) * 2` tiles, bounding traversal strictly to input pressure, and returned `curr_out` as `last_out_pkey` to identify the corridor's egress interface.
+2. **Dedicated Tip Emission Substrate (`scripts/flow/flow-engine.lua`):** Established `storage.corridor_tip_flows` to provide persistent remaining pressure (`src_flow - hops`) at `last_out_pkey` without populating `storage.flow_levels` on straight tube nodes, preventing straight members from re-evaluating as reverse emitters and preserving forward anti-pressure wake peeling.
+3. **Downstream Wavefront Handoff (`scripts/flow/flow-engine.lua`):** Updated `compute_port_flow_level` to read `storage.corridor_tip_flows[n_key]` across external neighbor queries, enabling junctions, diverters, corners, and hubs to seamlessly adopt and propagate remaining corridor pressure.
+4. **Ingress Scope Gating & Teardown Cleanup (`scripts/flow/flow-engine.lua`):** Scoped flow evaluation in `flow_engine.step` directly from `storage.flow_levels[pkey]` to eliminate out-of-scope nil values in `on_pressure_begin_transmit`, and added automated tip flow purging and neighbor wakeups to `unseed_pressure_corridor`.

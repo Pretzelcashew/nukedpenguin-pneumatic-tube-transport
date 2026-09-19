@@ -1,5 +1,7 @@
 local flow_common = {}
 
+flow_common.USE_PRESSURE_CORRIDORS = true
+
 -- Spatial and Port Key Formatting Primitives
 function flow_common.make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
@@ -50,6 +52,53 @@ function flow_common.enqueue_unit_ports(unit_number)
             flow_common.enqueue_port(unit_ports[i])
         end
     end
+end
+
+-- Colinear Straight Evaluation Primitive (SINGLE SOURCE OF TRUTH)
+function flow_common.is_colinear_straight_internal(pkey_a, arg2, arg3, arg4)
+    local pkey_b, node_a, node_b
+    if type(arg2) == "table" then
+        node_a = arg2
+        pkey_b = arg3
+        node_b = arg4
+    else
+        pkey_b = arg2
+        node_a = arg3
+        node_b = arg4
+    end
+    node_a = node_a or (storage.flow_nodes and storage.flow_nodes[pkey_a])
+    node_b = node_b or (storage.flow_nodes and storage.flow_nodes[pkey_b])
+    if not (node_a and node_b) then return false end
+    if node_a.unit_number ~= node_b.unit_number then return false end
+    if not (node_a.group and node_b.group and node_a.group == node_b.group) then return false end
+    if not (node_a.dir and node_b.dir and node_a.offset and node_b.offset) then return false end
+
+    if (node_a.dir.x + node_b.dir.x ~= 0) or (node_a.dir.y + node_b.dir.y ~= 0) then
+        return false
+    end
+
+    if node_a.dir.x == 0 then
+        if math.abs(node_a.offset.x - node_b.offset.x) > 0.001 then return false end
+    else
+        if math.abs(node_a.offset.y - node_b.offset.y) > 0.001 then return false end
+    end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node_a.unit_number]
+    if unit_ports then
+        for _, other_key in pairs(unit_ports) do
+            if other_key ~= pkey_a and other_key ~= pkey_b then
+                local other_node = storage.flow_nodes and storage.flow_nodes[other_key]
+                if other_node and other_node.group == node_a.group then
+                    local conns = storage.flow_connections and storage.flow_connections[other_key]
+                    if conns and next(conns) ~= nil then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+
+    return true
 end
 
 -- Graph Topology Primitives (SINGLE SOURCE OF TRUTH)
@@ -122,8 +171,11 @@ function flow_common.destroy_node(pkey)
                     or (storage.kinetic_levels and storage.kinetic_levels[n_key] ~= nil)
                     or (n_node and n_node.emitter)
 
-                if had_active then
+                if had_active or flow_common.USE_PRESSURE_CORRIDORS then
                     flow_common.enqueue_port(n_key)
+                    if flow_common.USE_PRESSURE_CORRIDORS then
+                        flow_common.enqueue_unit_ports(n_node.unit_number)
+                    end
                 end
                 flow_common.wake_port_parked(n_key)
             end

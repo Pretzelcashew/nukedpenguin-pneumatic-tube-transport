@@ -13,6 +13,9 @@ local projector_settings = require("scripts.projectors.projector-settings")
 
 local flow_engine = {}
 
+local USE_PRESSURE_CORRIDORS = true
+flow_common.USE_PRESSURE_CORRIDORS = USE_PRESSURE_CORRIDORS
+
 local BATCH_SIZE = 50
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
@@ -367,6 +370,45 @@ local function set_port_counter_ownership(pkey, target_level, target_owner)
     return true
 end
 
+local function is_colinear_straight_internal(pkey_a, node_a, pkey_b, node_b)
+    return flow_common.is_colinear_straight_internal(pkey_a, node_a, pkey_b, node_b)
+end
+flow_engine.is_colinear_straight_internal = flow_common.is_colinear_straight_internal
+
+local function _legacy_is_colinear_straight_internal(pkey_a, node_a, pkey_b, node_b)
+    if not (node_a and node_b) then return false end
+    if node_a.unit_number ~= node_b.unit_number then return false end
+    if not (node_a.group and node_b.group and node_a.group == node_b.group) then return false end
+    if not (node_a.dir and node_b.dir and node_a.offset and node_b.offset) then return false end
+
+    if (node_a.dir.x + node_b.dir.x ~= 0) or (node_a.dir.y + node_b.dir.y ~= 0) then
+        return false
+    end
+
+    if node_a.dir.x == 0 then
+        if math.abs(node_a.offset.x - node_b.offset.x) > 0.001 then return false end
+    else
+        if math.abs(node_a.offset.y - node_b.offset.y) > 0.001 then return false end
+    end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[node_a.unit_number]
+    if unit_ports then
+        for _, other_key in pairs(unit_ports) do
+            if other_key ~= pkey_a and other_key ~= pkey_b then
+                local other_node = storage.flow_nodes and storage.flow_nodes[other_key]
+                if other_node and other_node.group == node_a.group then
+                    local conns = storage.flow_connections and storage.flow_connections[other_key]
+                    if conns and next(conns) ~= nil then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+
+    return true
+end
+
 local function compute_port_flow_level(pkey)
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then return 0 end
@@ -387,6 +429,13 @@ local function compute_port_flow_level(pkey)
         if check_node then
             local is_self = (check_pkey == pkey)
             local can_transmit_internally = node.pressure_transmit and check_node.pressure_transmit and (node.group ~= nil) and (check_node.group == node.group)
+            if USE_PRESSURE_CORRIDORS and can_transmit_internally and not is_self then
+                local pkey_conns = storage.flow_connections and storage.flow_connections[pkey]
+                local has_external = pkey_conns and (next(pkey_conns) ~= nil)
+                if (not has_external) or is_colinear_straight_internal(check_pkey, check_node, pkey, node) then
+                    can_transmit_internally = false
+                end
+            end
 
             if is_self or can_transmit_internally then
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
@@ -566,7 +615,15 @@ function flow_engine.step(tick)
                         if int_key ~= pkey then
                             local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
                             if int_node and int_node.group == node.group then
-                                if (flow_changed and node.pressure_transmit and int_node.pressure_transmit)
+                                local allow_flow = flow_changed and node.pressure_transmit and int_node.pressure_transmit
+                                if allow_flow and USE_PRESSURE_CORRIDORS then
+                                    local int_conns = storage.flow_connections and storage.flow_connections[int_key]
+                                    local has_external = int_conns and (next(int_conns) ~= nil)
+                                    if (not has_external) or is_colinear_straight_internal(pkey, node, int_key, int_node) then
+                                        allow_flow = false
+                                    end
+                                end
+                                if allow_flow
                                    or (range_changed and node.sense_transmit and int_node.sense_transmit)
                                    or (kinetic_changed and (node.kinetic_transmit or node.cross_transit) and (int_node.kinetic_transmit or int_node.cross_transit)) then
                                     flow_engine.enqueue_port(int_key)
@@ -741,9 +798,13 @@ function flow_engine.connect_entity(entity)
                         or (existing_node.sense and existing_node.sense > 0)
                     local has_flow = (eff_emitter ~= nil and eff_emitter ~= 0) or (eff_sense ~= nil and eff_sense > 0)
 
-                    if has_flow or existing_has_flow then
+                    if has_flow or existing_has_flow or USE_PRESSURE_CORRIDORS then
                         flow_engine.enqueue_port(existing_pkey)
                         flow_engine.enqueue_port(pkey)
+                        if USE_PRESSURE_CORRIDORS then
+                            flow_common.enqueue_unit_ports(existing_node.unit_number)
+                            flow_common.enqueue_unit_ports(unit_number)
+                        end
                         wake_port_parked(existing_pkey)
                         wake_port_parked(pkey)
                     end

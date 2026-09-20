@@ -203,7 +203,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
     local curr_out_node = out_node
     local initial_len = math.floor(math.abs(out_node.pos.x - in_node.pos.x) + math.abs(out_node.pos.y - in_node.pos.y) + 0.5)
     local total_dist = math.max(1, initial_len)
-    local corridor_entities = { [in_node.unit_number] = true }
+    local corridor_entities = { [in_node.unit_number] = { [in_node.group or 1] = true } }
     local terminal_branch_pkey = nil
 
     local max_reach = math.max(1, math.abs(flow_level or 10))
@@ -224,7 +224,8 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
         if not next_in_node then break end
 
         local next_unit = next_in_node.unit_number
-        if not next_unit or corridor_entities[next_unit] then break end
+        local next_grp = next_in_node.group or 1
+        if not next_unit or (corridor_entities[next_unit] and corridor_entities[next_unit][next_grp]) then break end
         if is_gate_open(next_unit) then break end
 
         local next_u_ports = storage.flow_unit_ports and storage.flow_unit_ports[next_unit]
@@ -256,7 +257,8 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
         if seg_len <= 0 then seg_len = 1 end
         total_dist = total_dist + seg_len
 
-        corridor_entities[next_unit] = true
+        corridor_entities[next_unit] = corridor_entities[next_unit] or {}
+        corridor_entities[next_unit][next_in_node.group or 1] = true
         curr_out = found_straight_exit
         curr_out_node = found_exit_node
     end
@@ -335,6 +337,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
         initial_flow = math.abs(flow_level or 10),
         decay_mag = math.abs(flow_level or 10),
         q_level = in_node.q_level or 0,
+        group = in_node.group or 1,
         max_seg_idx = max_seg_idx,
         corridor_entities = corridor_entities,
         terminal_branch_pkey = terminal_branch_pkey,
@@ -418,17 +421,27 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
 
     local upstream_entities = {}
     local downstream_entities = {}
+    local corr_group = corr.group or 1
     if corr.corridor_entities then
-        for u in pairs(corr.corridor_entities) do
+        for u, grp_data in pairs(corr.corridor_entities) do
             if u ~= unit_number and not is_gate_open(u) then
                 local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
-                local u_node = u_ports and storage.flow_nodes and storage.flow_nodes[u_ports[1]]
+                local u_node = nil
+                if u_ports then
+                    for _, pk in pairs(u_ports) do
+                        local nd = storage.flow_nodes and storage.flow_nodes[pk]
+                        if nd and (nd.group == corr_group or (type(grp_data) == "table" and grp_data[nd.group])) then
+                            u_node = nd
+                            break
+                        end
+                    end
+                end
                 if u_node and u_node.pos then
                     local u_dist = (u_node.pos.x - corr.start_pos.x) * dx + (u_node.pos.y - corr.start_pos.y) * dy
                     if u_dist < axis_dist then
-                        upstream_entities[u] = true
+                        upstream_entities[u] = grp_data
                     else
-                        downstream_entities[u] = true
+                        downstream_entities[u] = grp_data
                     end
                 end
             end
@@ -465,7 +478,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
             if u_ports then
                 for _, pk in pairs(u_ports) do
                     local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                    if nd and nd.pos and nd.dir and nd.dir.x == dx and nd.dir.y == dy then
+                    if nd and (nd.group == corr_group) and nd.pos and nd.dir and nd.dir.x == dx and nd.dir.y == dy then
                         local d = (nd.pos.x - corr.start_pos.x) * dx + (nd.pos.y - corr.start_pos.y) * dy
                         if d > max_up_dist then
                             max_up_dist = d
@@ -484,7 +497,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
             if u_ports then
                 for _, pk in pairs(u_ports) do
                     local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                    if nd and nd.pos and nd.dir and nd.dir.x == -dx and nd.dir.y == -dy then
+                    if nd and (nd.group == corr_group) and nd.pos and nd.dir and nd.dir.x == -dx and nd.dir.y == -dy then
                         local d = (nd.pos.x - corr.start_pos.x) * dx + (nd.pos.y - corr.start_pos.y) * dy
                         if d < min_down_dist then
                             min_down_dist = d
@@ -568,6 +581,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
             initial_flow = down_flow_mag,
             decay_mag = down_flow_mag,
             q_level = corr.q_level or 0,
+            group = down_in_node.group or 1,
             max_seg_idx = down_max_seg,
             corridor_entities = down_corridor_entities,
             terminal_branch_pkey = down_term_branch,
@@ -803,6 +817,15 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
 
     if traj_tree then
         trajectory_bvh.refresh_active_renders()
+    end
+
+    if corr.source_pkey then
+        flow_engine.enqueue_port(corr.source_pkey)
+        flow_common.wake_port_parked(corr.source_pkey)
+    end
+    if corr.in_pkey then
+        flow_engine.enqueue_port(corr.in_pkey)
+        flow_common.wake_port_parked(corr.in_pkey)
     end
 
     motion_protocols.protocols[corridor_id] = nil
@@ -1235,8 +1258,16 @@ local function compute_port_flow_level(pkey)
         end
         if storage.pressure_corridors then
             for _, corr in pairs(storage.pressure_corridors) do
-                if corr.status ~= "receding" and corr.corridor_entities and corr.corridor_entities[node.unit_number] and corr.in_pkey ~= pkey then
-                    return 0
+                if corr.status ~= "receding" and corr.corridor_entities and corr.in_pkey ~= pkey then
+                    local ent_record = corr.corridor_entities[node.unit_number]
+                    if ent_record then
+                        local matches_group = (type(ent_record) == "table" and ent_record[node.group])
+                            or (ent_record == node.group)
+                            or (ent_record == true and (not corr.group or corr.group == node.group))
+                        if matches_group then
+                            return 0
+                        end
+                    end
                 end
             end
         end
@@ -1516,6 +1547,8 @@ function flow_engine.step(tick)
                                                 flow_engine.on_pressure_begin_transmit(pkey, node, int_key, int_node, curr_flow)
                                                 update_pos_render(node.pos_key)
                                             end
+                                        elseif existing and existing.status == "active" then
+                                            flow_engine.wake_corridor_tip(existing)
                                         end
                                     end
                                 end
@@ -1587,7 +1620,9 @@ function flow_engine.wake_corridor_tip(corr)
         if not n_in_node then break end
 
         local u = n_in_node.unit_number
-        if not u or corr.corridor_entities[u] then break end
+        local u_grp = n_in_node.group or 1
+        if not u then break end
+        if corr.corridor_entities[u] and ((type(corr.corridor_entities[u]) == "table" and corr.corridor_entities[u][u_grp]) or corr.corridor_entities[u] == true) then break end
         if is_gate_open(u) then break end
 
         local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
@@ -1618,7 +1653,11 @@ function flow_engine.wake_corridor_tip(corr)
         local seg_len = math.floor(math.abs(found_exit_node.pos.x - n_in_node.pos.x) + math.abs(found_exit_node.pos.y - n_in_node.pos.y) + 0.5)
         if seg_len <= 0 then seg_len = 1 end
         added_dist = added_dist + seg_len
-        corr.corridor_entities[u] = true
+        if type(corr.corridor_entities[u]) ~= "table" then
+            corr.corridor_entities[u] = { [u_grp] = true }
+        else
+            corr.corridor_entities[u][u_grp] = true
+        end
         curr_out = found_exit
     end
 

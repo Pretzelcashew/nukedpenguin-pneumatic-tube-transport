@@ -177,6 +177,22 @@ function motion_protocols.get_protocol(name_or_flight)
         end
         return (p_name and motion_protocols.protocols[p_name]) or motion_protocols.protocols["capsule"]
     end
+    if storage then
+        if storage.projector_reticles then
+            local ret = storage.projector_reticles[name_or_flight]
+            if not ret and type(name_or_flight) == "string" then
+                ret = storage.projector_reticles[tonumber(name_or_flight)]
+            end
+            if ret then
+                local p_name = ret.protocol or "projector_scope"
+                return motion_protocols.protocols[p_name] or motion_protocols.protocols["projector_scope"]
+            end
+        end
+        if storage.pressure_corridors and storage.pressure_corridors[name_or_flight] then
+            return motion_protocols.protocols["pressure_corridor"]
+        end
+    end
+
     if type(name_or_flight) == "string" then
         if motion_protocols.protocols[name_or_flight] then
             return motion_protocols.protocols[name_or_flight]
@@ -184,8 +200,8 @@ function motion_protocols.get_protocol(name_or_flight)
         if name_or_flight:sub(1, 9) == "corridor:" then
             return motion_protocols.protocols["pressure_corridor"]
         end
-        if storage and storage.pressure_corridors and storage.pressure_corridors[name_or_flight] then
-            return motion_protocols.protocols["pressure_corridor"]
+        if name_or_flight:sub(1, 5) == "anti:" then
+            return motion_protocols.protocols["anti_reticle"]
         end
     end
     return motion_protocols.protocols[name_or_flight] or motion_protocols.protocols["capsule"]

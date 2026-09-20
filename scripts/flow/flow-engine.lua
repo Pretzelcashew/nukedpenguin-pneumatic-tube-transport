@@ -395,7 +395,7 @@ function flow_engine.on_pressure_stop_transmit(in_pkey, in_node, out_pkey, out_n
     end
 end
 
-function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
+function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is_branch)
     if not (cid and corr and unit_number) then return end
     if corr.status == "receding" then return end
 
@@ -451,6 +451,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
     local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
     local new_up_out_pkey = nil
     local new_down_in_pkey = nil
+    local branch_in_pkey = nil
     if unit_ports then
         for _, pk in pairs(unit_ports) do
             local conns = storage.flow_connections and storage.flow_connections[pk]
@@ -461,6 +462,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
                         if upstream_entities[n_node.unit_number] then
                             if n_node.dir and n_node.dir.x == dx and n_node.dir.y == dy then
                                 new_up_out_pkey = n_key
+                                branch_in_pkey = pk
                             end
                         elseif downstream_entities[n_node.unit_number] then
                             new_down_in_pkey = n_key
@@ -486,6 +488,16 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
                         end
                     end
                 end
+            end
+        end
+    end
+
+    if not branch_in_pkey and new_up_out_pkey and unit_ports then
+        for _, pk in pairs(unit_ports) do
+            local conns = storage.flow_connections and storage.flow_connections[pk]
+            if conns and conns[new_up_out_pkey] then
+                branch_in_pkey = pk
+                break
             end
         end
     end
@@ -670,6 +682,9 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
         corr.last_out_pkey = nil
         corr.terminal_branch_pkey = nil
         flow_engine.unseed_pressure_corridor(cid, true)
+        if is_branch then
+            flow_common.enqueue_unit_ports(unit_number)
+        end
         return
     end
 
@@ -677,8 +692,13 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
     corr.terminal_pos = { x = corr.start_pos.x + dx * exact_up_dist, y = corr.start_pos.y + dy * exact_up_dist }
     corr.current_reach = math.min(corr.current_reach or exact_up_dist, exact_up_dist)
     corr.corridor_entities = upstream_entities
-    corr.terminal_branch_pkey = nil
-    corr.branch_enqueued = nil
+    if is_branch and branch_in_pkey then
+        corr.terminal_branch_pkey = branch_in_pkey
+        corr.branch_enqueued = true
+    else
+        corr.terminal_branch_pkey = nil
+        corr.branch_enqueued = nil
+    end
     if new_up_out_pkey then
         corr.last_out_pkey = new_up_out_pkey
     end
@@ -771,6 +791,11 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
         end
         flow_common.wake_port_parked(corr.last_out_pkey)
         flow_engine.enqueue_port(corr.last_out_pkey)
+        if is_branch and branch_in_pkey then
+            flow_engine.enqueue_port(branch_in_pkey)
+            flow_common.enqueue_unit_ports(unit_number)
+            flow_common.wake_port_parked(branch_in_pkey)
+        end
     end
 end
 
@@ -1860,6 +1885,7 @@ function flow_engine.connect_entity(entity)
     end
 
     local touched_corridors = {}
+    local connected_units = {}
     for port_index = 1, #ports_data do
         local pd = ports_data[port_index]
         local pkey = pd.pkey
@@ -1878,6 +1904,8 @@ function flow_engine.connect_entity(entity)
 
                     storage.flow_connections[pkey][existing_pkey] = true
                     storage.flow_connections[existing_pkey][pkey] = true
+                    connected_units[existing_node.unit_number] = true
+                    connected_units[unit_number] = true
 
                     local existing_has_flow = (storage.flow_levels and (storage.flow_levels[existing_pkey] or 0) ~= 0)
                         or (storage.counter_levels and (storage.counter_levels[existing_pkey] or 0) > 0)
@@ -1916,8 +1944,57 @@ function flow_engine.connect_entity(entity)
     end
 
     if USE_PRESSURE_CORRIDORS then
+        local corridors_to_split = {}
+        if storage.pressure_corridors and next(connected_units) ~= nil then
+            for cid, corr in pairs(storage.pressure_corridors) do
+                if corr.status ~= "receding" and corr.corridor_entities then
+                    local dx = corr.dir.x
+                    local dy = corr.dir.y
+                    local corr_grp = corr.group or 1
+                    for u in pairs(connected_units) do
+                        local grp_data = corr.corridor_entities[u]
+                        if grp_data then
+                            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
+                            local in_pk, out_pk = nil, nil
+                            local in_nd, out_nd = nil, nil
+                            if u_ports then
+                                for _, pk in ipairs(u_ports) do
+                                    local nd = storage.flow_nodes and storage.flow_nodes[pk]
+                                    if nd and (nd.group == corr_grp or (type(grp_data) == "table" and grp_data[nd.group])) and nd.dir then
+                                        if nd.dir.x == -dx and nd.dir.y == -dy then
+                                            in_pk = pk
+                                            in_nd = nd
+                                        elseif nd.dir.x == dx and nd.dir.y == dy then
+                                            out_pk = pk
+                                            out_nd = nd
+                                        end
+                                    end
+                                end
+                            end
+
+                            if in_pk and out_pk then
+                                if not flow_common.is_colinear_straight_internal(in_pk, in_nd, out_pk, out_nd) then
+                                    local u_pos = in_nd.pos
+                                    local dist = (u_pos.x - corr.start_pos.x) * dx + (u_pos.y - corr.start_pos.y) * dy
+                                    if not corridors_to_split[cid] or dist < corridors_to_split[cid].dist then
+                                        corridors_to_split[cid] = { corr = corr, unit = u, dist = dist, pos = u_pos }
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        for cid, data in pairs(corridors_to_split) do
+            flow_engine.split_pressure_corridor(cid, data.corr, data.unit, data.pos, true)
+        end
+
         for _, corr in pairs(touched_corridors) do
-            flow_engine.wake_corridor_tip(corr)
+            if not corridors_to_split[corr.id] then
+                flow_engine.wake_corridor_tip(corr)
+            end
         end
     end
 end

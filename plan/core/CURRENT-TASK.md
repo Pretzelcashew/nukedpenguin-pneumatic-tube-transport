@@ -37,17 +37,20 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Fix improper render object leasing and releasing causing pressure corridors to leave behind rogue magenta trail dots from the recycled render pool.
+Retroactively split or truncate active pressure corridors when a player connects a new branch to an intermediate junction during live gameplay.
 
-Recycled circle primitives leased from `render-pool.lua` by pressure corridors sometimes retain optical projector/reticle state (holmium magenta tint, small radius) because properties are not sanitized upon leasing or releasing back into the pool. Furthermore, when pressure corridors recede or unseed spatial BVH segments, leased primitives must be cleanly released back into `render_pool` with fully reset visibility and baseline styling rather than being orphaned in the world. Ensure strict lease-release symmetry and complete property re-initialization across both projector reticle and pneumatic corridor lifecycles.
+Pre-built networks with existing branches already evaluate correctly at build time. The defect occurs strictly when an entity or tube is attached to the idle side port of an intermediate junction that is already actively conducting an established pressure corridor. In this live state-change scenario, `connect_entity` does not alert or sever the intersecting corridor, allowing it to remain intact across the newly branched junction instead of reacting to the loss of colinear straight status. 
+
+Scope: Do not rewrite core static graph traversal or junction evaluation. Scope this change strictly to reactive event handling in `connect_entity` (and related topology wakeups), ensuring that when a newly linked edge breaks the straight-line status of an intermediate corridor member, the active corridor retroactively truncates or splits at the junction face and hands off tip pressure to the newly formed branch.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-render_pool.lease_circle, render_pool.release_circle, render_pool.release, render-pool.lua
-viewport_bvh.on_segment_registered, viewport_bvh.on_segment_removed, viewport_bvh.update_player_views
-motion_tree, trajectory_bvh, timed_motion.get_motion_tree, motion_protocols
-capsule_renderer.dispatch_player_renders, capsule_renderer.render_governor, render_corridor_dots
-storage.render_pool, storage.pressure_corridors, storage.pinned_corridors, storage.kinetic_renders
-leaf.objects, leaf.trail_count, leaf.has_trail, seg_key, render pool hygiene, object lease-release symmetry
-pooled primitive property sanitization, stale leased circle reset, zero-destroy render object recycling
+flow_engine.connect_entity, flow_engine.split_pressure_corridor, flow_engine.unseed_pressure_corridor, flow_engine.wake_corridor_tip
+flow_common.is_colinear_straight_internal, flow_common.link_ports, flow_common.enqueue_unit_ports, flow_common.enqueue_port
+scan_pneumatic_colinear_reach, compute_port_flow_level, flow_engine.step, flow_engine.on_pressure_begin_transmit
+storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_unit_ports
+corr.corridor_entities, corr.terminal_branch_pkey, corr.last_out_pkey, corridor_entities[unit_number][group]
+live edge insertion, retroactive corridor severing, dynamic junction branching, runtime colinear invalidation
+preserve prebuilt topology, reactive connect_entity trigger, branched junction handoff, side-port link detection
+upstream corridor truncation, downstream wake detachment, tip flow delivery at newly branched junction
 [/CONTEXT_TOKENS]

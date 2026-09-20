@@ -214,7 +214,7 @@ function capsule_renderer.update_governor(current_tick)
     end
     if storage.projector_reticles then
         for r_id, ret in pairs(storage.projector_reticles) do
-            if ret.retreat_tick then
+            if ret.retreat_tick or ret.status == "growing" then
                 scratch_active_owners[r_id] = true
             end
         end
@@ -1350,7 +1350,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                 break
             end
             local reticle = storage.projector_reticles and storage.projector_reticles[owner_id]
-            if reticle and reticle.retreat_tick then
+            if reticle and (reticle.retreat_tick or reticle.status == "growing") then
                 needs_render_pass = true
                 break
             end

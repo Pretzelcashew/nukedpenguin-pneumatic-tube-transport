@@ -164,6 +164,26 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     end
 
     -- Case 2: Existing entry on same surface -> Test concentric hysteresis boundaries
+    local view_settings = player.game_view_settings
+    local alt_mode = (view_settings and view_settings.show_entity_info) == true
+    if entry.last_alt_mode == nil then
+        entry.last_alt_mode = alt_mode
+    elseif entry.last_alt_mode ~= alt_mode then
+        entry.last_alt_mode = alt_mode
+        local v_set = viewport_bvh.get_visible_set(p_idx)
+        if not alt_mode then
+            for _, item in pairs(v_set) do
+                viewport_bvh.detach_static_render(p_idx, item)
+            end
+        else
+            for _, item in pairs(v_set) do
+                if item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail) then
+                    viewport_bvh.attach_static_render(p_idx, item, surf)
+                end
+            end
+        end
+    end
+
     entry.last_player_x = cx
     entry.last_player_y = cy
     entry.last_zoom = p_zoom
@@ -373,16 +393,8 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
     item.trail_dots_count = count
 
     if leaf.has_trail or count > 0 then
-        local cur_d = 0
-        for idx, obj in pairs(objects) do
-            if type(idx) == "number" and idx > cur_d then
-                cur_d = idx
-            end
-        end
-
-        if cur_d < count or not item.trail_attached then
-            item.trail_attached = true
-            local q_level = leaf.q_level or 0
+        item.trail_attached = true
+        local q_level = leaf.q_level or (reticle and reticle.q_level) or 0
         local palette = QUALITY_BEAM_PALETTE[q_level] or QUALITY_BEAM_PALETTE[0]
         local d_base = leaf.d_start or 0
         local dx = (reticle and reticle.dir and reticle.dir.x) or (leaf.dir and leaf.dir.x) or 0
@@ -399,11 +411,12 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
         local sp = r_sp and { x = r_sp.x + dx * d_base, y = r_sp.y + dy * d_base } or leaf.start_pos
 
         if sp and (dx ~= 0 or dy ~= 0) then
-            for i = cur_d + 1, count do
+            for i = 1, count do
                 local d = d_base + i
                 if d > min_allowed then
-                local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
-                if d % 5 == 0 then
+                    if not (objects[i] and objects[i].valid) then
+                        local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
+                        if d % 5 == 0 then
                     local prom = render_pool.lease_circle{
                         color = palette.core,
                         radius = 0.16,
@@ -422,12 +435,17 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
                         surface = surface,
                         players = { player }
                     }
-                    if min_dot then objects[i] = min_dot end
-                end
+                            if min_dot then objects[i] = min_dot end
+                        end
+                    end
+                else
+                    if objects[i] then
+                        render_pool.recycle(player_index, objects[i])
+                        objects[i] = nil
+                    end
                 end
             end
             item.trail_dots_count = count
-        end
         end
     end
 
@@ -510,6 +528,9 @@ end
 function viewport_bvh.attach_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
     local static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
+    if not static_fn and (item.leaf.static_render_spec or item.leaf.has_trail) then
+        static_fn = motion_protocols.static_renders["reticle_static"]
+    end
     if static_fn then
         static_fn(player_index, item, surface)
     end

@@ -671,7 +671,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
 
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
-    local old_reg_segs = corr.registered_segs or corr.max_seg_idx or 1
+    local old_reg_segs = math.max(corr.registered_segs or 1, corr.max_seg_idx or 1)
     local new_max_segs = math.max(1, math.ceil(exact_up_dist / 16))
 
     corr.max_seg_idx = new_max_segs
@@ -786,7 +786,7 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
     local s_idx = corr.surface_index or 1
     local motion_tree = timed_motion.get_motion_tree(s_idx)
     local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
-    local num_segs = corr.registered_segs or corr.max_seg_idx or 1
+    local num_segs = math.max(corr.registered_segs or 1, corr.max_seg_idx or 1)
 
     for s = 1, num_segs do
         local seg_key = string.format("%d,%d:%d", corr.dir.x, corr.dir.y, s)
@@ -798,6 +798,8 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
             traj_tree:remove_segment(corridor_id, seg_key)
         end
     end
+
+    viewport_bvh.on_segment_removed(s_idx, corridor_id, nil)
 
     if traj_tree then
         trajectory_bvh.refresh_active_renders()

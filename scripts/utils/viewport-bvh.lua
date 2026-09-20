@@ -510,7 +510,6 @@ end
 function viewport_bvh.attach_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
     local static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
-        or motion_protocols.static_renders["reticle_static"]
     if static_fn then
         static_fn(player_index, item, surface)
     end
@@ -525,6 +524,10 @@ function viewport_bvh.detach_static_render(player_index, item)
     if item and item.render_objects then
         render_pool.recycle_many(player_index, item.render_objects)
         item.render_objects = nil
+    end
+    if item and item.objects then
+        render_pool.recycle_many(player_index, item.objects)
+        item.objects = nil
     end
     if item then
         item.trail_attached = nil
@@ -724,6 +727,11 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
             if item then
                 if item.render_objects then
                     render_pool.recycle_many(p_idx, item.render_objects)
+                    item.render_objects = nil
+                end
+                if item.objects then
+                    render_pool.recycle_many(p_idx, item.objects)
+                    item.objects = nil
                 end
                 v_set[match_key] = nil
             end
@@ -732,6 +740,11 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
                 if item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix then
                     if item.render_objects then
                         render_pool.recycle_many(p_idx, item.render_objects)
+                        item.render_objects = nil
+                    end
+                    if item.objects then
+                        render_pool.recycle_many(p_idx, item.objects)
+                        item.objects = nil
                     end
                     v_set[k] = nil
                 end

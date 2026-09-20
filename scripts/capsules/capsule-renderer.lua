@@ -1632,12 +1632,27 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
     local count = leaf.trail_count or (leaf.d_end and math.max(0, math.floor(leaf.d_end - d_base + 0.5))) or 0
 
     if is_receding and tau >= 1.0 then
-        for i = 1, count do
-            if objects[i] then render_pool.recycle(p_idx, objects[i]) objects[i] = nil end
-            local tk = "t_" .. i
-            if objects[tk] then render_pool.recycle(p_idx, objects[tk]) objects[tk] = nil end
+        for k, obj in pairs(objects) do
+            render_pool.recycle(p_idx, obj)
+            objects[k] = nil
         end
         return
+    end
+
+    for k, obj in pairs(objects) do
+        local is_extra = false
+        if type(k) == "number" and (k > count or k < 1) then
+            is_extra = true
+        elseif type(k) == "string" and k:sub(1, 2) == "t_" then
+            local idx = tonumber(k:sub(3))
+            if idx and (idx > count or idx < 1) then
+                is_extra = true
+            end
+        end
+        if is_extra then
+            render_pool.recycle(p_idx, obj)
+            objects[k] = nil
+        end
     end
 
     local active_reach = math.min(current_reach, init_mag)
@@ -1685,7 +1700,13 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
 
             if c_obj and c_obj.valid and t_obj and t_obj.valid then
                 c_obj.color = circle_color
+                c_obj.radius = 0.15
+                c_obj.filled = true
+                c_obj.target = dot_pos
+                c_obj.only_in_alt_mode = true
                 t_obj.text = tostring(display_level)
+                t_obj.target = { x = dot_pos.x, y = dot_pos.y - 0.25 }
+                t_obj.only_in_alt_mode = true
                 t_obj.bring_to_front()
             else
                 if c_obj then render_pool.recycle(p_idx, c_obj) end

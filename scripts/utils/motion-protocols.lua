@@ -169,11 +169,24 @@ function motion_protocols.get_protocol(name_or_flight)
             -- Infer reticle identity from structural state
             if name_or_flight.projector_unit ~= nil or name_or_flight.head_flight_id ~= nil or name_or_flight.anti_flight_id ~= nil or name_or_flight.retreat_tick ~= nil or name_or_flight.head_render_spec ~= nil then
                 p_name = "projector_scope"
+            elseif name_or_flight.flow_level ~= nil or name_or_flight.in_pkey ~= nil then
+                p_name = "pressure_corridor"
             elseif name_or_flight.beam_flight ~= nil or name_or_flight.passenger ~= nil or name_or_flight.capsule_type ~= nil then
                 p_name = "capsule"
             end
         end
         return (p_name and motion_protocols.protocols[p_name]) or motion_protocols.protocols["capsule"]
+    end
+    if type(name_or_flight) == "string" then
+        if motion_protocols.protocols[name_or_flight] then
+            return motion_protocols.protocols[name_or_flight]
+        end
+        if name_or_flight:sub(1, 9) == "corridor:" then
+            return motion_protocols.protocols["pressure_corridor"]
+        end
+        if storage and storage.pressure_corridors and storage.pressure_corridors[name_or_flight] then
+            return motion_protocols.protocols["pressure_corridor"]
+        end
     end
     return motion_protocols.protocols[name_or_flight] or motion_protocols.protocols["capsule"]
 end

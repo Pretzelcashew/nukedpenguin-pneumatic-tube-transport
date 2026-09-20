@@ -59,11 +59,11 @@ function render_pool.lease_circle(arg1, arg2, arg3)
         free_list[#free_list] = nil
         if obj and obj.valid then
             if options.target then obj.target = options.target end
-            if options.color then obj.color = options.color end
-            if options.radius then obj.radius = options.radius end
-            if options.filled ~= nil then obj.filled = options.filled end
-            if options.width then obj.width = options.width end
-            if options.only_in_alt_mode ~= nil then obj.only_in_alt_mode = options.only_in_alt_mode end
+            obj.color = options.color or { r = 1, g = 1, b = 1, a = 1 }
+            obj.radius = options.radius or 1
+            obj.filled = (options.filled == true)
+            obj.width = options.width or 1
+            obj.only_in_alt_mode = (options.only_in_alt_mode == true)
             if options.players then obj.players = options.players end
             obj.visible = true
             return obj
@@ -194,6 +194,29 @@ function render_pool.recycle(player_index, render_obj)
         end
     end
 
+    if archetype == "circle" then
+        render_obj.color = { r = 1, g = 1, b = 1, a = 1 }
+        render_obj.radius = 1
+        render_obj.filled = false
+        render_obj.width = 1
+        render_obj.only_in_alt_mode = false
+    elseif archetype == "text" then
+        render_obj.text = ""
+        render_obj.color = { r = 1, g = 1, b = 1, a = 1 }
+        render_obj.scale = 1
+        render_obj.alignment = "left"
+        render_obj.only_in_alt_mode = false
+    elseif archetype == "line" then
+        render_obj.color = { r = 1, g = 1, b = 1, a = 1 }
+        render_obj.width = 1
+        render_obj.only_in_alt_mode = false
+    elseif archetype == "sprite" then
+        render_obj.tint = { r = 1, g = 1, b = 1, a = 1 }
+        render_obj.x_scale = 1
+        render_obj.y_scale = 1
+        render_obj.only_in_alt_mode = false
+    end
+
     local free_list = get_free_list(p_idx, s_idx, archetype)
     if #free_list >= MAX_POOL_PER_ARCHETYPE then
         render_obj.destroy()
@@ -212,6 +235,13 @@ function render_pool.recycle_many(player_index, objects)
         render_pool.recycle(player_index, obj)
     end
 end
+
+render_pool.release = render_pool.recycle
+render_pool.release_circle = render_pool.recycle
+render_pool.release_sprite = render_pool.recycle
+render_pool.release_text = render_pool.recycle
+render_pool.release_line = render_pool.recycle
+render_pool.release_many = render_pool.recycle_many
 
 --- Clears all pooled objects for a player
 --- @param player_index number

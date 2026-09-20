@@ -37,14 +37,17 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Fix pressure flow dots not waking up after an obstacle clears (i.e. gate closing back up), preventing a new corridor seed from being emitted.
+Fix improper render object leasing and releasing causing pressure corridors to leave behind rogue magenta trail dots from the recycled render pool.
 
-When an inline gate closes, the classic pressure dot at the adjacent junction / feeding entity is not waking up. Because the junction remains dormant and is not enqueued for re-evaluation in the flow engine, it never emits a new pressure corridor seed into the restored connection. Ensure adjacent feeding entities and boundary ports are properly enqueued and re-evaluated when gates close so classic flow and corridor seeding resume immediately.
+Recycled circle primitives leased from `render-pool.lua` by pressure corridors sometimes retain optical projector/reticle state (holmium magenta tint, small radius) because properties are not sanitized upon leasing or releasing back into the pool. Furthermore, when pressure corridors recede or unseed spatial BVH segments, leased primitives must be cleanly released back into `render_pool` with fully reset visibility and baseline styling rather than being orphaned in the world. Ensure strict lease-release symmetry and complete property re-initialization across both projector reticle and pneumatic corridor lifecycles.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-storage.flow_queue, storage.flow_connections, storage.flow_nodes, storage.flow_levels, storage.pressure_corridors, storage.active_gates, storage.gate_open_states
-flow_common.enqueue_port, flow_common.enqueue_unit_ports, flow_common.wake_port_parked
-flow_gate_interop.step_gates, flow_engine.step, compute_port_flow_level, on_pressure_begin_transmit
-gate closure neighbor awakening, junction flow queue wake, quiescent source re-evaluation, obstacle clearance flow seed
+render_pool.lease_circle, render_pool.release_circle, render_pool.release, render-pool.lua
+viewport_bvh.on_segment_registered, viewport_bvh.on_segment_removed, viewport_bvh.update_player_views
+motion_tree, trajectory_bvh, timed_motion.get_motion_tree, motion_protocols
+capsule_renderer.dispatch_player_renders, capsule_renderer.render_governor, render_corridor_dots
+storage.render_pool, storage.pressure_corridors, storage.pinned_corridors, storage.kinetic_renders
+leaf.objects, leaf.trail_count, leaf.has_trail, seg_key, render pool hygiene, object lease-release symmetry
+pooled primitive property sanitization, stale leased circle reset, zero-destroy render object recycling
 [/CONTEXT_TOKENS]

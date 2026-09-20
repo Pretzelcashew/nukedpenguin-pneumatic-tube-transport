@@ -184,6 +184,18 @@ motion_protocols.register_protocol("pressure_corridor", {
     clearance_policy = "none"
 })
 
+local function is_gate_open(unit_number)
+    if not (unit_number and storage.active_gates and storage.active_gates[unit_number]) then
+        return false
+    end
+    local gate = storage.active_gates[unit_number]
+    if not (gate and gate.valid) then return false end
+    if gate.is_opened and gate.is_opened() then return true end
+    if gate.is_opening and gate.is_opening() then return true end
+    return false
+end
+flow_engine.is_gate_open = is_gate_open
+
 local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node, flow_level)
     local dx = out_node.dir.x
     local dy = out_node.dir.y
@@ -213,6 +225,7 @@ local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_nod
 
         local next_unit = next_in_node.unit_number
         if not next_unit or corridor_entities[next_unit] then break end
+        if is_gate_open(next_unit) then break end
 
         local next_u_ports = storage.flow_unit_ports and storage.flow_unit_ports[next_unit]
         if not next_u_ports then break end
@@ -253,6 +266,7 @@ end
 
 function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_node, flow_level)
     if not (in_node and out_node and in_node.pos and out_node.pos and out_node.dir) then return end
+    if is_gate_open(in_node.unit_number) then return end
     local in_conns = storage.flow_connections and storage.flow_connections[in_pkey]
     local is_emitter = in_node.emitter and in_node.emitter ~= 0
     if not (is_emitter or (in_conns and next(in_conns) ~= nil)) then return end
@@ -406,7 +420,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
     local downstream_entities = {}
     if corr.corridor_entities then
         for u in pairs(corr.corridor_entities) do
-            if u ~= unit_number then
+            if u ~= unit_number and not is_gate_open(u) then
                 local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
                 local u_node = u_ports and storage.flow_nodes and storage.flow_nodes[u_ports[1]]
                 if u_node and u_node.pos then
@@ -631,6 +645,14 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
     end
 
     if exact_up_dist < 1 then
+        if orig_last_out and storage.corridor_tip_flows and storage.corridor_tip_flows[orig_last_out] then
+            storage.corridor_tip_flows[orig_last_out] = nil
+            local old_node = storage.flow_nodes and storage.flow_nodes[orig_last_out]
+            if old_node then
+                flow_renderer.update_pos_render(old_node.pos_key)
+            end
+            flow_common.wake_port_parked(orig_last_out)
+        end
         corr.last_out_pkey = nil
         corr.terminal_branch_pkey = nil
         flow_engine.unseed_pressure_corridor(cid, true)
@@ -711,6 +733,17 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
         end
     end
 
+    if orig_last_out and orig_last_out ~= corr.last_out_pkey and orig_last_out ~= down_last_out then
+        if storage.corridor_tip_flows and storage.corridor_tip_flows[orig_last_out] then
+            storage.corridor_tip_flows[orig_last_out] = nil
+            local old_node = storage.flow_nodes and storage.flow_nodes[orig_last_out]
+            if old_node then
+                flow_renderer.update_pos_render(old_node.pos_key)
+            end
+            flow_common.wake_port_parked(orig_last_out)
+        end
+    end
+
     if corr.last_out_pkey then
         local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
         local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
@@ -778,6 +811,17 @@ function flow_engine.step_pressure_corridors(tick)
     local corridors = storage.pressure_corridors
     if not (corridors and next(corridors) ~= nil) then return end
 
+    if storage.corridor_tip_flows and next(storage.corridor_tip_flows) ~= nil then
+        for pkey in pairs(storage.corridor_tip_flows) do
+            local node = storage.flow_nodes and storage.flow_nodes[pkey]
+            if node and is_gate_open(node.unit_number) then
+                storage.corridor_tip_flows[pkey] = nil
+                flow_renderer.update_pos_render(node.pos_key)
+                flow_common.wake_port_parked(pkey)
+            end
+        end
+    end
+
     for cid, corr in pairs(corridors) do
         local tpt = corr.ticks_per_tile or 2
         local s_idx = corr.surface_index
@@ -800,6 +844,30 @@ function flow_engine.step_pressure_corridors(tick)
             corr.retreat_tick = tick
             local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
             corr.end_decay_tick = tick + math.max(15, init_mag * 3)
+        end
+
+        if corr.status ~= "receding" and corr.corridor_entities then
+            for u in pairs(corr.corridor_entities) do
+                if is_gate_open(u) then
+                    flow_engine.split_pressure_corridor(cid, corr, u)
+                    break
+                end
+            end
+        end
+
+        if corr.status ~= "receding" and corr.last_out_pkey then
+            local conns = storage.flow_connections and storage.flow_connections[corr.last_out_pkey]
+            if conns then
+                for n_key in pairs(conns) do
+                    local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                    if n_node and storage.active_gates and storage.active_gates[n_node.unit_number] then
+                        if not is_gate_open(n_node.unit_number) then
+                            flow_engine.wake_corridor_tip(corr)
+                            break
+                        end
+                    end
+                end
+            end
         end
 
         if corr.status == "growing" then
@@ -1481,6 +1549,7 @@ function flow_engine.wake_corridor_tip(corr)
 
         local u = n_in_node.unit_number
         if not u or corr.corridor_entities[u] then break end
+        if is_gate_open(u) then break end
 
         local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
         if not u_ports then break end

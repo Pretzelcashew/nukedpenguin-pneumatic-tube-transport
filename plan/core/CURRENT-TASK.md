@@ -37,18 +37,14 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Fix pressure corridor severing when a pneumatic member is removed immediately adjacent to a pressure source (like a pump).
+Fix pressure flow dots not waking up after an obstacle clears (i.e. gate closing back up), preventing a new corridor seed from being emitted.
 
-Currently, deconstructing a tube in the middle of a line properly splits the corridor: upstream truncates at the break face, and downstream detaches into an autonomous receding wake. However, if the player removes the very first tube touching the pump, the line does not sever—the entire corridor collapses into a monolithic decay.
-
-Make near-source removal consistent with mid-segment removal: the cut point should detach cleanly, terminating the near-source interface while detaching all surviving downstream members into an autonomous receding wake equalizing to zero.
+When an inline gate closes, the classic pressure dot at the adjacent junction / feeding entity is not waking up. Because the junction remains dormant and is not enqueued for re-evaluation in the flow engine, it never emits a new pressure corridor seed into the restored connection. Ensure adjacent feeding entities and boundary ports are properly enqueued and re-evaluated when gates close so classic flow and corridor seeding resume immediately.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_unit_ports
-flow_engine.disconnect_entity, flow_engine.split_pressure_corridor, flow_engine.unseed_pressure_corridor, flow_engine.step_pressure_corridors
-touches_source, touches_entity, to_recede, to_split, corr.source_unit, corr.unit_number, corr.in_pkey, corr.out_pkey, corr.corridor_entities
-near-source deconstruction, first tube removal next to pump, downstream autonomous wake detachment, exact_up_dist boundary handling
-down_cid severed corridor generation, down_flow_mag, down_last_out, corridor_tip_flows preservation, anti-pressure decay
-motion_tree:insert_segment, motion_tree:remove_segment, viewport_bvh.on_segment_registered, viewport_bvh.on_segment_removed
+storage.flow_queue, storage.flow_connections, storage.flow_nodes, storage.flow_levels, storage.pressure_corridors, storage.active_gates, storage.gate_open_states
+flow_common.enqueue_port, flow_common.enqueue_unit_ports, flow_common.wake_port_parked
+flow_gate_interop.step_gates, flow_engine.step, compute_port_flow_level, on_pressure_begin_transmit
+gate closure neighbor awakening, junction flow queue wake, quiescent source re-evaluation, obstacle clearance flow seed
 [/CONTEXT_TOKENS]

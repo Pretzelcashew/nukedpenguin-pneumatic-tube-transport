@@ -309,6 +309,11 @@ function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_
                             local neighbors = storage.flow_connections and storage.flow_connections[p]
                             if neighbors then
                                 for n_key in pairs(neighbors) do
+                                    flow_common.enqueue_port(n_key)
+                                    local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                                    if n_node then
+                                        flow_common.enqueue_unit_ports(n_node.unit_number)
+                                    end
                                     wake_port_parked(n_key)
                                 end
                             end

@@ -99,3 +99,12 @@
 2. **Multi-Pass Connection Pipeline (`scripts/flow/flow-engine.lua`):** Restructured `flow_engine.connect_entity` into decoupled registration and connection phases, linking all opposing port pairs in `storage.flow_connections` before corridor evaluation so newly placed bridging tubes have both entrance and exit flanges wired prior to elongation scans.
 3. **Persistent Open-Air Tip Flow Delivery (`scripts/flow/flow-engine.lua`):** Decoupled `storage.corridor_tip_flows[corr.last_out_pkey]` initialization in `step_pressure_corridors` from `terminal_branch_pkey`, guaranteeing open-air dead ends maintain persistent remaining flow and eliminating tip flow wipes on downstream branch deconstruction in `disconnect_entity`.
 4. **Spatial BVH Leaf Expansion & Wavefront Resumption (`scripts/flow/flow-engine.lua`):** Updated `motion_tree`, `trajectory_bvh`, and `viewport_bvh` segment leaf bounds to dynamically expand to the new reach, resetting `status = "growing"` with synchronized `start_tick` so the visual pressure wavefront advances smoothly through all newly attached tubes.
+
+
+### Revision: Near-Source Pressure Corridor Severing & Interface Unseeding
+**Date:** 2026-09-20 09:14 EDT
+**Context:** Resolves an issue where removing the very first pneumatic tube touching a pressure source (such as a pump) triggered monolithic line-wide decay rather than severing the corridor. Brings near-source deconstruction into full functional parity with mid-segment cutting.
+**Key Changes:**
+1. **Corridor Member Deconstruction Prioritization (`scripts/flow/flow-engine.lua`):** Restructured deconstruction triage in `disconnect_entity` to test `touches_entity` before `touches_source`, preventing `corr.unit_number == unit_number` from falsely treating the first tube of a corridor as the pressure source entity itself.
+2. **Downstream Detached Wake Preservation (`scripts/flow/flow-engine.lua`):** Removed the premature `exact_up_dist < 1` return guard in `split_pressure_corridor`, allowing downstream severed wake generation (`down_cid`) and spatial tree registration to proceed when zero upstream tubes survive between the source and the break face.
+3. **Clean Near-Source Interface Unseeding (`scripts/flow/flow-engine.lua`):** Added post-sever unseeding for corridors with `exact_up_dist < 1` via `flow_engine.unseed_pressure_corridor(cid, true)`, clearing obsolete upstream tip references to safeguard `down_corr`'s tip flow while immediately purging vacated near-source BVH leaves and dirt-tile trail dots.

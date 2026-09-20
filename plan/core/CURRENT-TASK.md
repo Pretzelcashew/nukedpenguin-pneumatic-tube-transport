@@ -37,16 +37,18 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Fix pressure corridors to stably deliver persistent pressure to downstream pneumatic networks placed after corridor formation, and implement dynamic colinear corridor elongation when colinear-compatible entities with straight port pairs (tubes, inline unbranched junctions, defensive walls, inline counters) are connected to an existing corridor's terminal tip.
+Fix pressure corridor severing when a pneumatic member is removed immediately adjacent to a pressure source (like a pump).
+
+Currently, deconstructing a tube in the middle of a line properly splits the corridor: upstream truncates at the break face, and downstream detaches into an autonomous receding wake. However, if the player removes the very first tube touching the pump, the line does not sever—the entire corridor collapses into a monolithic decay.
+
+Make near-source removal consistent with mid-segment removal: the cut point should detach cleanly, terminating the near-source interface while detaching all surviving downstream members into an autonomous receding wake equalizing to zero.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_levels, storage.flow_grid, storage.flow_queue, storage.flow_unit_ports
-connect_entity, disconnect_entity, step_pressure_corridors, compute_port_flow_level, flow_engine.step, on_pressure_begin_transmit, scan_pneumatic_colinear_reach, is_colinear_straight_internal
-polymorphic colinear port evaluation, opposing port vectors & axial alignment, unbranched junction straight reduction, wall/gate interop straight colinearity
-post-formation downstream attachment, downstream pressure starvation/decay, persistent tip emission substrate, corridor_tip_flows lifetime & refresh
-terminal_branch_pkey binding, branch_enqueued synchronization, colinear extension detection, entity-agnostic corridor elongation, scan_pneumatic_colinear_reach re-scan
-in_pkey, out_pkey, last_out_pkey, terminal_branch_pkey, corridor_entities, registered_segs, max_seg_idx, total_dist, terminal_pos
-motion_tree:insert_segment, viewport_bvh.on_segment_registered, viewport_bvh.on_leaf_static_changed, trajectory_bvh.refresh_active_renders
-flow_common.wake_port_parked, flow_engine.enqueue_port, update_pos_render, 0-tick idle sleep
+storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_unit_ports
+flow_engine.disconnect_entity, flow_engine.split_pressure_corridor, flow_engine.unseed_pressure_corridor, flow_engine.step_pressure_corridors
+touches_source, touches_entity, to_recede, to_split, corr.source_unit, corr.unit_number, corr.in_pkey, corr.out_pkey, corr.corridor_entities
+near-source deconstruction, first tube removal next to pump, downstream autonomous wake detachment, exact_up_dist boundary handling
+down_cid severed corridor generation, down_flow_mag, down_last_out, corridor_tip_flows preservation, anti-pressure decay
+motion_tree:insert_segment, motion_tree:remove_segment, viewport_bvh.on_segment_registered, viewport_bvh.on_segment_removed
 [/CONTEXT_TOKENS]

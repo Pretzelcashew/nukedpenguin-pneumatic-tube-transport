@@ -489,14 +489,6 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
         exact_up_dist = math.floor(math.abs(d) + 0.5)
     end
 
-    if exact_up_dist < 1 then
-        corr.status = "receding"
-        corr.retreat_tick = game.tick
-        local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
-        corr.end_decay_tick = game.tick + math.max(15, init_mag * 3)
-        return
-    end
-
     local orig_terminal_branch = corr.terminal_branch_pkey
     local orig_last_out = corr.last_out_pkey
     local orig_branch_enqueued = corr.branch_enqueued
@@ -636,6 +628,13 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
             end
             flow_common.wake_port_parked(orig_last_out)
         end
+    end
+
+    if exact_up_dist < 1 then
+        corr.last_out_pkey = nil
+        corr.terminal_branch_pkey = nil
+        flow_engine.unseed_pressure_corridor(cid, true)
+        return
     end
 
     corr.total_dist = exact_up_dist
@@ -1803,15 +1802,15 @@ function flow_engine.disconnect_entity(entity)
         local to_split = {}
         local to_recede = {}
         for cid, corr in pairs(storage.pressure_corridors) do
-            local touches_source = (corr.source_unit == unit_number) or (corr.unit_number == unit_number)
             local touches_entity = (corr.corridor_entities and corr.corridor_entities[unit_number])
-            if touches_source then
-                if corr.status ~= "receding" then
-                    to_recede[cid] = corr
-                end
-            elseif touches_entity then
+            local touches_source = (corr.source_unit == unit_number) or (corr.unit_number == unit_number and not touches_entity)
+            if touches_entity then
                 if corr.status ~= "receding" then
                     to_split[cid] = corr
+                end
+            elseif touches_source then
+                if corr.status ~= "receding" then
+                    to_recede[cid] = corr
                 end
             end
         end

@@ -70,7 +70,9 @@ function flow_common.is_colinear_straight_internal(pkey_a, arg2, arg3, arg4)
     node_b = node_b or (storage.flow_nodes and storage.flow_nodes[pkey_b])
     if not (node_a and node_b) then return false end
     if node_a.unit_number ~= node_b.unit_number then return false end
-    if not (node_a.group and node_b.group and node_a.group == node_b.group) then return false end
+    local grp_a = node_a.group or 1
+    local grp_b = node_b.group or 1
+    if grp_a ~= grp_b then return false end
     if not (node_a.dir and node_b.dir and node_a.offset and node_b.offset) then return false end
 
     if (node_a.dir.x + node_b.dir.x ~= 0) or (node_a.dir.y + node_b.dir.y ~= 0) then
@@ -88,7 +90,7 @@ function flow_common.is_colinear_straight_internal(pkey_a, arg2, arg3, arg4)
         for _, other_key in pairs(unit_ports) do
             if other_key ~= pkey_a and other_key ~= pkey_b then
                 local other_node = storage.flow_nodes and storage.flow_nodes[other_key]
-                if other_node and other_node.group == node_a.group then
+                if other_node and (other_node.group or 1) == grp_a then
                     local conns = storage.flow_connections and storage.flow_connections[other_key]
                     if conns and next(conns) ~= nil then
                         return false

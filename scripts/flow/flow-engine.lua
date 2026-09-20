@@ -276,8 +276,15 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
 
     local corridor_id = "corridor:" .. in_pkey .. "->" .. out_pkey
     local opposing_id = "corridor:" .. out_pkey .. "->" .. in_pkey
-    if storage.pressure_corridors and storage.pressure_corridors[opposing_id] then
-        flow_engine.unseed_pressure_corridor(opposing_id, true)
+    if storage.pressure_corridors then
+        if storage.pressure_corridors[opposing_id] then
+            flow_engine.unseed_pressure_corridor(opposing_id, true)
+        end
+        for old_cid, old_corr in pairs(storage.pressure_corridors) do
+            if old_corr.in_pkey == in_pkey and old_corr.out_pkey == out_pkey and old_cid ~= corridor_id then
+                flow_engine.unseed_pressure_corridor(old_cid, true)
+            end
+        end
     end
 
     storage.pressure_corridors = storage.pressure_corridors or {}
@@ -417,7 +424,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
     end
     if not ent_pos then return end
 
-    local axis_dist = (ent_pos.x - corr.start_pos.x) * dx + (ent_pos.y - corr.start_pos.y) * dy
+    local axis_dist = (ent_pos.x - corr.start_pos.x) * dx + (ent_pos.y - corr.start_pos.y) * dy + (is_branch and 0.5 or 0)
 
     local upstream_entities = {}
     local downstream_entities = {}
@@ -430,7 +437,8 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
                 if u_ports then
                     for _, pk in pairs(u_ports) do
                         local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                        if nd and (nd.group == corr_group or (type(grp_data) == "table" and grp_data[nd.group])) then
+                        local nd_grp = nd and (nd.group or 1)
+                        if nd and (nd_grp == corr_group or (type(grp_data) == "table" and grp_data[nd_grp])) then
                             u_node = nd
                             break
                         end
@@ -480,7 +488,8 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
             if u_ports then
                 for _, pk in pairs(u_ports) do
                     local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                    if nd and (nd.group == corr_group) and nd.pos and nd.dir and nd.dir.x == dx and nd.dir.y == dy then
+                    local nd_grp = nd and (nd.group or 1)
+                    if nd and (nd_grp == corr_group) and nd.pos and nd.dir and nd.dir.x == dx and nd.dir.y == dy then
                         local d = (nd.pos.x - corr.start_pos.x) * dx + (nd.pos.y - corr.start_pos.y) * dy
                         if d > max_up_dist then
                             max_up_dist = d
@@ -509,7 +518,8 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
             if u_ports then
                 for _, pk in pairs(u_ports) do
                     local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                    if nd and (nd.group == corr_group) and nd.pos and nd.dir and nd.dir.x == -dx and nd.dir.y == -dy then
+                    local nd_grp = nd and (nd.group or 1)
+                    if nd and (nd_grp == corr_group) and nd.pos and nd.dir and nd.dir.x == -dx and nd.dir.y == -dy then
                         local d = (nd.pos.x - corr.start_pos.x) * dx + (nd.pos.y - corr.start_pos.y) * dy
                         if d < min_down_dist then
                             min_down_dist = d
@@ -543,7 +553,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
             for _, other_key in ipairs(down_u_ports) do
                 if other_key ~= new_down_in_pkey then
                     local other_node = storage.flow_nodes and storage.flow_nodes[other_key]
-                    if other_node and other_node.group == down_in_node.group then
+                    if other_node and (other_node.group or 1) == (down_in_node.group or 1) then
                         if flow_common.is_colinear_straight_internal(new_down_in_pkey, down_in_node, other_key, other_node) then
                             if other_node.dir and other_node.dir.x == dx and other_node.dir.y == dy then
                                 down_out_pkey = other_key
@@ -1286,9 +1296,10 @@ local function compute_port_flow_level(pkey)
                 if corr.status ~= "receding" and corr.corridor_entities and corr.in_pkey ~= pkey then
                     local ent_record = corr.corridor_entities[node.unit_number]
                     if ent_record then
-                        local matches_group = (type(ent_record) == "table" and ent_record[node.group])
-                            or (ent_record == node.group)
-                            or (ent_record == true and (not corr.group or corr.group == node.group))
+                        local node_grp = node.group or 1
+                        local matches_group = (type(ent_record) == "table" and (ent_record[node_grp] or ent_record[node.group]))
+                            or (ent_record == node_grp)
+                            or (ent_record == true and (not corr.group or corr.group == node_grp))
                         if matches_group then
                             return 0
                         end
@@ -1958,9 +1969,10 @@ function flow_engine.connect_entity(entity)
                             local in_pk, out_pk = nil, nil
                             local in_nd, out_nd = nil, nil
                             if u_ports then
-                                for _, pk in ipairs(u_ports) do
+                                for _, pk in pairs(u_ports) do
                                     local nd = storage.flow_nodes and storage.flow_nodes[pk]
-                                    if nd and (nd.group == corr_grp or (type(grp_data) == "table" and grp_data[nd.group])) and nd.dir then
+                                    local nd_grp = nd and (nd.group or 1)
+                                    if nd and (nd_grp == corr_grp or (type(grp_data) == "table" and grp_data[nd_grp])) and nd.dir then
                                         if nd.dir.x == -dx and nd.dir.y == -dy then
                                             in_pk = pk
                                             in_nd = nd

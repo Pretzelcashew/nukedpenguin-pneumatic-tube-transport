@@ -623,6 +623,8 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
         local motion_tree = timed_motion.get_motion_tree(s_idx)
         local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
         local down_leaves = {}
+        down_corr.leaves = down_leaves
+        storage.pressure_corridors[down_cid] = down_corr
 
         for s = 1, down_max_seg do
             local s_start = (s - 1) * 16
@@ -647,9 +649,6 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
                 traj_tree:insert_segment(down_cid, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s)
             end
         end
-
-        down_corr.leaves = down_leaves
-        storage.pressure_corridors[down_cid] = down_corr
 
         if down_last_out and storage.corridor_tip_flows then
             local tip_mag = math.max(0, down_flow_mag - (down_total_dist - 1))
@@ -778,20 +777,53 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
     end
 
     if orig_last_out and orig_last_out ~= corr.last_out_pkey and orig_last_out ~= down_last_out then
-        if storage.corridor_tip_flows and storage.corridor_tip_flows[orig_last_out] then
+        if storage.corridor_tip_flows then
             storage.corridor_tip_flows[orig_last_out] = nil
-            local old_node = storage.flow_nodes and storage.flow_nodes[orig_last_out]
-            if old_node then
-                flow_renderer.update_pos_render(old_node.pos_key)
-            end
-            flow_common.wake_port_parked(orig_last_out)
         end
+        local old_node = storage.flow_nodes and storage.flow_nodes[orig_last_out]
+        if old_node then
+            flow_renderer.update_pos_render(old_node.pos_key)
+        end
+        local conns = storage.flow_connections and storage.flow_connections[orig_last_out]
+        if conns then
+            for n_key in pairs(conns) do
+                flow_engine.enqueue_port(n_key)
+                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                if n_node then
+                    flow_common.enqueue_unit_ports(n_node.unit_number)
+                    flow_renderer.update_pos_render(n_node.pos_key)
+                end
+                flow_common.wake_port_parked(n_key)
+            end
+        end
+        if orig_terminal_branch then
+            flow_engine.enqueue_port(orig_terminal_branch)
+            local tb_node = storage.flow_nodes and storage.flow_nodes[orig_terminal_branch]
+            if tb_node then
+                flow_common.enqueue_unit_ports(tb_node.unit_number)
+                flow_renderer.update_pos_render(tb_node.pos_key)
+            end
+            flow_common.wake_port_parked(orig_terminal_branch)
+        end
+        flow_common.wake_port_parked(orig_last_out)
     end
 
     if corr.last_out_pkey then
+        local out_conns = storage.flow_connections and storage.flow_connections[corr.last_out_pkey]
+        local has_open_gate_boundary = false
+        if out_conns then
+            for n_key in pairs(out_conns) do
+                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                if n_node and is_gate_open(n_node.unit_number) then
+                    has_open_gate_boundary = true
+                    break
+                end
+            end
+        end
+
         local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
         local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
-        local rem_level = (tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or nil
+        local rem_level = (not has_open_gate_boundary and tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or nil
         if storage.corridor_tip_flows then
             storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
         end
@@ -805,6 +837,16 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
             flow_engine.enqueue_port(branch_in_pkey)
             flow_common.enqueue_unit_ports(unit_number)
             flow_common.wake_port_parked(branch_in_pkey)
+        elseif out_conns then
+            for n_key in pairs(out_conns) do
+                flow_engine.enqueue_port(n_key)
+                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                if n_node then
+                    flow_common.enqueue_unit_ports(n_node.unit_number)
+                    flow_renderer.update_pos_render(n_node.pos_key)
+                end
+                flow_common.wake_port_parked(n_key)
+            end
         end
     end
 end
@@ -819,14 +861,33 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
         return
     end
 
-    if corr.last_out_pkey and storage.corridor_tip_flows and storage.corridor_tip_flows[corr.last_out_pkey] then
-        storage.corridor_tip_flows[corr.last_out_pkey] = nil
+    if corr.last_out_pkey then
+        if storage.corridor_tip_flows then
+            storage.corridor_tip_flows[corr.last_out_pkey] = nil
+        end
         local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
         if out_node then
             flow_renderer.update_pos_render(out_node.pos_key)
         end
+        local conns = storage.flow_connections and storage.flow_connections[corr.last_out_pkey]
+        if conns then
+            for n_key in pairs(conns) do
+                flow_engine.enqueue_port(n_key)
+                local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                if n_node then
+                    flow_common.enqueue_unit_ports(n_node.unit_number)
+                    flow_renderer.update_pos_render(n_node.pos_key)
+                end
+                flow_common.wake_port_parked(n_key)
+            end
+        end
         if corr.terminal_branch_pkey then
             flow_engine.enqueue_port(corr.terminal_branch_pkey)
+            local tb_node = storage.flow_nodes and storage.flow_nodes[corr.terminal_branch_pkey]
+            if tb_node then
+                flow_common.enqueue_unit_ports(tb_node.unit_number)
+                flow_renderer.update_pos_render(tb_node.pos_key)
+            end
             flow_common.wake_port_parked(corr.terminal_branch_pkey)
         end
         flow_common.wake_port_parked(corr.last_out_pkey)
@@ -856,11 +917,38 @@ function flow_engine.unseed_pressure_corridor(corridor_id, force)
 
     if corr.source_pkey then
         flow_engine.enqueue_port(corr.source_pkey)
+        local src_node = storage.flow_nodes and storage.flow_nodes[corr.source_pkey]
+        if src_node then
+            flow_common.enqueue_unit_ports(src_node.unit_number)
+            flow_renderer.update_pos_render(src_node.pos_key)
+        end
         flow_common.wake_port_parked(corr.source_pkey)
+    end
+    if corr.source_unit then
+        flow_common.enqueue_unit_ports(corr.source_unit)
     end
     if corr.in_pkey then
         flow_engine.enqueue_port(corr.in_pkey)
+        local in_node = storage.flow_nodes and storage.flow_nodes[corr.in_pkey]
+        if in_node then
+            flow_common.enqueue_unit_ports(in_node.unit_number)
+            flow_renderer.update_pos_render(in_node.pos_key)
+        end
         flow_common.wake_port_parked(corr.in_pkey)
+    end
+    if corr.corridor_entities then
+        for u in pairs(corr.corridor_entities) do
+            flow_common.enqueue_unit_ports(u)
+            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
+            if u_ports then
+                for _, pk in pairs(u_ports) do
+                    local nd = storage.flow_nodes and storage.flow_nodes[pk]
+                    if nd then
+                        flow_renderer.update_pos_render(nd.pos_key)
+                    end
+                end
+            end
+        end
     end
 
     motion_protocols.protocols[corridor_id] = nil
@@ -874,9 +962,40 @@ function flow_engine.step_pressure_corridors(tick)
     if storage.corridor_tip_flows and next(storage.corridor_tip_flows) ~= nil then
         for pkey in pairs(storage.corridor_tip_flows) do
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
-            if node and is_gate_open(node.unit_number) then
+            local has_open_gate = false
+            if node then
+                if is_gate_open(node.unit_number) then
+                    has_open_gate = true
+                else
+                    local conns = storage.flow_connections and storage.flow_connections[pkey]
+                    if conns then
+                        for n_key in pairs(conns) do
+                            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                            if n_node and is_gate_open(n_node.unit_number) then
+                                has_open_gate = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if has_open_gate then
                 storage.corridor_tip_flows[pkey] = nil
-                flow_renderer.update_pos_render(node.pos_key)
+                if node then
+                    flow_renderer.update_pos_render(node.pos_key)
+                end
+                local conns = storage.flow_connections and storage.flow_connections[pkey]
+                if conns then
+                    for n_key in pairs(conns) do
+                        flow_engine.enqueue_port(n_key)
+                        local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                        if n_node then
+                            flow_common.enqueue_unit_ports(n_node.unit_number)
+                            flow_renderer.update_pos_render(n_node.pos_key)
+                        end
+                        flow_common.wake_port_parked(n_key)
+                    end
+                end
                 flow_common.wake_port_parked(pkey)
             end
         end
@@ -1020,9 +1139,40 @@ function flow_engine.step_pressure_corridors(tick)
                     if out_node then
                         flow_renderer.update_pos_render(out_node.pos_key)
                     end
+                    local conns = storage.flow_connections and storage.flow_connections[corr.last_out_pkey]
+                    if conns then
+                        for n_key in pairs(conns) do
+                            flow_engine.enqueue_port(n_key)
+                            local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                            if n_node then
+                                flow_common.enqueue_unit_ports(n_node.unit_number)
+                                flow_renderer.update_pos_render(n_node.pos_key)
+                            end
+                            flow_common.wake_port_parked(n_key)
+                        end
+                    end
                     if corr.terminal_branch_pkey then
                         flow_engine.enqueue_port(corr.terminal_branch_pkey)
+                        local tb_node = storage.flow_nodes and storage.flow_nodes[corr.terminal_branch_pkey]
+                        if tb_node then
+                            flow_common.enqueue_unit_ports(tb_node.unit_number)
+                            flow_renderer.update_pos_render(tb_node.pos_key)
+                        end
                         flow_common.wake_port_parked(corr.terminal_branch_pkey)
+                    end
+                    if target_tip == nil then
+                        if corr.source_pkey then
+                            flow_engine.enqueue_port(corr.source_pkey)
+                            local src_node = storage.flow_nodes and storage.flow_nodes[corr.source_pkey]
+                            if src_node then
+                                flow_common.enqueue_unit_ports(src_node.unit_number)
+                                flow_renderer.update_pos_render(src_node.pos_key)
+                            end
+                            flow_common.wake_port_parked(corr.source_pkey)
+                        end
+                        if corr.source_unit then
+                            flow_common.enqueue_unit_ports(corr.source_unit)
+                        end
                     end
                     flow_common.wake_port_parked(corr.last_out_pkey)
                 end
@@ -1293,7 +1443,7 @@ local function compute_port_flow_level(pkey)
         end
         if storage.pressure_corridors then
             for _, corr in pairs(storage.pressure_corridors) do
-                if corr.status ~= "receding" and corr.corridor_entities and corr.in_pkey ~= pkey then
+                if corr.corridor_entities and corr.in_pkey ~= pkey then
                     local ent_record = corr.corridor_entities[node.unit_number]
                     if ent_record then
                         local node_grp = node.group or 1
@@ -1333,16 +1483,27 @@ local function compute_port_flow_level(pkey)
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
                 if neighbors then
                     for n_key in pairs(neighbors) do
-                        local n_level = (storage.corridor_tip_flows and storage.corridor_tip_flows[n_key]) or (storage.flow_levels and storage.flow_levels[n_key]) or 0
-                        if n_level > 1 then
-                            local incoming = n_level - 1
-                            if incoming > max_pos then
-                                max_pos = incoming
+                        local is_corridor_ingress = false
+                        if USE_PRESSURE_CORRIDORS and storage.pressure_corridors then
+                            for _, corr in pairs(storage.pressure_corridors) do
+                                if corr.in_pkey == n_key then
+                                    is_corridor_ingress = true
+                                    break
+                                end
                             end
-                        elseif n_level < -1 then
-                            local incoming = n_level + 1
-                            if incoming < min_neg then
-                                min_neg = incoming
+                        end
+                        if not is_corridor_ingress then
+                            local n_level = (storage.corridor_tip_flows and storage.corridor_tip_flows[n_key]) or (storage.flow_levels and storage.flow_levels[n_key]) or 0
+                            if n_level > 1 then
+                                local incoming = n_level - 1
+                                if incoming > max_pos then
+                                    max_pos = incoming
+                                end
+                            elseif n_level < -1 then
+                                local incoming = n_level + 1
+                                if incoming < min_neg then
+                                    min_neg = incoming
+                                end
                             end
                         end
                     end
@@ -2086,7 +2247,13 @@ function flow_engine.disconnect_entity(entity)
                     corr.branch_enqueued = nil
                     flow_common.wake_port_parked(corr.last_out_pkey)
                 end
+                if corr.last_out_pkey == pkey then
+                    corr.last_out_pkey = nil
+                end
             end
+        end
+        if storage.corridor_tip_flows and storage.corridor_tip_flows[pkey] then
+            storage.corridor_tip_flows[pkey] = nil
         end
 
         flow_common.destroy_node(pkey)

@@ -1698,15 +1698,17 @@ function capsule_renderer.render_pressure_corridor(corr, leaf, item, p_idx, play
             local tk = "t_" .. i
             local t_obj = objects[tk]
 
-            if c_obj and c_obj.valid and t_obj and t_obj.valid then
+            if c_obj and c_obj.valid and t_obj and t_obj.valid and c_obj.type == "circle" and t_obj.type == "text" then
                 c_obj.color = circle_color
                 c_obj.radius = 0.15
                 c_obj.filled = true
                 c_obj.target = dot_pos
                 c_obj.only_in_alt_mode = true
+                c_obj.players = { player }
                 t_obj.text = tostring(display_level)
                 t_obj.target = { x = dot_pos.x, y = dot_pos.y - 0.25 }
                 t_obj.only_in_alt_mode = true
+                t_obj.players = { player }
                 t_obj.bring_to_front()
             else
                 if c_obj then render_pool.recycle(p_idx, c_obj) end
@@ -1814,7 +1816,13 @@ motion_protocols.register_static_render("pressure_static", function(player_index
     if not (player and player.valid) then return end
 
     local corr = storage.pressure_corridors and storage.pressure_corridors[item.owner_id]
-    if not corr then return end
+    if not corr then
+        if item.render_objects then
+            render_pool.recycle_many(player_index, item.render_objects)
+            item.render_objects = nil
+        end
+        return
+    end
 
     capsule_renderer.render_pressure_corridor(corr, item.leaf, item, player_index, player, surface, game.tick)
 end)

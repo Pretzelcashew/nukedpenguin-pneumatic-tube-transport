@@ -527,10 +527,24 @@ end
 --- @param surface LuaSurface
 function viewport_bvh.attach_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
-    local static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
-    if not static_fn and (item.leaf.static_render_spec or item.leaf.has_trail) then
-        static_fn = motion_protocols.static_renders["reticle_static"]
+    local owner_id = item.owner_id or (item.leaf and item.leaf.owner_id)
+    local is_corridor = (type(owner_id) == "string" and owner_id:sub(1, 9) == "corridor:")
+        or (item.leaf and (item.leaf.is_corridor or item.leaf.is_pressure_corridor))
+        or (storage.pressure_corridors and storage.pressure_corridors[owner_id] ~= nil)
+
+    local static_fn = motion_protocols.get_subprotocol(owner_id or item.leaf, "static_render")
+    if not static_fn then
+        if is_corridor then
+            static_fn = motion_protocols.static_renders["pressure_static"]
+        elseif item.leaf.static_render_spec or (storage.projector_reticles and storage.projector_reticles[owner_id]) then
+            static_fn = motion_protocols.static_renders["reticle_static"]
+        end
     end
+
+    if is_corridor and static_fn == motion_protocols.static_renders["reticle_static"] then
+        static_fn = motion_protocols.static_renders["pressure_static"]
+    end
+
     if static_fn then
         static_fn(player_index, item, surface)
     end
@@ -754,6 +768,8 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
                     render_pool.recycle_many(p_idx, item.objects)
                     item.objects = nil
                 end
+                item.trail_attached = nil
+                item.endpoint_attached = nil
                 v_set[match_key] = nil
             end
         else
@@ -767,6 +783,8 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
                         render_pool.recycle_many(p_idx, item.objects)
                         item.objects = nil
                     end
+                    item.trail_attached = nil
+                    item.endpoint_attached = nil
                     v_set[k] = nil
                 end
             end

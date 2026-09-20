@@ -64,7 +64,11 @@ function render_pool.lease_circle(arg1, arg2, arg3)
             obj.filled = (options.filled == true)
             obj.width = options.width or 1
             obj.only_in_alt_mode = (options.only_in_alt_mode == true)
-            if options.players then obj.players = options.players end
+            if options.players then
+                obj.players = options.players
+            else
+                obj.players = nil
+            end
             obj.visible = true
             return obj
         end

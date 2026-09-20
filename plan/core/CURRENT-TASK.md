@@ -37,15 +37,16 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Implement smart mid-segment pressure corridor severing when intermediate pneumatic tubes are mined or destroyed, splitting the corridor into an upstream truncated corridor and a newly initialized downstream receding/orphaned corridor rather than collapsing the entire line.
+Fix pressure corridors to stably deliver persistent pressure to downstream pneumatic networks placed after corridor formation, and implement dynamic colinear corridor elongation when colinear-compatible entities with straight port pairs (tubes, inline unbranched junctions, defensive walls, inline counters) are connected to an existing corridor's terminal tip.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_grid, storage.flow_queue
-disconnect_entity, unseed_pressure_corridor, on_pressure_begin_transmit, on_pressure_stop_transmit, scan_pneumatic_colinear_reach
-corridor_entities, in_pkey, out_pkey, last_out_pkey, terminal_branch_pkey, source_unit, source_pkey, start_pos, dir, total_dist
-midline tube removal, split_pressure_corridor, upstream truncation, downstream detached wake, break_dist = math.floor(|pos - start_pos|)
-motion_tree, traj_tree, leaves, registered_segs, viewport_bvh.on_segment_removed, viewport_bvh.on_segment_registered
-status = "receding", retreat_tick, end_decay_tick, tau, p_head_cont, p_tip_cont, cur_tip_mag, target_tip
-flow_common.wake_port_parked, flow_engine.enqueue_port, update_pos_render, anti-reseed suppression, 0-tick idle sleep
+storage.pressure_corridors, storage.corridor_tip_flows, storage.flow_connections, storage.flow_nodes, storage.flow_levels, storage.flow_grid, storage.flow_queue, storage.flow_unit_ports
+connect_entity, disconnect_entity, step_pressure_corridors, compute_port_flow_level, flow_engine.step, on_pressure_begin_transmit, scan_pneumatic_colinear_reach, is_colinear_straight_internal
+polymorphic colinear port evaluation, opposing port vectors & axial alignment, unbranched junction straight reduction, wall/gate interop straight colinearity
+post-formation downstream attachment, downstream pressure starvation/decay, persistent tip emission substrate, corridor_tip_flows lifetime & refresh
+terminal_branch_pkey binding, branch_enqueued synchronization, colinear extension detection, entity-agnostic corridor elongation, scan_pneumatic_colinear_reach re-scan
+in_pkey, out_pkey, last_out_pkey, terminal_branch_pkey, corridor_entities, registered_segs, max_seg_idx, total_dist, terminal_pos
+motion_tree:insert_segment, viewport_bvh.on_segment_registered, viewport_bvh.on_leaf_static_changed, trajectory_bvh.refresh_active_renders
+flow_common.wake_port_parked, flow_engine.enqueue_port, update_pos_render, 0-tick idle sleep
 [/CONTEXT_TOKENS]

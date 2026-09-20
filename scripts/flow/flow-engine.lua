@@ -713,6 +713,12 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos)
     end
 
     if corr.last_out_pkey then
+        local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+        local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
+        local rem_level = (tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or nil
+        if storage.corridor_tip_flows then
+            storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
+        end
         local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
         if out_node then
             flow_renderer.update_pos_render(out_node.pos_key)
@@ -845,24 +851,23 @@ function flow_engine.step_pressure_corridors(tick)
                         viewport_bvh.on_leaf_static_changed(s_idx, leaf)
                     end
                 end
+                local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+                local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
+                local rem_level = (tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or 0
+                if rem_level ~= 0 and corr.last_out_pkey then
+                    storage.corridor_tip_flows = storage.corridor_tip_flows or {}
+                    storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
+                    local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
+                    if out_node then
+                        flow_renderer.update_pos_render(out_node.pos_key)
+                    end
+                end
                 if corr.terminal_branch_pkey and not corr.branch_enqueued then
                     corr.branch_enqueued = true
-                    local rem_level = 0
-                    local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
-                    local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
-                    if tip_mag > 0 then
-                        rem_level = (corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag
-                    end
-                    if rem_level ~= 0 and corr.last_out_pkey then
-                        storage.corridor_tip_flows = storage.corridor_tip_flows or {}
-                        storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
-                        local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
-                        if out_node then
-                            flow_renderer.update_pos_render(out_node.pos_key)
-                        end
-                    end
                     flow_engine.enqueue_port(corr.terminal_branch_pkey)
                     flow_common.wake_port_parked(corr.terminal_branch_pkey)
+                end
+                if corr.last_out_pkey then
                     flow_common.wake_port_parked(corr.last_out_pkey)
                 end
             end
@@ -1450,6 +1455,148 @@ local function handle_entity_reorientation(entity)
     end
 end
 
+function flow_engine.wake_corridor_tip(corr)
+    if not (corr and corr.status ~= "receding") then return false end
+    local tip_pkey = corr.last_out_pkey
+    if not tip_pkey then return false end
+
+    local dx = corr.dir.x
+    local dy = corr.dir.y
+    local max_reach = math.max(1, math.abs(corr.initial_flow or corr.flow_level or 10))
+    local curr_out = tip_pkey
+    local added_dist = 0
+    local terminal_branch = nil
+
+    while corr.total_dist + added_dist < max_reach do
+        local conns = storage.flow_connections and storage.flow_connections[curr_out]
+        if not conns or next(conns) == nil then break end
+
+        local n_in_key = nil
+        for nk in pairs(conns) do
+            n_in_key = nk
+            break
+        end
+
+        local n_in_node = storage.flow_nodes and storage.flow_nodes[n_in_key]
+        if not n_in_node then break end
+
+        local u = n_in_node.unit_number
+        if not u or corr.corridor_entities[u] then break end
+
+        local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
+        if not u_ports then break end
+
+        local found_exit = nil
+        local found_exit_node = nil
+        for _, ok in ipairs(u_ports) do
+            if ok ~= n_in_key then
+                local on = storage.flow_nodes and storage.flow_nodes[ok]
+                if on and on.group == n_in_node.group then
+                    if flow_common.is_colinear_straight_internal(n_in_key, n_in_node, ok, on) then
+                        if on.dir and on.dir.x == dx and on.dir.y == dy then
+                            found_exit = ok
+                            found_exit_node = on
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        if not (found_exit and found_exit_node) then
+            terminal_branch = n_in_key
+            break
+        end
+
+        local seg_len = math.floor(math.abs(found_exit_node.pos.x - n_in_node.pos.x) + math.abs(found_exit_node.pos.y - n_in_node.pos.y) + 0.5)
+        if seg_len <= 0 then seg_len = 1 end
+        added_dist = added_dist + seg_len
+        corr.corridor_entities[u] = true
+        curr_out = found_exit
+    end
+
+    if added_dist > 0 then
+        local old_total_dist = corr.total_dist
+        local old_last_out = corr.last_out_pkey
+        local s_idx = corr.surface_index or 1
+
+        if old_last_out and old_last_out ~= curr_out then
+            if storage.corridor_tip_flows and storage.corridor_tip_flows[old_last_out] then
+                storage.corridor_tip_flows[old_last_out] = nil
+                local old_node = storage.flow_nodes and storage.flow_nodes[old_last_out]
+                if old_node then flow_renderer.update_pos_render(old_node.pos_key) end
+            end
+            flow_common.wake_port_parked(old_last_out)
+        end
+
+        corr.total_dist = corr.total_dist + added_dist
+        corr.terminal_pos = { x = corr.start_pos.x + dx * corr.total_dist, y = corr.start_pos.y + dy * corr.total_dist }
+        corr.last_out_pkey = curr_out
+        corr.terminal_branch_pkey = terminal_branch
+        corr.branch_enqueued = nil
+        corr.max_seg_idx = math.max(1, math.ceil(corr.total_dist / 16))
+
+        local s_curr = corr.registered_segs or 1
+        local s_start = (s_curr - 1) * 16
+        local s_end = math.min(s_curr * 16, corr.total_dist)
+        local seg_key = string.format("%d,%d:%d", dx, dy, s_curr)
+        local motion_tree = timed_motion.get_motion_tree(s_idx)
+        local traj_tree = trajectory_bvh.get_surface_tree(storage, s_idx)
+        if motion_tree then motion_tree:remove_segment(corr.id, seg_key) end
+        viewport_bvh.on_segment_removed(s_idx, corr.id, seg_key)
+        if traj_tree then traj_tree:remove_segment(corr.id, seg_key) end
+
+        local seg_start_pos = { x = corr.start_pos.x + dx * s_start, y = corr.start_pos.y + dy * s_start }
+        local seg_end_pos = { x = corr.start_pos.x + dx * s_end, y = corr.start_pos.y + dy * s_end }
+        if motion_tree then
+            local leaf = motion_tree:insert_segment(corr.id, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s_curr)
+            if leaf then
+                leaf.dir = { x = dx, y = dy }
+                leaf.q_level = corr.q_level or 0
+                leaf.has_trail = true
+                leaf.trail_count = math.max(0, math.floor(s_end - s_start + 0.5))
+                corr.leaves = corr.leaves or {}
+                corr.leaves[seg_key] = leaf
+                viewport_bvh.on_segment_registered(s_idx, leaf)
+            end
+        end
+        if traj_tree then
+            traj_tree:insert_segment(corr.id, seg_key, seg_start_pos, seg_end_pos, s_start, s_end, s_curr)
+            trajectory_bvh.refresh_active_renders()
+        end
+
+        corr.status = "growing"
+        local tpt = corr.ticks_per_tile or 2
+        corr.start_tick = game.tick - math.max(0, (corr.current_reach - 1) * tpt)
+
+        for u in pairs(corr.corridor_entities) do
+            flow_common.enqueue_unit_ports(u)
+        end
+        flow_common.wake_port_parked(curr_out)
+        if terminal_branch then flow_common.wake_port_parked(terminal_branch) end
+        return true
+    elseif terminal_branch and terminal_branch ~= corr.terminal_branch_pkey then
+        corr.terminal_branch_pkey = terminal_branch
+        local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
+        local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
+        local rem_level = (tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or 0
+        if corr.status == "active" then
+            corr.branch_enqueued = true
+            if rem_level ~= 0 and corr.last_out_pkey then
+                storage.corridor_tip_flows = storage.corridor_tip_flows or {}
+                storage.corridor_tip_flows[corr.last_out_pkey] = rem_level
+                local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
+                if out_node then flow_renderer.update_pos_render(out_node.pos_key) end
+            end
+            flow_engine.enqueue_port(terminal_branch)
+            flow_common.wake_port_parked(terminal_branch)
+            flow_common.wake_port_parked(corr.last_out_pkey)
+        end
+        return true
+    end
+    return false
+end
+
 function flow_engine.connect_entity(entity)
     if not (entity and entity.valid and entity.unit_number) then return end
     if entity.name == "entity-ghost" then return end
@@ -1500,6 +1647,7 @@ function flow_engine.connect_entity(entity)
     storage.flow_unit_ports[unit_number] = storage.flow_unit_ports[unit_number] or {}
 
     local q_level = (entity.quality and entity.quality.level) or 0
+    local ports_data = {}
 
     for port_index, port in ipairs(ports) do
         local px, py = ex + port.offset.x, ey + port.offset.y
@@ -1539,7 +1687,29 @@ function flow_engine.connect_entity(entity)
             cross_transit = (port.cross_transit == true)
         }
 
-        storage.flow_grid[pos_key] = storage.flow_grid[pos_key] or {}
+        ports_data[port_index] = {
+            pkey = pkey,
+            pos_key = pos_key,
+            is_muzzle_port = is_muzzle_port,
+            eff_emitter = eff_emitter,
+            eff_sense = eff_sense
+        }
+    end
+
+    for port_index = 1, #ports_data do
+        local pd = ports_data[port_index]
+        storage.flow_grid[pd.pos_key] = storage.flow_grid[pd.pos_key] or {}
+        storage.flow_grid[pd.pos_key][pd.pkey] = true
+    end
+
+    local touched_corridors = {}
+    for port_index = 1, #ports_data do
+        local pd = ports_data[port_index]
+        local pkey = pd.pkey
+        local pos_key = pd.pos_key
+        local is_muzzle_port = pd.is_muzzle_port
+        local eff_emitter = pd.eff_emitter
+        local eff_sense = pd.eff_sense
 
         for existing_pkey in pairs(storage.flow_grid[pos_key]) do
             local existing_node = storage.flow_nodes[existing_pkey]
@@ -1566,19 +1736,8 @@ function flow_engine.connect_entity(entity)
                             flow_common.enqueue_unit_ports(unit_number)
                             if storage.pressure_corridors then
                                 for _, corr in pairs(storage.pressure_corridors) do
-                                    if corr.status == "active" and corr.last_out_pkey == existing_pkey then
-                                        local init_mag = math.abs(corr.initial_flow or corr.flow_level or 10)
-                                        local tip_mag = math.max(0, init_mag - (corr.total_dist - 1))
-                                        local rem_level = (tip_mag > 0) and ((corr.flow_level and corr.flow_level < 0) and -tip_mag or tip_mag) or 0
-                                        corr.terminal_branch_pkey = pkey
-                                        corr.branch_enqueued = true
-                                        if rem_level ~= 0 then
-                                            storage.corridor_tip_flows = storage.corridor_tip_flows or {}
-                                            storage.corridor_tip_flows[existing_pkey] = rem_level
-                                        end
-                                        flow_engine.enqueue_port(pkey)
-                                        wake_port_parked(pkey)
-                                        wake_port_parked(existing_pkey)
+                                    if corr.status ~= "receding" and (corr.last_out_pkey == existing_pkey or corr.last_out_pkey == pkey) then
+                                        touched_corridors[corr.id] = corr
                                     end
                                 end
                             end
@@ -1590,13 +1749,18 @@ function flow_engine.connect_entity(entity)
             end
         end
 
-        storage.flow_grid[pos_key][pkey] = true
         if (eff_emitter ~= nil and eff_emitter ~= 0) or (eff_sense ~= nil and eff_sense > 0) then
             flow_engine.enqueue_port(pkey)
             wake_port_parked(pkey)
         end
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
+    end
+
+    if USE_PRESSURE_CORRIDORS then
+        for _, corr in pairs(touched_corridors) do
+            flow_engine.wake_corridor_tip(corr)
+        end
     end
 end
 
@@ -1673,11 +1837,6 @@ function flow_engine.disconnect_entity(entity)
                 if corr.terminal_branch_pkey == pkey then
                     corr.terminal_branch_pkey = nil
                     corr.branch_enqueued = nil
-                    if storage.corridor_tip_flows and storage.corridor_tip_flows[corr.last_out_pkey] then
-                        storage.corridor_tip_flows[corr.last_out_pkey] = nil
-                        local out_node = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
-                        if out_node then flow_renderer.update_pos_render(out_node.pos_key) end
-                    end
                     flow_common.wake_port_parked(corr.last_out_pkey)
                 end
             end

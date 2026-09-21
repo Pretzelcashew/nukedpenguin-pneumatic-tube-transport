@@ -10,17 +10,25 @@ local counter_range = require("scripts.counters.counter-range")
 local capsule_queries = require("scripts.capsules.capsule-queries")
 local capsule_manager = require("scripts.capsules.capsule-manager")
 local projector_settings = require("scripts.projectors.projector-settings")
+local trajectory_bvh = require("scripts.utils.trajectory-bvh")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_engine = {}
-
-local USE_PRESSURE_CORRIDORS = true
-flow_common.USE_PRESSURE_CORRIDORS = USE_PRESSURE_CORRIDORS
 
 local BATCH_SIZE = 50
 local MAX_FLOW = 10
 local DEFAULT_RANGE_SEED = 15
 local BASE_PROJECTOR_RANGE = 50
 local HOP_DISTANCE = 5
+
+local MACHINE_NAMES = {
+    ["pneumatic-diverter"] = true,
+    ["pneumatic-pump"] = true,
+    ["pneumatic-capsule-counter"] = true,
+    ["capsule-hub-horizontal"] = true,
+    ["capsule-hub-vertical"] = true,
+    ["pneumatic-projector"] = true
+}
 
 local PROXY_NAMES = {
     ["pneumatic-pump-circuit-proxy"] = true,
@@ -98,6 +106,7 @@ function flow_engine.init_storage()
     storage.flow_levels = storage.flow_levels or {}
     storage.flow_queue = storage.flow_queue or {}
     storage.flow_unit_ports = storage.flow_unit_ports or {}
+    storage.motion_leaves = storage.motion_leaves or {}
     storage.flow_renders = storage.flow_renders or {}
     storage.flow_edge_renders = storage.flow_edge_renders or {}
     storage.kinetic_renders = storage.kinetic_renders or {}
@@ -429,13 +438,6 @@ local function compute_port_flow_level(pkey)
         if check_node then
             local is_self = (check_pkey == pkey)
             local can_transmit_internally = node.pressure_transmit and check_node.pressure_transmit and (node.group ~= nil) and (check_node.group == node.group)
-            if USE_PRESSURE_CORRIDORS and can_transmit_internally and not is_self then
-                local pkey_conns = storage.flow_connections and storage.flow_connections[pkey]
-                local has_external = pkey_conns and (next(pkey_conns) ~= nil)
-                if (not has_external) or is_colinear_straight_internal(check_pkey, check_node, pkey, node) then
-                    can_transmit_internally = false
-                end
-            end
 
             if is_self or can_transmit_internally then
                 local neighbors = storage.flow_connections and storage.flow_connections[check_pkey]
@@ -531,6 +533,91 @@ function flow_engine.step(tick)
         end
     end
 
+    if not storage.motion_leaves_port_bounds_v2 then
+        storage.motion_leaves_port_bounds_v2 = true
+        if storage.motion_bvh then
+            for _, tree in pairs(storage.motion_bvh) do
+                trajectory_bvh.clear(tree)
+            end
+        end
+        storage.motion_leaves = {}
+        if storage.flow_unit_ports then
+            for unit_number in pairs(storage.flow_unit_ports) do
+                flow_engine.register_entity_motion_leaf(unit_number)
+            end
+        end
+    end
+    if false then
+        if false then
+            for unit_number, ports in pairs({}) do
+                if false then
+                    local pkey = ports[1]
+                    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                    if node and node.pos and node.surface_name then
+                        local surf = game.surfaces[node.surface_name]
+                        if surf and surf.valid then
+                            local s_idx = surf.index
+                            local ent = node.entity
+                            if not (ent and ent.valid) then
+                                local found = surf.find_entities_filtered{position = node.pos, radius = 1.5}
+                                for _, f_ent in ipairs(found) do
+                                    if f_ent.valid and f_ent.unit_number == unit_number then
+                                        ent = f_ent
+                                        break
+                                    end
+                                end
+                            end
+
+                            local real_name = ent and ent.name
+                            local is_machine = real_name and MACHINE_NAMES[real_name] or false
+                            storage.motion_leaves[unit_number] = storage.motion_leaves[unit_number] or {}
+                            local m_tree = viewport_bvh.get_motion_tree(s_idx)
+
+                            if is_machine and ent then
+                                local bb = ent.bounding_box
+                                local machine_leaf = {
+                                    min_x = bb and math.floor(bb.left_top.x + 0.01) or (ent.position.x - 0.5),
+                                    min_y = bb and math.floor(bb.left_top.y + 0.01) or (ent.position.y - 0.5),
+                                    max_x = bb and math.ceil(bb.right_bottom.x - 0.01) or (ent.position.x + 0.5),
+                                    max_y = bb and math.ceil(bb.right_bottom.y - 0.01) or (ent.position.y + 0.5),
+                                    owner_id = unit_number,
+                                    seg_key = "machine",
+                                    unit_number = unit_number,
+                                    surface_index = s_idx,
+                                    static_render_spec = "machine_static"
+                                }
+                                local key = tostring(unit_number) .. ":machine"
+                                machine_leaf.key = key
+                                trajectory_bvh.insert(m_tree, machine_leaf, key)
+                                storage.motion_leaves[unit_number]["machine"] = machine_leaf
+                                viewport_bvh.on_segment_registered(s_idx, machine_leaf)
+                            else
+                                local tx = ent and ent.position.x or node.pos.x
+                                local ty = ent and ent.position.y or node.pos.y
+                                local tube_leaf = {
+                                    min_x = tx - 0.5,
+                                    min_y = ty - 0.5,
+                                    max_x = tx + 0.5,
+                                    max_y = ty + 0.5,
+                                    owner_id = unit_number,
+                                    seg_key = "base",
+                                    unit_number = unit_number,
+                                    surface_index = s_idx,
+                                    static_render_spec = "flow_dot_static"
+                                }
+                                local key = tostring(unit_number) .. ":base"
+                                tube_leaf.key = key
+                                trajectory_bvh.insert(m_tree, tube_leaf, key)
+                                storage.motion_leaves[unit_number]["base"] = tube_leaf
+                                viewport_bvh.on_segment_registered(s_idx, tube_leaf)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     flow_gate_interop.step_gates(flow_kinetic.handle_obstacle_changed, flow_engine.enqueue_unit_ports)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
     flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
@@ -616,13 +703,6 @@ function flow_engine.step(tick)
                             local int_node = storage.flow_nodes and storage.flow_nodes[int_key]
                             if int_node and int_node.group == node.group then
                                 local allow_flow = flow_changed and node.pressure_transmit and int_node.pressure_transmit
-                                if allow_flow and USE_PRESSURE_CORRIDORS then
-                                    local int_conns = storage.flow_connections and storage.flow_connections[int_key]
-                                    local has_external = int_conns and (next(int_conns) ~= nil)
-                                    if (not has_external) or is_colinear_straight_internal(pkey, node, int_key, int_node) then
-                                        allow_flow = false
-                                    end
-                                end
                                 if allow_flow
                                    or (range_changed and node.sense_transmit and int_node.sense_transmit)
                                    or (kinetic_changed and (node.kinetic_transmit or node.cross_transit) and (int_node.kinetic_transmit or int_node.cross_transit)) then
@@ -688,6 +768,90 @@ local function handle_entity_reorientation(entity)
     elseif is_standard_entity(real_name) then
         flow_gate_interop.handle_standard_entity_reorientation(entity, flow_engine.disconnect_entity, flow_engine.connect_entity, flow_kinetic.handle_obstacle_changed, flow_engine.get_node_emitter_level, flow_kinetic.get_node_kinetic_emitter)
     end
+end
+
+function flow_engine.register_entity_motion_leaf(unit_number, entity)
+    if not unit_number then return end
+    local ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if not (ports and #ports > 0) then return end
+
+    local min_px, max_px = math.huge, -math.huge
+    local min_py, max_py = math.huge, -math.huge
+    local s_idx = nil
+    local is_machine = false
+
+    for i = 1, #ports do
+        local pkey = ports[i]
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node then
+            if not s_idx and node.surface_name then
+                local surf = game.surfaces[node.surface_name]
+                s_idx = surf and surf.valid and surf.index
+            end
+            if node.emitter or node.sense or node.is_muzzle or not node.pressure_transmit then
+                is_machine = true
+            end
+            if node.pos then
+                local px, py = node.pos.x, node.pos.y
+                if px < min_px then min_px = px end
+                if px > max_px then max_px = px end
+                if py < min_py then min_py = py end
+                if py > max_py then max_py = py end
+            end
+        end
+    end
+
+    if not s_idx or min_px == math.huge then return end
+
+    if entity and entity.valid and is_machine then
+        local bb = entity.bounding_box
+        if bb then
+            min_px = math.min(min_px, bb.left_top.x)
+            max_px = math.max(max_px, bb.right_bottom.x)
+            min_py = math.min(min_py, bb.left_top.y)
+            max_py = math.max(max_py, bb.right_bottom.y)
+        end
+    end
+
+    local min_x = min_px
+    local max_x = max_px
+    local min_y = min_py
+    local max_y = max_py
+
+    if (max_x - min_x) < 0.99 then
+        local mid_x = (min_x + max_x) * 0.5
+        min_x = mid_x - 0.5
+        max_x = mid_x + 0.5
+    end
+    if (max_y - min_y) < 0.99 then
+        local mid_y = (min_y + max_y) * 0.5
+        min_y = mid_y - 0.5
+        max_y = mid_y + 0.5
+    end
+
+    storage.motion_leaves = storage.motion_leaves or {}
+    storage.motion_leaves[unit_number] = storage.motion_leaves[unit_number] or {}
+
+    local seg_key = is_machine and "machine" or "base"
+    local render_spec = is_machine and "machine_static" or "flow_dot_static"
+
+    local leaf = {
+        min_x = min_x,
+        min_y = min_y,
+        max_x = max_x,
+        max_y = max_y,
+        owner_id = unit_number,
+        seg_key = seg_key,
+        unit_number = unit_number,
+        surface_index = s_idx,
+        static_render_spec = render_spec
+    }
+    local key = tostring(unit_number) .. ":" .. seg_key
+    leaf.key = key
+    local m_tree = viewport_bvh.get_motion_tree(s_idx)
+    trajectory_bvh.insert(m_tree, leaf, key)
+    storage.motion_leaves[unit_number][seg_key] = leaf
+    viewport_bvh.on_segment_registered(s_idx, leaf)
 end
 
 function flow_engine.connect_entity(entity)
@@ -796,15 +960,24 @@ function flow_engine.connect_entity(entity)
                         or (storage.counter_levels and (storage.counter_levels[existing_pkey] or 0) > 0)
                         or (existing_node.emitter and existing_node.emitter ~= 0)
                         or (existing_node.sense and existing_node.sense > 0)
+                    if not existing_has_flow and storage.flow_unit_ports then
+                        local ex_ports = storage.flow_unit_ports[existing_node.unit_number]
+                        if ex_ports then
+                            for i = 1, #ex_ports do
+                                local ep = ex_ports[i]
+                                if (storage.flow_levels and (storage.flow_levels[ep] or 0) ~= 0)
+                                    or (storage.counter_levels and (storage.counter_levels[ep] or 0) > 0) then
+                                    existing_has_flow = true
+                                    break
+                                end
+                            end
+                        end
+                    end
                     local has_flow = (eff_emitter ~= nil and eff_emitter ~= 0) or (eff_sense ~= nil and eff_sense > 0)
 
-                    if has_flow or existing_has_flow or USE_PRESSURE_CORRIDORS then
+                    if has_flow or existing_has_flow then
                         flow_engine.enqueue_port(existing_pkey)
                         flow_engine.enqueue_port(pkey)
-                        if USE_PRESSURE_CORRIDORS then
-                            flow_common.enqueue_unit_ports(existing_node.unit_number)
-                            flow_common.enqueue_unit_ports(unit_number)
-                        end
                         wake_port_parked(existing_pkey)
                         wake_port_parked(pkey)
                     end
@@ -820,11 +993,69 @@ function flow_engine.connect_entity(entity)
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
     end
+
+    flow_engine.register_entity_motion_leaf(unit_number, entity)
+    do return end
+    local is_machine = false
+    if is_machine then
+        local bb = entity.bounding_box
+        local machine_leaf = {
+            min_x = bb and math.floor(bb.left_top.x + 0.01) or (ex - 0.5),
+            min_y = bb and math.floor(bb.left_top.y + 0.01) or (ey - 0.5),
+            max_x = bb and math.ceil(bb.right_bottom.x - 0.01) or (ex + 0.5),
+            max_y = bb and math.ceil(bb.right_bottom.y - 0.01) or (ey + 0.5),
+            owner_id = unit_number,
+            seg_key = "machine",
+            unit_number = unit_number,
+            surface_index = s_idx,
+            static_render_spec = "machine_static"
+        }
+        local key = tostring(unit_number) .. ":machine"
+        machine_leaf.key = key
+        local m_tree = viewport_bvh.get_motion_tree(s_idx)
+        trajectory_bvh.insert(m_tree, machine_leaf, key)
+        storage.motion_leaves[unit_number]["machine"] = machine_leaf
+        viewport_bvh.on_segment_registered(s_idx, machine_leaf)
+    else
+        local tube_leaf = {
+            min_x = ex - 0.5,
+            min_y = ey - 0.5,
+            max_x = ex + 0.5,
+            max_y = ey + 0.5,
+            owner_id = unit_number,
+            seg_key = "base",
+            unit_number = unit_number,
+            surface_index = s_idx,
+            static_render_spec = "flow_dot_static"
+        }
+        local key = tostring(unit_number) .. ":base"
+        tube_leaf.key = key
+        local m_tree = viewport_bvh.get_motion_tree(s_idx)
+        trajectory_bvh.insert(m_tree, tube_leaf, key)
+        storage.motion_leaves[unit_number]["base"] = tube_leaf
+        viewport_bvh.on_segment_registered(s_idx, tube_leaf)
+    end
 end
 
 function flow_engine.disconnect_entity(entity)
     if not (entity and entity.unit_number) then return end
     local unit_number = entity.unit_number
+
+    if storage.motion_leaves and storage.motion_leaves[unit_number] then
+        local leaves = storage.motion_leaves[unit_number]
+        local s_idx = (entity.surface and entity.surface.valid and entity.surface.index)
+        for seg_key, leaf in pairs(leaves) do
+            local leaf_s_idx = s_idx or leaf.surface_index
+            if leaf_s_idx then
+                local m_tree = storage.motion_bvh and storage.motion_bvh[leaf_s_idx]
+                if m_tree then
+                    trajectory_bvh.remove(m_tree, leaf)
+                end
+                viewport_bvh.on_segment_removed(leaf_s_idx, unit_number, seg_key)
+            end
+        end
+        storage.motion_leaves[unit_number] = nil
+    end
 
     if storage.active_projectors then storage.active_projectors[unit_number] = nil end
     if storage.projector_power_states then storage.projector_power_states[unit_number] = nil end

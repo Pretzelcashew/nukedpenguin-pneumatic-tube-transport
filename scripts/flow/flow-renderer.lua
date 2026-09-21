@@ -1,5 +1,9 @@
 local flow_common = require("scripts.flow.flow-common")
 local port_defs = require("scripts.flow.port-defs")
+local render_pool = require("scripts.utils.render-pool")
+local motion_protocols = require("scripts.utils.motion-protocols")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
+local diverter_renderer = require("scripts.diverters.diverter-renderer")
 
 local flow_renderer = {}
 
@@ -298,7 +302,27 @@ function flow_renderer.get_dominant_counter_at_pos(pos_key)
     return best_node, max_level, best_owner
 end
 
+function flow_renderer.notify_pos_changed(pos_key)
+    if not (pos_key and storage.flow_grid and storage.flow_grid[pos_key]) then return end
+    for pkey in pairs(storage.flow_grid[pos_key]) do
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node then
+            local u_num = node.unit_number
+            local s_idx = game.surfaces[node.surface_name] and game.surfaces[node.surface_name].index
+            if s_idx and storage.motion_leaves and storage.motion_leaves[u_num] then
+                for _, leaf in pairs(storage.motion_leaves[u_num]) do
+                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                end
+            end
+        end
+    end
+end
+
 function flow_renderer.update_counter_pos_render(pos_key)
+    flow_renderer.notify_pos_changed(pos_key)
+end
+
+function flow_renderer._legacy_update_counter_pos_render(pos_key)
     if not check_debug("counter_range") then
         flow_renderer.destroy_counter_renders(pos_key)
         return
@@ -356,6 +380,10 @@ function flow_renderer.update_counter_pos_render(pos_key)
 end
 
 function flow_renderer.update_pos_render(pos_key)
+    flow_renderer.notify_pos_changed(pos_key)
+end
+
+function flow_renderer._legacy_update_pos_render(pos_key)
     if not check_debug("new_flow") then
         flow_renderer.destroy_pos_renders(pos_key)
         return
@@ -450,6 +478,13 @@ function flow_renderer.update_pos_render(pos_key)
 end
 
 function flow_renderer.update_edge_render(key_a, key_b)
+    local node_a = storage.flow_nodes and storage.flow_nodes[key_a]
+    if node_a then flow_renderer.notify_pos_changed(node_a.pos_key) end
+    local node_b = storage.flow_nodes and storage.flow_nodes[key_b]
+    if node_b then flow_renderer.notify_pos_changed(node_b.pos_key) end
+end
+
+function flow_renderer._legacy_update_edge_render(key_a, key_b)
     if not check_debug("new_flow") then
         flow_renderer.destroy_edge_render(make_edge_key(key_a, key_b))
         return
@@ -651,21 +686,20 @@ function flow_renderer.clear_all_renders(player_index)
 end
 
 function flow_renderer.draw_all_counters(player_index)
-    local pos_keys = {}
-    local count = 0
-    for pos_key in pairs(storage.flow_grid or {}) do
-        count = count + 1
-        pos_keys[count] = pos_key
-    end
-
-    table.sort(pos_keys)
-
-    for i = 1, count do
-        flow_renderer.update_counter_pos_render(pos_keys[i])
-    end
+    flow_renderer.draw_flow(player_index)
 end
 
 function flow_renderer.draw_flow(player_index)
+    if player_index then
+        viewport_bvh.sync_player_overlays(player_index)
+    else
+        for _, player in pairs(game.players) do
+            viewport_bvh.sync_player_overlays(player.index)
+        end
+    end
+end
+
+function flow_renderer._legacy_draw_flow(player_index)
     local pos_keys = {}
     local count = 0
     for pos_key in pairs(storage.flow_grid or {}) do
@@ -700,7 +734,160 @@ end
 
 function flow_renderer.draw_all(player_index)
     flow_renderer.draw_flow(player_index)
-    flow_renderer.draw_all_counters(player_index)
 end
+
+function flow_renderer.render_flow_dot_static(player_index, item, surface)
+    if not (item and item.leaf) then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    if not viewport_bvh.should_render_kinetic_overlays(player_index) then return end
+
+    if item.render_objects then
+        render_pool.recycle_many(player_index, item.render_objects)
+        item.render_objects = nil
+    end
+
+    local u_num = item.leaf.unit_number or item.owner_id
+    if not u_num then return end
+
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
+    if not unit_ports then return end
+
+    item.render_objects = {}
+    local out_objs = item.render_objects
+
+    for i = 1, #unit_ports do
+        local pkey = unit_ports[i]
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node and node.pos and node.pos_key then
+            local pos = node.pos
+
+            local c_node, c_level, c_owner = flow_renderer.get_dominant_counter_at_pos(node.pos_key)
+            if c_node and c_level > 0 and c_owner ~= nil then
+                local circle_color = get_owner_color(c_owner)
+                local c_obj = render_pool.lease_circle{
+                    channel = "flow",
+                    color = circle_color,
+                    radius = 0.15,
+                    filled = true,
+                    target = pos,
+                    surface = surface,
+                    players = { player }
+                }
+                if c_obj then out_objs[#out_objs + 1] = c_obj end
+
+                local t_obj = render_pool.lease_text{
+                    channel = "flow",
+                    text = tostring(c_level),
+                    surface = surface,
+                    target = { x = pos.x, y = pos.y - 0.25 },
+                    color = { r = 1, g = 1, b = 1, a = 0.9 },
+                    scale = 0.7,
+                    alignment = "center",
+                    players = { player }
+                }
+                if t_obj then out_objs[#out_objs + 1] = t_obj end
+
+            else
+                local best_node, level = flow_renderer.get_dominant_port_at_pos(node.pos_key)
+                local is_projector_port = (level == 0) and (storage.active_projectors and storage.active_projectors[node.unit_number] ~= nil and (node.port_index or 0) <= 4)
+                local is_intake = is_projector_port and (not node.is_muzzle)
+                local muzzle_pkey = is_projector_port and node.is_muzzle and flow_common.make_port_key(node.unit_number, node.port_index) or nil
+                local is_muzzle_idle = muzzle_pkey and ((storage.kinetic_levels and storage.kinetic_levels[muzzle_pkey] or 0) == 0)
+
+                if is_intake or is_muzzle_idle then
+                    local dot_color = is_intake and PROJECTOR_INTAKE_COLOR or PROJECTOR_MUZZLE_COLOR
+                    local c_obj = render_pool.lease_circle{
+                        channel = "flow",
+                        color = dot_color,
+                        radius = 0.12,
+                        filled = true,
+                        target = pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    if c_obj then out_objs[#out_objs + 1] = c_obj end
+
+                elseif level ~= 0 then
+                    local abs_level = math.abs(level)
+                    local ratio = math.min(1.0, abs_level / MAX_FLOW)
+                    local circle_color = (level > 0)
+                        and { r = 0, g = 0.4 + ratio * 0.6, b = 1, a = 0.8 }
+                        or  { r = 1, g = 0.3 + ratio * 0.7, b = 0, a = 0.8 }
+
+                    local c_obj = render_pool.lease_circle{
+                        channel = "flow",
+                        color = circle_color,
+                        radius = 0.15,
+                        filled = true,
+                        target = pos,
+                        surface = surface,
+                        players = { player }
+                    }
+                    if c_obj then out_objs[#out_objs + 1] = c_obj end
+
+                    local t_obj = render_pool.lease_text{
+                        channel = "flow",
+                        text = tostring(level),
+                        surface = surface,
+                        target = { x = pos.x, y = pos.y - 0.25 },
+                        color = { r = 1, g = 1, b = 1, a = 0.9 },
+                        scale = 0.7,
+                        alignment = "center",
+                        players = { player }
+                    }
+                    if t_obj then out_objs[#out_objs + 1] = t_obj end
+                end
+            end
+
+            local neighbors = storage.flow_connections and storage.flow_connections[pkey]
+            if neighbors then
+                for n_key in pairs(neighbors) do
+                    if pkey < n_key then
+                        local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                        if n_node and n_node.pos and node.pos_key ~= n_node.pos_key then
+                            local level_a = storage.flow_levels and storage.flow_levels[pkey] or 0
+                            local level_b = storage.flow_levels and storage.flow_levels[n_key] or 0
+                            if level_a ~= 0 or level_b ~= 0 then
+                                local active_level = (level_a ~= 0) and level_a or level_b
+                                local line_color = (active_level > 0)
+                                    and { r = 0, g = 0.7, b = 1, a = 0.8 }
+                                    or  { r = 1, g = 0.5, b = 0, a = 0.8 }
+
+                                local l_obj = render_pool.lease_line{
+                                    channel = "flow",
+                                    color = line_color,
+                                    width = 3,
+                                    from = node.pos,
+                                    to = n_node.pos,
+                                    surface = surface,
+                                    players = { player }
+                                }
+                                if l_obj then out_objs[#out_objs + 1] = l_obj end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function flow_renderer.render_machine_static(player_index, item, surface)
+    if not (item and item.leaf) then return end
+    flow_renderer.render_flow_dot_static(player_index, item, surface)
+
+    local u_num = item.leaf.unit_number or item.owner_id
+    if u_num and storage.active_diverters then
+        local div_entity = storage.active_diverters[u_num]
+        if div_entity and div_entity.valid then
+            diverter_renderer.render_diverter_filters_for_player(player_index, item, surface, div_entity)
+        end
+    end
+end
+
+motion_protocols.register_static_render("flow_dot_static", flow_renderer.render_flow_dot_static)
+motion_protocols.register_static_render("machine_static", flow_renderer.render_machine_static)
 
 return flow_renderer

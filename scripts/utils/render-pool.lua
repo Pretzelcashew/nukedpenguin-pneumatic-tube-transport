@@ -10,6 +10,7 @@ local CHANNEL_RETENTION_FLOORS = {
     reticle = 48,
     capsule = 32,
     arrival = 16,
+    flow = 64,
     default = 32
 }
 

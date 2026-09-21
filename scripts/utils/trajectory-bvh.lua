@@ -927,12 +927,74 @@ end
 function trajectory_bvh.draw_for_player(player_index)
     trajectory_bvh.clear_renders(player_index)
     local player = game.get_player(player_index)
-    if not (player and player.valid and storage.surface_bvh) then return end
+    if not (player and player.valid) then return end
 
     local surf = player.surface
     if not (surf and surf.valid) then return end
+    local s_idx = surf.index
 
-    local tree = storage.surface_bvh[surf.index]
+    storage.bvh_renders = storage.bvh_renders or {}
+    local renders = {}
+    storage.bvh_renders[player_index] = renders
+
+    local motion_tree = storage.motion_bvh and storage.motion_bvh[s_idx]
+    if motion_tree and motion_tree.root then
+        trajectory_bvh.attach(motion_tree)
+        local function draw_motion_node(node, depth)
+            if not node then return end
+            if node.is_leaf then
+                local col = { r = 0.2, g = 0.85, b = 1.0, a = 0.8 }
+                local tag = "Tube"
+                if node.seg_key == "machine" or node.static_render_spec == "machine_static" then
+                    col = { r = 1.0, g = 0.6, b = 0.1, a = 0.85 }
+                    tag = "Machine"
+                elseif node.static_render_spec == "reticle_static" or node.has_trail or (node.owner_id and storage.projector_reticles and storage.projector_reticles[node.owner_id]) then
+                    col = { r = 0.2, g = 1.0, b = 0.4, a = 0.85 }
+                    tag = "Beam"
+                end
+
+                local rect = rendering.draw_rectangle{
+                    color = col,
+                    width = 2,
+                    filled = false,
+                    left_top = { node.min_x, node.min_y },
+                    right_bottom = { node.max_x, node.max_y },
+                    surface = surf,
+                    players = { player }
+                }
+                renders[#renders + 1] = rect
+
+                local mid_x = (node.min_x + node.max_x) * 0.5
+                local mid_y = (node.min_y + node.max_y) * 0.5
+                local txt = rendering.draw_text{
+                    text = string.format("[%s #%s:%s]", tag, tostring(node.owner_id or "?"), tostring(node.seg_key or "?")),
+                    surface = surf,
+                    target = { mid_x, mid_y },
+                    color = col,
+                    scale = 0.6,
+                    alignment = "center",
+                    players = { player }
+                }
+                renders[#renders + 1] = txt
+            else
+                local rect = rendering.draw_rectangle{
+                    color = { r = 0.1, g = 0.4, b = 0.8, a = 0.2 },
+                    width = 1,
+                    filled = false,
+                    left_top = { node.min_x, node.min_y },
+                    right_bottom = { node.max_x, node.max_y },
+                    surface = surf,
+                    players = { player }
+                }
+                renders[#renders + 1] = rect
+                if node.left then draw_motion_node(node.left, depth + 1) end
+                if node.right then draw_motion_node(node.right, depth + 1) end
+            end
+        end
+        draw_motion_node(motion_tree.root, 0)
+    end
+
+    local tree = storage.surface_bvh and storage.surface_bvh[s_idx]
     if not (tree and tree.root) then return end
     trajectory_bvh.attach(tree)
 

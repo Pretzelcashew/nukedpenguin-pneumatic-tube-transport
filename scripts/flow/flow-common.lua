@@ -1,7 +1,5 @@
 local flow_common = {}
 
-flow_common.USE_PRESSURE_CORRIDORS = true
-
 -- Spatial and Port Key Formatting Primitives
 function flow_common.make_port_key(unit_number, port_index)
     return tostring(unit_number) .. ":" .. tostring(port_index)
@@ -171,11 +169,8 @@ function flow_common.destroy_node(pkey)
                     or (storage.kinetic_levels and storage.kinetic_levels[n_key] ~= nil)
                     or (n_node and n_node.emitter)
 
-                if had_active or flow_common.USE_PRESSURE_CORRIDORS then
+                if had_active then
                     flow_common.enqueue_port(n_key)
-                    if flow_common.USE_PRESSURE_CORRIDORS then
-                        flow_common.enqueue_unit_ports(n_node.unit_number)
-                    end
                 end
                 flow_common.wake_port_parked(n_key)
             end

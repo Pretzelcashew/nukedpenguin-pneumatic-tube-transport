@@ -1,8 +1,11 @@
 local diverter_settings = require("scripts.diverters.diverter-settings")
 local port_defs = require("scripts.flow.port-defs")
 local gui_components = require("scripts.utils.gui-components")
+local render_pool = require("scripts.utils.render-pool")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local diverter_renderer = {}
+local current_render_player = nil
 
 --- Distance in tiles to shift filter icon overlays inward from port coordinates towards entity center (0,0),
 --- preventing overlap with flow indicator dots.
@@ -39,7 +42,8 @@ end
 --- @return RenderObject shadow_obj, RenderObject main_obj
 local function draw_text_with_shadow(text, surface, entity, cx, cy, text_scale, alignment)
     alignment = alignment or "center"
-    local shadow_obj = rendering.draw_text{
+    local shadow_obj = render_pool.lease_text{
+        channel = "default",
         text = text,
         surface = surface,
         target = { entity = entity, offset = { cx + 0.015, cy + 0.015 } },
@@ -48,9 +52,10 @@ local function draw_text_with_shadow(text, surface, entity, cx, cy, text_scale, 
         font = "default-semibold",
         alignment = alignment,
         vertical_alignment = "middle",
-        only_in_alt_mode = true
+        players = current_render_player and { current_render_player } or nil
     }
-    local main_obj = rendering.draw_text{
+    local main_obj = render_pool.lease_text{
+        channel = "default",
         text = text,
         surface = surface,
         target = { entity = entity, offset = { cx, cy } },
@@ -59,7 +64,7 @@ local function draw_text_with_shadow(text, surface, entity, cx, cy, text_scale, 
         font = "default-semibold",
         alignment = alignment,
         vertical_alignment = "middle",
-        only_in_alt_mode = true
+        players = current_render_player and { current_render_player } or nil
     }
     return shadow_obj, main_obj
 end
@@ -78,7 +83,8 @@ local function draw_sprite_with_outline_and_shadow(sprite, surface, entity, cx, 
     local objs = {}
 
     -- 1. Solid pitch-black outline centered behind sprite
-    local outline = rendering.draw_sprite{
+    local outline = render_pool.lease_sprite{
+        channel = "default",
         sprite = sprite,
         target = { entity = entity, offset = { cx, cy } },
         surface = surface,
@@ -86,13 +92,14 @@ local function draw_sprite_with_outline_and_shadow(sprite, surface, entity, cx, 
         y_scale = sprite_scale * OUTLINE_SCALE_MULTIPLIER,
         tint = BLACK_TINT,
         render_layer = "entity-info-icon",
-        only_in_alt_mode = true
+        players = current_render_player and { current_render_player } or nil
     }
-    table.insert(objs, outline)
+    if outline then table.insert(objs, outline) end
 
     -- 2. Solid pitch-black drop shadow offset down-right
     if draw_shadow then
-        local shadow = rendering.draw_sprite{
+        local shadow = render_pool.lease_sprite{
+            channel = "default",
             sprite = sprite,
             target = { entity = entity, offset = { cx + SHADOW_OFFSET_X, cy + SHADOW_OFFSET_Y } },
             surface = surface,
@@ -100,22 +107,23 @@ local function draw_sprite_with_outline_and_shadow(sprite, surface, entity, cx, 
             y_scale = sprite_scale * SHADOW_SCALE_MULTIPLIER,
             tint = BLACK_TINT,
             render_layer = "entity-info-icon",
-            only_in_alt_mode = true
+            players = current_render_player and { current_render_player } or nil
         }
-        table.insert(objs, shadow)
+        if shadow then table.insert(objs, shadow) end
     end
 
     -- 3. Main full-color sprite
-    local main_sprite_obj = rendering.draw_sprite{
+    local main_sprite_obj = render_pool.lease_sprite{
+        channel = "default",
         sprite = sprite,
         target = { entity = entity, offset = { cx, cy } },
         surface = surface,
         x_scale = sprite_scale,
         y_scale = sprite_scale,
         render_layer = render_layer_above or "entity-info-icon-above",
-        only_in_alt_mode = true
+        players = current_render_player and { current_render_player } or nil
     }
-    table.insert(objs, main_sprite_obj)
+    if main_sprite_obj then table.insert(objs, main_sprite_obj) end
 
     return objs
 end
@@ -124,16 +132,17 @@ end
 --- @param unit_number number
 function diverter_renderer.clear_render(unit_number)
     if not unit_number then return end
-    storage.diverter_render_objects = storage.diverter_render_objects or {}
-    local old_objs = storage.diverter_render_objects[unit_number]
-    if old_objs then
-        for i = 1, #old_objs do
-            local obj = old_objs[i]
-            if obj and obj.valid then
-                obj.destroy()
+    if storage.diverter_render_objects and storage.diverter_render_objects[unit_number] then
+        local old_objs = storage.diverter_render_objects[unit_number]
+        if old_objs then
+            for i = 1, #old_objs do
+                local obj = old_objs[i]
+                if obj and obj.valid then
+                    obj.destroy()
+                end
             end
+            storage.diverter_render_objects[unit_number] = nil
         end
-        storage.diverter_render_objects[unit_number] = nil
     end
 end
 
@@ -148,14 +157,30 @@ function diverter_renderer.update_render(entity)
 
     diverter_renderer.clear_render(unit_number)
 
+    local s_idx = entity.surface and entity.surface.index
+    local leaf = storage.motion_leaves and storage.motion_leaves[unit_number] and storage.motion_leaves[unit_number]["machine"]
+    if leaf and s_idx then
+        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+    end
+end
+
+function diverter_renderer.render_diverter_filters_for_player(player_index, item, surface, entity)
+    if not (entity and entity.valid) then return end
+    local unit_number = entity.unit_number
+    if not unit_number then return end
+
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
     local settings = diverter_settings.get(unit_number)
     if not (settings and settings.ports) then return end
 
     local port_definitions = port_defs.get_ports(entity)
     if not port_definitions then return end
 
-    local new_objs = {}
-    local surface = entity.surface
+    item.render_objects = item.render_objects or {}
+    local new_objs = item.render_objects
+    current_render_player = player
 
     for port_index = 1, 4 do
         local port = settings.ports[port_index]
@@ -315,10 +340,7 @@ function diverter_renderer.update_render(entity)
         end
     end
 
-    if #new_objs > 0 then
-        storage.diverter_render_objects = storage.diverter_render_objects or {}
-        storage.diverter_render_objects[unit_number] = new_objs
-    end
+    current_render_player = nil
 end
 
 return diverter_renderer

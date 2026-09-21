@@ -521,8 +521,16 @@ end
 --- @param surface LuaSurface
 function viewport_bvh.attach_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
-    local static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
-        or motion_protocols.static_renders["reticle_static"]
+    local spec = item.leaf.static_render_spec
+    local static_fn = nil
+    if type(spec) == "string" and motion_protocols.static_renders[spec] then
+        static_fn = motion_protocols.static_renders[spec]
+    elseif spec and type(spec) == "table" and spec.name and motion_protocols.static_renders[spec.name] then
+        static_fn = motion_protocols.static_renders[spec.name]
+    else
+        static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
+            or motion_protocols.static_renders["reticle_static"]
+    end
     if static_fn then
         static_fn(player_index, item, surface)
     end
@@ -758,6 +766,9 @@ function viewport_bvh.on_segment_registered(surface_index, leaf)
             viewport_bvh.attach_static_render(p_idx, item, surf)
         end
     end
+    if trajectory_bvh.refresh_active_renders then
+        trajectory_bvh.refresh_active_renders()
+    end
 end
 
 --- Event hook called when a motion corridor or entity is removed from the motion BVH
@@ -768,6 +779,28 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
     if not (storage.player_visible_set and owner_id) then return end
     local match_prefix = tostring(owner_id) .. ":"
     local match_key = seg_key and (match_prefix .. tostring(seg_key))
+
+    if surface_index and storage.motion_bvh then
+        local tree = storage.motion_bvh[surface_index]
+        if tree and tree.leaves_by_key then
+            if match_key then
+                local leaf = tree.leaves_by_key[match_key]
+                if leaf then
+                    trajectory_bvh.remove(tree, leaf)
+                end
+            else
+                local to_remove = {}
+                for k, leaf in pairs(tree.leaves_by_key) do
+                    if k == tostring(owner_id) or k:sub(1, #match_prefix) == match_prefix then
+                        to_remove[#to_remove + 1] = leaf
+                    end
+                end
+                for i = 1, #to_remove do
+                    trajectory_bvh.remove(tree, to_remove[i])
+                end
+            end
+        end
+    end
 
     for p_idx, v_set in pairs(storage.player_visible_set) do
         if match_key then
@@ -788,6 +821,9 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
                 end
             end
         end
+    end
+    if trajectory_bvh.refresh_active_renders then
+        trajectory_bvh.refresh_active_renders()
     end
 end
 

@@ -15,6 +15,7 @@ motion_protocols.CHANNELS = {
     RETICLE = "reticle",
     CAPSULE = "capsule",
     ARRIVAL = "arrival",
+    FLOW = "flow",
     DEFAULT = "default"
 }
 

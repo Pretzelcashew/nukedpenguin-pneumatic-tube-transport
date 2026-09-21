@@ -256,7 +256,7 @@ function flow_gate_interop.handle_interop_research_reversed(force, enqueue_port_
     sever_boundary_interfaces(active_gates)
 end
 
-function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_fn)
+function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_fn, wake_corridors_fn)
     if not storage.active_gates then return end
     for unit_number, gate in pairs(storage.active_gates) do
         if gate and gate.valid then
@@ -294,6 +294,7 @@ function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_
                                 p_node.capsule_transmit = false
                                 p_node.pressure_transmit = false
                             end
+                            flow_common.enqueue_port(p)
                         end
                     end
                 end
@@ -312,12 +313,18 @@ function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_
                                     flow_common.enqueue_port(n_key)
                                     local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
                                     if n_node then
-                                        flow_common.enqueue_unit_ports(n_node.unit_number)
+                                        flow_common.enqueue_unit_group_ports(n_node.unit_number, n_node.group)
+                                        if wake_corridors_fn then
+                                            wake_corridors_fn(n_node.unit_number)
+                                        end
                                     end
                                     wake_port_parked(n_key)
                                 end
                             end
                         end
+                    end
+                    if wake_corridors_fn then
+                        wake_corridors_fn(unit_number)
                     end
                 end
             end
@@ -391,12 +398,24 @@ function flow_gate_interop.update_wall_locking(node, pkey, target_flow, target_r
         local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
         if u_ports then
             local active_has_pressure = false
+            local corr_has_pressure = false
+            if flow_common.USE_PRESSURE_CORRIDORS and storage.pressure_corridors then
+                for _, corr in pairs(storage.pressure_corridors) do
+                    if corr.status ~= "receding" and corr.corridor_entities and corr.corridor_entities[u_num] then
+                        local c_grp = corr.corridor_entities[u_num]
+                        if (type(c_grp) == "table" and c_grp[cur_locked]) or c_grp == cur_locked or c_grp == true then
+                            corr_has_pressure = true
+                            break
+                        end
+                    end
+                end
+            end
             for _, p in pairs(u_ports) do
                 local p_node = storage.flow_nodes and storage.flow_nodes[p]
                 if p_node and p_node.group == cur_locked then
                     local f = (p == pkey) and target_flow or (storage.flow_levels and storage.flow_levels[p] or 0)
                     local s = (p == pkey) and target_range or (storage.counter_levels and storage.counter_levels[p] or 0)
-                    if f ~= 0 or (s and s > 0) then
+                    if f ~= 0 or (s and s > 0) or corr_has_pressure then
                         active_has_pressure = true
                         break
                     end

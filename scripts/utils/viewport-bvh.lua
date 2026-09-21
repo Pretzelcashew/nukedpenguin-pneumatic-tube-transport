@@ -529,7 +529,7 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
     if not (item and item.leaf) then return end
     local owner_id = item.owner_id or (item.leaf and item.leaf.owner_id)
     local is_corridor = (type(owner_id) == "string" and owner_id:sub(1, 9) == "corridor:")
-        or (item.leaf and (item.leaf.is_corridor or item.leaf.is_pressure_corridor))
+        or (item.leaf and (item.leaf.is_corridor or item.leaf.is_pressure_corridor or item.leaf.protocol == "pressure_corridor"))
         or (storage.pressure_corridors and storage.pressure_corridors[owner_id] ~= nil)
 
     local static_fn = motion_protocols.get_subprotocol(owner_id or item.leaf, "static_render")

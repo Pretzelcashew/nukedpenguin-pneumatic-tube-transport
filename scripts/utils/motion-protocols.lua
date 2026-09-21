@@ -166,18 +166,33 @@ function motion_protocols.get_protocol(name_or_flight)
         end
         local p_name = name_or_flight.protocol or name_or_flight.name or name_or_flight.kind or (type(name_or_flight.on_arrival) == "string" and name_or_flight.on_arrival)
         if not p_name then
-            -- Infer reticle identity from structural state
-            if name_or_flight.projector_unit ~= nil or name_or_flight.head_flight_id ~= nil or name_or_flight.anti_flight_id ~= nil or name_or_flight.retreat_tick ~= nil or name_or_flight.head_render_spec ~= nil then
-                p_name = "projector_scope"
-            elseif name_or_flight.flow_level ~= nil or name_or_flight.in_pkey ~= nil then
+            -- Prioritize pressure corridor structural state before evaluating retreat_tick
+            if name_or_flight.is_corridor or name_or_flight.is_pressure_corridor or name_or_flight.flow_level ~= nil or name_or_flight.in_pkey ~= nil or (type(name_or_flight.id) == "string" and name_or_flight.id:sub(1, 9) == "corridor:") or (type(name_or_flight.owner_id) == "string" and name_or_flight.owner_id:sub(1, 9) == "corridor:") then
                 p_name = "pressure_corridor"
+            elseif name_or_flight.projector_unit ~= nil or name_or_flight.head_flight_id ~= nil or name_or_flight.anti_flight_id ~= nil or name_or_flight.retreat_tick ~= nil or name_or_flight.head_render_spec ~= nil then
+                p_name = "projector_scope"
             elseif name_or_flight.beam_flight ~= nil or name_or_flight.passenger ~= nil or name_or_flight.capsule_type ~= nil then
                 p_name = "capsule"
             end
         end
         return (p_name and motion_protocols.protocols[p_name]) or motion_protocols.protocols["capsule"]
     end
+    if type(name_or_flight) == "string" then
+        if name_or_flight:sub(1, 9) == "corridor:" then
+            return motion_protocols.protocols["pressure_corridor"]
+        end
+        if name_or_flight:sub(1, 5) == "anti:" then
+            return motion_protocols.protocols["anti_reticle"]
+        end
+        if motion_protocols.protocols[name_or_flight] then
+            return motion_protocols.protocols[name_or_flight]
+        end
+    end
+
     if storage then
+        if storage.pressure_corridors and storage.pressure_corridors[name_or_flight] then
+            return motion_protocols.protocols["pressure_corridor"]
+        end
         if storage.projector_reticles then
             local ret = storage.projector_reticles[name_or_flight]
             if not ret and type(name_or_flight) == "string" then
@@ -187,21 +202,6 @@ function motion_protocols.get_protocol(name_or_flight)
                 local p_name = ret.protocol or "projector_scope"
                 return motion_protocols.protocols[p_name] or motion_protocols.protocols["projector_scope"]
             end
-        end
-        if storage.pressure_corridors and storage.pressure_corridors[name_or_flight] then
-            return motion_protocols.protocols["pressure_corridor"]
-        end
-    end
-
-    if type(name_or_flight) == "string" then
-        if motion_protocols.protocols[name_or_flight] then
-            return motion_protocols.protocols[name_or_flight]
-        end
-        if name_or_flight:sub(1, 9) == "corridor:" then
-            return motion_protocols.protocols["pressure_corridor"]
-        end
-        if name_or_flight:sub(1, 5) == "anti:" then
-            return motion_protocols.protocols["anti_reticle"]
         end
     end
     return motion_protocols.protocols[name_or_flight] or motion_protocols.protocols["capsule"]

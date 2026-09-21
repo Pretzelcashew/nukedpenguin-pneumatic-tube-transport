@@ -54,6 +54,20 @@ function flow_common.enqueue_unit_ports(unit_number)
     end
 end
 
+function flow_common.enqueue_unit_group_ports(unit_number, group)
+    if not unit_number then return end
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if unit_ports then
+        for i = 1, #unit_ports do
+            local pk = unit_ports[i]
+            local node = storage.flow_nodes and storage.flow_nodes[pk]
+            if not group or not node or not node.group or node.group == group then
+                flow_common.enqueue_port(pk)
+            end
+        end
+    end
+end
+
 -- Colinear Straight Evaluation Primitive (SINGLE SOURCE OF TRUTH)
 function flow_common.is_colinear_straight_internal(pkey_a, arg2, arg3, arg4)
     local pkey_b, node_a, node_b
@@ -176,7 +190,7 @@ function flow_common.destroy_node(pkey)
                 if had_active or flow_common.USE_PRESSURE_CORRIDORS then
                     flow_common.enqueue_port(n_key)
                     if flow_common.USE_PRESSURE_CORRIDORS then
-                        flow_common.enqueue_unit_ports(n_node.unit_number)
+                        flow_common.enqueue_unit_group_ports(n_node.unit_number, n_node.group)
                     end
                 end
                 flow_common.wake_port_parked(n_key)

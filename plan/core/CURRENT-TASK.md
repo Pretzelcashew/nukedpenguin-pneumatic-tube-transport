@@ -37,24 +37,26 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Purge lingering sticky dots and prevent recycled reticle trail circles (0.08r magenta) from cross-contaminating pressure corridor and wall flow overlays.
+Purge lingering 0.08r magenta dots on wall segments after corridor recession, and enforce strict dual-axis channel isolation on crossflow structures.
 
-Investigate and fix two presentation regressions visible in the world overlay:
-1. Trail Dot Cross-Contamination: Leased circle handles retain optical projector reticle properties (0.08 radius, holmium magenta tint) or erroneously fall back to reticle static rendering (`reticle_static`) on pressure corridor and wall segments instead of applying the pressure corridor specification (0.15 radius cyan/orange dots with Alt-Mode flow numbers).
-2. Sticky Lingering Dots: Small static dots remain permanently visible on wall and tube flanges after corridor splitting, gate transitions, or corridor recession because render handles are orphaned in player visible sets or bypassed during leaf recycling.
+1. Magenta Reticle Trail Dot Elimination:
+   - Root Cause: In `scripts/utils/motion-protocols.lua` line 187 (`get_protocol`), inspecting `name_or_flight.retreat_tick ~= nil` prior to `name_or_flight.flow_level ~= nil` causes receding pressure corridors (`corr.status == "receding"`) to falsely classify as `"projector_scope"`. This triggers `reticle_static` / `reticle_dots` routines leasing 0.08r magenta circles (`MINOR_DOT_COLOR`) that get stranded on wall and tube segments.
+   - Fix: Prioritize corridor identity guards (`flow_level ~= nil or in_pkey ~= nil or is_corridor`) before evaluating `retreat_tick`, and ensure `viewport-bvh.lua` and `render-pool.lua` cleanly release static leaf primitives without fallback contamination.
 
-Scope: Audit `render-pool.lua` property resetting on lease/recycle, ensure `viewport-bvh.lua` never falls back to optical projectile reticle routines for pneumatic corridors, enforce strict attribute sanitization in `capsule-renderer.lua`, and guarantee symmetric release/cleanup of all leased handles in `viewport_bvh.on_segment_removed` and `unseed_pressure_corridor`.
+2. Dual-Axis Channel Group Isolation (Crossflow Junctions & Walls):
+   - Multi-channel crossing structures (`crossflow-junction`, `stone-wall`) feature two discrete orthogonal port groups (Group 1: N/S, Group 2: E/W).
+   - Currently, lifecycle transitions (truncation, breakoff, recession, unseeding) trigger indiscriminate blanket wakeups (`flow_common.enqueue_unit_ports`), which awakens and chokes the orthogonal axis.
+   - Implement group-scoped wakeups (`flow_common.enqueue_unit_group_ports(unit_number, group)`) across `flow-engine.lua` and `flow-common.lua`. Ensure `split_pressure_corridor`, `step_pressure_corridors`, and `unseed_pressure_corridor` restrict entity tracking, break faces, tip flows, and wakeups strictly to `corr.group` so severing or voiding flow on one axis has zero effect on active flow on the orthogonal axis.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-render_pool.lease_circle, render_pool.recycle, render_pool.release_circle, render_pool.release_many
-viewport_bvh.attach_static_render, viewport_bvh.attach_reticle_static_render, viewport_bvh.attach_pressure_static_render
-viewport_bvh.on_segment_removed, viewport_bvh.on_leaf_static_changed, viewport_bvh.update_player, viewport_bvh.detach_static_render
-motion_protocols.static_renders, motion_protocols.get_protocol, protocol.static_render == "pressure_static"
-scripts/utils/render-pool.lua, scripts/utils/viewport-bvh.lua, scripts/capsules/capsule-renderer.lua, scripts/flow/flow-renderer.lua
-leaf.render_objects, leaf.objects, leaf.has_trail, leaf.static_render_spec, player_visible_sets
-purge_orphaned_renders, reticle_static fallback suppression, magenta dot pollution, 0.08r radius reset, sticky trail dot leak
-flow_renderer.destroy_pos_renders, flow_engine.unseed_pressure_corridor, split_pressure_corridor teardown
+motion_protocols.get_protocol, name_or_flight.retreat_tick, name_or_flight.flow_level, name_or_flight.in_pkey
+projector_scope false classification, MINOR_DOT_COLOR, 0.08r magenta dot pollution, reticle_static fallback
+scripts/utils/motion-protocols.lua, scripts/utils/viewport-bvh.lua, scripts/capsules/capsule-renderer.lua
+crossflow-junction, stone-wall, node.group, corr.group, port group isolation, orthogonal axis independence
+flow_common.enqueue_unit_ports, flow_common.enqueue_unit_group_ports, flow_common.is_colinear_straight_internal
+split_pressure_corridor, unseed_pressure_corridor, step_pressure_corridors, touches_entity, corr.corridor_entities[u][grp]
+storage.wall_locked_group, flow_gate_interop.update_wall_locking, dual-channel crossflow choke suppression
 [/CONTEXT_TOKENS]
 
 

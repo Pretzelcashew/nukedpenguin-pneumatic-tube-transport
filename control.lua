@@ -27,6 +27,8 @@ local capsule_renderer = require("scripts.capsules.capsule-renderer")
 local binary_heap = require("scripts.utils.binary-heap")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local timed_motion = require("scripts.utils.timed-motion")
+local render_pool = require("scripts.utils.render-pool")
+local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 proxy_manager.register_events()
 active_device_scanner.register_events()
@@ -34,6 +36,10 @@ device_settings_copier.register_events()
 flow_engine.register_events()
 counter_range.register_events()
 capsule_runner.register_events()
+
+events.on_event(defines.events.on_player_toggled_alt_mode, function(event)
+    capsule_renderer.handle_player_alt_mode_changed(event.player_index, event.alt_mode)
+end)
 
 local function setup_storage()
     -- Clear legacy storage tables
@@ -116,6 +122,7 @@ local function setup_storage()
             trajectory_bvh.compact(tree, 64)
         end
     end
+    render_pool.compact(32)
 
     if storage.active_diverters then
         for _, entity in pairs(storage.active_diverters) do
@@ -204,4 +211,5 @@ script.on_nth_tick(120, function()
         end
     end
     capsule_renderer.step_buffer_decay(8)
+    render_pool.step_decay(8)
 end)

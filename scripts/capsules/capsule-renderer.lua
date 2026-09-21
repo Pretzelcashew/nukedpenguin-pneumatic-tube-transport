@@ -861,6 +861,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
 
     if passenger_valid then
         local eject_text = render_pool.lease_text{
+            channel = "capsule",
             text = "[Shift + E] Emergency Eject",
             surface = surface,
             target = { curr_pos.x, curr_pos.y + 0.8 },
@@ -878,6 +879,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         local player = scratch_debug_players[i]
         if passenger_valid then
             local ring = render_pool.lease_circle{
+                channel = "capsule",
                 color = { r = 0, g = 0.8, b = 1, a = 0.9 },
                 radius = 0.45,
                 filled = false,
@@ -892,6 +894,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         else
             if dominant_item then
                 local ring = render_pool.lease_circle{
+                    channel = "capsule",
                     color = ring_color,
                     radius = 0.35,
                     filled = false,
@@ -905,6 +908,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(target_offsets, 0)
 
                 local sprite = render_pool.lease_sprite{
+                    channel = "capsule",
                     sprite = "item/" .. dominant_item,
                     target = curr_pos,
                     surface = surface,
@@ -917,6 +921,7 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 table.insert(target_offsets, 0)
             else
                 local dot = render_pool.lease_circle{
+                    channel = "capsule",
                     color = ring_color,
                     radius = 0.25,
                     filled = true,
@@ -1171,6 +1176,7 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
 
     if passenger_valid and passenger.index == p_idx then
         local eject_text = render_pool.lease_text{
+            channel = "capsule",
             text = "[Shift + E] Emergency Eject",
             surface = surface,
             target = { curr_pos.x, curr_pos.y + 0.8 },
@@ -1188,6 +1194,7 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
 
     if passenger_valid then
         local ring = render_pool.lease_circle{
+            channel = "capsule",
             color = { r = 0, g = 0.8, b = 1, a = 0.9 },
             radius = 0.45,
             filled = false,
@@ -1204,6 +1211,7 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
     else
         if dominant_item then
             local ring = render_pool.lease_circle{
+                channel = "capsule",
                 color = ring_color,
                 radius = 0.35,
                 filled = false,
@@ -1219,6 +1227,7 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
             end
 
             local sprite = render_pool.lease_sprite{
+                channel = "capsule",
                 sprite = "item/" .. dominant_item,
                 target = curr_pos,
                 surface = surface,
@@ -1233,6 +1242,7 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
             end
         else
             local dot = render_pool.lease_circle{
+                channel = "capsule",
                 color = ring_color,
                 radius = 0.25,
                 filled = true,
@@ -1254,6 +1264,38 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
     }
 end
 
+--- Handles instantaneous Alt Mode state changes for a player without full BVH rescanning
+--- @param player_index number
+--- @param alt_mode boolean|nil
+function capsule_renderer.handle_player_alt_mode_changed(player_index, alt_mode)
+    if not player_index then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    storage.player_last_alt_mode = storage.player_last_alt_mode or {}
+
+    if alt_mode == nil then
+        local view_settings = player.game_view_settings
+        alt_mode = (view_settings and view_settings.show_entity_info) == true
+    end
+
+    local prev_alt = storage.player_last_alt_mode[player_index]
+    if alt_mode == prev_alt then return end
+    storage.player_last_alt_mode[player_index] = alt_mode
+
+    viewport_bvh.sync_player_overlays(player_index)
+
+    if not viewport_bvh.should_render_kinetic_overlays(player_index) then
+        capsule_renderer.clear_player_flight_renders(player_index)
+    else
+        local rm = player.render_mode
+        local is_chart = (rm == defines.render_mode.chart or rm == defines.render_mode.chart_zoomed_in)
+        if not is_chart then
+            capsule_renderer.dispatch_player_renders(player, game.tick)
+        end
+    end
+end
+
 --- Per-Player Sliding-Scale Render Dispatcher (Phase 5)
 function capsule_renderer.dispatch_player_renders(player, current_tick)
     if not (player and player.valid) then return end
@@ -1264,22 +1306,7 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     storage.player_last_alt_mode = storage.player_last_alt_mode or {}
     local prev_alt = storage.player_last_alt_mode[p_idx]
     if alt_mode ~= prev_alt then
-        storage.player_last_alt_mode[p_idx] = alt_mode
-        local v_set = viewport_bvh.get_visible_set(p_idx)
-        if not alt_mode then
-            for _, item in pairs(v_set) do
-                viewport_bvh.detach_static_render(p_idx, item)
-            end
-        else
-            local surf = player.surface
-            if surf and surf.valid then
-                for _, item in pairs(v_set) do
-                    if item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail) then
-                        viewport_bvh.attach_static_render(p_idx, item, surf)
-                    end
-                end
-            end
-        end
+        capsule_renderer.handle_player_alt_mode_changed(player, alt_mode)
     end
 
     if not alt_mode then
@@ -1365,8 +1392,9 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
             if scratch_active_owners[item.owner_id] then
+            local wants_kinetic = viewport_bvh.should_render_kinetic_overlays(p_idx)
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
-            if reticle and reticle.retreat_tick then
+            if reticle and reticle.retreat_tick and wants_kinetic then
                 capsule_renderer.peel_retreating_wake(reticle, item.leaf, item, p_idx, current_tick, tpt)
             end
 
@@ -1388,23 +1416,26 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
                         local bf = (capsule and capsule.beam_flight) or flight_rec
 
                         if bf then
-                            local curr_pos, progress = capsule_renderer.get_flight_position(bf, f_id, current_tick)
-                            local passenger = capsule and capsule.passenger
-                            local passenger_valid = passenger and passenger.valid
-                            if passenger_valid and passenger.index == p_idx then
-                                passenger.teleport(curr_pos, surf)
-                            end
+                            local is_reticle_beam = (reticle ~= nil) or (flight_rec and (flight_rec.kind == "projector_scope" or flight_rec.protocol == "projector_scope"))
+                            if not is_reticle_beam or wants_kinetic then
+                                local curr_pos, progress = capsule_renderer.get_flight_position(bf, f_id, current_tick)
+                                local passenger = capsule and capsule.passenger
+                                local passenger_valid = passenger and passenger.valid
+                                if passenger_valid and passenger.index == p_idx then
+                                    passenger.teleport(curr_pos, surf)
+                                end
 
-                            rendered_this_tick[f_id] = true
-                            local proto_src = flight_rec or capsule or flight
-                            local head_fn = motion_protocols.get_subprotocol(proto_src, "head")
-                            if head_fn then
-                                head_fn(capsule or flight_rec, f_id, p_idx, player, curr_pos, surf, dbg)
-                            end
+                                rendered_this_tick[f_id] = true
+                                local proto_src = flight_rec or capsule or flight
+                                local head_fn = motion_protocols.get_subprotocol(proto_src, "head")
+                                if head_fn then
+                                    head_fn(capsule or flight_rec, f_id, p_idx, player, curr_pos, surf, dbg)
+                                end
 
-                            local trail_fn = motion_protocols.get_subprotocol(proto_src, "trail")
-                            if trail_fn and leaf then
-                                trail_fn(flight_rec or bf, leaf, item, p_idx, player, surf, current_tick, tpt, curr_pos)
+                                local trail_fn = motion_protocols.get_subprotocol(proto_src, "trail")
+                                if trail_fn and leaf then
+                                    trail_fn(flight_rec or bf, leaf, item, p_idx, player, surf, current_tick, tpt, curr_pos)
+                                end
                             end
                         end
                     end
@@ -1551,6 +1582,7 @@ function capsule_renderer.render_reticle_trail_dots(flight_rec, leaf, item, p_id
                 local dot_obj
                 if global_d % 5 == 0 then
                     dot_obj = render_pool.lease_circle{
+                        channel = "reticle",
                         color = pal.core,
                         radius = 0.16,
                         filled = true,
@@ -1560,6 +1592,7 @@ function capsule_renderer.render_reticle_trail_dots(flight_rec, leaf, item, p_id
                     }
                 else
                     dot_obj = render_pool.lease_circle{
+                        channel = "reticle",
                         color = MINOR_DOT_COLOR,
                         radius = 0.08,
                         filled = true,
@@ -1740,6 +1773,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
     destroy_arrival_dot_for_player(capsule, p_idx)
 
     local dot = render_pool.lease_circle{
+        channel = "arrival",
         color = cap_color,
         radius = 0.2,
         filled = true,
@@ -1750,6 +1784,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
     }
 
     local ring = render_pool.lease_circle{
+        channel = "arrival",
         color = ring_color,
         radius = 0.4,
         width = 2,

@@ -1,8 +1,8 @@
 # FILE-SIZES.md - Workspace Size & Metric Audit
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-19 08:23:58  
+**Last Generated:** 2026-09-21 09:25:22  
 **Total Scope:** 22 directories, 119 files  
-**Total Workspace Size:** 8.79 MB | **Total Text Lines:** 40,486  
+**Total Workspace Size:** 8.92 MB | **Total Text Lines:** 41,321  
 
 ---
 
@@ -12,15 +12,16 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | Relative File Path | Lines | Size | Patch Risk / Refactor Status |
 | :--- | :---: | :---: | :--- |
 | `scripts/flow/flow-kinetic.lua` | 3,192 | 142.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `plan/core/CHANGELOG.md` | 2,685 | 433.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `plan/core/CHANGELOG.md` | 3,112 | 515.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-renderer.lua` | 2,012 | 76.8 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-ballistics.lua` | 1,662 | 74.2 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
-| `scripts/flow/flow-engine.lua` | 1,120 | 48.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `scripts/flow/flow-engine.lua` | 1,181 | 51.5 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/debug-manager.lua` | 1,099 | 47.3 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-runner.lua` | 1,073 | 41.7 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/utils/trajectory-bvh.lua` | 1,003 | 36.7 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/utils/viewport-bvh.lua` | 980 | 39.3 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/capsules/capsule-lifecycle.lua` | 971 | 42.4 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
+| `plan/archive/CHANGES_0.3.23.md` | 915 | 161.6 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `aggregator_patcher.py` | 906 | 33.7 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `plan/archive/ARCHITECTURE.md` | 830 | 120.9 KB | 🔴 **High Risk** (Split candidate, > 800 lines) |
 | `scripts/diverters/diverter-gui.lua` | 746 | 29.2 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
@@ -35,7 +36,6 @@ Files flagged with 🔴 should be considered for modularization before major ref
 | `scripts/utils/timed-motion.lua` | 535 | 23.0 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/capsules/capsule-queries.lua` | 518 | 19.4 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
 | `scripts/flow/flow-gate-interop.lua` | 517 | 22.9 KB | 🟡 **Moderate** (Approaching patch threshold, 500–800) |
-| `require_hierarchy.py` | 491 | 15.1 KB | 🟢 **Manageable** (< 500 lines) |
 
 ---
 
@@ -45,9 +45,9 @@ Files flagged with 🔴 should be considered for modularization before major ref
 nukedpenguin-pneumatic-tube-transport/
 ├── docs/
 │   ├── arch/
-│   │   ├── ARCH-CAPSULES-MOTION.md             [272 lines | 39.7 KB]
-│   │   ├── ARCH-DEVICES-CIRCUITS.md            [270 lines | 42.2 KB]
-│   │   ├── ARCH-FLOW-KINETICS.md               [259 lines | 32.7 KB]
+│   │   ├── ARCH-CAPSULES-MOTION.md             [339 lines | 50.5 KB]
+│   │   ├── ARCH-DEVICES-CIRCUITS.md            [287 lines | 45.2 KB]
+│   │   ├── ARCH-FLOW-KINETICS.md               [300 lines | 43.8 KB]
 │   │   ├── ARCH-HUBS-LOGISTICS.md              [109 lines | 20.9 KB]
 │   │   └── ARCH-PROTOTYPES.md                  [68 lines | 14.9 KB]
 │   └── guides/
@@ -58,7 +58,7 @@ nukedpenguin-pneumatic-tube-transport/
 ├── plan/
 │   ├── archive/
 │   │   ├── ARCHITECTURE.md                     [830 lines | 120.9 KB]
-│   │   ├── CHANGES_0.3.23.md                   [490 lines | 80.3 KB]
+│   │   ├── CHANGES_0.3.23.md                   [915 lines | 161.6 KB]
 │   │   ├── FLIGHT-OCCLUSION.md                 [44 lines | 3.8 KB]
 │   │   ├── image-1.png                         [2.28 MB]
 │   │   ├── image-2.png                         [2.23 MB]
@@ -70,12 +70,12 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   └── SCRATCH.md                          [26 lines | 2.5 KB]
 │   └── core/
 │       ├── ANTI-RETICLE.md                     [179 lines | 15.9 KB]
-│       ├── CHANGELOG.md                        [2,685 lines | 433.8 KB]
+│       ├── CHANGELOG.md                        [3,112 lines | 515.2 KB]
 │       ├── CURRENT-TASK.md                     [32 lines | 2.7 KB]
 │       ├── EXPORT.md                           [43 lines | 1.5 KB]
-│       ├── FRESH-CHANGES.md                    [426 lines | 81.4 KB]
+│       ├── FRESH-CHANGES.md                    [10 lines | 1.8 KB]
 │       ├── HELPERS.md                          [92 lines | 4.3 KB]
-│       ├── MANIFEST.md                         [126 lines | 24.0 KB]
+│       ├── MANIFEST.md                         [287 lines | 45.2 KB]
 │       ├── MOD-DESCRIPTION.md                  [9 lines | 345 B]
 │       ├── package.py                          [225 lines | 7.8 KB]
 │       ├── PROJECTOR-REFACTOR.md               [75 lines | 8.0 KB]
@@ -123,8 +123,8 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── diverter-settings.lua               [345 lines | 14.3 KB]
 │   │   └── diverter-slot-modal.lua             [278 lines | 10.5 KB]
 │   ├── flow/
-│   │   ├── flow-common.lua                     [150 lines | 5.8 KB]
-│   │   ├── flow-engine.lua                     [1,120 lines | 48.4 KB]
+│   │   ├── flow-common.lua                     [202 lines | 7.9 KB]
+│   │   ├── flow-engine.lua                     [1,181 lines | 51.5 KB]
 │   │   ├── flow-gate-interop.lua               [517 lines | 22.9 KB]
 │   │   ├── flow-kinetic.lua                    [3,192 lines | 142.5 KB]
 │   │   ├── flow-renderer.lua                   [706 lines | 27.0 KB]

@@ -620,6 +620,9 @@ local function toggle_master(player_index)
     else
         flow_engine.clear_counter_renders(player_index)
     end
+    if viewport_bvh.sync_player_overlays then
+        viewport_bvh.sync_player_overlays(player_index)
+    end
 
     update_player_shortcuts(player_index)
     debug_manager.refresh_panel(player_index)
@@ -705,6 +708,9 @@ local function toggle_new_flow(player_index)
         flow_engine.draw_flow(player_index)
     else
         flow_engine.clear_flow_renders(player_index)
+    end
+    if viewport_bvh.sync_player_overlays then
+        viewport_bvh.sync_player_overlays(player_index)
     end
 
     update_player_shortcuts(player_index)
@@ -1044,6 +1050,9 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
             flow_engine.draw_flow(p_idx)
         else
             flow_engine.clear_flow_renders(p_idx)
+        end
+        if viewport_bvh.sync_player_overlays then
+            viewport_bvh.sync_player_overlays(p_idx)
         end
         update_player_shortcuts(p_idx)
         debug_manager.refresh_panel(p_idx)

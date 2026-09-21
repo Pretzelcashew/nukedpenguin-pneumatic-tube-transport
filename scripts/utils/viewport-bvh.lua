@@ -80,8 +80,10 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
 
     local entry = storage.player_viewports[p_idx]
     local p_zoom = player.zoom or 1.0
+    local wants_render = viewport_bvh.should_render_kinetic_overlays(p_idx)
+
     if not override_pos and not override_radii and entry and entry.leaf and entry.surface_index == s_idx then
-        if cx == entry.last_player_x and cy == entry.last_player_y and p_zoom == entry.last_zoom then
+        if cx == entry.last_player_x and cy == entry.last_player_y and p_zoom == entry.last_zoom and entry.last_wants_render == wants_render then
             entry.breached_this_tick = false
             return entry
         end
@@ -143,6 +145,7 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
             last_player_x = cx,
             last_player_y = cy,
             last_zoom = p_zoom,
+            last_wants_render = wants_render,
             breached_this_tick = true,
             updates_count = 1,
             leaf = nil
@@ -164,6 +167,10 @@ function viewport_bvh.update_player(player, override_pos, override_radii)
     end
 
     -- Case 2: Existing entry on same surface -> Test concentric hysteresis boundaries
+    if entry.last_wants_render ~= wants_render then
+        entry.last_wants_render = wants_render
+        viewport_bvh.sync_player_overlays(p_idx)
+    end
     entry.last_player_x = cx
     entry.last_player_y = cy
     entry.last_zoom = p_zoom
@@ -405,6 +412,7 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
                 local dot_pos = { x = sp.x + dx * i, y = sp.y + dy * i }
                 if d % 5 == 0 then
                     local prom = render_pool.lease_circle{
+                        channel = "reticle",
                         color = palette.core,
                         radius = 0.16,
                         filled = true,
@@ -415,6 +423,7 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
                     if prom then objects[i] = prom end
                 else
                     local min_dot = render_pool.lease_circle{
+                        channel = "reticle",
                         color = MINOR_DOT_COLOR,
                         radius = 0.08,
                         filled = true,
@@ -460,6 +469,7 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
             item.last_endpoint_spec = spec
             if spec.sprite then
         local sp = render_pool.lease_sprite{
+            channel = "reticle",
             sprite = spec.sprite,
             target = pos,
             surface = surface,
@@ -474,6 +484,7 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
 
     if spec.has_ring or spec.ring_radius then
         local ring = render_pool.lease_circle{
+            channel = "reticle",
             color = spec.ring_color or spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.85 },
             radius = spec.ring_radius or 0.42,
             filled = false,
@@ -487,6 +498,7 @@ function viewport_bvh.attach_reticle_static_render(player_index, item, surface)
 
     if not spec.sprite or spec.radius then
         local circ = render_pool.lease_circle{
+            channel = "reticle",
             color = spec.color or { r = 1.0, g = 0.4, b = 0.25, a = 0.95 },
             radius = spec.radius or 0.24,
             filled = (spec.filled ~= false),
@@ -517,6 +529,57 @@ function viewport_bvh.attach_static_render(player_index, item, surface)
 end
 
 motion_protocols.register_static_render("reticle_static", viewport_bvh.attach_reticle_static_render)
+
+--- Single source of truth predicate: determines if kinetic beam overlays should render for player
+--- @param player_index number
+--- @return boolean
+function viewport_bvh.should_render_kinetic_overlays(player_index)
+    if not player_index then return false end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return false end
+
+    local vs = player.game_view_settings
+    if not (vs and vs.show_entity_info) then return false end
+
+    local rm = player.render_mode
+    if rm == defines.render_mode.chart or rm == defines.render_mode.chart_zoomed_in then
+        return false
+    end
+
+    if is_debug_active and not is_debug_active("new_flow", player_index) then
+        return false
+    end
+
+    return true
+end
+
+--- Unified synchronization entry point: attaches or detaches visible set overlays based on pure predicate
+--- @param player_index number
+function viewport_bvh.sync_player_overlays(player_index)
+    if not player_index then return end
+    local player = game.get_player(player_index)
+    if not (player and player.valid) then return end
+
+    local wants_render = viewport_bvh.should_render_kinetic_overlays(player_index)
+    local v_set = viewport_bvh.get_visible_set(player_index)
+    local surf = player.surface
+
+    for _, item in pairs(v_set) do
+        if wants_render then
+            if item.leaf and (item.leaf.static_render_spec or item.leaf.has_trail) and not item.render_objects and surf and surf.valid then
+                viewport_bvh.attach_static_render(player_index, item, surf)
+            end
+        else
+            if item.render_objects then
+                viewport_bvh.detach_static_render(player_index, item)
+            end
+        end
+    end
+end
+
+function viewport_bvh.on_player_alt_mode_changed(player_index, alt_mode)
+    viewport_bvh.sync_player_overlays(player_index)
+end
 
 --- Detaches and recycles static render objects for a leaf in a player's visible set
 --- @param player_index number
@@ -551,10 +614,7 @@ function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
             if item then
                 updated_players[p_idx] = true
                 item.leaf = leaf
-                local player = game.get_player(p_idx)
-                local view_settings = player and player.valid and player.game_view_settings
-                local alt_mode = view_settings and view_settings.show_entity_info
-                if alt_mode then
+                if viewport_bvh.should_render_kinetic_overlays(p_idx) then
                     viewport_bvh.attach_static_render(p_idx, item, surf)
                 else
                     viewport_bvh.detach_static_render(p_idx, item)
@@ -568,10 +628,6 @@ function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
     for i = 1, #observing do
         local p_idx = observing[i]
         if not updated_players[p_idx] then
-            local player = game.get_player(p_idx)
-            local view_settings = player and player.valid and player.game_view_settings
-            local alt_mode = view_settings and view_settings.show_entity_info
-
             local v_set = viewport_bvh.get_visible_set(p_idx)
             local item = v_set[key]
             if not item then
@@ -587,7 +643,7 @@ function viewport_bvh.on_leaf_static_changed(surface_index, leaf)
                 item.leaf = leaf
             end
 
-            if alt_mode then
+            if viewport_bvh.should_render_kinetic_overlays(p_idx) then
                 viewport_bvh.attach_static_render(p_idx, item, surf)
             else
                 viewport_bvh.detach_static_render(p_idx, item)
@@ -631,8 +687,7 @@ function viewport_bvh.sync_player_visibility(player_index, surface_index)
     local new_set_keys = {}
 
     local player = game.get_player(player_index)
-    local view_settings = player and player.valid and player.game_view_settings
-    local alt_mode = view_settings and view_settings.show_entity_info
+    local wants_render = viewport_bvh.should_render_kinetic_overlays(player_index)
     local surf = player and player.valid and player.surface
 
     for i = 1, #hits do
@@ -649,12 +704,12 @@ function viewport_bvh.sync_player_visibility(player_index, surface_index)
                 render_objects = nil
             }
             current_set[key] = item
-            if alt_mode and (leaf.static_render_spec or leaf.has_trail) and surf then
+            if wants_render and (leaf.static_render_spec or leaf.has_trail) and surf then
                 viewport_bvh.attach_static_render(player_index, item, surf)
             end
         else
             item.leaf = leaf
-            if alt_mode and (leaf.static_render_spec or leaf.has_trail) and not item.render_objects and surf then
+            if wants_render and (leaf.static_render_spec or leaf.has_trail) and not item.render_objects and surf then
                 viewport_bvh.attach_static_render(player_index, item, surf)
             end
         end
@@ -684,10 +739,6 @@ function viewport_bvh.on_segment_registered(surface_index, leaf)
     local surf = game.surfaces[surface_index]
     for i = 1, #observing do
         local p_idx = observing[i]
-        local player = game.get_player(p_idx)
-        local view_settings = player and player.valid and player.game_view_settings
-        local alt_mode = view_settings and view_settings.show_entity_info
-
         local v_set = viewport_bvh.get_visible_set(p_idx)
         local item = v_set[key]
         if not item then
@@ -703,7 +754,7 @@ function viewport_bvh.on_segment_registered(surface_index, leaf)
             item.leaf = leaf
         end
 
-        if alt_mode and (leaf.static_render_spec or leaf.has_trail) and surf and surf.valid then
+        if viewport_bvh.should_render_kinetic_overlays(p_idx) and (leaf.static_render_spec or leaf.has_trail) and surf and surf.valid then
             viewport_bvh.attach_static_render(p_idx, item, surf)
         end
     end

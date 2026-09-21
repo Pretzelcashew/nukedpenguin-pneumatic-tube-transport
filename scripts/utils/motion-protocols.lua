@@ -10,6 +10,14 @@ motion_protocols.detectors = {}
 motion_protocols.clearance_policies = {}
 motion_protocols.protocols = {}
 
+-- Canonical Render Pool Channel Constants
+motion_protocols.CHANNELS = {
+    RETICLE = "reticle",
+    CAPSULE = "capsule",
+    ARRIVAL = "arrival",
+    DEFAULT = "default"
+}
+
 --------------------------------------------------------------------------------
 -- SPATIAL AXIS PROJECTION HELPERS
 --------------------------------------------------------------------------------
@@ -139,7 +147,7 @@ function motion_protocols.dispatch_clearance_policy(flight_or_ret, d_obst, d_cur
 end
 
 function motion_protocols.register_protocol(name, spec)
-    motion_protocols.protocols[name] = {
+    local p_entry = {
         name = name,
         protocol = name,
         medium = spec.medium or "open_air",
@@ -151,8 +159,16 @@ function motion_protocols.register_protocol(name, spec)
         static_render = spec.static_render or "none",
         detector = spec.detector or "open_air_solids",
         clearance_policy = spec.clearance_policy or "discrete_projectile",
+        render_channel = spec.render_channel or (name == "projector_scope" and "reticle") or (name == "capsule" and "capsule") or "default",
         custom_data = spec.custom_data
     }
+    motion_protocols.protocols[name] = p_entry
+    return p_entry
+end
+
+function motion_protocols.get_render_channel(name_or_flight)
+    local proto = motion_protocols.get_protocol(name_or_flight)
+    return (proto and proto.render_channel) or "default"
 end
 
 function motion_protocols.get_protocol(name_or_flight)
@@ -222,22 +238,6 @@ end)
 --------------------------------------------------------------------------------
 -- CORE DETECTOR & CLEARANCE SUBPROTOCOLS
 --------------------------------------------------------------------------------
--- Detector: Open-Air Solid Footprints (checks gates, proxy names, and ignorable debris)
-motion_protocols.register_detector("open_air_solids", function(entity, surface)
-    if not (entity and entity.valid) then return false, false end
-    local flow_kinetic = require("scripts.flow.flow-kinetic")
-    local c_type = entity.type
-    local c_name = entity.name
-    if flow_kinetic.IGNORABLE_TYPES[c_type] or flow_kinetic.PROXY_NAMES[c_name] then
-        return false, false
-    end
-    if c_type == "gate" and not (entity.is_closed and entity.is_closed()) then
-        return false, false
-    end
-    local is_dock = (c_name == "pneumatic-projector")
-    return true, is_dock
-end)
-
 -- Detector: Pneumatic Network Graph (checks if pipe/node exists in flow grid)
 motion_protocols.register_detector("tube_connectivity", function(node_or_edge)
     if not node_or_edge or not node_or_edge.valid then
@@ -255,21 +255,8 @@ motion_protocols.register_protocol("capsule", {
     disruption = "ballistic_crash",
     arrival = "capsule_terminal",
     detector = "open_air_solids",
-    clearance_policy = "discrete_projectile"
-})
-
--- Clearance Policy: Optical Ray (Continuous laser: forward clamps horizon; backward slices tail & detaches wake)
-motion_protocols.register_clearance_policy("optical_ray", {
-    on_forward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
-        local flow_kinetic = require("scripts.flow.flow-kinetic")
-        flow_kinetic.update_reticle_horizon(flight_or_ret, d_obst, entity, cur_flight)
-    end,
-    on_backward = function(flight_or_ret, d_obst, d_current, entity, is_removal, current_tick, cur_flight)
-        local flow_kinetic = require("scripts.flow.flow-kinetic")
-        if flight_or_ret.projector_unit ~= nil then
-            flow_kinetic.truncate_reticle(flight_or_ret, d_obst, entity)
-        end
-    end
+    clearance_policy = "discrete_projectile",
+    render_channel = "capsule"
 })
 
 -- 2. Projector Sighting Laser Probe
@@ -305,35 +292,6 @@ motion_protocols.register_protocol("projectile", {
     trail = "none",
     disruption = "ballistic_crash",
     arrival = "none"
-})
-
---------------------------------------------------------------------------------
--- CANONICAL SUBPROTOCOL TEMPLATES (REFERENCE IMPLEMENTATIONS FOR NEW SYSTEMS)
---------------------------------------------------------------------------------
--- Template 1: In-Tube Wave / Sighting Probe (No visible head, quiet disruption)
-motion_protocols.register_protocol("tube_wave", {
-    medium = "pneumatic_network",
-    progression = "continuous",
-    head = "none",                  -- Reusable subprotocol: Completely invisible flying head
-    trail = "none",                 -- Can hook into custom tube pulse or remain silent
-    disruption = "silent_halt",     -- Reusable subprotocol: Stops propagation quietly on cut
-    arrival = "none",               -- Plug in custom network query or inventory scan
-    static_render = "none",
-    detector = "tube_connectivity",
-    clearance_policy = "silent_wave"
-})
-
--- Template 2: In-Tube High-Speed Transit Flight (Capsule visuals, peaceful on deconstruction)
-motion_protocols.register_protocol("tube_transit", {
-    medium = "pneumatic_network",
-    progression = "continuous",
-    head = "capsule_head",          -- Subprotocol overlap: Reuses passenger HUD, ring, and cargo icons!
-    trail = "none",
-    disruption = "peaceful_spill",  -- Subprotocol overlap: Safe ground container, zero crash explosion!
-    arrival = "capsule_terminal",   -- Subprotocol overlap: Docks into receiver/hub!
-    static_render = "none",
-    detector = "tube_connectivity",
-    clearance_policy = "peaceful_transit"
 })
 
 --------------------------------------------------------------------------------
@@ -431,16 +389,16 @@ function motion_protocols.run_tests(player)
     log_msg("[color=green][MotionProtocols Test] Test 4: Alternative Disruption Subprotocols -> PASSED[/color]")
 
     -- Test 5: Head & Trail Facet Independence
-    local wave_proto = motion_protocols.get_protocol("tube_wave")
-    local wave_head = motion_protocols.get_subprotocol(wave_proto, "head")
-    if wave_head ~= nil then
-        log_msg("[color=red][MotionProtocols Test] Test 5 FAILED: tube_wave head subprotocol expected nil but found handler[/color]")
+    local anti_proto = motion_protocols.get_protocol("anti_reticle")
+    local anti_head = motion_protocols.get_subprotocol(anti_proto, "head")
+    if anti_head ~= nil then
+        log_msg("[color=red][MotionProtocols Test] Test 5 FAILED: anti_reticle head subprotocol expected nil but found handler[/color]")
         return false
     end
-    local transit_proto = motion_protocols.get_protocol("tube_transit")
-    local transit_head = motion_protocols.get_subprotocol(transit_proto, "head")
-    if transit_head == nil then
-        log_msg("[color=red][MotionProtocols Test] Test 5 FAILED: tube_transit failed to resolve capsule_head subprotocol[/color]")
+    local cap_proto = motion_protocols.get_protocol("capsule")
+    local cap_head = motion_protocols.get_subprotocol(cap_proto, "head")
+    if cap_head == nil then
+        log_msg("[color=red][MotionProtocols Test] Test 5 FAILED: capsule failed to resolve capsule_head subprotocol[/color]")
         return false
     end
     log_msg("[color=green][MotionProtocols Test] Test 5: Head & Trail Facet Independence -> PASSED[/color]")

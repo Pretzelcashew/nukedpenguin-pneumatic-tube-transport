@@ -124,6 +124,12 @@ function flow_engine.init_storage()
     storage.object_destruction_map = storage.object_destruction_map or {}
     storage.pressure_corridors = storage.pressure_corridors or {}
     storage.corridor_tip_flows = storage.corridor_tip_flows or {}
+    storage.corridor_pos_watchers = storage.corridor_pos_watchers or {}
+    for cid, corr in pairs(storage.pressure_corridors) do
+        if corr and not corr.watched_pos_keys then
+            flow_engine.sync_corridor_pos_watchers(cid, corr)
+        end
+    end
 
     -- Counter Range Fields
     storage.counter_levels = storage.counter_levels or {}
@@ -199,6 +205,162 @@ local function is_gate_open(unit_number)
     return false
 end
 flow_engine.is_gate_open = is_gate_open
+
+local function register_corridor_watcher(cid, pos_key)
+    if not (cid and pos_key) then return end
+    storage.corridor_pos_watchers = storage.corridor_pos_watchers or {}
+    storage.corridor_pos_watchers[pos_key] = storage.corridor_pos_watchers[pos_key] or {}
+    storage.corridor_pos_watchers[pos_key][cid] = true
+end
+
+local function unregister_corridor_watcher(cid, pos_key)
+    if not (cid and pos_key and storage.corridor_pos_watchers) then return end
+    local set = storage.corridor_pos_watchers[pos_key]
+    if set then
+        set[cid] = nil
+        if next(set) == nil then
+            storage.corridor_pos_watchers[pos_key] = nil
+        end
+    end
+end
+
+function flow_engine.clear_corridor_pos_watchers(cid, corr)
+    if not cid then return end
+    corr = corr or (storage.pressure_corridors and storage.pressure_corridors[cid])
+    if corr and corr.watched_pos_keys then
+        for pk in pairs(corr.watched_pos_keys) do
+            unregister_corridor_watcher(cid, pk)
+        end
+        corr.watched_pos_keys = nil
+    end
+end
+
+function flow_engine.sync_corridor_pos_watchers(cid, corr)
+    if not (cid and corr and corr.start_pos and corr.dir and corr.surface_name) then return end
+    flow_engine.clear_corridor_pos_watchers(cid, corr)
+    local watched = {}
+    local s_name = corr.surface_name
+    local sp = corr.start_pos
+    local dx = corr.dir.x
+    local dy = corr.dir.y
+    local total_dist = corr.total_dist or 1
+
+    local steps = (total_dist + 1) * 2
+    for step = 0, steps do
+        local d = step * 0.5
+        local pk = make_pos_key(s_name, sp.x + dx * d, sp.y + dy * d)
+        if not watched[pk] then
+            watched[pk] = true
+            register_corridor_watcher(cid, pk)
+        end
+    end
+
+    if corr.last_out_pkey then
+        local nd = storage.flow_nodes and storage.flow_nodes[corr.last_out_pkey]
+        if nd and nd.pos_key and not watched[nd.pos_key] then
+            watched[nd.pos_key] = true
+            register_corridor_watcher(cid, nd.pos_key)
+        end
+        local conns = storage.flow_connections and storage.flow_connections[corr.last_out_pkey]
+        if conns then
+            for nk in pairs(conns) do
+                local n_nd = storage.flow_nodes and storage.flow_nodes[nk]
+                if n_nd and n_nd.pos_key and not watched[n_nd.pos_key] then
+                    watched[n_nd.pos_key] = true
+                    register_corridor_watcher(cid, n_nd.pos_key)
+                end
+            end
+        end
+    end
+    if corr.terminal_branch_pkey then
+        local nd = storage.flow_nodes and storage.flow_nodes[corr.terminal_branch_pkey]
+        if nd and nd.pos_key and not watched[nd.pos_key] then
+            watched[nd.pos_key] = true
+            register_corridor_watcher(cid, nd.pos_key)
+        end
+    end
+
+    corr.watched_pos_keys = watched
+end
+
+function flow_engine.notify_pos_topology_changed(surface_name_or_key, x, y)
+    local pos_key
+    if y ~= nil then
+        pos_key = make_pos_key(surface_name_or_key, x, y)
+    else
+        pos_key = surface_name_or_key
+    end
+    if not (pos_key and storage.corridor_pos_watchers) then return end
+    local watchers = storage.corridor_pos_watchers[pos_key]
+    if not watchers or next(watchers) == nil then return end
+
+    local cids = {}
+    for cid in pairs(watchers) do
+        cids[#cids + 1] = cid
+    end
+
+    for i = 1, #cids do
+        local cid = cids[i]
+        local corr = storage.pressure_corridors and storage.pressure_corridors[cid]
+        if not corr then
+            unregister_corridor_watcher(cid, pos_key)
+        elseif corr.status ~= "receding" then
+            local dx = corr.dir.x
+            local dy = corr.dir.y
+            local handled = false
+
+            if corr.corridor_entities then
+                for u in pairs(corr.corridor_entities) do
+                    if is_gate_open(u) then
+                        flow_engine.split_pressure_corridor(cid, corr, u)
+                        handled = true
+                        break
+                    end
+                end
+            end
+
+            if not handled and corr.corridor_entities then
+                local corr_grp = corr.group or 1
+                local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
+                if grid_ports then
+                    for pk in pairs(grid_ports) do
+                        local nd = storage.flow_nodes and storage.flow_nodes[pk]
+                        local u = nd and nd.unit_number
+                        if u and corr.corridor_entities[u] and not is_gate_open(u) then
+                            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
+                            local in_pk, out_pk = nil, nil
+                            local in_nd, out_nd = nil, nil
+                            if u_ports then
+                                for _, p in pairs(u_ports) do
+                                    local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                                    local p_grp = p_node and (p_node.group or 1)
+                                    if p_node and (p_grp == corr_grp) and p_node.dir then
+                                        if p_node.dir.x == -dx and p_node.dir.y == -dy then
+                                            in_pk = p
+                                            in_nd = p_node
+                                        elseif p_node.dir.x == dx and p_node.dir.y == dy then
+                                            out_pk = p
+                                            out_nd = p_node
+                                        end
+                                    end
+                                end
+                            end
+                            if in_pk and out_pk and not flow_common.is_colinear_straight_internal(in_pk, in_nd, out_pk, out_nd) then
+                                flow_engine.split_pressure_corridor(cid, corr, u, in_nd.pos, true)
+                                handled = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+
+            if not handled then
+                flow_engine.wake_corridor_tip(corr)
+            end
+        end
+    end
+end
 
 local function scan_pneumatic_colinear_reach(in_pkey, in_node, out_pkey, out_node, flow_level)
     local dx = out_node.dir.x
@@ -392,6 +554,7 @@ function flow_engine.on_pressure_begin_transmit(in_pkey, in_node, out_pkey, out_
     end
 
     storage.pressure_corridors[corridor_id].leaves = corr_leaves
+    flow_engine.sync_corridor_pos_watchers(corridor_id, storage.pressure_corridors[corridor_id])
     if traj_tree then
         trajectory_bvh.refresh_active_renders()
     end
@@ -631,6 +794,7 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
         local down_leaves = {}
         down_corr.leaves = down_leaves
         storage.pressure_corridors[down_cid] = down_corr
+        flow_engine.sync_corridor_pos_watchers(down_cid, down_corr)
 
         for s = 1, down_max_seg do
             local s_start = (s - 1) * 16
@@ -781,6 +945,8 @@ function flow_engine.split_pressure_corridor(cid, corr, unit_number, ent_pos, is
         trajectory_bvh.refresh_active_renders()
     end
 
+    flow_engine.sync_corridor_pos_watchers(cid, corr)
+
     if corr.current_reach >= exact_up_dist then
         corr.status = "active"
         if corr.leaves then
@@ -869,6 +1035,7 @@ end
 function flow_engine.unseed_pressure_corridor(corridor_id, force)
     local corr = storage.pressure_corridors and storage.pressure_corridors[corridor_id]
     if not corr then return end
+    flow_engine.clear_corridor_pos_watchers(corridor_id, corr)
 
     if not force and corr.status ~= "receding" then
         corr.status = "receding"
@@ -1527,7 +1694,9 @@ local function compute_port_flow_level(pkey)
                                 end
                             end
                         end
-                        if not is_corridor_ingress then
+                        local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                        local n_transmits = n_node and (n_node.pressure_transmit or (n_node.emitter and n_node.emitter ~= 0))
+                        if not is_corridor_ingress and n_transmits then
                             local n_level = (storage.corridor_tip_flows and storage.corridor_tip_flows[n_key]) or (storage.flow_levels and storage.flow_levels[n_key]) or 0
                             if n_level > 1 then
                                 local incoming = n_level - 1
@@ -1619,7 +1788,7 @@ function flow_engine.step(tick)
         end
     end
 
-    flow_gate_interop.step_gates(flow_kinetic.handle_obstacle_changed, flow_engine.enqueue_unit_ports, flow_engine.wake_corridors_touching_unit)
+    flow_gate_interop.step_gates(flow_kinetic.handle_obstacle_changed, flow_engine.enqueue_unit_ports, flow_engine.wake_corridors_touching_unit, flow_engine.notify_pos_topology_changed)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
     flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
     flow_kinetic.step_reticle_obstacles()
@@ -1824,31 +1993,20 @@ local function handle_entity_reorientation(entity)
 end
 
 function flow_engine.wake_corridors_touching_unit(unit_number)
-    if not (storage.pressure_corridors and unit_number) then return end
+    if not unit_number then return end
     local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
-    if not u_ports then return end
-
-    local touched_cids = {}
-    for _, pk in pairs(u_ports) do
-        for cid, corr in pairs(storage.pressure_corridors) do
-            if corr.status ~= "receding" and (corr.last_out_pkey == pk or corr.terminal_branch_pkey == pk) then
-                touched_cids[cid] = corr
-            end
-        end
-        local conns = storage.flow_connections and storage.flow_connections[pk]
-        if conns then
-            for n_key in pairs(conns) do
-                for cid, corr in pairs(storage.pressure_corridors) do
-                    if corr.status ~= "receding" and (corr.last_out_pkey == n_key or corr.terminal_branch_pkey == n_key) then
-                        touched_cids[cid] = corr
-                    end
-                end
+    if u_ports then
+        for _, pk in pairs(u_ports) do
+            local nd = storage.flow_nodes and storage.flow_nodes[pk]
+            if nd and nd.pos_key then
+                flow_engine.notify_pos_topology_changed(nd.pos_key)
             end
         end
     end
-
-    for _, corr in pairs(touched_cids) do
-        flow_engine.wake_corridor_tip(corr)
+    local ent = (storage.active_gates and storage.active_gates[unit_number])
+        or (storage.active_walls and storage.active_walls[unit_number])
+    if ent and ent.valid then
+        flow_engine.notify_pos_topology_changed(ent.surface.name, ent.position.x, ent.position.y)
     end
 end
 
@@ -1974,6 +2132,7 @@ function flow_engine.wake_corridor_tip(corr)
         corr.status = "growing"
         local tpt = corr.ticks_per_tile or 2
         corr.start_tick = game.tick - math.max(0, (corr.current_reach - 1) * tpt)
+        flow_engine.sync_corridor_pos_watchers(corr.id, corr)
 
         for u, grp_data in pairs(corr.corridor_entities) do
             local target_grp = corr.group
@@ -2208,7 +2367,9 @@ function flow_engine.connect_entity(entity)
         discover_adjacent_standard_entity(storage.flow_nodes[pkey])
         update_pos_render(pos_key)
         update_counter_pos_render(pos_key)
+        flow_engine.notify_pos_topology_changed(pos_key)
     end
+    flow_engine.notify_pos_topology_changed(surface_name, ex, ey)
 
     if USE_PRESSURE_CORRIDORS then
         local corridors_to_split = {}
@@ -2334,6 +2495,10 @@ function flow_engine.disconnect_entity(entity)
     for port_index, pkey in pairs(unit_ports) do
         local node = storage.flow_nodes and storage.flow_nodes[pkey]
         local pos_key = node and node.pos_key
+
+        if pos_key then
+            flow_engine.notify_pos_topology_changed(pos_key)
+        end
 
         if storage.pressure_corridors then
             for cid, corr in pairs(storage.pressure_corridors) do

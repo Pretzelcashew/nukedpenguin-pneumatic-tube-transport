@@ -256,7 +256,7 @@ function flow_gate_interop.handle_interop_research_reversed(force, enqueue_port_
     sever_boundary_interfaces(active_gates)
 end
 
-function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_fn, wake_corridors_fn)
+function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_fn, wake_corridors_fn, notify_pos_changed_fn)
     if not storage.active_gates then return end
     for unit_number, gate in pairs(storage.active_gates) do
         if gate and gate.valid then
@@ -301,6 +301,19 @@ function flow_gate_interop.step_gates(notify_obstruction_fn, enqueue_unit_ports_
 
                 if enqueue_unit_ports_fn then
                     enqueue_unit_ports_fn(unit_number)
+                end
+
+                if open_changed and notify_pos_changed_fn then
+                    local gate_pos_key = make_pos_key(gate.surface.name, gate.position.x, gate.position.y)
+                    notify_pos_changed_fn(gate_pos_key)
+                    if unit_ports then
+                        for _, p in pairs(unit_ports) do
+                            local p_node = storage.flow_nodes and storage.flow_nodes[p]
+                            if p_node and p_node.pos_key then
+                                notify_pos_changed_fn(p_node.pos_key)
+                            end
+                        end
+                    end
                 end
 
                 if not is_open or not is_term then

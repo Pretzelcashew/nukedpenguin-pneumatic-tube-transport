@@ -37,26 +37,27 @@ our first step to making all of this happen, is identifying the event for when a
 
 
 [CURRENT_TASK]
-Purge lingering 0.08r magenta dots on wall segments after corridor recession, and enforce strict dual-axis channel isolation on crossflow structures.
+Refactor pressure corridor change detection from entity units to spatial coordinate indexing (pos_key), resolving unpredictable wakeups on dead-ends and gate transitions while strictly preserving gradual simulation pacing.
 
-1. Magenta Reticle Trail Dot Elimination:
-   - Root Cause: In `scripts/utils/motion-protocols.lua` line 187 (`get_protocol`), inspecting `name_or_flight.retreat_tick ~= nil` prior to `name_or_flight.flow_level ~= nil` causes receding pressure corridors (`corr.status == "receding"`) to falsely classify as `"projector_scope"`. This triggers `reticle_static` / `reticle_dots` routines leasing 0.08r magenta circles (`MINOR_DOT_COLOR`) that get stranded on wall and tube segments.
-   - Fix: Prioritize corridor identity guards (`flow_level ~= nil or in_pkey ~= nil or is_corridor`) before evaluating `retreat_tick`, and ensure `viewport-bvh.lua` and `render-pool.lua` cleanly release static leaf primitives without fallback contamination.
+Architectural Invariants & Constraints:
+- Gradual Simulation Pacing: Wavefront expansion must remain timed (2 ticks/tile); recession must remain gradual via monotonic equalization decay. Corridors must never spread, teleport, or purge instantly.
+- Zero Recursive Graph Crawling: Corridors are strictly 1D axial vectors. Do not implement recursive flood-fills, BFS searches, or cascading corridor triggers across connected networks.
+- Spatial Decoupling: Change detection must index universal surface coordinate keys (pos_key) instead of entity unit numbers, allowing non-unit segments, terrain tiles, and un-numbered entities to participate equally.
 
-2. Dual-Axis Channel Group Isolation (Crossflow Junctions & Walls):
-   - Multi-channel crossing structures (`crossflow-junction`, `stone-wall`) feature two discrete orthogonal port groups (Group 1: N/S, Group 2: E/W).
-   - Currently, lifecycle transitions (truncation, breakoff, recession, unseeding) trigger indiscriminate blanket wakeups (`flow_common.enqueue_unit_ports`), which awakens and chokes the orthogonal axis.
-   - Implement group-scoped wakeups (`flow_common.enqueue_unit_group_ports(unit_number, group)`) across `flow-engine.lua` and `flow-common.lua`. Ensure `split_pressure_corridor`, `step_pressure_corridors`, and `unseed_pressure_corridor` restrict entity tracking, break faces, tip flows, and wakeups strictly to `corr.group` so severing or voiding flow on one axis has zero effect on active flow on the orthogonal axis.
+Deliverables:
+1. Spatial Coordinate Indexing: Track corridor footprints and boundary interfaces by spatial position keys in storage. Remove unit-number-specific dependency mapping.
+2. Event-Driven Spatial Triggers: Notify spatial watchers when gates open/close, entities are built/mined, or orientation changes, evaluating only the specific corridors registered at that coordinate.
+3. State Transition Handling: When a path re-opens, resume gradual wavefront expansion via the tip waking routine. When interrupted, sever cleanly into a truncated upstream run and an autonomous decaying wake.
+4. Dead-End & Boundary Fixes: Allow quiescent corridor transmission to reach open dead-end flanges without requiring external downstream connections. Ensure non-transmitting ports evaluate to zero flow so reopening cleanly triggers recalculation.
 [/CURRENT_TASK]
 
 [CONTEXT_TOKENS]
-motion_protocols.get_protocol, name_or_flight.retreat_tick, name_or_flight.flow_level, name_or_flight.in_pkey
-projector_scope false classification, MINOR_DOT_COLOR, 0.08r magenta dot pollution, reticle_static fallback
-scripts/utils/motion-protocols.lua, scripts/utils/viewport-bvh.lua, scripts/capsules/capsule-renderer.lua
-crossflow-junction, stone-wall, node.group, corr.group, port group isolation, orthogonal axis independence
-flow_common.enqueue_unit_ports, flow_common.enqueue_unit_group_ports, flow_common.is_colinear_straight_internal
-split_pressure_corridor, unseed_pressure_corridor, step_pressure_corridors, touches_entity, corr.corridor_entities[u][grp]
-storage.wall_locked_group, flow_gate_interop.update_wall_locking, dual-channel crossflow choke suppression
+storage.corridor_pos_watchers, flow_common.make_pos_key, notify_pos_topology_changed
+GRADUAL_WAVEFRONT_EXPANSION_TPT_2, GRADUAL_EQUALIZATION_RECESSION_DECAY
+NO_INSTANT_TELEPORTATION, NO_RECURSIVE_GRAPH_WALK, STRICT_1D_VECTOR_RAYCAST
+spatial_coordinate_watchers, non_unit_segments, dead_end_corridor_transmission
+flow_engine.on_pressure_begin_transmit, flow_engine.wake_corridor_tip, flow_engine.split_pressure_corridor
+flow_gate_interop.step_gates, compute_port_flow_level, scripts/flow/flow-engine.lua, scripts/flow/flow-gate-interop.lua
 [/CONTEXT_TOKENS]
 
 

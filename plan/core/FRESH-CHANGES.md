@@ -70,6 +70,15 @@
 4. **Edge Severing & Depressurization Hooks (`scripts/flow/flow-common.lua`, `scripts/flow/flow-engine.lua`):** Hooked `flow_common.on_edge_severed_handler` into `destroy_node` to trigger `flow_collapse.handle_connection_removed`, automatically re-enqueuing surviving junctions to fold back into straight runs when branches are mined. Wired `flow_engine.step` on `flow_changed` to immediately invalidate active runs when $\Delta P \to 0$.
 
 
+### Revision: Render Pool Text Z-Ordering & Line Layer Deprioritization
+**Date:** 2026-09-21 23:18 EDT
+**Context:** Resolves visual dropouts where pressure flow numbers and counter range text sometimes rendered behind circular flow dots and connector lines. Native Factorio render object IDs determine default draw order within a render layer; when handles are recycled through free lists out of original creation order, circles could be drawn over numbers.
+
+**Key Changes:**
+1. **Text Z-Index Promotion (`scripts/utils/render-pool.lua`, `scripts/flow/flow-renderer.lua`):** Invoked `obj.bring_to_front()` across both fresh and recycled text handles in `render_pool.lease_text` and `render_flow_dot_static`, ensuring numbers always render on top of shapes. Added `vertical_alignment` mutation handling upon text lease.
+2. **Vector Line Deprioritization (`scripts/utils/render-pool.lua`):** Invoked `obj.move_to_back()` on fresh and recycled line handles in `render_pool.lease_line`, keeping tube-to-tube directional vector lines behind pressure dots and labels.
+
+
 
 
 

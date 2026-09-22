@@ -807,7 +807,10 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                                 alignment = "center",
                                 players = { player }
                             }
-                            if t_obj then out_objs[#out_objs + 1] = t_obj end
+                            if t_obj then
+                                t_obj.bring_to_front()
+                                out_objs[#out_objs + 1] = t_obj
+                            end
 
                         else
                             local best_node, level = flow_renderer.get_dominant_port_at_pos(node.pos_key)
@@ -857,7 +860,10 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                                     alignment = "center",
                                     players = { player }
                                 }
-                                if t_obj then out_objs[#out_objs + 1] = t_obj end
+                                if t_obj then
+                                    t_obj.bring_to_front()
+                                    out_objs[#out_objs + 1] = t_obj
+                                end
                             end
                         end
                     end

@@ -155,8 +155,10 @@ function render_pool.lease_text(arg1, arg2, arg3)
             if options.color then obj.color = options.color end
             if options.scale then obj.scale = options.scale end
             if options.alignment then obj.alignment = options.alignment end
+            if options.vertical_alignment then obj.vertical_alignment = options.vertical_alignment end
             if options.players then obj.players = options.players end
             obj.visible = true
+            obj.bring_to_front()
             storage.render_pool_channels[obj.id] = channel
             return obj
         end
@@ -166,6 +168,7 @@ function render_pool.lease_text(arg1, arg2, arg3)
     options.visible = true
     local obj = rendering.draw_text(options)
     if obj and obj.valid then
+        obj.bring_to_front()
         storage.render_pool_channels[obj.id] = channel
     end
     return obj
@@ -193,6 +196,7 @@ function render_pool.lease_line(arg1, arg2, arg3)
             if options.width then obj.width = options.width end
             if options.players then obj.players = options.players end
             obj.visible = true
+            obj.move_to_back()
             storage.render_pool_channels[obj.id] = channel
             return obj
         end
@@ -202,6 +206,7 @@ function render_pool.lease_line(arg1, arg2, arg3)
     options.visible = true
     local obj = rendering.draw_line(options)
     if obj and obj.valid then
+        obj.move_to_back()
         storage.render_pool_channels[obj.id] = channel
     end
     return obj

@@ -29,10 +29,16 @@ end
 -- Hook into flow_common atomic node teardown & edge severed events
 flow_common.midsegment_removal_handler = function(pkey)
     flow_collapse.handle_node_destroyed(pkey)
+    if flow_common.on_topology_severed then
+        flow_common.on_topology_severed(pkey)
+    end
 end
 
 flow_common.on_edge_severed_handler = function(n_key, severed_pkey)
     flow_collapse.handle_connection_removed(n_key)
+    if flow_common.on_topology_severed then
+        flow_common.on_topology_severed(n_key, severed_pkey)
+    end
 end
 
 function flow_collapse.enqueue_port(pkey)
@@ -103,12 +109,15 @@ function flow_collapse.is_unit_colinear_straight(unit_number, expected_axis)
     return false
 end
 
-function flow_collapse.invalidate_run(run_id)
+function flow_collapse.invalidate_run(run_id, break_pos)
     if not (run_id and storage.collapsed_edges) then return end
     local run = storage.collapsed_edges[run_id]
     if run and run.status ~= "dividing" then
         run.status = "dividing"
         flow_collapse.enqueue_division(run_id)
+        if flow_collapse.on_corridor_unmerged then
+            flow_collapse.on_corridor_unmerged(run_id, break_pos)
+        end
     end
 end
 
@@ -416,6 +425,10 @@ local function divide_run(run_id)
     if not (run_id and storage.collapsed_edges) then return end
     local run = storage.collapsed_edges[run_id]
     if not run then return end
+
+    if flow_collapse.on_corridor_unmerged then
+        flow_collapse.on_corridor_unmerged(run_id)
+    end
 
     local s_idx = run.surface_index
     if s_idx then

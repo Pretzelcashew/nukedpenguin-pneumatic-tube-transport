@@ -145,5 +145,13 @@
 5. **Watchdog Node Recovery & Motion Contract Alignment (`scripts/capsules/capsule-runner.lua`, `scripts/utils/motion-protocols.lua`):** Added surviving node recovery to the line 915 nil-node watchdog in `update_capsules` before falling back to spills. Updated `schedule_hop` and `try_advance_corridor` with complete `dir`, `dx`, `dy`, and `ticks_per_tile = STAGGER_TICKS` motion contracts, and registered `"tube_severance"` in `motion-protocols.lua`.
 
 
+### Revision: Topology-Driven Corridor Unmerge & In-Flight Transit Severance
+**Date:** 2026-09-22 17:05 EDT
+**Context:** Resolves an architectural disconnect where in-flight capsules continued gliding along dormant 16-tile corridor trajectories after flow ceased or gates opened. Connects pairwise corridor unmerging, gate pressure breaks, and circuit shutdowns directly to the in-flight arrival heap, enabling capsules to react dynamically to graph topology changes mid-flight rather than upon arrival.
 
+**Key Changes:**
+1. **Flow Collapse to Motion Substrate Binding (`scripts/flow/flow-collapse.lua`, `scripts/capsules/capsule-runner.lua`):** Hooked `flow_collapse.invalidate_run` and `divide_run` directly to `flow_collapse.on_corridor_unmerged` (`capsule_runner.handle_corridor_unmerged`). Any active flight bound to a dividing corridor (`flight.run_id == run_id`) is immediately notified the exact tick the corridor unmerges.
+2. **Dynamic Depressurization Coasting (`scripts/capsules/capsule-runner.lua`):** When a corridor depressurizes globally ($\Delta P \le 0$, pump shutoff, or pneumatic gate opening), in-flight capsules sample their current sub-tile coordinate, find the next immediate surviving tube node along their forward velocity vector, re-anchor their flight horizon, and safely coast to a stop.
+3. **Breach-Localized Disruption Forwarding (`scripts/capsules/capsule-runner.lua`):** When a corridor division is triggered by a localized cut (such as an opening gate or mined midsegment), the severance coordinate is passed to `handle_tube_disruption`, correctly truncating upstream traffic to the surviving tube boundary and spilling only capsules caught directly in the breach.
+4. **Purged Entity-Destruction Listeners (`scripts/capsules/capsule-runner.lua`):** Completely excised `on_player_mined_entity`, `on_robot_mined_entity`, `on_entity_died`, and `script_raised_destroy` from the motion coordinator. All in-flight clearance and truncation logic is now 100% event-driven from the flow graph topology.
 

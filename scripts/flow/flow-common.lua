@@ -149,6 +149,9 @@ function flow_common.sever_ports(key_a, key_b)
             storage.flow_connections[key_b] = nil
         end
     end
+    if flow_common.on_edge_severed_handler then
+        flow_common.on_edge_severed_handler(key_a, key_b)
+    end
 end
 
 function flow_common.add_node_to_grid(pos_key, pkey)

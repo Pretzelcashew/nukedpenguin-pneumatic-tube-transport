@@ -1,6 +1,7 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
+local flow_common = require("scripts.flow.flow-common")
 local flow_collapse = require("scripts.flow.flow-collapse")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
@@ -1010,7 +1011,7 @@ if capsule_ballistics.register_arrival_handler then
     capsule_ballistics.register_arrival_handler("tube_hop", capsule_runner.handle_tube_hop_arrival)
 end
 
-function capsule_runner.handle_tube_disruption(flight, capsule, id, surface, entity, bb, current_tick)
+function capsule_runner.handle_tube_disruption(flight, capsule, id, surface, bb, current_tick)
     local sp = flight.start_pos
     local dir = flight.dir
     if not (sp and dir and (dir.x ~= 0 or dir.y ~= 0)) then return end
@@ -1026,10 +1027,10 @@ function capsule_runner.handle_tube_disruption(flight, capsule, id, surface, ent
     local cur_dist = elapsed_ticks / tpt
 
     if cur_dist > obst_dist + 1.0 then
-        -- Downstream: capsule has already passed the mined pipe, continue unaffected
+        -- Downstream: capsule has already passed the breach point, continue unaffected
         return
     elseif cur_dist >= obst_dist - 0.05 and cur_dist <= obst_dist + 1.0 then
-        -- At the breach: capsule is physically inside the pipe being mined, immediate spill
+        -- At the breach: capsule is physically inside the severed node, immediate loss of containment
         local curr_pos = timed_motion.get_interpolated_position(flight, current_tick)
         capsule_renderer.destroy_arrival_dot(capsule)
         capsule_renderer.clear_capsule_render(capsule)
@@ -1054,34 +1055,105 @@ function capsule_runner.handle_tube_disruption(flight, capsule, id, surface, ent
 end
 
 motion_protocols.register_disruption("tube_severance", function(flight, cap, cap_id, surface, entity, bb, current_tick)
-    return capsule_runner.handle_tube_disruption(flight, cap, cap_id, surface, entity, bb, current_tick)
+    return capsule_runner.handle_tube_disruption(flight, cap, cap_id, surface, bb, current_tick)
 end)
 
-function capsule_runner.handle_entity_mined(entity)
-    if not (entity and entity.valid) then return end
-    local surface = entity.surface
-    if not (surface and surface.valid) then return end
+function capsule_runner.handle_topology_severed(key_a, key_b, breach_pos)
     if not storage.capsules or next(storage.capsules) == nil then return end
 
-    local e_name = entity.name
-    if e_name == "visible-capsule-holder" or e_name == "spilled-capsule-holder"
-        or entity.type == "entity-ghost" or entity.type == "tile-ghost" then
-        return
-    end
+    local node_a = key_a and storage.flow_nodes and storage.flow_nodes[key_a]
+    local node_b = key_b and storage.flow_nodes and storage.flow_nodes[key_b]
 
-    local bb = entity.bounding_box
-    if not bb then return end
+    local pos = breach_pos or (node_b and node_b.pos) or (node_a and node_a.pos)
+    if not pos then return end
+
+    local sname = (node_a and node_a.surface_name) or (node_b and node_b.surface_name) or "nauvis"
+    local surface = game.surfaces[sname]
+    if not (surface and surface.valid) then return end
+
+    local bb = {
+        left_top = { x = pos.x - 0.5, y = pos.y - 0.5 },
+        right_bottom = { x = pos.x + 0.5, y = pos.y + 0.5 }
+    }
 
     local current_tick = (game and game.tick) or 0
-    local surf_name = surface.name
 
     for id, capsule in pairs(storage.capsules) do
         local flight = capsule.timed_hop
-        if flight and (flight.surface_name == surf_name or capsule.surface_name == surf_name) then
-            capsule_runner.handle_tube_disruption(flight, capsule, id, surface, entity, bb, current_tick)
+        if flight and (flight.surface_name == sname or capsule.surface_name == sname) then
+            capsule_runner.handle_tube_disruption(flight, capsule, id, surface, bb, current_tick)
         end
     end
 end
+
+flow_common.on_topology_severed = capsule_runner.handle_topology_severed
+
+function capsule_runner.handle_corridor_unmerged(run_id, break_pos)
+    if not (run_id and storage.capsules) then return end
+    local current_tick = (game and game.tick) or 0
+
+    for id, capsule in pairs(storage.capsules) do
+        local flight = capsule.timed_hop
+        if flight and flight.run_id == run_id and not flight.severed then
+            local surf = game.surfaces[flight.surface_name or capsule.surface_name or "nauvis"]
+            if surf and surf.valid then
+                if break_pos then
+                    -- Specific breach point (e.g. gate opened at break_pos, or midsegment removed)
+                    local bb = {
+                        left_top = { x = break_pos.x - 0.5, y = break_pos.y - 0.5 },
+                        right_bottom = { x = break_pos.x + 0.5, y = break_pos.y + 0.5 }
+                    }
+                    capsule_runner.handle_tube_disruption(flight, capsule, id, surf, bb, current_tick)
+                else
+                    -- Global depressurization / flow loss: coast to the next immediate tube and park
+                    local cur_pos = timed_motion.get_interpolated_position(flight, current_tick)
+                    local dir = flight.dir or { x = 0, y = 0 }
+                    local sname = surf.name
+
+                    -- Find nearest tube node in front of the capsule to coast to a stop
+                    local best_key = nil
+                    local best_d = math.huge
+                    local best_pos = nil
+
+                    if storage.flow_nodes then
+                        for pkey, pnode in pairs(storage.flow_nodes) do
+                            if pnode.surface_name == sname and pnode.pos then
+                                local dx = pnode.pos.x - cur_pos.x
+                                local dy = pnode.pos.y - cur_pos.y
+                                local dot = dx * dir.x + dy * dir.y
+                                -- Must be forward along the direction of travel
+                                if dot >= -0.1 then
+                                    local dist2 = dx * dx + dy * dy
+                                    if dist2 < best_d and dist2 <= 4.0 then
+                                        best_d = dist2
+                                        best_key = pkey
+                                        best_pos = pnode.pos
+                                    end
+                                end
+                            end
+                        end
+                    end
+
+                    local stop_pos = best_pos or {
+                        x = cur_pos.x + dir.x * 0.5,
+                        y = cur_pos.y + dir.y * 0.5
+                    }
+
+                    flight.severed = true
+                    if best_key then
+                        flight.target_port_key = best_key
+                    end
+
+                    timed_motion.shift_horizon(flight, stop_pos, current_tick, STAGGER_TICKS)
+                    capsule_renderer.invalidate_flight(id)
+                    capsule_renderer.update_arrival_dots(capsule, id)
+                end
+            end
+        end
+    end
+end
+
+flow_collapse.on_corridor_unmerged = capsule_runner.handle_corridor_unmerged
 
 --------------------------------------------------------------------------------
 -- HUB ARRIVAL & OUTBOUND PACKING
@@ -1410,18 +1482,6 @@ end
 function capsule_runner.register_events()
     events.on_event(defines.events.on_tick, function(event)
         capsule_runner.update_capsules(event.tick)
-    end)
-    events.on_event(defines.events.on_player_mined_entity, function(event)
-        capsule_runner.handle_entity_mined(event.entity)
-    end)
-    events.on_event(defines.events.on_robot_mined_entity, function(event)
-        capsule_runner.handle_entity_mined(event.entity)
-    end)
-    events.on_event(defines.events.on_entity_died, function(event)
-        capsule_runner.handle_entity_mined(event.entity)
-    end)
-    events.on_event(defines.events.script_raised_destroy, function(event)
-        capsule_runner.handle_entity_mined(event.entity)
     end)
 end
 

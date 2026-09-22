@@ -173,3 +173,9 @@ phase 7: ensure we cache lua render objects rather than creating and destroying 
 sort these in a more logical way of completion, and add a clause at the end about expecting zero brute force processes, since we're obviously going for efficiency here. 
 
 
+
+
+
+ensure 
+
+

@@ -87,6 +87,7 @@ local function lease_node(bvh)
         node.left = nil
         node.right = nil
         node.is_leaf = false
+        node.is_recycled = nil
         node.min_x = 0
         node.min_y = 0
         node.max_x = 0
@@ -108,6 +109,8 @@ end
 
 local function recycle_node(bvh, node)
     if not (bvh and node) then return end
+    if node.is_recycled then return end
+    node.is_recycled = true
     node.parent = nil
     node.left = nil
     node.right = nil
@@ -255,6 +258,10 @@ local function remove_leaf_node(bvh, leaf)
         leaf.parent = nil
         return
     end
+    if parent.left ~= leaf and parent.right ~= leaf then
+        leaf.parent = nil
+        return
+    end
     local grandparent = parent.parent
     local sibling = (parent.left == leaf) and parent.right or parent.left
 
@@ -264,7 +271,9 @@ local function remove_leaf_node(bvh, leaf)
         else
             grandparent.right = sibling
         end
-        sibling.parent = grandparent
+        if sibling then
+            sibling.parent = grandparent
+        end
 
         local walk = grandparent
         while walk do
@@ -273,7 +282,9 @@ local function remove_leaf_node(bvh, leaf)
         end
     else
         bvh.root = sibling
-        sibling.parent = nil
+        if sibling then
+            sibling.parent = nil
+        end
     end
 
     leaf.parent = nil

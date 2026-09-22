@@ -98,5 +98,15 @@
 2. **Incoming Pressure Gradient Inheritance (`scripts/capsules/capsule-runner.lua`):** Updated `select_next_target` to inspect `capsule.last_port_key` when an internal conduit port has zero local pressure (`level_exit == 0`). If the capsule was pushed in from a port with positive pressure ($\ge 1$), `level_exit` inherits the incoming pressure level, ensuring $1 \to 0$ drops evaluate as positive gradients ($\Delta P > 0$) to carry capsules across the tube to the terminal cap.
 
 
+### Revision: BVH Sibling Nil-Guards, Anti-Double-Free Gating & Machine Leaf Wildcard Immunity
+**Date:** 2026-09-22 00:16 EDT
+**Context:** Resolves a crash in `trajectory-bvh.lua:267` (`attempt to index local 'sibling' (a nil value)`) when anti-reticle flights reel in trailing projector corridors. Eliminates an issue where Electromagnetic Projector machine footprint leaves (`unit_number:machine`) and Alt-Mode port dots were prematurely evicted from the spatial tree during beam and corridor lifecycle cleanups.
+
+**Key Changes:**
+1. **Defensive Sibling & Parent Linkage Guards (`scripts/utils/trajectory-bvh.lua`):** Added explicit `if sibling then` checks before re-parenting in `remove_leaf_node` and validated parent-child linkages, allowing single-child branches to collapse safely without engine crashes during segment peeling.
+2. **Free-Pool Double-Free Protection (`scripts/utils/trajectory-bvh.lua`):** Added `node.is_recycled` re-entrancy guards in `recycle_node` (cleared on `lease_node`) to prevent recycled node tables from entering `free_nodes` multiple times and sharing memory tables.
+3. **Machine Leaf Wildcard Immunity (`scripts/utils/viewport-bvh.lua`):** Updated `viewport_bvh.on_segment_removed` to strictly exempt `leaf.seg_key ~= "machine"` and `item.seg_key ~= "machine"` when processing wildcard prefix removals (`owner_id:*`). Guarantees that permanent physical machine footprints and their port dot overlays persist through all beam retractions, rotations, and unlinks without periodic polling loops.
+
+
 
 

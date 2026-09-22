@@ -791,7 +791,7 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
             else
                 local to_remove = {}
                 for k, leaf in pairs(tree.leaves_by_key) do
-                    if k == tostring(owner_id) or k:sub(1, #match_prefix) == match_prefix then
+                    if (k == tostring(owner_id) or k:sub(1, #match_prefix) == match_prefix) and leaf.seg_key ~= "machine" then
                         to_remove[#to_remove + 1] = leaf
                     end
                 end
@@ -813,7 +813,7 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
             end
         else
             for k, item in pairs(v_set) do
-                if item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix then
+                if (item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix) and item.seg_key ~= "machine" then
                     if item.render_objects then
                         render_pool.recycle_many(p_idx, item.render_objects)
                     end

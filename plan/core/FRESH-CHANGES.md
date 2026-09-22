@@ -49,6 +49,16 @@
 5. **Render Object Tint & Top-Level Require Fixes (`scripts/utils/render-pool.lua`, `scripts/flow/flow-collapse.lua`, `scripts/flow/flow-engine.lua`):** Corrected `obj.tint` to `obj.color` on recycled sprite handles in `render-pool.lua` with white fallback. Bound `flow_collapse.set_engine` at top-level script load time in `flow-engine.lua`, purging inline runtime `require` calls during entity mining.
 
 
+### Revision: Corridor 16-Tile BVH Slicing, Multi-Unit Dot Rendering & Merge Queue Throttling
+**Date:** 2026-09-21 21:55 EDT
+**Context:** Resolves visual dot dropouts and spatial bounding box gaps along collapsed tube runs while smoothing out background graph contraction. Partitions merged corridors into discrete $\le 16$-tile broadphase leaves for viewport culling, upgrades static flow rendering to iterate member units of collapsed runs with numbered pressure badges, fixes half-tile port AABB clipping, throttles pairwise merge batch sizes to prevent UPS drops, and disambiguates BVH branch nodes from leaf corridors in debug visualization.
+**Key Changes:**
+1. **Dual-Port AABB Rectification & 16-Tile Slicing (`scripts/flow/flow-collapse.lua`):** Implemented `flow_collapse.create_and_register_slices` partitioning collapsed corridors into $\le 16$-tile leaves in `storage.motion_bvh`. Updated spatial bounds evaluation to inspect all port offsets per tube unit and applied $\pm 0.5$ tile padding, eliminating the 1-tile AABB gap between contiguous leaves.
+2. **Multi-Unit Static Flow Overlay Rendering (`scripts/flow/flow-renderer.lua`):** Expanded `render_flow_dot_static` to support `leaf.units` collections, rendering pressure circles, numbered flow text, and vector lines for all member tubes in a corridor chunk. Deduplicated rendering per tile and routed flow change notifications in `notify_pos_changed` to active corridor leaves.
+3. **Pairwise Merge Batch Throttling (`scripts/flow/flow-collapse.lua`):** Throttled `BATCH_SIZE` from 50 to 8 operations per tick across merge and division queues, eliminating the momentary 3-UPS dip during multi-tile line builds and pairwise graph folding.
+4. **BVH Debug Hierarchy Disambiguation (`scripts/utils/trajectory-bvh.lua`):** Re-styled internal BVH branch nodes as thin light purple (`width = 1`, low alpha) to visually separate spatial hierarchy clusters from physical tube corridors. Distinguished merged corridor leaves in vibrant teal (`width = 2`, `[Run #...]`) from baseline unmerged tubes (`[Base #...]`), and eliminated the duplicate render array overwrite in `surface_bvh`.
+
+
 
 
 

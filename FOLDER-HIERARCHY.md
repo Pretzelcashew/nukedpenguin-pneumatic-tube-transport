@@ -1,7 +1,7 @@
 # FOLDER-HIERARCHY.md - Live Workspace Tree
 **Project:** `nukedpenguin-pneumatic-tube-transport`  
-**Last Generated:** 2026-09-21 09:25:02  
-**Scope:** 22 directories, 121 files  
+**Last Generated:** 2026-09-21 20:53:40  
+**Scope:** 22 directories, 123 files  
 
 ```text
 nukedpenguin-pneumatic-tube-transport/
@@ -21,6 +21,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   ├── archive/
 │   │   ├── ARCHITECTURE.md
 │   │   ├── CHANGES_0.3.23.md
+│   │   ├── CRASH-SCREENSHOTS.md
 │   │   ├── FLIGHT-OCCLUSION.md
 │   │   ├── image-1.png
 │   │   ├── image-2.png
@@ -85,6 +86,7 @@ nukedpenguin-pneumatic-tube-transport/
 │   │   ├── diverter-settings.lua
 │   │   └── diverter-slot-modal.lua
 │   ├── flow/
+│   │   ├── flow-collapse.lua
 │   │   ├── flow-common.lua
 │   │   ├── flow-engine.lua
 │   │   ├── flow-gate-interop.lua

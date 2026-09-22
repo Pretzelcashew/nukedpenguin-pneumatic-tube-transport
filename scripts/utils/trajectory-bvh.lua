@@ -943,19 +943,23 @@ function trajectory_bvh.draw_for_player(player_index)
         local function draw_motion_node(node, depth)
             if not node then return end
             if node.is_leaf then
-                local col = { r = 0.2, g = 0.85, b = 1.0, a = 0.8 }
-                local tag = "Tube"
+                local is_merged_run = node.is_run or node.run_id or (type(node.owner_id) == "number" and node.owner_id >= 1000000)
+                local col = is_merged_run and { r = 0.0, g = 0.9, b = 0.8, a = 0.9 } or { r = 0.55, g = 0.65, b = 0.75, a = 0.7 }
+                local tag = is_merged_run and "Run" or "Base"
+                local box_width = is_merged_run and 2 or 1
                 if node.seg_key == "machine" or node.static_render_spec == "machine_static" then
-                    col = { r = 1.0, g = 0.6, b = 0.1, a = 0.85 }
+                    col = { r = 1.0, g = 0.6, b = 0.1, a = 0.9 }
                     tag = "Machine"
+                    box_width = 2
                 elseif node.static_render_spec == "reticle_static" or node.has_trail or (node.owner_id and storage.projector_reticles and storage.projector_reticles[node.owner_id]) then
                     col = { r = 0.2, g = 1.0, b = 0.4, a = 0.85 }
                     tag = "Beam"
+                    box_width = 2
                 end
 
                 local rect = rendering.draw_rectangle{
                     color = col,
-                    width = 2,
+                    width = box_width,
                     filled = false,
                     left_top = { node.min_x, node.min_y },
                     right_bottom = { node.max_x, node.max_y },
@@ -977,8 +981,9 @@ function trajectory_bvh.draw_for_player(player_index)
                 }
                 renders[#renders + 1] = txt
             else
+                -- Internal BVH Branch Node: thin light purple (hierarchy clustering)
                 local rect = rendering.draw_rectangle{
-                    color = { r = 0.1, g = 0.4, b = 0.8, a = 0.2 },
+                    color = { r = 0.65, g = 0.30, b = 0.95, a = 0.35 },
                     width = 1,
                     filled = false,
                     left_top = { node.min_x, node.min_y },
@@ -997,10 +1002,6 @@ function trajectory_bvh.draw_for_player(player_index)
     local tree = storage.surface_bvh and storage.surface_bvh[s_idx]
     if not (tree and tree.root) then return end
     trajectory_bvh.attach(tree)
-
-    storage.bvh_renders = storage.bvh_renders or {}
-    local renders = {}
-    storage.bvh_renders[player_index] = renders
 
     local function draw_node(node, depth)
         if not node then return end
@@ -1033,9 +1034,9 @@ function trajectory_bvh.draw_for_player(player_index)
             }
             renders[#renders + 1] = txt
         else
-            -- Internal tree node: Subtle cyan/blue box
+            -- Internal BVH Branch Node: thin light purple
             local rect = rendering.draw_rectangle{
-                color = { r = 0.1, g = 0.5, b = 0.9, a = 0.25 },
+                color = { r = 0.65, g = 0.30, b = 0.95, a = 0.35 },
                 width = 1,
                 filled = false,
                 left_top = { node.min_x, node.min_y },

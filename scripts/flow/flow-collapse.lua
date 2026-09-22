@@ -4,7 +4,7 @@ local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_collapse = {}
 
-local BATCH_SIZE = 50
+local BATCH_SIZE = 8
 
 local MACHINE_NAMES = {
     ["pneumatic-diverter"] = true,
@@ -135,26 +135,104 @@ local function compute_corridor_aabb(axis, start_pos, end_pos)
         local cy = start_pos.y
         min_y = cy - 0.5
         max_y = cy + 0.5
-        min_x = math.min(start_pos.x, end_pos.x)
-        max_x = math.max(start_pos.x, end_pos.x)
-        if (max_x - min_x) < 0.99 then
-            local mid_x = (min_x + max_x) * 0.5
-            min_x = mid_x - 0.5
-            max_x = mid_x + 0.5
-        end
+        min_x = math.min(start_pos.x, end_pos.x) - 0.5
+        max_x = math.max(start_pos.x, end_pos.x) + 0.5
     else
         local cx = start_pos.x
         min_x = cx - 0.5
         max_x = cx + 0.5
-        min_y = math.min(start_pos.y, end_pos.y)
-        max_y = math.max(start_pos.y, end_pos.y)
-        if (max_y - min_y) < 0.99 then
-            local mid_y = (min_y + max_y) * 0.5
-            min_y = mid_y - 0.5
-            max_y = mid_y + 0.5
-        end
+        min_y = math.min(start_pos.y, end_pos.y) - 0.5
+        max_y = math.max(start_pos.y, end_pos.y) + 0.5
     end
     return min_x, min_y, max_x, max_y
+end
+
+function flow_collapse.create_and_register_slices(run)
+    local s_idx = run.surface_index
+    local run_id = run.run_id
+    local axis = run.axis or "x"
+    local m_tree = viewport_bvh.get_motion_tree(s_idx)
+
+    local sorted_units = {}
+    for u in pairs(run.units or {}) do
+        sorted_units[#sorted_units + 1] = u
+    end
+
+    table.sort(sorted_units, function(u1, u2)
+        local p1 = storage.flow_unit_ports and storage.flow_unit_ports[u1] and storage.flow_unit_ports[u1][1]
+        local n1 = p1 and storage.flow_nodes and storage.flow_nodes[p1]
+        local p2 = storage.flow_unit_ports and storage.flow_unit_ports[u2] and storage.flow_unit_ports[u2][1]
+        local n2 = p2 and storage.flow_nodes and storage.flow_nodes[p2]
+        if n1 and n2 then
+            if axis == "x" then
+                return n1.pos.x < n2.pos.x
+            else
+                return n1.pos.y < n2.pos.y
+            end
+        end
+        return u1 < u2
+    end)
+
+    local SLICE_MAX = 16
+    local num_slices = math.max(1, math.ceil(#sorted_units / SLICE_MAX))
+    local leaves = {}
+
+    for seg_idx = 1, num_slices do
+        local i_start = (seg_idx - 1) * SLICE_MAX + 1
+        local i_end = math.min(#sorted_units, seg_idx * SLICE_MAX)
+        local slice_units = {}
+        local min_x, max_x, min_y, max_y = math.huge, -math.huge, math.huge, -math.huge
+
+        for idx = i_start, i_end do
+            local u = sorted_units[idx]
+            slice_units[u] = true
+            local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u]
+            if u_ports then
+                for p_idx = 1, #u_ports do
+                    local node = storage.flow_nodes and storage.flow_nodes[u_ports[p_idx]]
+                    if node and node.pos then
+                        min_x = math.min(min_x, node.pos.x - 0.5)
+                        max_x = math.max(max_x, node.pos.x + 0.5)
+                        min_y = math.min(min_y, node.pos.y - 0.5)
+                        max_y = math.max(max_y, node.pos.y + 0.5)
+                    end
+                end
+            end
+        end
+
+        if axis == "x" then
+            local cy = (min_y + max_y) * 0.5
+            min_y = cy - 0.5
+            max_y = cy + 0.5
+        else
+            local cx = (min_x + max_x) * 0.5
+            min_x = cx - 0.5
+            max_x = cx + 0.5
+        end
+
+        local leaf = {
+            min_x = min_x,
+            min_y = min_y,
+            max_x = max_x,
+            max_y = max_y,
+            owner_id = run_id,
+            seg_key = seg_idx,
+            run_id = run_id,
+            surface_index = s_idx,
+            axis = axis,
+            units = slice_units,
+            is_run = true,
+            static_render_spec = "flow_dot_static"
+        }
+        local key = tostring(run_id) .. ":" .. tostring(seg_idx)
+        leaf.key = key
+
+        trajectory_bvh.insert(m_tree, leaf, key)
+        viewport_bvh.on_segment_registered(s_idx, leaf)
+        leaves[seg_idx] = leaf
+    end
+
+    return leaves
 end
 
 local function evict_segment_leaf(seg)
@@ -197,26 +275,6 @@ function flow_collapse.merge_segments(seg_up, seg_down, pkey_up_exit, pkey_down_
     evict_segment_leaf(seg_up)
     evict_segment_leaf(seg_down)
 
-    local min_x, min_y, max_x, max_y = compute_corridor_aabb(axis, up_start_pos, down_end_pos)
-
-    local leaf = {
-        min_x = min_x,
-        min_y = min_y,
-        max_x = max_x,
-        max_y = max_y,
-        owner_id = run_id,
-        seg_key = 1,
-        run_id = run_id,
-        surface_index = s_idx,
-        static_render_spec = "flow_dot_static"
-    }
-    local key = tostring(run_id) .. ":1"
-    leaf.key = key
-
-    local m_tree = viewport_bvh.get_motion_tree(s_idx)
-    trajectory_bvh.insert(m_tree, leaf, key)
-    viewport_bvh.on_segment_registered(s_idx, leaf)
-
     local combined_units = {}
     for u in pairs(seg_up.units or {}) do combined_units[u] = true end
     for u in pairs(seg_down.units or {}) do combined_units[u] = true end
@@ -239,9 +297,9 @@ function flow_collapse.merge_segments(seg_up, seg_down, pkey_up_exit, pkey_down_
         ports = combined_ports,
         child_a = seg_up,
         child_b = seg_down,
-        status = "active",
-        leaf = leaf
+        status = "active"
     }
+    new_run.leaves = flow_collapse.create_and_register_slices(new_run)
 
     storage.collapsed_edges[run_id] = new_run
     for _, pkey in ipairs(combined_ports) do
@@ -281,23 +339,7 @@ local function divide_run(run_id)
                     for _, pkey in ipairs(child.ports or {}) do
                         storage.run_by_port[pkey] = child.run_id
                     end
-                    local min_x, min_y, max_x, max_y = compute_corridor_aabb(child.axis, child.start_pos, child.end_pos)
-                    local leaf = {
-                        min_x = min_x,
-                        min_y = min_y,
-                        max_x = max_x,
-                        max_y = max_y,
-                        owner_id = child.run_id,
-                        seg_key = 1,
-                        run_id = child.run_id,
-                        surface_index = child.surface_index,
-                        static_render_spec = "flow_dot_static"
-                    }
-                    leaf.key = tostring(child.run_id) .. ":1"
-                    child.leaf = leaf
-                    local m_tree = viewport_bvh.get_motion_tree(child.surface_index)
-                    trajectory_bvh.insert(m_tree, leaf, leaf.key)
-                    viewport_bvh.on_segment_registered(child.surface_index, leaf)
+                    child.leaves = flow_collapse.create_and_register_slices(child)
                 end
             else
                 for _, pkey in ipairs(child.ports or {}) do
@@ -424,8 +466,9 @@ function flow_collapse.print_collapsed_edges()
             total_runs = total_runs + 1
             if total_runs <= 20 then
                 local delta_p = flow_common.get_colinear_gradient(run.start_pkey, run.end_pkey)
-                game.print(string.format("  -> [Run #%d] Len: %d tiles | Axis: %s | %s -> %s | Delta-P: %d | Status: %s",
-                    run_id, run.length, run.axis or "?", tostring(run.start_pkey), tostring(run.end_pkey), delta_p, run.status or "active"))
+                local num_leaves = run.leaves and #run.leaves or math.max(1, math.ceil(run.length / 16))
+                game.print(string.format("  -> [Run #%d] Len: %d tiles (%d slices) | Axis: %s | %s -> %s | Delta-P: %d | Status: %s",
+                    run_id, run.length, num_leaves, run.axis or "?", tostring(run.start_pkey), tostring(run.end_pkey), delta_p, run.status or "active"))
             end
         end
     end

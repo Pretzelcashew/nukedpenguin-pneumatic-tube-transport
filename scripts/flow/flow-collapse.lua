@@ -4,7 +4,8 @@ local viewport_bvh = require("scripts.utils.viewport-bvh")
 
 local flow_collapse = {}
 
-local BATCH_SIZE = 8
+local MERGE_BATCH_SIZE = 2
+local DIV_BATCH_SIZE = 1
 
 local MACHINE_NAMES = {
     ["pneumatic-diverter"] = true,
@@ -25,9 +26,13 @@ function flow_collapse.init_storage()
     storage.next_run_id = storage.next_run_id or 1000000
 end
 
--- Hook into flow_common atomic node teardown
+-- Hook into flow_common atomic node teardown & edge severed events
 flow_common.midsegment_removal_handler = function(pkey)
     flow_collapse.handle_node_destroyed(pkey)
+end
+
+flow_common.on_edge_severed_handler = function(n_key, severed_pkey)
+    flow_collapse.handle_connection_removed(n_key)
 end
 
 function flow_collapse.enqueue_port(pkey)
@@ -65,12 +70,93 @@ function flow_collapse.get_run_for_node(pkey)
     return storage.run_by_port[pkey]
 end
 
+function flow_collapse.is_unit_colinear_straight(unit_number, expected_axis)
+    if not unit_number then return false end
+    local unit_ports = storage.flow_unit_ports and storage.flow_unit_ports[unit_number]
+    if not unit_ports or #unit_ports < 2 then return false end
+
+    local p1 = unit_ports[1]
+    local node1 = storage.flow_nodes and storage.flow_nodes[p1]
+    if not (node1 and node1.pos and node1.pressure_transmit) then return false end
+
+    local ent = node1.entity
+    local ent_name = ent and ent.valid and ent.name
+    if ent_name and MACHINE_NAMES[ent_name] then return false end
+
+    for i = 1, #unit_ports do
+        local pi = unit_ports[i]
+        local ni = storage.flow_nodes and storage.flow_nodes[pi]
+        for j = i + 1, #unit_ports do
+            local pj = unit_ports[j]
+            if flow_common.is_colinear_straight_internal(pi, pj) then
+                if expected_axis then
+                    local unit_axis = (ni and ni.dir and ni.dir.x ~= 0) and "x" or "y"
+                    if unit_axis == expected_axis then
+                        return true, pi, pj
+                    end
+                else
+                    return true, pi, pj
+                end
+            end
+        end
+    end
+    return false
+end
+
+function flow_collapse.invalidate_run(run_id)
+    if not (run_id and storage.collapsed_edges) then return end
+    local run = storage.collapsed_edges[run_id]
+    if run and run.status ~= "dividing" then
+        run.status = "dividing"
+        flow_collapse.enqueue_division(run_id)
+    end
+end
+
+function flow_collapse.handle_connection_added(pkey)
+    if not pkey then return end
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+    local u_num = node and node.unit_number
+    if not u_num then return end
+
+    if not flow_collapse.is_unit_colinear_straight(u_num) then
+        local u_ports = storage.flow_unit_ports and storage.flow_unit_ports[u_num]
+        if u_ports then
+            for _, port_key in ipairs(u_ports) do
+                local run_id = storage.run_by_port and storage.run_by_port[port_key]
+                if run_id then
+                    flow_collapse.invalidate_run(run_id)
+                end
+            end
+        end
+    else
+        flow_collapse.enqueue_unit_ports(u_num)
+    end
+end
+
+function flow_collapse.handle_connection_removed(n_key)
+    if not n_key then return end
+    local node = storage.flow_nodes and storage.flow_nodes[n_key]
+    local u_num = node and node.unit_number
+    if not u_num then return end
+
+    if flow_collapse.is_unit_colinear_straight(u_num) then
+        flow_collapse.enqueue_unit_ports(u_num)
+    end
+end
+
 local function get_or_build_segment(pkey)
     if not pkey then return nil end
     local run_id = storage.run_by_port and storage.run_by_port[pkey]
     if run_id then
         local run = storage.collapsed_edges and storage.collapsed_edges[run_id]
         if run then
+            if run.status == "dividing" then return nil end
+            for u in pairs(run.units or {}) do
+                if not flow_collapse.is_unit_colinear_straight(u, run.axis) then
+                    flow_collapse.invalidate_run(run_id)
+                    return nil
+                end
+            end
             return run
         end
     end
@@ -329,9 +415,22 @@ local function divide_run(run_id)
         if child then
             if child.is_run then
                 local delta_p = flow_common.get_colinear_gradient(child.start_pkey, child.end_pkey)
-                if delta_p == 0 then
+                local child_valid = (delta_p > 0)
+                if child_valid then
+                    for u in pairs(child.units or {}) do
+                        if not flow_collapse.is_unit_colinear_straight(u, child.axis) then
+                            child_valid = false
+                            break
+                        end
+                    end
+                end
+
+                if not child_valid then
                     child.status = "dividing"
                     storage.collapsed_edges[child.run_id] = child
+                    for _, pkey in ipairs(child.ports or {}) do
+                        storage.run_by_port[pkey] = child.run_id
+                    end
                     flow_collapse.enqueue_division(child.run_id)
                 else
                     child.status = "active"
@@ -348,6 +447,7 @@ local function divide_run(run_id)
                 if flow_collapse.engine then
                     flow_collapse.engine.register_entity_motion_leaf(child.unit_number)
                 end
+                flow_collapse.enqueue_unit_ports(child.unit_number)
             end
         end
     end
@@ -388,29 +488,40 @@ end
 function flow_collapse.step(tick)
     if not storage.collapsed_edges then return end
 
-    -- Phase A: Process unmerge/division queue at BATCH_SIZE
+    -- Phase A: Process unmerge/division queue (amortized at 1 per tick)
     local div_processed = 0
-    while div_processed < BATCH_SIZE and #storage.division_queue > 0 do
+    while div_processed < DIV_BATCH_SIZE and #storage.division_queue > 0 do
         local run_id = table.remove(storage.division_queue, 1)
         storage.division_queue_set[run_id] = nil
         div_processed = div_processed + 1
         divide_run(run_id)
     end
 
-    -- Phase B: Monitor active collapsed edges for zero gradient
-    for r_id, run in pairs(storage.collapsed_edges) do
-        if run.status == "active" then
-            local delta_p = flow_common.get_colinear_gradient(run.start_pkey, run.end_pkey)
-            if delta_p == 0 then
-                run.status = "dividing"
-                flow_collapse.enqueue_division(r_id)
+    -- Phase B: Background check for zero gradient or broken colinearity (every 15 ticks)
+    if tick % 15 == 0 then
+        for r_id, run in pairs(storage.collapsed_edges) do
+            if run.status == "active" then
+                local delta_p = flow_common.get_colinear_gradient(run.start_pkey, run.end_pkey)
+                local valid = (delta_p > 0)
+                if valid then
+                    for u in pairs(run.units or {}) do
+                        if not flow_collapse.is_unit_colinear_straight(u, run.axis) then
+                            valid = false
+                            break
+                        end
+                    end
+                end
+                if not valid then
+                    run.status = "dividing"
+                    flow_collapse.enqueue_division(r_id)
+                end
             end
         end
     end
 
-    -- Phase C: Process pairwise merge queue at BATCH_SIZE
+    -- Phase C: Process pairwise merge queue (amortized at 2 per tick)
     local merge_processed = 0
-    while merge_processed < BATCH_SIZE and #storage.collapse_queue > 0 do
+    while merge_processed < MERGE_BATCH_SIZE and #storage.collapse_queue > 0 do
         local pkey = table.remove(storage.collapse_queue, 1)
         storage.collapse_queue_set[pkey] = nil
         merge_processed = merge_processed + 1

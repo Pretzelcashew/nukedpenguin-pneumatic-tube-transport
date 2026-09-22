@@ -59,6 +59,17 @@
 4. **BVH Debug Hierarchy Disambiguation (`scripts/utils/trajectory-bvh.lua`):** Re-styled internal BVH branch nodes as thin light purple (`width = 1`, low alpha) to visually separate spatial hierarchy clusters from physical tube corridors. Distinguished merged corridor leaves in vibrant teal (`width = 2`, `[Run #...]`) from baseline unmerged tubes (`[Base #...]`), and eliminated the duplicate render array overwrite in `surface_bvh`.
 
 
+### Revision: Amortized Queue Pacing & Topology-Aware Junction Branching
+**Date:** 2026-09-21 23:05 EDT
+**Context:** Resolves momentary FPS/UPS drops during mass corridor unmerging (e.g. turning off pump flow across 60+ tubes) by amortizing merge and division queue processing. Makes pairwise collapsed corridors responsive to real-time graph topology changes, cleanly unmerging lines at junctions when perpendicular side branches are added and folding them back together when branches are removed.
+
+**Key Changes:**
+1. **Amortized Queue Batching & Sweep Pacing (`scripts/flow/flow-collapse.lua`):** Throttled pairwise division queue processing from `BATCH_SIZE = 8` down to `DIV_BATCH_SIZE = 1` operation per tick and merge processing to `MERGE_BATCH_SIZE = 2` operations per tick. Paced Phase B background edge sweeps to run on `tick % 15 == 0` instead of every tick, bounding spatial BVH mutations and leaf re-registrations to completely eliminate FPS drops.
+2. **Topology-Aware Branch Invalidation (`scripts/flow/flow-collapse.lua`, `scripts/flow/flow-engine.lua`):** Implemented `flow_collapse.is_unit_colinear_straight(unit_number, expected_axis)` to evaluate whether an entity's internal straight ports remain unbranched. Wired `flow_engine.connect_entity` to dispatch `flow_collapse.handle_connection_added` upon edge creation, immediately flagging any collapsed run whose internal junction acquires an offshoot for division via `flow_collapse.invalidate_run`.
+3. **Surviving Sub-Run Retention & Baseline Restoration (`scripts/flow/flow-collapse.lua`):** Refined `divide_run` to test `is_unit_colinear_straight` across child units, allowing straight corridor halves without the branch to remain merged while cleanly returning the branched junction to a baseline motion leaf in `storage.motion_bvh`. Corrected `storage.run_by_port` pointer re-assignment during child division stages to eliminate lookup race conditions.
+4. **Edge Severing & Depressurization Hooks (`scripts/flow/flow-common.lua`, `scripts/flow/flow-engine.lua`):** Hooked `flow_common.on_edge_severed_handler` into `destroy_node` to trigger `flow_collapse.handle_connection_removed`, automatically re-enqueuing surviving junctions to fold back into straight runs when branches are mined. Wired `flow_engine.step` on `flow_changed` to immediately invalidate active runs when $\Delta P \to 0$.
+
+
 
 
 

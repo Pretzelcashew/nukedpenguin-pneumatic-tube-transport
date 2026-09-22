@@ -681,6 +681,17 @@ function flow_engine.step(tick)
                 update_pos_render(node.pos_key)
             end
             flow_collapse.enqueue_port(pkey)
+
+            local run_id = storage.run_by_port and storage.run_by_port[pkey]
+            if run_id then
+                local run = storage.collapsed_edges and storage.collapsed_edges[run_id]
+                if run and run.status == "active" then
+                    local delta_p = flow_common.get_colinear_gradient(run.start_pkey, run.end_pkey)
+                    if delta_p == 0 then
+                        flow_collapse.invalidate_run(run_id)
+                    end
+                end
+            end
         end
 
             -- 2. Capsule Counter Range Wavefront
@@ -961,6 +972,9 @@ function flow_engine.connect_entity(entity)
 
                     storage.flow_connections[pkey][existing_pkey] = true
                     storage.flow_connections[existing_pkey][pkey] = true
+
+                    flow_collapse.handle_connection_added(existing_pkey)
+                    flow_collapse.handle_connection_added(pkey)
 
                     local existing_has_flow = (storage.flow_levels and (storage.flow_levels[existing_pkey] or 0) ~= 0)
                         or (storage.counter_levels and (storage.counter_levels[existing_pkey] or 0) > 0)

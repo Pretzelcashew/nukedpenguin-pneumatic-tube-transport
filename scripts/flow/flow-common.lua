@@ -187,6 +187,9 @@ function flow_common.destroy_node(pkey)
                 if next(storage.flow_connections[n_key]) == nil then
                     storage.flow_connections[n_key] = nil
                 end
+                if flow_common.on_edge_severed_handler then
+                    flow_common.on_edge_severed_handler(n_key, pkey)
+                end
             end
             if storage.flow_nodes and storage.flow_nodes[n_key] then
                 local n_node = storage.flow_nodes[n_key]

@@ -718,6 +718,12 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
 
     local passenger = capsule.passenger
     local passenger_valid = passenger and passenger.valid
+    local is_visible = passenger_valid or capsule_renderer.is_in_any_viewport(surface.name, curr_pos.x, curr_pos.y)
+    if not is_visible then
+        recycle_capsule_render(capsule)
+        return
+    end
+
     local passenger_index = passenger_valid and passenger.index or nil
     local surface_index = surface.index
 
@@ -886,7 +892,6 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                 width = 3,
                 target = curr_pos,
                 surface = surface,
-                render_layer = "entity-info-icon-above",
                 players = { player }
             }
             table.insert(render_objects, ring)
@@ -901,7 +906,6 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                     width = 2,
                     target = curr_pos,
                     surface = surface,
-                    render_layer = "entity-info-icon-above",
                     players = { player }
                 }
                 table.insert(render_objects, ring)
@@ -927,7 +931,6 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
                     filled = true,
                     target = curr_pos,
                     surface = surface,
-                    render_layer = "entity-info-icon-above",
                     players = { player }
                 }
                 table.insert(render_objects, dot)
@@ -1201,7 +1204,6 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
             width = 3,
             target = curr_pos,
             surface = surface,
-            render_layer = "entity-info-icon-above",
             players = { player }
         }
         if ring then
@@ -1218,7 +1220,6 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
                 width = 2,
                 target = curr_pos,
                 surface = surface,
-                render_layer = "entity-info-icon-above",
                 players = { player }
             }
             if ring then
@@ -1248,7 +1249,6 @@ function capsule_renderer.render_flight_for_player(capsule, cap_id, p_idx, playe
                 filled = true,
                 target = curr_pos,
                 surface = surface,
-                render_layer = "entity-info-icon-above",
                 players = { player }
             }
             if dot then
@@ -1779,7 +1779,6 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         filled = true,
         target = term_pos,
         surface = surface,
-        render_layer = "entity-info-icon-above",
         players = { player }
     }
 
@@ -1791,7 +1790,6 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         filled = false,
         target = term_pos,
         surface = surface,
-        render_layer = "entity-info-icon-above",
         players = { player }
     }
 

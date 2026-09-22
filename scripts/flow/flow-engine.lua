@@ -12,8 +12,10 @@ local capsule_manager = require("scripts.capsules.capsule-manager")
 local projector_settings = require("scripts.projectors.projector-settings")
 local trajectory_bvh = require("scripts.utils.trajectory-bvh")
 local viewport_bvh = require("scripts.utils.viewport-bvh")
+local flow_collapse = require("scripts.flow.flow-collapse")
 
 local flow_engine = {}
+flow_collapse.set_engine(flow_engine)
 
 local BATCH_SIZE = 50
 local MAX_FLOW = 10
@@ -142,6 +144,8 @@ function flow_engine.init_storage()
 
     -- Walls and Gates Fields
     flow_gate_interop.init_storage()
+    flow_collapse.init_storage()
+    flow_collapse.set_engine(flow_engine)
 
     -- Electromagnetic Projector Fields
     storage.active_projectors = storage.active_projectors or {}
@@ -622,6 +626,7 @@ function flow_engine.step(tick)
     flow_gate_interop.step_interop_queue(flow_engine.connect_entity)
     flow_kinetic.step_character_colliders(flow_engine.enqueue_port, flow_common.wake_port_parked)
     flow_kinetic.step_reticle_obstacles()
+    flow_collapse.step(tick)
 
     if not storage.flow_queue or next(storage.flow_queue) == nil then return end
 
@@ -675,6 +680,7 @@ function flow_engine.step(tick)
             if node then
                 update_pos_render(node.pos_key)
             end
+            flow_collapse.enqueue_port(pkey)
         end
 
             -- 2. Capsule Counter Range Wavefront
@@ -995,6 +1001,7 @@ function flow_engine.connect_entity(entity)
     end
 
     flow_engine.register_entity_motion_leaf(unit_number, entity)
+    flow_collapse.enqueue_unit_ports(unit_number)
     do return end
     local is_machine = false
     if is_machine then
@@ -1239,6 +1246,9 @@ function flow_engine.register_events()
     commands.add_command("clear-queue", "Flush pneumatic flow queue to 0", function()
         storage.flow_queue = {}
         game.print("[Flow Queue] Flow queue flushed to 0!")
+    end)
+    commands.add_command("check-collapsed-edges", "Display active collapsed edges, run_ids, and lengths", function()
+        flow_collapse.print_collapsed_edges()
     end)
 
     events.on_event(defines.events.on_tick, function(event)

@@ -79,7 +79,6 @@ function render_pool.lease_circle(arg1, arg2, arg3)
             if options.radius then obj.radius = options.radius end
             if options.filled ~= nil then obj.filled = options.filled end
             if options.width ~= nil then obj.width = options.width end
-            if options.render_layer ~= nil then obj.render_layer = options.render_layer end
             if options.draw_on_ground ~= nil then obj.draw_on_ground = options.draw_on_ground end
             if options.players then obj.players = options.players end
             obj.visible = true
@@ -119,7 +118,7 @@ function render_pool.lease_sprite(arg1, arg2, arg3)
             if options.y_scale then obj.y_scale = options.y_scale end
             if options.render_layer then obj.render_layer = options.render_layer end
             if options.players then obj.players = options.players end
-            if options.tint then obj.tint = options.tint end
+            obj.color = options.color or options.tint or { r = 1, g = 1, b = 1, a = 1 }
             obj.visible = true
             storage.render_pool_channels[obj.id] = channel
             return obj

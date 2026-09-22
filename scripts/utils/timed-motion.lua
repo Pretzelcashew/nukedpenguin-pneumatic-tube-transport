@@ -118,7 +118,7 @@ function timed_motion.schedule_flight(record)
     record.owner_id = owner_id
     record.owner = owner_id
 
-    if owner_id then
+    if owner_id and record.kind ~= "tube_hop" then
         storage.timed_flights[owner_id] = storage.timed_flights[owner_id] or {}
         local flights = storage.timed_flights[owner_id]
         flights[#flights + 1] = {
@@ -282,17 +282,12 @@ function timed_motion.get_interpolated_position(record, current_tick)
         return { x = term_pos.x, y = term_pos.y }, 1.0
     end
 
-    local total_dist = record.total_dist
-    if not total_dist then
-        total_dist = math.abs(term_pos.x - start_pos.x) + math.abs(term_pos.y - start_pos.y)
-    end
+    local duration = arrival_tick - start_tick
+    if duration <= 0 then duration = 1 end
+    local progress = math.min(1.0, math.max(0, (current_tick - start_tick) / duration))
 
-    local tpt = record.ticks_per_tile or (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or timed_motion.DEFAULT_TICKS_PER_TILE
-    local dist_traveled = math.max(0, current_tick - start_tick) / tpt
-    local progress = (total_dist > 0) and math.min(1.0, dist_traveled / total_dist) or 1.0
-
-    local cur_x = (dist_traveled >= total_dist - 0.001) and term_pos.x or (start_pos.x + (record.dx or 0) * dist_traveled)
-    local cur_y = (dist_traveled >= total_dist - 0.001) and term_pos.y or (start_pos.y + (record.dy or 0) * dist_traveled)
+    local cur_x = start_pos.x + (term_pos.x - start_pos.x) * progress
+    local cur_y = start_pos.y + (term_pos.y - start_pos.y) * progress
 
     return { x = cur_x, y = cur_y }, progress
 end

@@ -25,15 +25,30 @@
 6. **GUI Checkbox Synchronization & Strict Integer Contracts (`scripts/debug-manager.lua`, `control.lua`, `scripts/utils/viewport-bvh.lua`, `scripts/capsules/capsule-renderer.lua`):** Wired `on_gui_checked_state_changed` (`pneumatic_debug_chk_new_flow`, `pneumatic_debug_chk_master`), `/toggle-flow`, and `/toggle-debug` to trigger `viewport_bvh.sync_player_overlays`. Bound `defines.events.on_player_toggled_alt_mode` in `control.lua`. Enforced strict integer `player_index` contracts across all sync handlers, completely eliminating defensive `player_or_index` type fallbacks and `userdata` crashes.
 
 
-#### 0.3.23
-
-### Revision: Universal Broadphase Motion Leaves, Port-Bounded Frustum Culling & Graph Wakeup Restoration
-**Date:** 2026-09-21 19:25 EDT
-**Context:** Implements Task 1 of the Dynamic Node Collapse architecture by migrating pneumatic entities into the unified spatial broadphase tree (`storage.motion_bvh`). Eradicates experimental colinear flow gating and open-port suppression that previously stalled straight tube transmission and caused tip entities to drop flow dots. Replaces monolithic map-wide persistent `LuaRenderObject` creation with on-demand frustum-culled leasing from an isolated `"flow"` render pool channel. Computes leaf bounding boxes dynamically from physical port boundaries rather than hardcoded 1x1 assumptions, guaranteeing strict 1.0-tile thickness along corridor centerlines. Hooks broadphase tree inspection directly into `/toggle-bvh`.
+### Revision: Unified Motion Substrate & Arrival Heap 1-Tile Hops (Task 2)
+**Date:** 2026-09-21 20:15 EDT
+**Context:** Implements Task 2 of the motion refactor roadmap by migrating discrete 1-tile tube capsule movement onto the unified binary arrival heap (`timed_motion`), enabling continuous 60 FPS sub-tile gliding and viewport-culled rendering.
 
 **Key Changes:**
-1. **Graph Flow & Wakeup Restoration (`scripts/flow/flow-common.lua`, `scripts/flow/flow-engine.lua`):** Stripped `USE_PRESSURE_CORRIDORS` and eliminated `is_colinear_straight_internal` and `has_external` gating from `compute_port_flow_level` and `flow_engine.step`. Tip entities now receive internal pressure and render flow dots normally. Expanded `existing_has_flow` in `connect_entity` to scan all ports on adjacent entities, guaranteeing placing new tubes reliably wakes the network.
-2. **Port-Bounded Universal BVH Leaves (`scripts/flow/flow-engine.lua`):** Implemented `flow_engine.register_entity_motion_leaf` calculating spatial AABB bounds directly from `port_defs.get_ports(entity)` (`min_px`, `max_px`, `min_py`, `max_py`) with an enforced 1.0-tile thickness on flat axes. Machine footprints register as `owner_id:machine` (`machine_static`), and tube corridors register as `owner_id:base` (`flow_dot_static`) in `storage.motion_bvh[surface_index]`. Added automatic migration for pre-existing save entities.
-3. **Channel-Segregated Render Leasing (`scripts/utils/render-pool.lua`, `scripts/utils/motion-protocols.lua`):** Added the `"flow"` channel to `render-pool.lua` (retention floor 64) and `motion_protocols.CHANNELS.FLOW`. Completely isolates pneumatic flow dots and connection lines from projector reticle dots and capsule payloads.
-4. **Modular Frustum-Culled Static Overlays (`scripts/flow/flow-renderer.lua`, `scripts/diverters/diverter-renderer.lua`, `scripts/utils/viewport-bvh.lua`):** Implemented `flow_dot_static` (leasing pressure dots, counter indicators, and inter-port lines) and `machine_static` (leasing Diverter filter icon grids, drop shadows, quality badges, and blacklist marks). Retired map-wide persistent render loops in `flow-renderer.lua` in favor of `notify_pos_changed` -> `viewport_bvh.on_leaf_static_changed`. Off-screen entities cost 0 persistent render handles.
-5. **Universal Broadphase Debug Visualization (`scripts/utils/trajectory-bvh.lua`, `scripts/utils/viewport-bvh.lua`):** Extended `trajectory_bvh.draw_for_player` to inspect and render `storage.motion_bvh` with color-coded AABBs (cyan for tubes, amber for machines, green for reticle beams). Connected live overlay refreshes to `viewport_bvh.on_segment_registered` and `on_segment_removed`.
+1. **Tube Hop Arrival Protocol (`scripts/utils/motion-protocols.lua`):** Registered the `"tube_hop"` arrival callback. Handles port arrival transfers, occupancy updates, and next-hop evaluations on heap pop without altering the underlying stepper.
+2. **Scheduled 1-Tile Flights (`scripts/capsules/capsule-transit.lua`, `scripts/capsules/capsule-runner.lua`):** Capsules advancing between adjacent ports schedule 6-tick flights on the arrival heap via `timed_motion.schedule_flight`.
+3. **Broadphase BVH Churn Suppression (`scripts/utils/timed-motion.lua`):** Guarded `schedule_flight` to skip registering short 1-tile hops into `storage.surface_bvh`, preventing tree thrashing on standard tube traversal.
+4. **Sub-Tile Gliding & Frustum Culling (`scripts/capsules/capsule-renderer.lua`):** Interpolates sub-tile positions via `timed_motion.get_interpolated_position`. Off-screen capsules in dormant viewports consume 0 rendering calls.
+5. **Render Object Property Sanitization (`scripts/capsules/capsule-renderer.lua`):** Purged `render_layer` assignments on native circle render objects, resolving Factorio 2.0 assertion errors.
+
+
+### Revision: Dynamic Pairwise Node Collapse & Delta-P Evaluator (Task 3)
+**Date:** 2026-09-21 20:45 EDT
+**Context:** Implements Task 3 of the node collapse roadmap, replacing individual 1-tile tube leaves in `storage.motion_bvh` with dynamically collapsed corridor runs along active pressure gradients. Enforces zero-gradient stagnation gating, provides atomic midsegment deconstruction handling, and fixes render-pool sprite tinting and runtime require crashes.
+
+**Key Changes:**
+1. **Delta-P Gradient Evaluator (`scripts/flow/flow-common.lua`):** Added `flow_common.get_colinear_gradient` evaluating pressure gradients ($\Delta P = P_{\text{in}} - P_{\text{out}}$). Returns `0, nil` to forbid pairing on unpressurized lines, dead-ends capped by walls, and opposing pump seams.
+2. **Pairwise Merge & Division Queues (`scripts/flow/flow-collapse.lua`):** Implemented `flow-collapse.lua` processing atomic pairwise folds ($merge(A,B) \to AB$) and unmerges ($AB \to A+B$) at 50 ops/tick. Allocates synthetic `run_id`s (1,000,000+) and generates strictly 1.0-tile-thin corridor AABB leaves in `storage.motion_bvh`.
+3. **O(1) Midsegment Removal (`scripts/flow/flow-common.lua`, `scripts/flow/flow-collapse.lua`):** Hooked `midsegment_removal_handler` into `flow_common.destroy_node`. Mining a tube inside an active collapsed edge evicts the corridor leaf from the BVH in $O(1)$, restores baseline leaves for surviving units, and enqueues surviving halves for re-folding.
+4. **Engine Integration & Diagnostics (`scripts/flow/flow-engine.lua`):** Wired `flow_collapse.step` into the tick loop, enqueued ports on `flow_changed` and entity builds, and registered `/check-collapsed-edges` for console inspection.
+5. **Render Object Tint & Top-Level Require Fixes (`scripts/utils/render-pool.lua`, `scripts/flow/flow-collapse.lua`, `scripts/flow/flow-engine.lua`):** Corrected `obj.tint` to `obj.color` on recycled sprite handles in `render-pool.lua` with white fallback. Bound `flow_collapse.set_engine` at top-level script load time in `flow-engine.lua`, purging inline runtime `require` calls during entity mining.
+
+
+
+
+

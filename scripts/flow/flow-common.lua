@@ -52,6 +52,32 @@ function flow_common.enqueue_unit_ports(unit_number)
     end
 end
 
+-- Delta-P Gradient Evaluator Primitive (SINGLE SOURCE OF TRUTH)
+function flow_common.get_port_pressure(pkey)
+    if not pkey then return 0 end
+    local level = storage.flow_levels and storage.flow_levels[pkey]
+    if level then return level end
+    local node = storage.flow_nodes and storage.flow_nodes[pkey]
+    if node and node.emitter then
+        return node.emitter
+    end
+    return 0
+end
+
+function flow_common.get_colinear_gradient(pkey_in, pkey_out)
+    if not (pkey_in and pkey_out) then return 0, nil end
+    local p_in = flow_common.get_port_pressure(pkey_in)
+    local p_out = flow_common.get_port_pressure(pkey_out)
+    local delta_p = p_in - p_out
+    if delta_p == 0 then
+        return 0, nil
+    elseif delta_p > 0 then
+        return delta_p, "forward"
+    else
+        return -delta_p, "backward"
+    end
+end
+
 -- Colinear Straight Evaluation Primitive (SINGLE SOURCE OF TRUTH)
 function flow_common.is_colinear_straight_internal(pkey_a, arg2, arg3, arg4)
     local pkey_b, node_a, node_b
@@ -144,6 +170,10 @@ end
 function flow_common.destroy_node(pkey)
     local node = storage.flow_nodes and storage.flow_nodes[pkey]
     if not node then return end
+
+    if flow_common.midsegment_removal_handler then
+        flow_common.midsegment_removal_handler(pkey)
+    end
 
     if node.pos_key then
         flow_common.remove_node_from_grid(node.pos_key, pkey)

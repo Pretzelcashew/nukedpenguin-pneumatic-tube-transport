@@ -17,6 +17,8 @@ local capsule_transit = require("scripts.capsules.capsule-transit")
 local capsule_ballistics = require("scripts.capsules.capsule-ballistics")
 local binary_heap = require("scripts.utils.binary-heap")
 local profiler = require("scripts.utils.profiler")
+local timed_motion = require("scripts.utils.timed-motion")
+local motion_protocols = require("scripts.utils.motion-protocols")
 
 local STAGGER_TICKS = 6
 local MAX_NODE_HOPS_PER_STEP = 3
@@ -243,6 +245,8 @@ function capsule_runner.remove_capsule(capsule_id)
             local bf = capsule.beam_flight
             capsule_ballistics.remove_flight(capsule_id, bf and bf.owner)
         end
+        timed_motion.remove_flight(capsule_id, capsule_id)
+        capsule_renderer.clear_capsule_render(capsule)
     end
     local target_key = capsule and capsule.from_port_key
     capsule_queries.remove_capsule(capsule_id)
@@ -253,6 +257,14 @@ function capsule_runner.get_capsule_location(capsule_id)
     if not storage.capsules then return nil, nil end
     local capsule = storage.capsules[capsule_id]
     if not capsule then return nil, nil end
+
+    if capsule.timed_hop then
+        local curr_pos = timed_motion.get_interpolated_position(capsule.timed_hop, (game and game.tick) or 0)
+        local surf = game.surfaces[capsule.timed_hop.surface_name or capsule.surface_name or "nauvis"]
+        if surf and surf.valid then
+            return curr_pos, surf
+        end
+    end
 
     local pkey = capsule.from_port_key
     local node = pkey and storage.flow_nodes and storage.flow_nodes[pkey]
@@ -714,6 +726,159 @@ function capsule_runner.select_next_target(capsule)
 end
 
 --------------------------------------------------------------------------------
+-- 1-TILE TIMED HOP SCHEDULER & ARRIVAL HANDLER
+--------------------------------------------------------------------------------
+function capsule_runner.schedule_hop(capsule, cap_id, from_pkey, to_pkey, current_tick)
+    local node_a = storage.flow_nodes and storage.flow_nodes[from_pkey]
+    local node_b = storage.flow_nodes and storage.flow_nodes[to_pkey]
+    if not (node_a and node_b) then return false end
+
+    local pos_a = node_a.pos
+    local pos_b = node_b.pos
+    local surface_name = node_a.surface_name or (node_b and node_b.surface_name) or "nauvis"
+
+    local dx = pos_b.x - pos_a.x
+    local dy = pos_b.y - pos_a.y
+    local dist = math.sqrt(dx * dx + dy * dy)
+    local duration = math.max(1, math.floor(dist * STAGGER_TICKS + 0.5))
+
+    capsule.to_port_key = to_pkey
+    capsule._occ_block_key = to_pkey
+    capsule_queries.update_capsule_occupancy(capsule)
+    capsule_runner.wake_parked_capsules(from_pkey)
+    mark_capsule_unparked(capsule)
+
+    capsule.in_timed_flight = true
+
+    local flight = {
+        id = cap_id,
+        capsule_id = cap_id,
+        owner_id = cap_id,
+        owner = cap_id,
+        kind = "tube_hop",
+        protocol = "tube_hop",
+        on_arrival = "tube_hop",
+        start_pos = { x = pos_a.x, y = pos_a.y },
+        terminal_pos = { x = pos_b.x, y = pos_b.y },
+        start_tick = current_tick,
+        arrival_tick = current_tick + duration,
+        flight_ticks = duration,
+        duration = duration,
+        total_dist = dist,
+        surface_name = surface_name,
+        from_port_key = from_pkey,
+        target_port_key = to_pkey
+    }
+
+    capsule.timed_hop = flight
+    timed_motion.schedule_flight(flight)
+    return true
+end
+
+local function try_advance_capsule(capsule, id, current_tick)
+    local cur_pkey = capsule.from_port_key
+    local cur_node = storage.flow_nodes and storage.flow_nodes[cur_pkey]
+    if not cur_node then return false end
+
+    local hops = 0
+    while hops < MAX_NODE_HOPS_PER_STEP do
+        local next_port_key = capsule_runner.select_next_target(capsule)
+        if not next_port_key then
+            return false
+        elseif next_port_key == "timed_launched" then
+            capsule_renderer.clear_capsule_render(capsule)
+            return true
+        end
+
+        local next_node = storage.flow_nodes and storage.flow_nodes[next_port_key]
+        if not next_node then return false end
+
+        local dx = next_node.pos.x - cur_node.pos.x
+        local dy = next_node.pos.y - cur_node.pos.y
+        local dist = math.sqrt(dx * dx + dy * dy)
+
+        if dist < 0.05 then
+            local prev_key = cur_pkey
+            capsule.last_port_key = prev_key
+            capsule.from_port_key = next_port_key
+            capsule_queries.update_capsule_occupancy(capsule)
+            capsule_runner.wake_parked_capsules(prev_key)
+
+            local prev_unit = capsule_queries.get_port_info(prev_key)
+            local new_unit = capsule_queries.get_port_info(next_port_key)
+            if prev_unit ~= new_unit then
+                if new_unit and storage.active_projectors and storage.active_projectors[new_unit] then
+                    capsule.entered_via_pressure = true
+                    capsule.last_port_key = nil
+                    mark_capsule_parked(capsule)
+                    return true
+                elseif prev_unit and storage.active_projectors and storage.active_projectors[prev_unit] then
+                    capsule.entered_via_pressure = false
+                end
+            end
+
+            if capsule_runner.handle_arrival(capsule, id) then
+                return true
+            end
+
+            cur_pkey = next_port_key
+            cur_node = next_node
+            hops = hops + 1
+        else
+            capsule_runner.schedule_hop(capsule, id, cur_pkey, next_port_key, current_tick)
+            return true
+        end
+    end
+    return false
+end
+
+function capsule_runner.handle_tube_hop_arrival(flight_id, flight, current_tick)
+    local capsule = storage.capsules and storage.capsules[flight_id]
+    if not capsule then
+        timed_motion.remove_flight(flight_id, flight and flight.owner_id)
+        return
+    end
+
+    local prev_key = capsule.from_port_key
+    local arrival_key = (flight and flight.target_port_key) or capsule.to_port_key or capsule._occ_block_key
+    if not arrival_key then
+        timed_motion.remove_flight(flight_id, flight and flight.owner_id)
+        return
+    end
+
+    capsule.last_port_key = prev_key
+    capsule.from_port_key = arrival_key
+    capsule.to_port_key = nil
+    capsule._occ_block_key = nil
+    capsule.in_timed_flight = nil
+    capsule.timed_hop = nil
+    timed_motion.remove_flight(flight_id, flight and flight.owner_id)
+
+    local term_pos = flight and flight.terminal_pos
+    if term_pos then
+        capsule.last_pos = { x = term_pos.x, y = term_pos.y }
+    end
+
+    capsule_queries.update_capsule_occupancy(capsule)
+    capsule_runner.wake_parked_capsules(prev_key)
+
+    if capsule_runner.handle_arrival(capsule, flight_id) then
+        return
+    end
+
+    if not try_advance_capsule(capsule, flight_id, current_tick) then
+        capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
+        capsule.last_port_key = nil
+        mark_capsule_parked(capsule)
+    end
+end
+
+motion_protocols.register_arrival("tube_hop", capsule_runner.handle_tube_hop_arrival)
+if capsule_ballistics.register_arrival_handler then
+    capsule_ballistics.register_arrival_handler("tube_hop", capsule_runner.handle_tube_hop_arrival)
+end
+
+--------------------------------------------------------------------------------
 -- HUB ARRIVAL & OUTBOUND PACKING
 --------------------------------------------------------------------------------
 function capsule_runner.handle_arrival(capsule, id)
@@ -922,110 +1087,84 @@ function capsule_runner.update_capsules(current_tick)
     capsule_lifecycle.step_spoil_heap(current_tick)
 
     for id, capsule in pairs(storage.capsules) do
-        if not capsule.in_timed_flight then
-        local from_key = capsule.from_port_key
-        local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
-        local bf = capsule.beam_flight
+        if capsule.timed_hop then
+            local flight = capsule.timed_hop
+            local curr_pos = timed_motion.get_interpolated_position(flight, current_tick)
+            capsule.last_pos = curr_pos
 
-        local is_woken = (capsule.next_retry_tick == nil)
-        local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
+            local surf = game.surfaces[flight.surface_name or capsule.surface_name or "nauvis"]
+            if surf and surf.valid then
+                capsule.surface_name = surf.name
+                if capsule.passenger and capsule.passenger.valid then
+                    capsule.passenger.teleport(curr_pos, surf)
+                end
 
-        if not node then
-            if is_woken or is_stagger_tick then
-                capsule.next_retry_tick = current_tick + STAGGER_TICKS
-                if bf and bf.hop_positions and bf.current_hop then
-                    capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_tick, STAGGER_TICKS, capsule_runner)
+                if capsule_lifecycle.update(capsule, id, curr_pos, surf) then
+                    capsule_runner.wake_parked_capsules(capsule.from_port_key)
                 else
-                    mark_capsule_unparked(capsule)
-                    local pos = capsule.last_pos
-                    local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
-                    local dead_port_key = capsule.from_port_key
-                    if pos and surface and surface.valid then
-                        hub_spill.spill_capsule(id, surface, pos, nil, true)
-                    else
-                        capsule_runner.remove_capsule(id)
-                    end
-                    if dead_port_key then
-                        capsule_runner.wake_parked_capsules(dead_port_key)
-                    end
+                    capsule_renderer.render(capsule, id, curr_pos, surf)
                 end
             end
-        else
-            capsule.last_pos = { x = node.pos.x, y = node.pos.y }
-            capsule.surface_name = node.surface_name
+        elseif not capsule.in_timed_flight then
+            local from_key = capsule.from_port_key
+            local node = from_key and storage.flow_nodes and storage.flow_nodes[from_key]
+            local bf = capsule.beam_flight
 
-            if is_woken or is_stagger_tick then
-                capsule.next_retry_tick = current_tick + STAGGER_TICKS
+            local is_woken = (capsule.next_retry_tick == nil)
+            local is_stagger_tick = ((current_tick + id) % STAGGER_TICKS == 0)
 
-                local hops_done = 0
-                while hops_done < MAX_NODE_HOPS_PER_STEP do
-                    if capsule_runner.handle_arrival(capsule, id) then
-                        break
-                    end
-
-                    local next_port_key = capsule_runner.select_next_target(capsule)
-                    if not next_port_key then
-                        capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
-                        capsule.last_port_key = nil
-                        mark_capsule_parked(capsule)
-                        break
-                    elseif next_port_key == "timed_launched" then
-                        capsule_renderer.clear_capsule_render(capsule)
-                        break
-                    end
-
-                    mark_capsule_unparked(capsule)
-                    local prev_key = capsule.from_port_key
-                    capsule.last_port_key = prev_key
-                    capsule.from_port_key = next_port_key
-                    capsule.to_port_key = nil
-
-                    capsule_queries.update_capsule_occupancy(capsule)
-                    capsule_runner.wake_parked_capsules(prev_key)
-
-                    hops_done = hops_done + 1
-                    if (next_node and (next_node.is_beam_node or next_node.is_prominent_kinetic))
-                       or (node and (node.is_beam_node or node.is_prominent_kinetic)) then
-                        if capsule_runner.handle_arrival(capsule, id) then
-                            break
+            if not node then
+                if is_woken or is_stagger_tick then
+                    capsule.next_retry_tick = current_tick + STAGGER_TICKS
+                    if bf and bf.hop_positions and bf.current_hop then
+                        capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_tick, STAGGER_TICKS, capsule_runner)
+                    else
+                        mark_capsule_unparked(capsule)
+                        local pos = capsule.last_pos
+                        local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
+                        local dead_port_key = capsule.from_port_key
+                        if pos and surface and surface.valid then
+                            hub_spill.spill_capsule(id, surface, pos, nil, true)
+                        else
+                            capsule_runner.remove_capsule(id)
                         end
-                        break
+                        if dead_port_key then
+                            capsule_runner.wake_parked_capsules(dead_port_key)
+                        end
                     end
+                end
+            else
+                capsule.last_pos = { x = node.pos.x, y = node.pos.y }
+                capsule.surface_name = node.surface_name
 
-                    local prev_unit = capsule_queries.get_port_info(prev_key)
-                    local new_unit = capsule_queries.get_port_info(next_port_key)
-                    if prev_unit ~= new_unit then
-                        if new_unit and storage.active_projectors and storage.active_projectors[new_unit] then
-                            capsule.entered_via_pressure = true
+                if is_woken or is_stagger_tick then
+                    capsule.next_retry_tick = current_tick + STAGGER_TICKS
+
+                    if not capsule_runner.handle_arrival(capsule, id) then
+                        if not try_advance_capsule(capsule, id, current_tick) then
+                            capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
                             capsule.last_port_key = nil
                             mark_capsule_parked(capsule)
-                        elseif prev_unit and storage.active_projectors and storage.active_projectors[prev_unit] then
-                            capsule.entered_via_pressure = false
                         end
-                        if capsule_runner.handle_arrival(capsule, id) then
-                            break
-                        end
-                        break
                     end
                 end
-            end
 
-            if storage.capsules[id] then
-                local current_node = storage.flow_nodes[capsule.from_port_key]
-                if current_node then
-                    local surface = game.surfaces[current_node.surface_name]
-                    local curr_pos = current_node.pos
-                    if surface and surface.valid and curr_pos then
-                        if capsule_lifecycle.update(capsule, id, curr_pos, surface) then
-                            capsule_runner.wake_parked_capsules(capsule.from_port_key)
-                        else
-                            capsule_renderer.render(capsule, id, curr_pos, surface)
+                if storage.capsules[id] and not capsule.timed_hop then
+                    local current_node = storage.flow_nodes[capsule.from_port_key]
+                    if current_node then
+                        local surface = game.surfaces[current_node.surface_name]
+                        local curr_pos = current_node.pos
+                        if surface and surface.valid and curr_pos then
+                            if capsule_lifecycle.update(capsule, id, curr_pos, surface) then
+                                capsule_runner.wake_parked_capsules(capsule.from_port_key)
+                            else
+                                capsule_renderer.render(capsule, id, curr_pos, surface)
+                            end
                         end
                     end
                 end
             end
         end
-        end -- if not capsule.in_timed_flight
     end
     profiler.stop_sub_timer("Capsules: Tube Traversal", t_tubes)
 end

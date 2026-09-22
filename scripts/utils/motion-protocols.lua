@@ -219,6 +219,13 @@ motion_protocols.register_arrival("none", function(flight_id, flight, current_ti
     return true
 end)
 
+motion_protocols.register_arrival("tube_hop", function(flight_id, flight, current_tick, runner)
+    if runner and runner.handle_tube_hop_arrival then
+        return runner.handle_tube_hop_arrival(flight_id, flight, current_tick)
+    end
+    return true
+end)
+
 --------------------------------------------------------------------------------
 -- ALTERNATIVE PROTOCOL B: DISRUPTION SUBPROTOCOLS
 --------------------------------------------------------------------------------
@@ -293,6 +300,19 @@ motion_protocols.register_protocol("projectile", {
     trail = "none",
     disruption = "ballistic_crash",
     arrival = "none"
+})
+
+-- 4. Pressurized Pneumatic Tube 1-Tile Hop
+motion_protocols.register_protocol("tube_hop", {
+    medium = "pneumatic_network",
+    progression = "continuous",
+    head = "capsule_head",
+    trail = "none",
+    disruption = "none",
+    arrival = "tube_hop",
+    detector = "tube_connectivity",
+    clearance_policy = "none",
+    render_channel = "capsule"
 })
 
 --------------------------------------------------------------------------------

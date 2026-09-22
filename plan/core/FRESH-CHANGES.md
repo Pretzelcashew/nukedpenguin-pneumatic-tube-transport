@@ -89,6 +89,14 @@
 3. **O(1) Segment Key Leaf Eviction (`scripts/flow/flow-collapse.lua`):** Updated `evict_segment_leaf`, `divide_run`, and `handle_node_destroyed` to pass exact `leaf.seg_key` identifiers to `viewport_bvh.on_segment_removed` when iterating `run.leaves`. Bypasses full-table linear prefix scans across `leaves_by_key` and player visible sets in favor of instant $O(1)$ table lookups.
 
 
+### Revision: Terminal Tube Traversal & Boundary Pressure Gradient Inheritance
+**Date:** 2026-09-21 23:55 EDT
+**Context:** Resolves an issue where capsules entering the final tube or dead-end conduit of a line stalled at the entrance seam and refused to step internally to the terminal cap. Eliminates false-rejection lookahead on non-diverters and carries incoming positive pressure through terminal conduits with zero local pressure.
+
+**Key Changes:**
+1. **Diverter-Scoped Exit Lookahead (`scripts/capsules/capsule-runner.lua`):** Restricted recursive `has_valid_exit` lookahead in `is_hop_valid` strictly to multi-port diverters (`is_diverter`), allowing standard tubes, junctions, and passive conduits to accept internal hops to terminal dead-end ports without requiring downstream exits.
+2. **Incoming Pressure Gradient Inheritance (`scripts/capsules/capsule-runner.lua`):** Updated `select_next_target` to inspect `capsule.last_port_key` when an internal conduit port has zero local pressure (`level_exit == 0`). If the capsule was pushed in from a port with positive pressure ($\ge 1$), `level_exit` inherits the incoming pressure level, ensuring $1 \to 0$ drops evaluate as positive gradients ($\Delta P > 0$) to carry capsules across the tube to the terminal cap.
+
 
 
 

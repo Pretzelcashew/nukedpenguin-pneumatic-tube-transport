@@ -566,7 +566,10 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
             end
         end
 
-        local exit_count = get_candidate_hops(target_port_key, 3)
+        local is_diverter = (storage.diverter_settings and storage.diverter_settings[target_node.unit_number] ~= nil)
+            or (target_node.entity and target_node.entity.valid and target_node.entity.name == "pneumatic-diverter")
+        if is_diverter then
+            local exit_count = get_candidate_hops(target_port_key, 3)
         local has_valid_exit = false
         for i = 1, exit_count do
             local exit_key = scratch_cand_keys[3][i]
@@ -580,6 +583,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
         end
         if not has_valid_exit then
             return false
+        end
         end
     end
 
@@ -647,6 +651,14 @@ function capsule_runner.select_next_target(capsule)
                 local exit_port = (current_node.cross_transit and via_port) or from_port_key
                 local level_exit = storage.flow_levels and storage.flow_levels[exit_port] or 0
 
+                local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
+                if level_exit == 0 and is_internal and capsule.last_port_key then
+                    local last_level = storage.flow_levels and storage.flow_levels[capsule.last_port_key] or 0
+                    if last_level > 0 then
+                        level_exit = last_level
+                    end
+                end
+
                 local drop = level_exit - level_cand
 
                 if current_node.emitter and cand_node and cand_node.emitter then
@@ -679,6 +691,12 @@ function capsule_runner.select_next_target(capsule)
                     end
                     if best_downstream ~= -math.huge then
                         drop = best_downstream
+                    elseif drop == 0 and (math.abs(level_exit) > 0 or (capsule.last_port_key and (storage.flow_levels and storage.flow_levels[capsule.last_port_key] or 0) > 0)) then
+                        local is_diverter = (storage.diverter_settings and storage.diverter_settings[cand_node.unit_number] ~= nil)
+                            or (cand_node.entity and cand_node.entity.valid and cand_node.entity.name == "pneumatic-diverter")
+                        if not is_diverter then
+                            drop = 0.5
+                        end
                     end
                 end
 

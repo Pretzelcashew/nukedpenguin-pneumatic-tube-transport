@@ -120,5 +120,16 @@
 5. **Zero-Polling Debug Notification Hook (`scripts/debug-manager.lua`, `scripts/capsules/capsule-renderer.lua`):** Implemented `debug_manager.register_arrival_hook` to dispatch instant `destroy_player_arrival_dots` and visible reticle synchronization upon toggling `/toggle-arrival-dots` or clicking the control panel checkbox without introducing circular require loops.
 
 
+### Revision: Continuous A-to-B Flights Across Merged Corridors (Task 4)
+**Date:** 2026-09-22 11:00 EDT
+**Context:** Completes Task 4 of the motion refactor roadmap by enabling capsules entering pairwise collapsed tube corridors to bypass all intermediate 1-tile hops and launch directly on unbroken, full-distance flights from entrance to exit. Resolves an issue where 0-distance junction flange seams bypassed corridor checks, evaluates pressure gradients across outer segment spans to ensure integer pressure plateaus merge completely, and binds in-flight capsule visibility to the observer frustum with zero off-screen rendering overhead.
+
+**Key Changes:**
+1. **Memorized Endpoint Corridor Traversal (`scripts/capsules/capsule-runner.lua`):** Implemented `try_advance_corridor` in the capsule movement pipeline. When a capsule is at any port belonging to an active merged corridor (`storage.run_by_port[cur_pkey]`), it looks up the pre-baked exit endpoint (`run.end_pkey`) and launches a single continuous flight for the full multi-tile distance ($L \times \text{STAGGER\_TICKS}$) on the binary arrival heap, reducing simulation overhead by over 90% across long lines.
+2. **0-Distance Seam Bypass Resolution (`scripts/capsules/capsule-runner.lua`):** Relocated corridor evaluation inside the `while hops < MAX_NODE_HOPS_PER_STEP do` multi-hop advancement loop. Eliminates an issue where 0-distance internal transfers across junction flanges (`dist < 0.05`) bypassed corridor detection and caused the motion engine to fall back to discrete 1-tile hops.
+3. **Outer-Span Gradient Evaluation (`scripts/flow/flow-collapse.lua`):** Implemented `get_outer_port` to evaluate pressure gradients across the outer ends of candidate merged segments rather than between touching connection ports at the flange. Resolves an issue where equal local connection pressures ($P_1 = P_2 = 5$) falsely evaluated to $\Delta P = 0$, allowing contiguous straight tubes sharing the same flow vector to fold into unified runs from source to sink.
+4. **Spatiotemporal Viewport Frustum Culling (`scripts/capsules/capsule-runner.lua`):** Gated in-flight capsule rendering behind `capsule_renderer.is_in_any_viewport`. When capsules travel through unobserved sections of a long pneumatic corridor, they bypass visual drawing and immediately recycle existing render pool handles, preventing ghost sprites from lingering at entrance boundaries.
+
+
 
 

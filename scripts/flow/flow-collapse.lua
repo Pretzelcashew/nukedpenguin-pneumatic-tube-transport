@@ -215,6 +215,14 @@ function flow_collapse.set_engine(engine)
     flow_collapse.engine = engine
 end
 
+local function get_outer_port(seg, conn_pkey)
+    if seg.is_run then
+        return seg.start_pkey == conn_pkey and seg.end_pkey or seg.start_pkey
+    else
+        return seg.port_a == conn_pkey and seg.port_b or seg.port_a
+    end
+end
+
 local function compute_corridor_aabb(axis, start_pos, end_pos)
     local min_x, max_x, min_y, max_y
     if axis == "x" then
@@ -565,7 +573,13 @@ function flow_collapse.step(tick)
                             end
 
                             if aligned then
-                                local delta_p, dir_vec = flow_common.get_colinear_gradient(pkey, neighbor_key)
+                                local outer_a = get_outer_port(seg_a, pkey)
+                                local outer_b = get_outer_port(seg_b, neighbor_key)
+                                local delta_p, dir_vec = flow_common.get_colinear_gradient(outer_a, outer_b)
+                                if delta_p == 0 then
+                                    delta_p, dir_vec = flow_common.get_colinear_gradient(pkey, neighbor_key)
+                                end
+
                                 if delta_p > 0 and dir_vec then
                                     if dir_vec == "forward" then
                                         flow_collapse.merge_segments(seg_a, seg_b, pkey, neighbor_key)
@@ -578,6 +592,50 @@ function flow_collapse.step(tick)
                         end
                     end
                 end
+            end
+        end
+    end
+end
+
+function flow_collapse.get_run_port_at_pos(run, pos)
+    if not (run and run.ports and pos) then return nil end
+    local best_key = nil
+    local min_d2 = 0.3
+    for _, pkey in ipairs(run.ports) do
+        local node = storage.flow_nodes and storage.flow_nodes[pkey]
+        if node and node.pos then
+            local d2 = (node.pos.x - pos.x)^2 + (node.pos.y - pos.y)^2
+            if d2 < min_d2 then
+                min_d2 = d2
+                best_key = pkey
+            end
+        end
+    end
+    return best_key
+end
+
+function flow_collapse.remove_occupant(run_id, cap_id)
+    if not (run_id and storage.collapsed_edges) then return end
+    local run = storage.collapsed_edges[run_id]
+    if not (run and run.occupants) then return end
+    for i = 1, #run.occupants do
+        if run.occupants[i] == cap_id then
+            table.remove(run.occupants, i)
+            break
+        end
+    end
+end
+
+function flow_collapse.wake_run(run_id)
+    if not (run_id and storage.collapsed_edges) then return end
+    local run = storage.collapsed_edges[run_id]
+    if not run then return end
+    if run.occupants then
+        for i = 1, #run.occupants do
+            local cap_id = run.occupants[i]
+            local cap = storage.capsules and storage.capsules[cap_id]
+            if cap then
+                cap.next_retry_tick = nil
             end
         end
     end

@@ -1,6 +1,7 @@
 local events = require("scripts.events")
 local port_defs = require("scripts.flow.port-defs")
 local flow_engine = require("scripts.flow.flow-engine")
+local flow_collapse = require("scripts.flow.flow-collapse")
 local hub_defs = require("scripts.hubs.hub-definitions")
 local hub_unpacking = require("scripts.hubs.hub-unpacking")
 local hub_spill = require("scripts.hubs.hub-spill")
@@ -794,6 +795,66 @@ function capsule_runner.schedule_hop(capsule, cap_id, from_pkey, to_pkey, curren
     return true
 end
 
+local function try_advance_corridor(capsule, id, cur_pkey, current_tick)
+    local run_id = storage.run_by_port and storage.run_by_port[cur_pkey]
+    if not run_id then return false end
+
+    local run = storage.collapsed_edges and storage.collapsed_edges[run_id]
+    if not (run and run.status == "active" and run.length > 1) then
+        return false
+    end
+
+    -- If the capsule has already reached the memorized exit port of the corridor, advance normally out of the run
+    if cur_pkey == run.end_pkey then
+        return false
+    end
+
+    local cur_node = storage.flow_nodes and storage.flow_nodes[cur_pkey]
+    local end_node = storage.flow_nodes and storage.flow_nodes[run.end_pkey]
+    local end_pos = (end_node and end_node.pos) or run.end_pos
+    if not (cur_node and cur_node.pos and end_pos) then return false end
+
+    local dx = end_pos.x - cur_node.pos.x
+    local dy = end_pos.y - cur_node.pos.y
+    local dist = math.sqrt(dx * dx + dy * dy)
+    if dist < 0.1 then return false end
+
+    local duration = math.max(1, math.floor(dist * STAGGER_TICKS + 0.5))
+
+    capsule.to_port_key = run.end_pkey
+    capsule._occ_block_key = run.end_pkey
+    capsule_queries.update_capsule_occupancy(capsule)
+    capsule_runner.wake_parked_capsules(cur_pkey)
+    mark_capsule_unparked(capsule)
+
+    capsule.in_timed_flight = true
+
+    local flight = {
+        id = id,
+        capsule_id = id,
+        owner_id = id,
+        owner = id,
+        kind = "tube_hop",
+        protocol = "tube_hop",
+        on_arrival = "tube_hop",
+        start_pos = { x = cur_node.pos.x, y = cur_node.pos.y },
+        terminal_pos = { x = end_pos.x, y = end_pos.y },
+        start_tick = current_tick,
+        arrival_tick = current_tick + duration,
+        flight_ticks = duration,
+        duration = duration,
+        total_dist = dist,
+        surface_name = cur_node.surface_name or "nauvis",
+        from_port_key = cur_pkey,
+        target_port_key = run.end_pkey,
+        run_id = run_id
+    }
+
+    capsule.timed_hop = flight
+    timed_motion.schedule_flight(flight)
+    return true
+end
+
 local function try_advance_capsule(capsule, id, current_tick)
     local cur_pkey = capsule.from_port_key
     local cur_node = storage.flow_nodes and storage.flow_nodes[cur_pkey]
@@ -801,6 +862,9 @@ local function try_advance_capsule(capsule, id, current_tick)
 
     local hops = 0
     while hops < MAX_NODE_HOPS_PER_STEP do
+        if try_advance_corridor(capsule, id, cur_pkey, current_tick) then
+            return true
+        end
         local next_port_key = capsule_runner.select_next_target(capsule)
         if not next_port_key then
             return false
@@ -1119,10 +1183,20 @@ function capsule_runner.update_capsules(current_tick)
                     capsule.passenger.teleport(curr_pos, surf)
                 end
 
-                if capsule_lifecycle.update(capsule, id, curr_pos, surf) then
-                    capsule_runner.wake_parked_capsules(capsule.from_port_key)
+                local is_visible = (capsule.passenger and capsule.passenger.valid)
+                    or capsule_renderer.is_in_any_viewport(surf.name, curr_pos.x, curr_pos.y)
+
+                if is_visible then
+                    if capsule_lifecycle.update(capsule, id, curr_pos, surf) then
+                        capsule_runner.wake_parked_capsules(capsule.from_port_key)
+                    else
+                        capsule_renderer.render(capsule, id, curr_pos, surf)
+                    end
                 else
-                    capsule_renderer.render(capsule, id, curr_pos, surf)
+                    if capsule.render_id or capsule.arrival_render_objects then
+                        capsule_renderer.clear_capsule_render(capsule)
+                        capsule_renderer.destroy_arrival_dot(capsule)
+                    end
                 end
             end
         elseif not capsule.in_timed_flight then

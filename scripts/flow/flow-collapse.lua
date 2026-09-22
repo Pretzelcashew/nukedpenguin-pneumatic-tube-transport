@@ -325,7 +325,13 @@ local function evict_segment_leaf(seg)
     local s_idx = seg.surface_index
     if not s_idx then return end
     if seg.is_run then
-        viewport_bvh.on_segment_removed(s_idx, seg.run_id)
+        if seg.leaves then
+            for _, leaf in ipairs(seg.leaves) do
+                viewport_bvh.on_segment_removed(s_idx, seg.run_id, leaf.seg_key)
+            end
+        else
+            viewport_bvh.on_segment_removed(s_idx, seg.run_id)
+        end
         if storage.collapsed_edges then
             storage.collapsed_edges[seg.run_id] = nil
         end
@@ -405,7 +411,13 @@ local function divide_run(run_id)
 
     local s_idx = run.surface_index
     if s_idx then
-        viewport_bvh.on_segment_removed(s_idx, run_id)
+        if run.leaves then
+            for _, leaf in ipairs(run.leaves) do
+                viewport_bvh.on_segment_removed(s_idx, run_id, leaf.seg_key)
+            end
+        else
+            viewport_bvh.on_segment_removed(s_idx, run_id)
+        end
     end
     storage.collapsed_edges[run_id] = nil
 
@@ -466,7 +478,13 @@ function flow_collapse.handle_node_destroyed(pkey)
 
     local s_idx = run.surface_index
     if s_idx then
-        viewport_bvh.on_segment_removed(s_idx, run_id)
+        if run.leaves then
+            for _, leaf in ipairs(run.leaves) do
+                viewport_bvh.on_segment_removed(s_idx, run_id, leaf.seg_key)
+            end
+        else
+            viewport_bvh.on_segment_removed(s_idx, run_id)
+        end
     end
     storage.collapsed_edges[run_id] = nil
 

@@ -302,31 +302,59 @@ function flow_renderer.get_dominant_counter_at_pos(pos_key)
     return best_node, max_level, best_owner
 end
 
-function flow_renderer.notify_pos_changed(pos_key)
-    if not (pos_key and storage.flow_grid and storage.flow_grid[pos_key]) then return end
-    for pkey in pairs(storage.flow_grid[pos_key]) do
-        local node = storage.flow_nodes and storage.flow_nodes[pkey]
-        if node then
-            local u_num = node.unit_number
-            local s_idx = game.surfaces[node.surface_name] and game.surfaces[node.surface_name].index
-            if s_idx then
-                if storage.motion_leaves and storage.motion_leaves[u_num] then
-                    for _, leaf in pairs(storage.motion_leaves[u_num]) do
-                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
-                    end
-                end
-                local run_id = storage.run_by_port and storage.run_by_port[pkey]
-                local run = run_id and storage.collapsed_edges and storage.collapsed_edges[run_id]
-                if run and run.leaves then
-                    for _, leaf in pairs(run.leaves) do
-                        if leaf.units and leaf.units[u_num] then
-                            viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+function flow_renderer.mark_pos_dirty(pos_key)
+    if not pos_key then return end
+    storage.dirty_flow_positions = storage.dirty_flow_positions or {}
+    storage.dirty_flow_positions[pos_key] = true
+end
+
+function flow_renderer.flush_dirty_renders()
+    if not (storage.dirty_flow_positions and next(storage.dirty_flow_positions)) then return end
+    local dirty = storage.dirty_flow_positions
+    storage.dirty_flow_positions = {}
+    local visited_leaves = {}
+
+    for pos_key in pairs(dirty) do
+        local grid_ports = storage.flow_grid and storage.flow_grid[pos_key]
+        if grid_ports then
+            for pkey in pairs(grid_ports) do
+                local node = storage.flow_nodes and storage.flow_nodes[pkey]
+                if node then
+                    local u_num = node.unit_number
+                    local s_idx = game.surfaces[node.surface_name] and game.surfaces[node.surface_name].index
+                    if s_idx then
+                        if storage.motion_leaves and storage.motion_leaves[u_num] then
+                            for _, leaf in pairs(storage.motion_leaves[u_num]) do
+                                local lk = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+                                if not visited_leaves[lk] then
+                                    visited_leaves[lk] = true
+                                    viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                                end
+                            end
+                        end
+                        local run_id = storage.run_by_port and storage.run_by_port[pkey]
+                        local run = run_id and storage.collapsed_edges and storage.collapsed_edges[run_id]
+                        if run and run.leaves then
+                            for _, leaf in pairs(run.leaves) do
+                                if leaf.units and leaf.units[u_num] then
+                                    local lk = leaf.key or (tostring(leaf.owner_id) .. ":" .. tostring(leaf.seg_key))
+                                    if not visited_leaves[lk] then
+                                        visited_leaves[lk] = true
+                                        viewport_bvh.on_leaf_static_changed(s_idx, leaf)
+                                    end
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
+end
+
+function flow_renderer.notify_pos_changed(pos_key)
+    flow_renderer.mark_pos_dirty(pos_key)
+    flow_renderer.flush_dirty_renders()
 end
 
 function flow_renderer.update_counter_pos_render(pos_key)
@@ -754,11 +782,6 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
 
     if not viewport_bvh.should_render_kinetic_overlays(player_index) then return end
 
-    if item.render_objects then
-        render_pool.recycle_many(player_index, item.render_objects)
-        item.render_objects = nil
-    end
-
     local units_to_render = item.leaf.units
     if not units_to_render then
         local u_num = item.leaf.unit_number or item.owner_id
@@ -768,8 +791,9 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
     end
     if not units_to_render then return end
 
-    item.render_objects = {}
-    local out_objs = item.render_objects
+    item.render_objects = item.render_objects or {}
+    local objects = item.render_objects
+    local used_keys = {}
     local rendered_pos = {}
 
     for u_num in pairs(units_to_render) do
@@ -784,32 +808,48 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                         local pos = node.pos
 
                         local c_node, c_level, c_owner = flow_renderer.get_dominant_counter_at_pos(node.pos_key)
+                        local c_key = node.pos_key .. ":circ"
+                        local t_key = node.pos_key .. ":text"
+
                         if c_node and c_level > 0 and c_owner ~= nil then
                             local circle_color = get_owner_color(c_owner)
-                            local c_obj = render_pool.lease_circle{
-                                channel = "flow",
-                                color = circle_color,
-                                radius = 0.15,
-                                filled = true,
-                                target = pos,
-                                surface = surface,
-                                players = { player }
-                            }
-                            if c_obj then out_objs[#out_objs + 1] = c_obj end
+                            used_keys[c_key] = true
+                            local c_obj = objects[c_key]
+                            if c_obj and c_obj.valid then
+                                c_obj.color = circle_color
+                            else
+                                c_obj = render_pool.lease_circle{
+                                    channel = "flow",
+                                    color = circle_color,
+                                    radius = 0.15,
+                                    filled = true,
+                                    target = pos,
+                                    surface = surface,
+                                    players = { player }
+                                }
+                                if c_obj then objects[c_key] = c_obj end
+                            end
 
-                            local t_obj = render_pool.lease_text{
-                                channel = "flow",
-                                text = tostring(c_level),
-                                surface = surface,
-                                target = { x = pos.x, y = pos.y - 0.25 },
-                                color = { r = 1, g = 1, b = 1, a = 0.9 },
-                                scale = 0.7,
-                                alignment = "center",
-                                players = { player }
-                            }
-                            if t_obj then
+                            used_keys[t_key] = true
+                            local t_obj = objects[t_key]
+                            if t_obj and t_obj.valid then
+                                t_obj.text = tostring(c_level)
                                 t_obj.bring_to_front()
-                                out_objs[#out_objs + 1] = t_obj
+                            else
+                                t_obj = render_pool.lease_text{
+                                    channel = "flow",
+                                    text = tostring(c_level),
+                                    surface = surface,
+                                    target = { x = pos.x, y = pos.y - 0.25 },
+                                    color = { r = 1, g = 1, b = 1, a = 0.9 },
+                                    scale = 0.7,
+                                    alignment = "center",
+                                    players = { player }
+                                }
+                                if t_obj then
+                                    t_obj.bring_to_front()
+                                    objects[t_key] = t_obj
+                                end
                             end
 
                         else
@@ -821,16 +861,22 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
 
                             if is_intake or is_muzzle_idle then
                                 local dot_color = is_intake and PROJECTOR_INTAKE_COLOR or PROJECTOR_MUZZLE_COLOR
-                                local c_obj = render_pool.lease_circle{
-                                    channel = "flow",
-                                    color = dot_color,
-                                    radius = 0.12,
-                                    filled = true,
-                                    target = pos,
-                                    surface = surface,
-                                    players = { player }
-                                }
-                                if c_obj then out_objs[#out_objs + 1] = c_obj end
+                                used_keys[c_key] = true
+                                local c_obj = objects[c_key]
+                                if c_obj and c_obj.valid then
+                                    c_obj.color = dot_color
+                                else
+                                    c_obj = render_pool.lease_circle{
+                                        channel = "flow",
+                                        color = dot_color,
+                                        radius = 0.12,
+                                        filled = true,
+                                        target = pos,
+                                        surface = surface,
+                                        players = { player }
+                                    }
+                                    if c_obj then objects[c_key] = c_obj end
+                                end
 
                             elseif level ~= 0 then
                                 local abs_level = math.abs(level)
@@ -839,30 +885,43 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                                     and { r = 0, g = 0.4 + ratio * 0.6, b = 1, a = 0.8 }
                                     or  { r = 1, g = 0.3 + ratio * 0.7, b = 0, a = 0.8 }
 
-                                local c_obj = render_pool.lease_circle{
-                                    channel = "flow",
-                                    color = circle_color,
-                                    radius = 0.15,
-                                    filled = true,
-                                    target = pos,
-                                    surface = surface,
-                                    players = { player }
-                                }
-                                if c_obj then out_objs[#out_objs + 1] = c_obj end
+                                used_keys[c_key] = true
+                                local c_obj = objects[c_key]
+                                if c_obj and c_obj.valid then
+                                    c_obj.color = circle_color
+                                else
+                                    c_obj = render_pool.lease_circle{
+                                        channel = "flow",
+                                        color = circle_color,
+                                        radius = 0.15,
+                                        filled = true,
+                                        target = pos,
+                                        surface = surface,
+                                        players = { player }
+                                    }
+                                    if c_obj then objects[c_key] = c_obj end
+                                end
 
-                                local t_obj = render_pool.lease_text{
-                                    channel = "flow",
-                                    text = tostring(level),
-                                    surface = surface,
-                                    target = { x = pos.x, y = pos.y - 0.25 },
-                                    color = { r = 1, g = 1, b = 1, a = 0.9 },
-                                    scale = 0.7,
-                                    alignment = "center",
-                                    players = { player }
-                                }
-                                if t_obj then
+                                used_keys[t_key] = true
+                                local t_obj = objects[t_key]
+                                if t_obj and t_obj.valid then
+                                    t_obj.text = tostring(level)
                                     t_obj.bring_to_front()
-                                    out_objs[#out_objs + 1] = t_obj
+                                else
+                                    t_obj = render_pool.lease_text{
+                                        channel = "flow",
+                                        text = tostring(level),
+                                        surface = surface,
+                                        target = { x = pos.x, y = pos.y - 0.25 },
+                                        color = { r = 1, g = 1, b = 1, a = 0.9 },
+                                        scale = 0.7,
+                                        alignment = "center",
+                                        players = { player }
+                                    }
+                                    if t_obj then
+                                        t_obj.bring_to_front()
+                                        objects[t_key] = t_obj
+                                    end
                                 end
                             end
                         end
@@ -882,16 +941,26 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                                             and { r = 0, g = 0.7, b = 1, a = 0.8 }
                                             or  { r = 1, g = 0.5, b = 0, a = 0.8 }
 
-                                        local l_obj = render_pool.lease_line{
-                                            channel = "flow",
-                                            color = line_color,
-                                            width = 3,
-                                            from = node.pos,
-                                            to = n_node.pos,
-                                            surface = surface,
-                                            players = { player }
-                                        }
-                                        if l_obj then out_objs[#out_objs + 1] = l_obj end
+                                        local l_key = (pkey < n_key and (pkey .. "|" .. n_key) or (n_key .. "|" .. pkey)) .. ":line"
+                                        used_keys[l_key] = true
+                                        local l_obj = objects[l_key]
+                                        if l_obj and l_obj.valid then
+                                            l_obj.color = line_color
+                                        else
+                                            l_obj = render_pool.lease_line{
+                                                channel = "flow",
+                                                color = line_color,
+                                                width = 3,
+                                                from = node.pos,
+                                                to = n_node.pos,
+                                                surface = surface,
+                                                players = { player }
+                                            }
+                                            if l_obj then
+                                                l_obj.move_to_back()
+                                                objects[l_key] = l_obj
+                                            end
+                                        end
                                     end
                                 end
                             end
@@ -899,6 +968,13 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                     end
                 end
             end
+        end
+    end
+
+    for k, obj in pairs(objects) do
+        if not used_keys[k] then
+            render_pool.recycle(player_index, obj)
+            objects[k] = nil
         end
     end
     do return end

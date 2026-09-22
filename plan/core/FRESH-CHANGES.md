@@ -79,6 +79,16 @@
 2. **Vector Line Deprioritization (`scripts/utils/render-pool.lua`):** Invoked `obj.move_to_back()` on fresh and recycled line handles in `render_pool.lease_line`, keeping tube-to-tube directional vector lines behind pressure dots and labels.
 
 
+### Revision: Dirty Static Render Batching, In-Place Property Mutation & O(1) Corridor Leaf Eviction
+**Date:** 2026-09-21 23:25 EDT
+**Context:** Eliminates performance drops during mass tube unmerging and pressure wave cascades caused by thousands of unbatched render object updates and full-tree leaf prefix scans. Replaces immediate mid-tick overlay rebuilds with end-of-tick dirty leaf flushing, mutates existing visual handles in place, and targets corridor slice removals by exact key.
+
+**Key Changes:**
+1. **Dirty Render Batching & Deduplicated Flush (`scripts/flow/flow-renderer.lua`, `scripts/flow/flow-engine.lua`):** Implemented `flow_renderer.mark_pos_dirty(pos_key)` and `flow_renderer.flush_dirty_renders()` tracking modified tiles across the tick. Deduplicates visited corridor leaves (`visited_leaves`) to dispatch `on_leaf_static_changed` at most once per 16-tile slice at the end of `flow_engine.step`, eliminating dozens of redundant redraws per tick as pressure drains down tube lines.
+2. **In-Place Visual Property Mutation (`scripts/flow/flow-renderer.lua`):** Overhauled `render_flow_dot_static` to key `item.render_objects` by node sub-keys (`pos_key .. ":circ"`, `pos_key .. ":text"`, `line_key .. ":line"`). Updates `color` and `text` directly on existing valid handles in-place, eliminating wholesale `recycle_many` and re-leasing churn during pressure decay. Recycles only stale handles when pressure hits zero.
+3. **O(1) Segment Key Leaf Eviction (`scripts/flow/flow-collapse.lua`):** Updated `evict_segment_leaf`, `divide_run`, and `handle_node_destroyed` to pass exact `leaf.seg_key` identifiers to `viewport_bvh.on_segment_removed` when iterating `run.leaves`. Bypasses full-table linear prefix scans across `leaves_by_key` and player visible sets in favor of instant $O(1)$ table lookups.
+
+
 
 
 

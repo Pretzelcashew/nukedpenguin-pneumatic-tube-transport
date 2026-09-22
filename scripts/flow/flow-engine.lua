@@ -628,7 +628,10 @@ function flow_engine.step(tick)
     flow_kinetic.step_reticle_obstacles()
     flow_collapse.step(tick)
 
-    if not storage.flow_queue or next(storage.flow_queue) == nil then return end
+    if not storage.flow_queue or next(storage.flow_queue) == nil then
+        flow_renderer.flush_dirty_renders()
+        return
+    end
 
     local batch = {}
     local batch_count = 0
@@ -678,7 +681,7 @@ function flow_engine.step(tick)
 
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node then
-                update_pos_render(node.pos_key)
+                flow_renderer.mark_pos_dirty(node.pos_key)
             end
             flow_collapse.enqueue_port(pkey)
 
@@ -701,7 +704,7 @@ function flow_engine.step(tick)
         if range_changed then
             local node = storage.flow_nodes and storage.flow_nodes[pkey]
             if node then
-                update_counter_pos_render(node.pos_key)
+                flow_renderer.mark_pos_dirty(node.pos_key)
             end
         end
 
@@ -737,7 +740,10 @@ function flow_engine.step(tick)
                 for n_key in pairs(neighbors) do
                     flow_engine.enqueue_port(n_key)
                     if flow_changed then
-                        update_edge_render(pkey, n_key)
+                        local n_node = storage.flow_nodes and storage.flow_nodes[n_key]
+                        if n_node then
+                            flow_renderer.mark_pos_dirty(n_node.pos_key)
+                        end
                     end
                     wake_port_parked(n_key)
                 end
@@ -752,6 +758,7 @@ function flow_engine.step(tick)
             wake_port_parked(pkey)
         end
     end
+    flow_renderer.flush_dirty_renders()
 end
 
 local function handle_entity_reorientation(entity)

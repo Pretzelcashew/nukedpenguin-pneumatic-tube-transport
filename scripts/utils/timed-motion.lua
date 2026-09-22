@@ -223,19 +223,20 @@ function timed_motion.shift_horizon(record, new_terminal_pos, current_tick, min_
     local pos_changed = (old_term == nil) or (old_term.x ~= new_terminal_pos.x) or (old_term.y ~= new_terminal_pos.y)
     if not pos_changed then return false end
 
-    local total_dist = math.abs(new_terminal_pos.x - record.start_pos.x) + math.abs(new_terminal_pos.y - record.start_pos.y)
+    local cur_pos = timed_motion.get_interpolated_position(record, current_tick)
+    local dx = new_terminal_pos.x - cur_pos.x
+    local dy = new_terminal_pos.y - cur_pos.y
+    local rem_dist = math.sqrt(dx * dx + dy * dy)
     local tpt = record.ticks_per_tile or timed_motion.DEFAULT_TICKS_PER_TILE
-    local elapsed_ticks = math.max(0, current_tick - (record.start_tick or current_tick))
-    local cur_dist = elapsed_ticks / tpt
-    local rem_dist = math.max(0, total_dist - cur_dist)
     local rem_ticks = math.max(min_ticks, math.ceil(rem_dist * tpt))
     local new_arrival_tick = current_tick + rem_ticks
-    local new_flight_ticks = elapsed_ticks + rem_ticks
 
+    record.start_pos = { x = cur_pos.x, y = cur_pos.y }
+    record.start_tick = current_tick
     record.terminal_pos.x = new_terminal_pos.x
     record.terminal_pos.y = new_terminal_pos.y
-    record.total_dist = total_dist
-    record.flight_ticks = new_flight_ticks
+    record.total_dist = rem_dist
+    record.flight_ticks = rem_ticks
     record.arrival_tick = new_arrival_tick
 
     -- Update active flight summary

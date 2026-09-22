@@ -308,10 +308,10 @@ motion_protocols.register_protocol("tube_hop", {
     progression = "continuous",
     head = "capsule_head",
     trail = "none",
-    disruption = "none",
+    disruption = "tube_severance",
     arrival = "tube_hop",
     detector = "tube_connectivity",
-    clearance_policy = "none",
+    clearance_policy = "discrete_projectile",
     render_channel = "capsule"
 })
 

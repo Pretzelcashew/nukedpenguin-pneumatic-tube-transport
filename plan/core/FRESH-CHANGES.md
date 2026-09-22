@@ -131,5 +131,19 @@
 4. **Spatiotemporal Viewport Frustum Culling (`scripts/capsules/capsule-runner.lua`):** Gated in-flight capsule rendering behind `capsule_renderer.is_in_any_viewport`. When capsules travel through unobserved sections of a long pneumatic corridor, they bypass visual drawing and immediately recycle existing render pool handles, preventing ghost sprites from lingering at entrance boundaries.
 
 
+#### 0.3.23
+
+### Revision: Spatiotemporal Tube Severance, Re-Anchored Horizon Kinematics & Breach Containment
+**Date:** 2026-09-22 15:10 EDT
+**Context:** Eliminates mid-flight rubber-band teleportation, slingshotting, and false arrival spillage when pneumatic tube corridors are severed. Replaces compressed timeline interpolation with continuous floating-point re-anchoring, corrects entrance boundary spatial thresholds, clamps truncation targets ahead of the capsule, and guarantees safe in-tube parking at the surviving breach face.
+
+**Key Changes:**
+1. **Continuous Origin Re-Anchoring (`scripts/utils/timed-motion.lua`):** Overhauled `timed_motion.shift_horizon` to sample `get_interpolated_position` and re-anchor `record.start_pos` and `record.start_tick` to `cur_pos` and `current_tick`. Eliminates timeline compression distortions where shortening destinations mid-flight against a stale historical origin caused linear interpolation fractions to jump and slingshot capsules past the truncation point.
+2. **Spatiotemporal Removal Interval Partitioning (`scripts/capsules/capsule-runner.lua`):** Replaced the tautological $|d_{\text{obst}} - d_{\text{cur}}| \le 0.5$ check with exact physical thresholds based on bounding-box entrance boundaries. Partitions motion cleanly into downstream pass-through ($d_{\text{cur}} > d_{\text{obst}} + 1.0$), loss-of-containment breach spills ($d_{\text{cur}} \in [d_{\text{obst}} - 0.05, d_{\text{obst}} + 1.0]$), and upstream truncation ($d_{\text{cur}} < d_{\text{obst}} - 0.05$).
+3. **Forward-Clamped Truncation Horizons (`scripts/capsules/capsule-runner.lua`):** Clamped truncation distance to $\max(d_{\text{cur}}, d_{\text{obst}} - 0.5)$, preventing inverted target vectors and negative-distance calculation errors when capsules are already past the center of the preceding tube.
+4. **Severed Arrival Lockout & Safe In-Tube Parking (`scripts/capsules/capsule-runner.lua`):** Flagged truncated flights with `flight.severed`. Interrupted arrivals bypass `try_advance_capsule` and corridor re-launches, dynamically query `storage.flow_nodes` for the surviving tube port at `term_pos`, and cleanly park the capsule inside the surviving tube with zero cargo spillage.
+5. **Watchdog Node Recovery & Motion Contract Alignment (`scripts/capsules/capsule-runner.lua`, `scripts/utils/motion-protocols.lua`):** Added surviving node recovery to the line 915 nil-node watchdog in `update_capsules` before falling back to spills. Updated `schedule_hop` and `try_advance_corridor` with complete `dir`, `dx`, `dy`, and `ticks_per_tile = STAGGER_TICKS` motion contracts, and registered `"tube_severance"` in `motion-protocols.lua`.
+
+
 
 

@@ -761,6 +761,10 @@ function capsule_runner.schedule_hop(capsule, cap_id, from_pkey, to_pkey, curren
     local dy = pos_b.y - pos_a.y
     local dist = math.sqrt(dx * dx + dy * dy)
     local duration = math.max(1, math.floor(dist * STAGGER_TICKS + 0.5))
+    local dir = {
+        x = (dist > 0.001) and ((dx > 0 and 1) or (dx < 0 and -1) or 0) or 0,
+        y = (dist > 0.001) and ((dy > 0 and 1) or (dy < 0 and -1) or 0) or 0
+    }
 
     capsule.to_port_key = to_pkey
     capsule._occ_block_key = to_pkey
@@ -780,11 +784,15 @@ function capsule_runner.schedule_hop(capsule, cap_id, from_pkey, to_pkey, curren
         on_arrival = "tube_hop",
         start_pos = { x = pos_a.x, y = pos_a.y },
         terminal_pos = { x = pos_b.x, y = pos_b.y },
+        dir = dir,
+        dx = dir.x,
+        dy = dir.y,
         start_tick = current_tick,
         arrival_tick = current_tick + duration,
         flight_ticks = duration,
         duration = duration,
         total_dist = dist,
+        ticks_per_tile = STAGGER_TICKS,
         surface_name = surface_name,
         from_port_key = from_pkey,
         target_port_key = to_pkey
@@ -820,6 +828,10 @@ local function try_advance_corridor(capsule, id, cur_pkey, current_tick)
     if dist < 0.1 then return false end
 
     local duration = math.max(1, math.floor(dist * STAGGER_TICKS + 0.5))
+    local dir = {
+        x = (dist > 0.001) and ((dx > 0 and 1) or (dx < 0 and -1) or 0) or 0,
+        y = (dist > 0.001) and ((dy > 0 and 1) or (dy < 0 and -1) or 0) or 0
+    }
 
     capsule.to_port_key = run.end_pkey
     capsule._occ_block_key = run.end_pkey
@@ -839,11 +851,15 @@ local function try_advance_corridor(capsule, id, cur_pkey, current_tick)
         on_arrival = "tube_hop",
         start_pos = { x = cur_node.pos.x, y = cur_node.pos.y },
         terminal_pos = { x = end_pos.x, y = end_pos.y },
+        dir = dir,
+        dx = dir.x,
+        dy = dir.y,
         start_tick = current_tick,
         arrival_tick = current_tick + duration,
         flight_ticks = duration,
         duration = duration,
         total_dist = dist,
+        ticks_per_tile = STAGGER_TICKS,
         surface_name = cur_node.surface_name or "nauvis",
         from_port_key = cur_pkey,
         target_port_key = run.end_pkey,
@@ -922,26 +938,58 @@ function capsule_runner.handle_tube_hop_arrival(flight_id, flight, current_tick)
         return
     end
 
+    flight = flight or capsule.timed_hop
     local prev_key = capsule.from_port_key
-    local arrival_key = (flight and flight.target_port_key) or capsule.to_port_key or capsule._occ_block_key
-    if not arrival_key then
-        timed_motion.remove_flight(flight_id, flight and flight.owner_id)
-        return
+    local term_pos = flight and flight.terminal_pos
+
+    if term_pos then
+        capsule.last_pos = { x = term_pos.x, y = term_pos.y }
     end
 
-    capsule.last_port_key = prev_key
-    capsule.from_port_key = arrival_key
     capsule.to_port_key = nil
     capsule._occ_block_key = nil
     capsule.in_timed_flight = nil
     capsule.timed_hop = nil
     timed_motion.remove_flight(flight_id, flight and flight.owner_id)
 
-    local term_pos = flight and flight.terminal_pos
-    if term_pos then
-        capsule.last_pos = { x = term_pos.x, y = term_pos.y }
+    -- Interrupted/Severed flight: Safely park in the surviving tube right at term_pos.
+    if flight and flight.severed then
+        local sname = (flight and flight.surface_name) or capsule.surface_name or "nauvis"
+        local arrival_key = nil
+        if term_pos and storage.flow_nodes then
+            local best_d = 1.5
+            for pkey, pnode in pairs(storage.flow_nodes) do
+                if pnode.surface_name == sname and pnode.pos then
+                    local d = math.abs(pnode.pos.x - term_pos.x) + math.abs(pnode.pos.y - term_pos.y)
+                    if d < best_d then
+                        best_d = d
+                        arrival_key = pkey
+                    end
+                end
+            end
+        end
+
+        if arrival_key then
+            capsule.last_port_key = prev_key
+            capsule.from_port_key = arrival_key
+            capsule_queries.update_capsule_occupancy(capsule)
+        end
+
+        capsule_renderer.destroy_arrival_dot(capsule)
+        capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
+        capsule.last_port_key = nil
+        mark_capsule_parked(capsule)
+        capsule_runner.wake_parked_capsules(prev_key)
+        return
     end
 
+    local arrival_key = (flight and flight.target_port_key) or capsule.to_port_key or capsule._occ_block_key
+    if not arrival_key then
+        return
+    end
+
+    capsule.last_port_key = prev_key
+    capsule.from_port_key = arrival_key
     capsule_queries.update_capsule_occupancy(capsule)
     capsule_runner.wake_parked_capsules(prev_key)
 
@@ -960,6 +1008,79 @@ end
 motion_protocols.register_arrival("tube_hop", capsule_runner.handle_tube_hop_arrival)
 if capsule_ballistics.register_arrival_handler then
     capsule_ballistics.register_arrival_handler("tube_hop", capsule_runner.handle_tube_hop_arrival)
+end
+
+function capsule_runner.handle_tube_disruption(flight, capsule, id, surface, entity, bb, current_tick)
+    local sp = flight.start_pos
+    local dir = flight.dir
+    if not (sp and dir and (dir.x ~= 0 or dir.y ~= 0)) then return end
+
+    local intersects, obst_dist = motion_protocols.calculate_axis_distance(sp, dir, bb)
+    if not intersects then return end
+
+    local total_dist = flight.total_dist or (math.abs(flight.terminal_pos.x - sp.x) + math.abs(flight.terminal_pos.y - sp.y))
+    if obst_dist > total_dist + 0.5 then return end
+
+    local elapsed_ticks = math.max(0, current_tick - (flight.start_tick or current_tick))
+    local tpt = flight.ticks_per_tile or STAGGER_TICKS
+    local cur_dist = elapsed_ticks / tpt
+
+    if cur_dist > obst_dist + 1.0 then
+        -- Downstream: capsule has already passed the mined pipe, continue unaffected
+        return
+    elseif cur_dist >= obst_dist - 0.05 and cur_dist <= obst_dist + 1.0 then
+        -- At the breach: capsule is physically inside the pipe being mined, immediate spill
+        local curr_pos = timed_motion.get_interpolated_position(flight, current_tick)
+        capsule_renderer.destroy_arrival_dot(capsule)
+        capsule_renderer.clear_capsule_render(capsule)
+        timed_motion.remove_flight(id, flight.owner_id)
+        capsule.in_timed_flight = nil
+        capsule.timed_hop = nil
+        hub_spill.spill_capsule(id, surface, curr_pos, nil, false)
+        capsule_runner.remove_capsule(id)
+    elseif cur_dist < obst_dist - 0.05 then
+        -- Upstream: truncate to surviving pipe, clamping so target is never behind current position
+        local trunc_dist = math.max(cur_dist, obst_dist - 0.5)
+        local new_term = {
+            x = sp.x + dir.x * trunc_dist,
+            y = sp.y + dir.y * trunc_dist
+        }
+
+        flight.severed = true
+        timed_motion.shift_horizon(flight, new_term, current_tick, STAGGER_TICKS)
+        capsule_renderer.invalidate_flight(id)
+        capsule_renderer.update_arrival_dots(capsule, id)
+    end
+end
+
+motion_protocols.register_disruption("tube_severance", function(flight, cap, cap_id, surface, entity, bb, current_tick)
+    return capsule_runner.handle_tube_disruption(flight, cap, cap_id, surface, entity, bb, current_tick)
+end)
+
+function capsule_runner.handle_entity_mined(entity)
+    if not (entity and entity.valid) then return end
+    local surface = entity.surface
+    if not (surface and surface.valid) then return end
+    if not storage.capsules or next(storage.capsules) == nil then return end
+
+    local e_name = entity.name
+    if e_name == "visible-capsule-holder" or e_name == "spilled-capsule-holder"
+        or entity.type == "entity-ghost" or entity.type == "tile-ghost" then
+        return
+    end
+
+    local bb = entity.bounding_box
+    if not bb then return end
+
+    local current_tick = (game and game.tick) or 0
+    local surf_name = surface.name
+
+    for id, capsule in pairs(storage.capsules) do
+        local flight = capsule.timed_hop
+        if flight and (flight.surface_name == surf_name or capsule.surface_name == surf_name) then
+            capsule_runner.handle_tube_disruption(flight, capsule, id, surface, entity, bb, current_tick)
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -1213,17 +1334,40 @@ function capsule_runner.update_capsules(current_tick)
                     if bf and bf.hop_positions and bf.current_hop then
                         capsule_ballistics.advance_in_flight_capsule(capsule, id, bf, current_tick, STAGGER_TICKS, capsule_runner)
                     else
-                        mark_capsule_unparked(capsule)
+                        local sname = capsule.surface_name or "nauvis"
                         local pos = capsule.last_pos
-                        local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
-                        local dead_port_key = capsule.from_port_key
-                        if pos and surface and surface.valid then
-                            hub_spill.spill_capsule(id, surface, pos, nil, true)
-                        else
-                            capsule_runner.remove_capsule(id)
+                        local recovered_key = nil
+                        if pos and storage.flow_nodes then
+                            local best_d = 1.5
+                            for pkey, pnode in pairs(storage.flow_nodes) do
+                                if pnode.surface_name == sname and pnode.pos then
+                                    local d = math.abs(pnode.pos.x - pos.x) + math.abs(pnode.pos.y - pos.y)
+                                    if d < best_d then
+                                        best_d = d
+                                        recovered_key = pkey
+                                    end
+                                end
+                            end
                         end
-                        if dead_port_key then
-                            capsule_runner.wake_parked_capsules(dead_port_key)
+
+                        if recovered_key then
+                            capsule.from_port_key = recovered_key
+                            capsule_queries.update_capsule_occupancy(capsule)
+                            capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
+                            capsule.last_port_key = nil
+                            mark_capsule_parked(capsule)
+                        else
+                            mark_capsule_unparked(capsule)
+                            local surface = capsule.surface_name and game.surfaces[capsule.surface_name]
+                            local dead_port_key = capsule.from_port_key
+                            if pos and surface and surface.valid then
+                                hub_spill.spill_capsule(id, surface, pos, nil, true)
+                            else
+                                capsule_runner.remove_capsule(id)
+                            end
+                            if dead_port_key then
+                                capsule_runner.wake_parked_capsules(dead_port_key)
+                            end
                         end
                     end
                 end
@@ -1266,6 +1410,18 @@ end
 function capsule_runner.register_events()
     events.on_event(defines.events.on_tick, function(event)
         capsule_runner.update_capsules(event.tick)
+    end)
+    events.on_event(defines.events.on_player_mined_entity, function(event)
+        capsule_runner.handle_entity_mined(event.entity)
+    end)
+    events.on_event(defines.events.on_robot_mined_entity, function(event)
+        capsule_runner.handle_entity_mined(event.entity)
+    end)
+    events.on_event(defines.events.on_entity_died, function(event)
+        capsule_runner.handle_entity_mined(event.entity)
+    end)
+    events.on_event(defines.events.script_raised_destroy, function(event)
+        capsule_runner.handle_entity_mined(event.entity)
     end)
 end
 

@@ -203,3 +203,100 @@ $$\text{Pressure Gradient } (\Delta P = P_{\text{in}} - P_{\text{out}}) = \text{
 - Capsules take single unbroken, continuous high-speed flights across long straight tube lines.
 - Alt-Mode dot trails render cleanly in 16-tile chunks.
 - Pasting mega-blueprints or mass deconstructing causes zero frame drops.
+
+
+
+
+
+
+fix massive lag spike when a capsule's flight segment is completely removed (it should just capsule spill without a 5 second hangup)
+
+fix it so that capsules dont bounc around at the end of a junction where the pressure gradient is none (like dont bounce to 5, then 5, then 5 internally when theres no exit branch, but still allow it to reach an end port prioritizing a colinear)
+
+dont allow in tube capsule flights to bunch up on one endpoint, make them conga line smartly and efficiently. (lagrangian?)
+
+make it so flow graph topology disruption can affect in flight capsules using a pairwise hop
+
+
+
+
+Here is the clean architectural breakdown of these 4 issues. You can save this to your `plan/` folder or paste it directly into your fresh chat session to begin tackling them one by one.
+
+---
+
+# Backlog & Handoff: Motion Polish, Conga Queues & Mid-Flight Disruption
+
+---
+
+## 1. Zero-Lag Dynamic Flight Severance & Spill
+**Domain:** `scripts/flow/flow-common.lua`, `scripts/hubs/hub-spill.lua`, `scripts/capsules/capsule-runner.lua`  
+**Problem Statement:**  
+When a player mines or deconstructs a tube that has an active in-flight capsule traversing it, the game hangs for 3–5 seconds before finally spilling the items.  
+**Root Cause:**  
+`flow_common.destroy_node` severs the physical node, but the capsule runner’s arrival heap and pathfinder still hold references to the dead node key. When the arrival stepper or traversal loop encounters a severed node mid-flight, fallback pathfinding spins on expensive ground queries or recursive lookaheads across thousands of invalid candidate edges.  
+**Architectural Solution:**
+1. **$O(1)$ In-Flight Interception in `destroy_node`:**  
+   When a tube port `pkey` is destroyed, check if any active `timed_hop` has `target_port_key == pkey` or `from_port_key == pkey`.
+2. **Immediate Ground Spill:**  
+   Bypass pathfinding fallback loops completely. Interpolate the capsule’s exact position at `game.tick`, call `hub_spill.spill_capsule(capsule_id, surface, curr_pos)`, remove the flight from `timed_motion`, and deregister the capsule in $O(1)$ with zero frame drops.
+
+---
+
+## 2. Flat-Pressure ($\Delta P = 0$) Dead-End Ping-Pong Suppression
+**Domain:** `scripts/capsules/capsule-runner.lua` (`select_next_target`, `get_candidate_hops`)  
+**Problem Statement:**  
+When a capsule reaches a junction or tube line capped by a dead end where air pressure is completely flat (e.g. $+5 \leftrightarrow +5 \leftrightarrow +5$ with no downstream exit), the capsule bounces indefinitely between internal junction ports ($1 \to 2 \to 3 \to 1 \dots$) without settling down.  
+**Root Cause:**  
+`select_next_target` prevents stepping back to `last_port_key`, but in multi-port junctions or crossflows, circular internal cycles exist ($A \to B \to C \to A$). Because all internal ports have $\Delta P = 0$, scoring ties result in endless random cycling instead of parking.  
+**Architectural Solution:**
+1. **Colinear Straight Prioritization on Zero Gradient:**  
+   When entering a junction on Port $A$ with zero external exits and flat pressure, score the direct colinear opposite port $B$ highest to allow the capsule to glide forward to the physical dead-end cap.
+2. **Terminal Port Parking:**  
+   If the colinear target has no downstream exit, park the capsule at the terminal cap immediately rather than falling through to perpendicular side branches.
+
+---
+
+## 3. Lagrangian FIFO Conga-Line Queueing in Merged Corridors
+**Domain:** `scripts/capsules/capsule-runner.lua`, `scripts/flow/flow-collapse.lua`  
+**Problem Statement:**  
+When multiple capsules travel through a merged corridor toward an exit that is temporarily blocked (e.g., diverter closed, hub full), they all fly to the exact same `terminal_pos` (`run.end_pos`), causing them to pile up on a single tile.  
+**Architectural Solution:**
+1. **FIFO Queue on Merged Runs (`run.occupants`):**  
+   Corridors maintain a lightweight FIFO array of active occupant capsule IDs:
+   `run.occupants = { cap_id_1, cap_id_2, ... }`.
+2. **Entry Headway Invariant:**  
+   Enforce `tick - (run.last_entry_tick or 0) >= STAGGER_TICKS` (6 ticks = 1 tile spacing) at the corridor intake.
+3. **Leader-Follower Destination Clamping:**  
+   * If Leader ($C_1$) parks at the exit ($L$), its destination is $L$.
+   * Follower ($C_2$) clamps its terminal position to $L - 1.0$ tile.
+   * Follower ($C_3$) clamps to $L - 2.0$ tiles.
+4. **Wake-up Cascade:**  
+   When $C_1$ leaves the corridor, $C_2$ wakes up and hops from $L - 1.0 \to L$, shifting the entire conga line forward by 1 tile in lockstep.
+
+---
+
+## 4. Dynamic Topology Severance on In-Flight Corridors
+**Domain:** `scripts/flow/flow-collapse.lua`, `scripts/capsules/capsule-runner.lua`, `scripts/utils/timed-motion.lua`  
+**Problem Statement:**  
+If a player mines a tube in the middle of a 20-tile merged corridor while a capsule is mid-flight, the flight currently ignores the physical break and flies through empty air to the old memorized destination.  
+**Architectural Solution:**
+1. **Midsegment Severance Hook:**  
+   When a node inside an active run is mined, `flow_collapse.handle_node_destroyed` already invalidates the run and restores baseline leaves for surviving halves.
+2. **Flight Horizon Truncation (`timed_motion.shift_horizon`):**  
+   Iterate active capsules inside `run.occupants`:
+   * **If break is ahead of capsule:** Truncate `flight.terminal_pos` to the severed tube end and recalculate `arrival_tick` via `shift_horizon`. The capsule travels to the newly created dead-end cap and stops (or spills if the break is adjacent).
+   * **If break is directly under the capsule:** Immediately trigger `hub_spill.spill_capsule` at the current interpolated coordinate.
+   * **If break is behind the capsule:** The capsule continues safely to its forward destination.
+
+---
+
+### Copy-Paste Prompt for Your Fresh Chat
+
+```text
+Project: Factorio Mod Development (nukedpenguin-pneumatic-tube-transport, Factorio 2.1)
+Context: Task 4 (Continuous A-to-B Flights) is complete. We are now addressing motion edge cases and dynamic graph disruptions.
+
+Target Task: Fix massive lag spike when a capsule's flight segment is completely removed (it should just capsule spill without a 5-second hangup).
+
+[Attach MANIFEST.md and PROMPT-AG-DIFF.md]
+```

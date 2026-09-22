@@ -235,6 +235,7 @@ end
 function capsule_runner.remove_capsule(capsule_id)
     local capsule = storage.capsules and storage.capsules[capsule_id]
     if capsule then
+        capsule_renderer.destroy_arrival_dot(capsule)
         mark_capsule_unparked(capsule)
         local heap = storage.timed_arrival_heap or storage.kinetic_arrival_heap
         if heap then
@@ -885,6 +886,7 @@ function capsule_runner.handle_tube_hop_arrival(flight_id, flight, current_tick)
     end
 
     if not try_advance_capsule(capsule, flight_id, current_tick) then
+        capsule_renderer.destroy_arrival_dot(capsule)
         capsule.next_retry_tick = current_tick + PARKED_RETRY_INTERVAL
         capsule.last_port_key = nil
         mark_capsule_parked(capsule)

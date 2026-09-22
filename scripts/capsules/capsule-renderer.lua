@@ -724,10 +724,11 @@ function capsule_renderer.render(capsule, id, curr_pos, surface)
         return
     end
 
+    local cap_id = capsule.capsule_id or id
+    capsule_renderer.update_arrival_dots(capsule, cap_id)
+
     local passenger_index = passenger_valid and passenger.index or nil
     local surface_index = surface.index
-
-    local cap_id = capsule.capsule_id or id
     local cap_data = capsule_manager.get(cap_id)
     local def = cap_data and cap_data.definition
     local ring_color = capsule_defs.get_debug_color(def or (cap_data and cap_data.type))
@@ -1718,7 +1719,8 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         return
     end
 
-    local bf = capsule.beam_flight
+    local flight_rec = capsule.timed_hop or (cap_id and timed_motion.get_flight(cap_id))
+    local bf = capsule.beam_flight or flight_rec
     if not (bf and bf.terminal_pos) then
         destroy_arrival_dot_for_player(capsule, p_idx)
         return
@@ -1754,7 +1756,9 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
         or { r = 1.0, g = 0.84, b = 0.0, a = 0.9 }
 
     local is_receiver = bf.hit_receiver_unit ~= nil
-    local ring_color = is_receiver and { r = 0.2, g = 0.95, b = 0.4, a = 0.9 } or { r = 1.0, g = 0.25, b = 0.1, a = 0.9 }
+    local is_tube = (bf.kind == "tube_hop" or bf.kind == "corridor_transit")
+    local ring_color = is_receiver and { r = 0.2, g = 0.95, b = 0.4, a = 0.9 }
+        or (is_tube and { r = 1.0, g = 0.75, b = 0.2, a = 0.8 } or { r = 1.0, g = 0.25, b = 0.1, a = 0.9 })
 
     capsule.arrival_render_objects = capsule.arrival_render_objects or {}
     local existing = capsule.arrival_render_objects[p_idx]
@@ -1775,7 +1779,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
     local dot = render_pool.lease_circle{
         channel = "arrival",
         color = cap_color,
-        radius = 0.2,
+        radius = is_tube and 0.14 or 0.2,
         filled = true,
         target = term_pos,
         surface = surface,
@@ -1785,7 +1789,7 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
     local ring = render_pool.lease_circle{
         channel = "arrival",
         color = ring_color,
-        radius = 0.4,
+        radius = is_tube and 0.28 or 0.4,
         width = 2,
         filled = false,
         target = term_pos,
@@ -1796,17 +1800,33 @@ function capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
     capsule.arrival_render_objects[p_idx] = { dot, ring }
 end
 
+function capsule_renderer.destroy_player_arrival_dots(player_index)
+    if not storage.capsules then return end
+    for _, cap in pairs(storage.capsules) do
+        destroy_arrival_dot_for_player(cap, player_index)
+    end
+end
+
 function capsule_renderer.update_arrival_dots(capsule, cap_id)
-    if not (capsule and capsule.in_timed_flight and capsule.beam_flight) then return end
+    if not capsule then return end
+    local c_id = cap_id or capsule.capsule_id or capsule.id
+    local bf = capsule.timed_hop or capsule.beam_flight or (c_id and timed_motion.get_flight(c_id))
+    if not (bf and bf.terminal_pos) then
+        capsule_renderer.destroy_arrival_dot(capsule)
+        return
+    end
     for _, player in pairs(game.connected_players) do
         if player and player.valid then
-            capsule_renderer.render_arrival_dot_for_player(capsule, cap_id, player)
+            capsule_renderer.render_arrival_dot_for_player(capsule, c_id, player)
         end
     end
 end
 
 function capsule_renderer.sync_all_arrival_dots()
-    if not storage.projector_flights or next(storage.projector_flights) == nil then
+    local has_projector = storage.projector_flights and next(storage.projector_flights) ~= nil
+    local has_timed = storage.timed_flight_records and next(storage.timed_flight_records) ~= nil
+
+    if not has_projector and not has_timed then
         if next(previous_arrival_capsules) ~= nil then
             for cap_id in pairs(previous_arrival_capsules) do
                 local cap = storage.capsules and storage.capsules[cap_id]
@@ -1820,13 +1840,25 @@ function capsule_renderer.sync_all_arrival_dots()
     end
 
     local active_caps = {}
-    for owner, p_flights in pairs(storage.projector_flights) do
-        for i = 1, #p_flights do
-            local cap_id = p_flights[i].capsule_id
-            local cap = storage.capsules and storage.capsules[cap_id]
-            if cap and cap.in_timed_flight and cap.beam_flight then
-                active_caps[cap_id] = true
-                capsule_renderer.update_arrival_dots(cap, cap_id)
+    if storage.projector_flights then
+        for owner, p_flights in pairs(storage.projector_flights) do
+            for i = 1, #p_flights do
+                local cap_id = p_flights[i].capsule_id
+                local cap = storage.capsules and storage.capsules[cap_id]
+                if cap and cap.in_timed_flight and cap.beam_flight then
+                    active_caps[cap_id] = true
+                    capsule_renderer.update_arrival_dots(cap, cap_id)
+                end
+            end
+        end
+    end
+
+    if storage.timed_flight_records then
+        for f_id, rec in pairs(storage.timed_flight_records) do
+            local cap = storage.capsules and storage.capsules[f_id]
+            if cap and rec.terminal_pos then
+                active_caps[f_id] = true
+                capsule_renderer.update_arrival_dots(cap, f_id)
             end
         end
     end
@@ -2031,6 +2063,14 @@ end
 local debug_manager = require("scripts.debug-manager")
 if debug_manager and debug_manager.register_clear_hook then
     debug_manager.register_clear_hook(capsule_renderer.clear_player_flight_renders)
+end
+if debug_manager and debug_manager.register_arrival_hook then
+    debug_manager.register_arrival_hook(function(p_idx)
+        capsule_renderer.sync_all_arrival_dots()
+        if not is_debug_active("arrival_dots", p_idx) then
+            capsule_renderer.destroy_player_arrival_dots(p_idx)
+        end
+    end)
 end
 
 commands.add_command("test-render-dispatcher", "Run self-tests on the Phase 5 Per-Player Sliding-Scale Render Dispatcher", function(cmd)

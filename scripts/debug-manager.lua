@@ -10,9 +10,14 @@ local viewport_bvh = require("scripts.utils.viewport-bvh")
 local debug_manager = {}
 debug_manager.binary_heap = binary_heap
 debug_manager.clear_hooks = {}
+debug_manager.arrival_hooks = {}
 
 function debug_manager.register_clear_hook(fn)
     debug_manager.clear_hooks[#debug_manager.clear_hooks + 1] = fn
+end
+
+function debug_manager.register_arrival_hook(fn)
+    debug_manager.arrival_hooks[#debug_manager.arrival_hooks + 1] = fn
 end
 
 local PANEL_NAME = "pneumatic_debug_panel"
@@ -841,6 +846,10 @@ local function toggle_arrival_dots(player_index)
     local dbg = get_debug(player_index)
     dbg.arrival_dots = not dbg.arrival_dots
 
+    for i = 1, #debug_manager.arrival_hooks do
+        pcall(debug_manager.arrival_hooks[i], player_index)
+    end
+
     debug_manager.refresh_panel(player_index)
     player.print("[Debug] Timed Arrival Dots: " .. (dbg.arrival_dots and "[ENABLED]" or "[DISABLED]"))
 end
@@ -1077,6 +1086,9 @@ events.on_event(defines.events.on_gui_checked_state_changed, function(event)
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_arrival_dots" then
         dbg.arrival_dots = element.state
+        for i = 1, #debug_manager.arrival_hooks do
+            pcall(debug_manager.arrival_hooks[i], p_idx)
+        end
         debug_manager.refresh_panel(p_idx)
     elseif name == "pneumatic_debug_chk_prints" then
         dbg.prints = element.state

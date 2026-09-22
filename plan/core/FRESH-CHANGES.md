@@ -108,5 +108,17 @@
 3. **Machine Leaf Wildcard Immunity (`scripts/utils/viewport-bvh.lua`):** Updated `viewport_bvh.on_segment_removed` to strictly exempt `leaf.seg_key ~= "machine"` and `item.seg_key ~= "machine"` when processing wildcard prefix removals (`owner_id:*`). Guarantees that permanent physical machine footprints and their port dot overlays persist through all beam retractions, rotations, and unlinks without periodic polling loops.
 
 
+### Revision: Lifecycle-Bound Timed Arrival Reticles & On-Demand Tube Transit Rendering
+**Date:** 2026-09-22 10:05 EDT
+**Context:** Resolves an issue where timed arrival reticle dots for pneumatic tube capsules failed to appear on demand, vanished immediately after rendering, or required manual toggle flickering. Fixes an uninitialized local variable scope error in the per-frame render pass, decouples arrival dot destruction from routine icon cache invalidations, directly inspects active timed hops on capsule records, and provides seamless in-place target coordinate updates across successive hops.
+
+**Key Changes:**
+1. **Variable Scope Rectification & Direct Hop Binding (`scripts/capsules/capsule-renderer.lua`):** Hoisted `local cap_id` resolution above `update_arrival_dots` in `capsule_renderer.render`, preventing `nil` arguments from aborting reticle evaluation. Updated `update_arrival_dots` and `render_arrival_dot_for_player` to inspect `capsule.timed_hop` directly in $O(1)$ time alongside ballistic flights and generic arrival heap records.
+2. **Decoupled Arrival Lifecycles & Premature Recycle Elimination (`scripts/capsules/capsule-renderer.lua`):** Removed `destroy_arrival_dot` from `recycle_capsule_render`, preventing internal dominant item and spoilage cache invalidations from prematurely reclaiming target dots from the render pool. Bound reticle teardown strictly to flight parking (`handle_tube_hop_arrival`), entity removal (`remove_capsule`), and unpressurized stoppage.
+3. **Pneumatic Tube Reticle Styling & In-Place Target Snapping (`scripts/capsules/capsule-renderer.lua`):** Added a dedicated amber visual style for tube hops (`color = {r=1.0, g=0.75, b=0.2, a=0.8}`, `radius = 0.14` dot, `radius = 0.28` ring). Mutates existing leased primitive targets in place across contiguous hops, eliminating visual flicker and redundant object allocations.
+4. **Lifecycle Teardown Synchronization (`scripts/capsules/capsule-runner.lua`):** Added explicit `capsule_renderer.destroy_arrival_dot` cleanup calls upon capsule destruction in `remove_capsule` and upon hop termination when incoming capsules park due to downstream congestion.
+5. **Zero-Polling Debug Notification Hook (`scripts/debug-manager.lua`, `scripts/capsules/capsule-renderer.lua`):** Implemented `debug_manager.register_arrival_hook` to dispatch instant `destroy_player_arrival_dots` and visible reticle synchronization upon toggling `/toggle-arrival-dots` or clicking the control panel checkbox without introducing circular require loops.
+
+
 
 

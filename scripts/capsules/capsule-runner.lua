@@ -632,8 +632,7 @@ function capsule_runner.select_next_target(capsule)
         local cand_key = scratch_cand_keys[1][c]
         local via_port = scratch_cand_vias[1][c]
 
-        local is_entry_reverse = (capsule.entry_port_key and cand_key == capsule.entry_port_key and from_port_key ~= capsule.entry_port_key)
-        if cand_key ~= capsule.last_port_key and not is_entry_reverse then
+        if cand_key ~= capsule.last_port_key then
             local valid_hop = false
             if current_node.cross_transit then
                 valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality, 1, cap_id)

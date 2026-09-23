@@ -50,3 +50,13 @@
 2. **Entry Port Tracking & Backward Hop Suppression (`scripts/capsules/capsule-runner.lua`):** Added `capsule.entry_port_key` assigned on external entity transitions in `update_capsules` and `inject_from_hub`. Gated candidate selection in `select_next_target` to skip `cand_key == capsule.entry_port_key`, preventing capsules from reversing into their entry sockets unless pulled backward by negative vacuum pressure.
 3. **Inter-Port Axial Colinear Alignment (`scripts/capsules/capsule-runner.lua`):** Replaced previous-node displacement vector dot-product checks (which collapsed to zero due to overlapping boundary coordinates) with direct axial alignment testing (`dx < 0.01` for vertical straight, `dy < 0.01` for horizontal straight) and `flow_engine.is_colinear_straight_internal`. Opposing colinear dead-end ports receive priority score `0.002` over side turn ports (`0.001`), eliminating random 90-degree turns into dead-end junction arms.
 4. **Zero-Pressure & Drag-Build Traversal (`scripts/capsules/capsule-runner.lua`):** Restricted downstream lookahead acceptance to strictly positive pressure drops (`best_downstream > 0`), and allowed terminal entity advancement when `level_exit >= 0` and `from_port_key == entry_port_key`. Guarantees capsules entering zero-pressure segments via a $1 \rightarrow 0$ drop advance all the way across the tube, eliminating stalling caused by multi-segment drag-building.
+
+
+#### 0.3.23
+
+### Revision: Vacuum Reverse Evacuation Restoration
+**Date:** 2026-09-23 08:43 EDT
+**Context:** Restores the ability for negative vacuum pressure to evacuate capsules parked in dead-end tube runs and junction branches. The previous `is_entry_reverse` candidate filter unconditionally suppressed hops back to `entry_port_key`, inadvertently preventing vacuum pumps from pulling capsules backward out of dead-end branches despite valid positive pressure drops ($(-21) - (-22) = +1$).
+
+**Key Changes:**
+1. **Vacuum Candidate Filter Clearance (`scripts/capsules/capsule-runner.lua`):** Removed `is_entry_reverse` gating from candidate iteration in `select_next_target`. Negative vacuum pressure gradients can now pull capsules backward through their entry sockets, while forward dead-end bouncing remains fully prevented by `best_downstream > 0` and `is_from_entry`.

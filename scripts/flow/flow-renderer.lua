@@ -764,7 +764,7 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
             local pos = node.pos
 
             local c_node, c_level, c_owner = flow_renderer.get_dominant_counter_at_pos(node.pos_key)
-            if c_node and c_level > 0 and c_owner ~= nil then
+            if c_node and c_level > 0 and c_owner ~= nil and node == c_node then
                 local circle_color = get_owner_color(c_owner)
                 local c_obj = render_pool.lease_circle{
                     channel = "flow",
@@ -809,7 +809,7 @@ function flow_renderer.render_flow_dot_static(player_index, item, surface)
                     }
                     if c_obj then out_objs[#out_objs + 1] = c_obj end
 
-                elseif level ~= 0 then
+                elseif level ~= 0 and node == best_node then
                     local abs_level = math.abs(level)
                     local ratio = math.min(1.0, abs_level / MAX_FLOW)
                     local circle_color = (level > 0)

@@ -92,3 +92,11 @@
 4. **Motion Loop & Wake Peeling Isolation (`scripts/capsules/capsule-renderer.lua`):** Hoisted `v_set` initialization in `dispatch_player_renders` and restricted wake peeling, progression window checks, and governor observation strictly to corridor leaves, protecting Diverter filter icons and flow dots from being recycled as laser trail dots.
 5. **Corridor Lifecycle & Rotation Teardown (`scripts/utils/timed-motion.lua`, `scripts/flow/flow-engine.lua`):** Removed `storage.active_projectors` from the `is_pinned` guard in `remove_flight` so inactive corridors can unregister cleanly, and wired `flow_kinetic.handle_projector_rotated` on entity reorientation.
 6. **Debug Render Reference Leak (`scripts/utils/trajectory-bvh.lua`):** Removed the redundant `storage.bvh_renders` table re-initialization in `draw_for_player` that previously orphaned `motion_bvh` debug boxes and made them impervious to `/clear-renders` and `/toggle-bvh`.
+
+
+### Revision: Foreground Text Z-Ordering & Boundary Dot Deduplication
+**Date:** 2026-09-23 14:48 EDT
+**Context:** Resolves Z-ordering conflicts on Factorio's foreground overlay pass where recycled filled circles were drawn on top of pressure numbers, and eliminates duplicate circle and text leasing at touching port boundaries.
+**Key Changes:**
+1. **Text Draw Order Elevation (`scripts/utils/render-pool.lua`):** Added `obj.bring_to_front()` to `render_pool.lease_text` on both handle reuse and fresh instantiation, ensuring text is always reordered to the front of foreground circles and lines.
+2. **Shared Boundary Port Deduplication (`scripts/flow/flow-renderer.lua`):** Gated pressure dot and counter dot leasing behind reference identity checks (`node == best_node` and `node == c_node`) in `render_flow_dot_static`, preventing adjacent touching entities (such as tubes and corner junctions) from stacking duplicate circles that occlude numbers.

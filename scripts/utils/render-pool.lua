@@ -157,6 +157,7 @@ function render_pool.lease_text(arg1, arg2, arg3)
             if options.alignment then obj.alignment = options.alignment end
             if options.players then obj.players = options.players end
             obj.visible = true
+            obj.bring_to_front()
             storage.render_pool_channels[obj.id] = channel
             return obj
         end
@@ -166,6 +167,7 @@ function render_pool.lease_text(arg1, arg2, arg3)
     options.visible = true
     local obj = rendering.draw_text(options)
     if obj and obj.valid then
+        obj.bring_to_front()
         storage.render_pool_channels[obj.id] = channel
     end
     return obj

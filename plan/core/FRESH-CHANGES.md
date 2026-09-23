@@ -60,3 +60,15 @@
 
 **Key Changes:**
 1. **Vacuum Candidate Filter Clearance (`scripts/capsules/capsule-runner.lua`):** Removed `is_entry_reverse` gating from candidate iteration in `select_next_target`. Negative vacuum pressure gradients can now pull capsules backward through their entry sockets, while forward dead-end bouncing remains fully prevented by `best_downstream > 0` and `is_from_entry`.
+
+
+#### 0.3.23
+
+### Revision: Lookahead Excision & Pure Local Gradient Evaluation
+**Date:** 2026-09-23 08:59 EDT
+**Context:** Excises recursive graph lookahead ladders and nested candidate query loops from the capsule motion coordinator. Previously, deciding an internal hop across a 1-tile entity invoked recursive calls up to 3 hops deep to pre-validate downstream exits, causing remote unpressurized segments to artificially stall capsules several tiles upstream. Replaces nested scans with pure local gradient checks and immediate external connection inspection.
+
+**Key Changes:**
+1. **Recursive Depth Ladder Purge (`scripts/capsules/capsule-runner.lua`):** Stripped the `depth` parameter and recursion limit (`depth > 3`) from `is_hop_valid`. Excised the downstream `get_candidate_hops(target_port_key, 3)` loop, restricting internal hop validation strictly to immediate local machine rules (mutual dead-end suppression, emitter direction checks, and entity permissions).
+2. **Direct External Connection Inspection (`scripts/capsules/capsule-runner.lua`):** Replaced the secondary `get_candidate_hops(cand_key, 2)` scan in `select_next_target` with direct, zero-allocation iteration over `storage.flow_connections[cand_key]`. Downstream capacity is verified directly via `capsule_runner.has_capacity(cand_key, exit_key)` without recursive function calls.
+3. **Consistent Multi-Segment Motion (`scripts/capsules/capsule-runner.lua`):** Eradicates drag-building stalls where unpressurized tube runs returned $0 - 0 = 0$ lookaheads that halted motion on upstream tiles. Capsules now advance reliably hop-by-hop based on local pressure differentials and colinear momentum.

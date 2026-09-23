@@ -506,10 +506,7 @@ local function get_candidate_hops(from_port_key, tier)
     return count
 end
 
-local function is_hop_valid(from_port_key, target_port_key, payload_item, payload_quality, depth, capsule_id)
-    depth = depth or 1
-    if depth > 3 then return false end
-
+local function is_hop_valid(from_port_key, target_port_key, payload_item, payload_quality, capsule_id)
     local from_node = storage.flow_nodes and storage.flow_nodes[from_port_key]
     local target_node = storage.flow_nodes and storage.flow_nodes[target_port_key]
     if not (from_node and target_node) then return false end
@@ -562,24 +559,6 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
 
         if not target_has_ext and not from_has_ext then
             return false
-        end
-        local target_has_ext = (target_ext and next(target_ext) ~= nil)
-        if target_has_ext then
-            local exit_count = get_candidate_hops(target_port_key, 3)
-        local has_valid_exit = false
-        for i = 1, exit_count do
-            local exit_key = scratch_cand_keys[3][i]
-            local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
-            if exit_node and exit_node.unit_number ~= target_node.unit_number then
-                if is_hop_valid(target_port_key, exit_key, payload_item, payload_quality, depth + 1, capsule_id) then
-                    has_valid_exit = true
-                    break
-                end
-            end
-        end
-        if not has_valid_exit then
-            return false
-        end
         end
     end
 
@@ -635,9 +614,9 @@ function capsule_runner.select_next_target(capsule)
         if cand_key ~= capsule.last_port_key then
             local valid_hop = false
             if current_node.cross_transit then
-                valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality, 1, cap_id)
+                valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality, cap_id)
             else
-                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item, payload_quality, 1, cap_id)
+                valid_hop = is_hop_valid(from_port_key, cand_key, payload_item, payload_quality, cap_id)
             end
 
             if valid_hop then
@@ -660,19 +639,20 @@ function capsule_runner.select_next_target(capsule)
                 local is_internal = (cand_node and cand_node.unit_number == current_node.unit_number)
                 if is_internal and cand_node then
                     local best_downstream = -math.huge
-                    local exit_count = get_candidate_hops(cand_key, 2)
-                    for e = 1, exit_count do
-                        local exit_key = scratch_cand_keys[2][e]
-                        local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
-                        if exit_node and exit_node.unit_number ~= current_node.unit_number then
-                            if is_hop_valid(cand_key, exit_key, payload_item, payload_quality, 2, cap_id) then
-                                local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
+                    local ext_conns = storage.flow_connections and storage.flow_connections[cand_key]
+                    if ext_conns then
+                        for exit_key in pairs(ext_conns) do
+                            local exit_node = storage.flow_nodes and storage.flow_nodes[exit_key]
+                            if exit_node and exit_node.unit_number ~= current_node.unit_number then
+                                if capsule_runner.has_capacity(cand_key, exit_key) then
+                                    local exit_level = storage.flow_levels and storage.flow_levels[exit_key] or 0
 
-                                local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
-                                local effective_from = (cand_emitter_lvl > 0) and cand_emitter_lvl or level_exit
-                                local d = effective_from - exit_level
-                                if d > best_downstream then
-                                    best_downstream = d
+                                    local cand_emitter_lvl = flow_engine.get_node_emitter_level(cand_node)
+                                    local effective_from = (cand_emitter_lvl > 0) and cand_emitter_lvl or level_exit
+                                    local d = effective_from - exit_level
+                                    if d > best_downstream then
+                                        best_downstream = d
+                                    end
                                 end
                             end
                         end

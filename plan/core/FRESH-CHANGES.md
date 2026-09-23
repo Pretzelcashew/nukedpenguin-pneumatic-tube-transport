@@ -100,3 +100,10 @@
 **Key Changes:**
 1. **Text Draw Order Elevation (`scripts/utils/render-pool.lua`):** Added `obj.bring_to_front()` to `render_pool.lease_text` on both handle reuse and fresh instantiation, ensuring text is always reordered to the front of foreground circles and lines.
 2. **Shared Boundary Port Deduplication (`scripts/flow/flow-renderer.lua`):** Gated pressure dot and counter dot leasing behind reference identity checks (`node == best_node` and `node == c_node`) in `render_flow_dot_static`, preventing adjacent touching entities (such as tubes and corner junctions) from stacking duplicate circles that occlude numbers.
+
+
+### Revision: Render Pool Sprite Tint Property Correction
+**Date:** 2026-09-23 14:57 EDT
+**Context:** Resolves a non-recoverable engine crash when re-leasing recycled sprites where attempting to write to `obj.tint` failed because native Factorio `LuaRenderObject` instances map tint to `obj.color`.
+**Key Changes:**
+1. **Sprite Color Property Mutation (`scripts/utils/render-pool.lua`):** Updated `render_pool.lease_sprite` to assign tint values to `obj.color` with a white `{r=1, g=1, b=1, a=1}` fallback instead of `obj.tint`, matching Factorio's native `LuaRenderObject` API and preventing color bleed across recycled outline and payload sprites.

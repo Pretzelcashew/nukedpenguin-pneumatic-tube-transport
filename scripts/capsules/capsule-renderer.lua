@@ -226,7 +226,9 @@ function capsule_renderer.update_governor(current_tick)
                 local v_set = viewport_bvh.get_visible_set(p_idx)
                 if v_set then
                     for _, item in pairs(v_set) do
-                        if scratch_active_owners[item.owner_id] then
+                        local leaf = item.leaf
+                        local is_corridor = leaf and (leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base"))
+                        if is_corridor and scratch_active_owners[item.owner_id] then
                         local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
                         if reticle and reticle.retreat_tick then
                             scratch_observed_flights["retreat:" .. tostring(item.owner_id)] = true
@@ -1319,13 +1321,18 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
         cadence = dbg.render_cadence
     end
 
+    local v_set = viewport_bvh.get_visible_set(p_idx)
     local has_visible_retreat = false
     if v_set then
         for _, it in pairs(v_set) do
-            local r = storage.projector_reticles and storage.projector_reticles[it.owner_id]
-            if r and r.retreat_tick then
-                has_visible_retreat = true
-                break
+            local leaf = it.leaf
+            local is_corridor = leaf and (leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base"))
+            if is_corridor then
+                local r = storage.projector_reticles and storage.projector_reticles[it.owner_id]
+                if r and r.retreat_tick then
+                    has_visible_retreat = true
+                    break
+                end
             end
         end
     end
@@ -1337,7 +1344,6 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     local surf = player.surface
     if not (surf and surf.valid) then return end
 
-    local v_set = viewport_bvh.get_visible_set(p_idx)
     local p_renders = storage.player_flight_renders and storage.player_flight_renders[p_idx]
 
     if not v_set or next(v_set) == nil then
@@ -1353,15 +1359,19 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
         needs_render_pass = true
     else
         for _, item in pairs(v_set) do
-            local owner_id = item.owner_id
-            if flights_store and flights_store[owner_id] then
-                needs_render_pass = true
-                break
-            end
-            local reticle = storage.projector_reticles and storage.projector_reticles[owner_id]
-            if reticle and reticle.retreat_tick then
-                needs_render_pass = true
-                break
+            local leaf = item.leaf
+            local is_corridor = leaf and (leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base"))
+            if is_corridor then
+                local owner_id = item.owner_id
+                if flights_store and flights_store[owner_id] then
+                    needs_render_pass = true
+                    break
+                end
+                local reticle = storage.projector_reticles and storage.projector_reticles[owner_id]
+                if reticle and reticle.retreat_tick then
+                    needs_render_pass = true
+                    break
+                end
             end
         end
     end
@@ -1385,7 +1395,9 @@ function capsule_renderer.dispatch_player_renders(player, current_tick)
     if flights_store and v_set and next(v_set) ~= nil then
         local tpt = (trajectory_bvh and trajectory_bvh.TICKS_PER_TILE) or 1.2
         for key, item in pairs(v_set) do
-            if scratch_active_owners[item.owner_id] then
+            local leaf = item.leaf
+            local is_corridor = leaf and (leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base"))
+            if is_corridor and scratch_active_owners[item.owner_id] then
             local wants_kinetic = viewport_bvh.should_render_kinetic_overlays(p_idx)
             local reticle = storage.projector_reticles and storage.projector_reticles[item.owner_id]
             if reticle and reticle.retreat_tick and wants_kinetic then

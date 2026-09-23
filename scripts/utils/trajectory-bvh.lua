@@ -998,10 +998,6 @@ function trajectory_bvh.draw_for_player(player_index)
     if not (tree and tree.root) then return end
     trajectory_bvh.attach(tree)
 
-    storage.bvh_renders = storage.bvh_renders or {}
-    local renders = {}
-    storage.bvh_renders[player_index] = renders
-
     local function draw_node(node, depth)
         if not node then return end
         if node.is_leaf then

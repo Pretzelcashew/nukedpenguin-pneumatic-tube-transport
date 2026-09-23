@@ -76,7 +76,19 @@
 
 ### Revision: Remove Hardcoded Render Layer from Capsule Renderer and Pool
 **Date:** 2026-09-23 12:45 (EDT)
-**Context:** The rendering logic previously forced all capsule and flight indicators to use the `entity-info-icon-above` render layer[cite: 1]. Removing this allows the objects to default to their proper or engine-standard layers without manual overrides[cite: 1].
+**Context:** The rendering logic previously forced all capsule and flight indicators to use the `entity-info-icon-above` render layer. Removing this allows the objects to default to their proper or engine-standard layers without manual overrides.
 **Key Changes:**
-1. **Capsule Renderer (`scripts/capsules/capsule-renderer.lua`):** Removed `render_layer = "entity-info-icon-above"` from multiple circle, dot, and flight rendering functions[cite: 1].
-2. **Render Pool (`scripts/utils/render-pool.lua`):** Removed the option assignment handling for `render_layer` in `render_pool.lease_circle`[cite: 1].
+1. **Capsule Renderer (`scripts/capsules/capsule-renderer.lua`):** Removed `render_layer = "entity-info-icon-above"` from multiple circle, dot, and flight rendering functions.
+2. **Render Pool (`scripts/utils/render-pool.lua`):** Removed the option assignment handling for `render_layer` in `render_pool.lease_circle`.
+
+
+### Revision: BVH Leaf Domain Isolation, Reticle Lifecycle Decoupling & Endpoint Head Restoration
+**Date:** 2026-09-23 14:30 EDT
+**Context:** Resolves cross-subsystem collisions where projectile flight progression and wake peeling treated physical machines as laser beams, un-scoped corridor teardowns wiped entity leaves sharing numerical IDs, debug overlays leaked un-clearable render handles, and reticle head endpoint rings were dropped on arrival.
+**Key Changes:**
+1. **Leaf Archetype Disambiguation (`scripts/utils/timed-motion.lua`, `scripts/flow/flow-engine.lua`, `scripts/capsules/capsule-ballistics.lua`):** Explicitly tagged corridor leaves with `is_corridor = true`, `reticle_id`, and explicit `static_render_spec = "reticle_static"`, while tagging entity leaves with `is_entity = true, is_corridor = false` to eliminate ambiguous numeric `owner_id` collisions.
+2. **Explicit Static Render Dispatch & Head Retention (`scripts/utils/viewport-bvh.lua`):** Routed corridor leaves directly to `reticle_static` in `attach_static_render` and entity leaves to their declared string spec, guaranteeing raw table head configs (`DEFAULT_HEAD_SPEC`, `RECEIVER_HEAD_SPEC`) are never dropped while completely removing unprincipled fallback guessing.
+3. **Corridor Teardown Scoping (`scripts/utils/viewport-bvh.lua`):** Filtered prefix-based deletions in `on_segment_removed` strictly to corridor leaves, preventing expired reticle beams from wiping physical machine and tube leaves sharing the same numerical ID.
+4. **Motion Loop & Wake Peeling Isolation (`scripts/capsules/capsule-renderer.lua`):** Hoisted `v_set` initialization in `dispatch_player_renders` and restricted wake peeling, progression window checks, and governor observation strictly to corridor leaves, protecting Diverter filter icons and flow dots from being recycled as laser trail dots.
+5. **Corridor Lifecycle & Rotation Teardown (`scripts/utils/timed-motion.lua`, `scripts/flow/flow-engine.lua`):** Removed `storage.active_projectors` from the `is_pinned` guard in `remove_flight` so inactive corridors can unregister cleanly, and wired `flow_kinetic.handle_projector_rotated` on entity reorientation.
+6. **Debug Render Reference Leak (`scripts/utils/trajectory-bvh.lua`):** Removed the redundant `storage.bvh_renders` table re-initialization in `draw_for_player` that previously orphaned `motion_bvh` debug boxes and made them impervious to `/clear-renders` and `/toggle-bvh`.

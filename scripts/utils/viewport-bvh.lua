@@ -520,16 +520,14 @@ end
 --- @param item table Visible set entry
 --- @param surface LuaSurface
 function viewport_bvh.attach_static_render(player_index, item, surface)
-    if not (item and item.leaf) then return end
-    local spec = item.leaf.static_render_spec
+    local leaf = item and item.leaf
+    if not leaf then return end
+
     local static_fn = nil
-    if type(spec) == "string" and motion_protocols.static_renders[spec] then
-        static_fn = motion_protocols.static_renders[spec]
-    elseif spec and type(spec) == "table" and spec.name and motion_protocols.static_renders[spec.name] then
-        static_fn = motion_protocols.static_renders[spec.name]
-    else
-        static_fn = motion_protocols.get_subprotocol(item.owner_id, "static_render")
-            or motion_protocols.static_renders["reticle_static"]
+    if leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base") then
+        static_fn = motion_protocols.static_renders["reticle_static"]
+    elseif type(leaf.static_render_spec) == "string" then
+        static_fn = motion_protocols.static_renders[leaf.static_render_spec]
     end
     if static_fn then
         static_fn(player_index, item, surface)
@@ -791,7 +789,8 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
             else
                 local to_remove = {}
                 for k, leaf in pairs(tree.leaves_by_key) do
-                    if k == tostring(owner_id) or k:sub(1, #match_prefix) == match_prefix then
+                    local is_corridor = leaf.is_corridor or (leaf.seg_key ~= "machine" and leaf.seg_key ~= "base")
+                    if is_corridor and (k == tostring(owner_id) or k:sub(1, #match_prefix) == match_prefix) then
                         to_remove[#to_remove + 1] = leaf
                     end
                 end
@@ -813,7 +812,9 @@ function viewport_bvh.on_segment_removed(surface_index, owner_id, seg_key)
             end
         else
             for k, item in pairs(v_set) do
-                if item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix then
+                local leaf = item.leaf
+                local is_corridor = (leaf and leaf.is_corridor) or (item.seg_key ~= "machine" and item.seg_key ~= "base")
+                if is_corridor and (item.owner_id == owner_id or k:sub(1, #match_prefix) == match_prefix) then
                     if item.render_objects then
                         render_pool.recycle_many(p_idx, item.render_objects)
                     end

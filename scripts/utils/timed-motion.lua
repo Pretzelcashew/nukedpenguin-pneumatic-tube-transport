@@ -173,8 +173,7 @@ function timed_motion.remove_flight(id, owner_id)
                     storage.pinned_corridors[owner_id] = nil
                 end
             else
-                local is_pinned = (storage.pinned_corridors and storage.pinned_corridors[owner_id])
-                    or (storage.active_projectors and storage.active_projectors[owner_id])
+                local is_pinned = storage.pinned_corridors and storage.pinned_corridors[owner_id]
                 if not is_pinned then
                     timed_motion.remove_corridor(nil, owner_id)
                 end
@@ -343,9 +342,11 @@ function timed_motion.ensure_corridor(surface_index, corridor_id, start_pos, ter
             if leaf then
                 leaf.has_trail = nil
                 leaf.trail_count = nil
-                leaf.static_render_spec = nil
+                leaf.static_render_spec = "reticle_static"
                 leaf.static_pos = nil
                 leaf.dir = { x = d_x, y = d_y }
+                leaf.is_corridor = true
+                leaf.reticle_id = corridor_id
                 viewport_bvh.on_segment_registered(surface_index, leaf)
             end
         end

@@ -1113,6 +1113,8 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                     leaf.static_render_spec = nil
                     leaf.static_pos = nil
                     leaf.dir = { x = dx, y = dy }
+                    leaf.is_corridor = true
+                    leaf.reticle_id = reticle_id
                     viewport_bvh.on_segment_registered(surface.index, leaf)
                 end
             end
@@ -1240,6 +1242,8 @@ function capsule_ballistics.handle_projector_scope_arrival(flight_id, flight, cu
                     leaf.trail_count = total_leaf_dist
                     leaf.static_render_spec = final_head_spec
                     leaf.static_pos = { x = tp.x, y = tp.y }
+                    leaf.is_corridor = true
+                    leaf.reticle_id = reticle_id
                     viewport_bvh.on_leaf_static_changed(surface.index, leaf)
                 end
             end

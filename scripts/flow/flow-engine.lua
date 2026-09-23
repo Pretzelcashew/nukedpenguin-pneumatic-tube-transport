@@ -751,6 +751,7 @@ local function handle_entity_reorientation(entity)
         end
 
         flow_kinetic.clear_receiver_references(u_num, flow_engine.enqueue_port, wake_port_parked)
+        flow_kinetic.handle_projector_rotated(u_num)
 
         if storage.flow_unit_ports and storage.flow_unit_ports[u_num] then
             flow_engine.disconnect_entity(entity)
@@ -844,7 +845,9 @@ function flow_engine.register_entity_motion_leaf(unit_number, entity)
         seg_key = seg_key,
         unit_number = unit_number,
         surface_index = s_idx,
-        static_render_spec = render_spec
+        static_render_spec = render_spec,
+        is_entity = true,
+        is_corridor = false
     }
     local key = tostring(unit_number) .. ":" .. seg_key
     leaf.key = key

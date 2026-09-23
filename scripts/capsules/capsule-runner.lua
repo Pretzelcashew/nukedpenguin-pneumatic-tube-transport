@@ -554,7 +554,18 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
             end
         end
 
-        local exit_count = get_candidate_hops(target_port_key, 3)
+        local target_ext = storage.flow_connections and storage.flow_connections[target_port_key]
+        local target_has_ext = (target_ext and next(target_ext) ~= nil)
+
+        local from_ext = storage.flow_connections and storage.flow_connections[from_port_key]
+        local from_has_ext = (from_ext and next(from_ext) ~= nil)
+
+        if not target_has_ext and not from_has_ext then
+            return false
+        end
+        local target_has_ext = (target_ext and next(target_ext) ~= nil)
+        if target_has_ext then
+            local exit_count = get_candidate_hops(target_port_key, 3)
         local has_valid_exit = false
         for i = 1, exit_count do
             local exit_key = scratch_cand_keys[3][i]
@@ -568,6 +579,7 @@ local function is_hop_valid(from_port_key, target_port_key, payload_item, payloa
         end
         if not has_valid_exit then
             return false
+        end
         end
     end
 
@@ -620,7 +632,8 @@ function capsule_runner.select_next_target(capsule)
         local cand_key = scratch_cand_keys[1][c]
         local via_port = scratch_cand_vias[1][c]
 
-        if cand_key ~= capsule.last_port_key then
+        local is_entry_reverse = (capsule.entry_port_key and cand_key == capsule.entry_port_key and from_port_key ~= capsule.entry_port_key)
+        if cand_key ~= capsule.last_port_key and not is_entry_reverse then
             local valid_hop = false
             if current_node.cross_transit then
                 valid_hop = is_hop_valid(via_port, cand_key, payload_item, payload_quality, 1, cap_id)
@@ -665,8 +678,24 @@ function capsule_runner.select_next_target(capsule)
                             end
                         end
                     end
-                    if best_downstream ~= -math.huge then
+                    if best_downstream > 0 then
                         drop = best_downstream
+                    else
+                        local is_from_entry = (not capsule.entry_port_key or from_port_key == capsule.entry_port_key)
+                        if is_from_entry and level_exit >= 0 then
+                            local is_straight = false
+                            if flow_engine.is_colinear_straight_internal then
+                                is_straight = flow_engine.is_colinear_straight_internal(current_node, cand_node)
+                            end
+                            if not is_straight and current_node.pos and cand_node.pos then
+                                local dx = math.abs(current_node.pos.x - cand_node.pos.x)
+                                local dy = math.abs(current_node.pos.y - cand_node.pos.y)
+                                if (dx < 0.01 and dy > 0.1) or (dy < 0.01 and dx > 0.1) then
+                                    is_straight = true
+                                end
+                            end
+                            drop = is_straight and 0.002 or 0.001
+                        end
                     end
                 end
 
@@ -806,6 +835,7 @@ function capsule_runner.inject_from_hub(capsule_id, entity, passenger)
         dominant_item = dominant_item,
         dominant_quality = dominant_quality,
         from_port_key = target_port_key,
+        entry_port_key = target_port_key,
         to_port_key = nil,
         last_port_key = nil,
         progress = 0.0,
@@ -995,6 +1025,7 @@ function capsule_runner.update_capsules(current_tick)
                     local prev_unit = capsule_queries.get_port_info(prev_key)
                     local new_unit = capsule_queries.get_port_info(next_port_key)
                     if prev_unit ~= new_unit then
+                        capsule.entry_port_key = next_port_key
                         if new_unit and storage.active_projectors and storage.active_projectors[new_unit] then
                             capsule.entered_via_pressure = true
                             capsule.last_port_key = nil

@@ -72,3 +72,11 @@
 1. **Recursive Depth Ladder Purge (`scripts/capsules/capsule-runner.lua`):** Stripped the `depth` parameter and recursion limit (`depth > 3`) from `is_hop_valid`. Excised the downstream `get_candidate_hops(target_port_key, 3)` loop, restricting internal hop validation strictly to immediate local machine rules (mutual dead-end suppression, emitter direction checks, and entity permissions).
 2. **Direct External Connection Inspection (`scripts/capsules/capsule-runner.lua`):** Replaced the secondary `get_candidate_hops(cand_key, 2)` scan in `select_next_target` with direct, zero-allocation iteration over `storage.flow_connections[cand_key]`. Downstream capacity is verified directly via `capsule_runner.has_capacity(cand_key, exit_key)` without recursive function calls.
 3. **Consistent Multi-Segment Motion (`scripts/capsules/capsule-runner.lua`):** Eradicates drag-building stalls where unpressurized tube runs returned $0 - 0 = 0$ lookaheads that halted motion on upstream tiles. Capsules now advance reliably hop-by-hop based on local pressure differentials and colinear momentum.
+
+
+### Revision: Remove Hardcoded Render Layer from Capsule Renderer and Pool
+**Date:** 2026-09-23 12:45 (EDT)
+**Context:** The rendering logic previously forced all capsule and flight indicators to use the `entity-info-icon-above` render layer[cite: 1]. Removing this allows the objects to default to their proper or engine-standard layers without manual overrides[cite: 1].
+**Key Changes:**
+1. **Capsule Renderer (`scripts/capsules/capsule-renderer.lua`):** Removed `render_layer = "entity-info-icon-above"` from multiple circle, dot, and flight rendering functions[cite: 1].
+2. **Render Pool (`scripts/utils/render-pool.lua`):** Removed the option assignment handling for `render_layer` in `render_pool.lease_circle`[cite: 1].

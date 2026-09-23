@@ -79,7 +79,6 @@ function render_pool.lease_circle(arg1, arg2, arg3)
             if options.radius then obj.radius = options.radius end
             if options.filled ~= nil then obj.filled = options.filled end
             if options.width ~= nil then obj.width = options.width end
-            if options.render_layer ~= nil then obj.render_layer = options.render_layer end
             if options.draw_on_ground ~= nil then obj.draw_on_ground = options.draw_on_ground end
             if options.players then obj.players = options.players end
             obj.visible = true
